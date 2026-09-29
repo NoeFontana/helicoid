@@ -23,7 +23,8 @@ pub trait Tangent<S: Real>: Copy + Blend<S> {
     fn neg(&self) -> Self;
     /// `k * self`.
     fn scale(&self, k: S) -> Self;
-    /// The Euclidean inner product of the dense components, summed in index order.
+    /// The Euclidean inner product of the dense components, summed in index order within a
+    /// factor: a composite tangent (the pair of a `Product`) adds its factors' partial sums.
     fn dot(&self, o: &Self) -> S;
     /// Writes the components in the order of `NUMERICS.md` §1.
     ///

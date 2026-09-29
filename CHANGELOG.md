@@ -180,6 +180,13 @@ defined by the status tables in `docs/`; they win over this file.
   `sen3jac_inverse_matches_reference` (`N = 1, 2, 3`; `f64`, `f32`, `Dual<f64, 3>`; the inverse's
   tolerance scales with the conditioning of the dense matrix). New public API, nothing breaks; the
   `SEn3` group is not here yet.
+- `helicoid`: `Product<A, B>` and `ProductJac<JA, JB>` (`docs/PHASE3.md` §7): the product group
+  with every `LieGroup` method the factors' method componentwise, tangent `(A::Tangent, B::Tangent)`
+  (a `Tangent` impl for a pair, dense order `A` then `B`), `DOF = A::DOF + B::DOF`, and the
+  block-diagonal Jacobian as a `Jac` (`sandwich` from the factors' `apply`). Nests. Tested by the
+  generic laws on `Product<Rn<3>, Rn<2>>`, `Product<Rn<2>, Heis>`, `Product<Heis, Rn<2>>` and a
+  nested product with two Heisenberg factors (test-only, the one non-abelian factor until SO(3)).
+  New public API, nothing breaks. `Tangent::dot` documents that a composite tangent sums per factor.
 - `just test` also runs the workspace tests in the release profile, where `debug_assert!` is
   compiled out: the tests of the documented out-of-domain behaviour are `cfg(not(debug_assertions))`
   and the dev profile skipped them. Nothing breaks.

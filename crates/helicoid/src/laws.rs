@@ -462,9 +462,9 @@ pub(crate) struct Bounds {
 }
 
 /// Tangent samples with entries `m 2^e`, `|m| < 1`, `-6 <= e <= 0`.
-pub(crate) fn sample() -> impl Strategy<Value = [f64; 3]> {
+pub(crate) fn sample<const D: usize>() -> impl Strategy<Value = [f64; D]> {
     let entry = (-1.0_f64..1.0, -6_i32..=0).prop_map(|(m, e)| m * 2_f64.powi(e));
-    proptest::array::uniform3(entry)
+    proptest::array::uniform(entry)
 }
 
 /// `Ok` when the worst error `v` of a law is within `bound`; a NaN is not.
@@ -478,20 +478,23 @@ pub(crate) fn within(v: f64, bound: f64) -> Result<(), TestCaseError> {
     }
 }
 
-/// Every law above as a proptest in a module `$p`, for `f64`, `f32` and `Dual<f64, 3>` (which takes
-/// the bounds of `f64`, its values being the same), for the three-dimensional group `$G<S>` whose
-/// tests define `$jac::<S>(&[f64; 3])`, an invertible `Jac` built from a sample.
+/// Every law above as a proptest in a module `$p`, for `f64`, `f32` and `Dual<f64, D>` (which takes
+/// the bounds of `f64`, its values being the same), for the `D`-dimensional group `$G<S>` (`D = 3`
+/// when omitted) whose tests define `$jac::<S>(&[f64; D])`, an invertible `Jac` built from a sample.
 macro_rules! laws_for {
     ($p:ident, $G:ident, $jac:ident, $b64:ident, $b32:ident) => {
+        $crate::laws::laws_for!($p, $G, $jac, $b64, $b32, 3);
+    };
+    ($p:ident, $G:ident, $jac:ident, $b64:ident, $b32:ident, $D:literal) => {
         mod $p {
             use super::*;
-            $crate::laws::laws_for!(@case as_f64, f64, $b64, $G, $jac);
-            $crate::laws::laws_for!(@case as_f32, f32, $b32, $G, $jac);
-            $crate::laws::laws_for!(@case as_dual, helicoid_linalg::Dual<f64, 3>, $b64, $G, $jac);
-            $crate::laws::laws_for!(@plain $G);
+            $crate::laws::laws_for!(@case as_f64, f64, $b64, $G, $jac, $D);
+            $crate::laws::laws_for!(@case as_f32, f32, $b32, $G, $jac, $D);
+            $crate::laws::laws_for!(@case as_dual, helicoid_linalg::Dual<f64, $D>, $b64, $G, $jac, $D);
+            $crate::laws::laws_for!(@plain $G, $D);
         }
     };
-    (@case $m:ident, $S:ty, $B:ident, $G:ident, $jac:ident) => {
+    (@case $m:ident, $S:ty, $B:ident, $G:ident, $jac:ident, $D:literal) => {
         mod $m {
             use super::*;
             use $crate::laws::{self, sample, tangent, within, Sample};
@@ -503,65 +506,69 @@ macro_rules! laws_for {
             type S = $S;
             type Gp = $G<S>;
 
-            fn t(v: &[f64; 3]) -> <Gp as LieGroup<S>>::Tangent {
-                tangent::<S, Gp, 3>(v)
+            fn t(v: &[f64; $D]) -> <Gp as LieGroup<S>>::Tangent {
+                tangent::<S, Gp, $D>(v)
             }
-            fn g(v: &[f64; 3]) -> Gp {
+            fn g(v: &[f64; $D]) -> Gp {
                 Gp::exp(&t(v))
             }
-            fn j(v: &[f64; 3]) -> <Gp as LieGroup<S>>::Jac {
+            fn j(v: &[f64; $D]) -> <Gp as LieGroup<S>>::Jac {
                 $jac::<S>(v)
             }
-            fn cov(a: &[f64; 3], b: &[f64; 3], c: &[f64; 3]) -> Matrix<S, 3, 3> {
-                let col = |v: &[f64; 3]| Vector(array::from_fn(|i| S::sample(v[i], i)));
-                Matrix::from_cols([col(a), col(b), col(c)])
+            fn cov(a: &[f64; $D], b: &[f64; $D], c: &[f64; $D]) -> Matrix<S, $D, $D> {
+                // Column `k` is sample `k % 3` rotated by `k / 3`: distinct columns, so no
+                // column index of the sandwich aliases another for any `D`.
+                let cols = [a, b, c];
+                Matrix::from_cols(array::from_fn(|k| {
+                    Vector(array::from_fn(|r| S::sample(cols[k % 3][(r + k / 3) % $D], r)))
+                }))
             }
 
             proptest! {
                 #[test]
-                fn group_axioms(a in sample(), b in sample(), c in sample()) {
-                    within(laws::group_axioms::<S, Gp, 3>(g(&a), g(&b), g(&c)), $B.axioms)?;
+                fn group_axioms(a in sample::<$D>(), b in sample::<$D>(), c in sample::<$D>()) {
+                    within(laws::group_axioms::<S, Gp, $D>(g(&a), g(&b), g(&c)), $B.axioms)?;
                 }
                 #[test]
-                fn exp_log_roundtrip(a in sample(), b in sample()) {
-                    within(laws::exp_log_roundtrip::<S, Gp, 3>(&t(&a), &g(&b)), $B.exp_log)?;
+                fn exp_log_roundtrip(a in sample::<$D>(), b in sample::<$D>()) {
+                    within(laws::exp_log_roundtrip::<S, Gp, $D>(&t(&a), &g(&b)), $B.exp_log)?;
                 }
                 #[test]
-                fn adjoint_identity(a in sample(), b in sample()) {
-                    within(laws::adjoint_identity::<S, Gp, 3>(&g(&a), &t(&b)), $B.adjoint)?;
+                fn adjoint_identity(a in sample::<$D>(), b in sample::<$D>()) {
+                    within(laws::adjoint_identity::<S, Gp, $D>(&g(&a), &t(&b)), $B.adjoint)?;
                 }
                 #[test]
-                fn jl_is_ad_jr(a in sample()) {
-                    within(laws::jl_is_ad_jr::<S, Gp, 3>(&t(&a)), $B.jl_ad_jr)?;
+                fn jl_is_ad_jr(a in sample::<$D>()) {
+                    within(laws::jl_is_ad_jr::<S, Gp, $D>(&t(&a)), $B.jl_ad_jr)?;
                 }
                 #[test]
-                fn plus_minus(a in sample(), b in sample(), c in sample()) {
-                    within(laws::plus_minus::<S, Gp, 3>(&g(&a), &g(&b), &t(&c)), $B.plus_minus)?;
+                fn plus_minus(a in sample::<$D>(), b in sample::<$D>(), c in sample::<$D>()) {
+                    within(laws::plus_minus::<S, Gp, $D>(&g(&a), &g(&b), &t(&c)), $B.plus_minus)?;
                 }
                 #[test]
-                fn jacobian_rows(a in sample(), b in sample(), c in sample()) {
-                    within(laws::jacobian_rows::<S, Gp, 3>(&g(&a), &g(&b), &t(&c)), $B.rows)?;
+                fn jacobian_rows(a in sample::<$D>(), b in sample::<$D>(), c in sample::<$D>()) {
+                    within(laws::jacobian_rows::<S, Gp, $D>(&g(&a), &g(&b), &t(&c)), $B.rows)?;
                 }
                 #[test]
-                fn ad_consistency(a in sample(), b in sample(), c in sample()) {
-                    within(laws::ad_consistency::<S, Gp, 3>(&t(&a), &t(&b), &t(&c)), $B.ad)?;
+                fn ad_consistency(a in sample::<$D>(), b in sample::<$D>(), c in sample::<$D>()) {
+                    within(laws::ad_consistency::<S, Gp, $D>(&t(&a), &t(&b), &t(&c)), $B.ad)?;
                 }
                 #[test]
-                fn side_delegation(a in sample(), b in sample(), c in sample()) {
-                    within(laws::side_delegation::<S, Gp, 3>(&g(&a), &g(&b), &t(&c)), $B.sides)?;
+                fn side_delegation(a in sample::<$D>(), b in sample::<$D>(), c in sample::<$D>()) {
+                    within(laws::side_delegation::<S, Gp, $D>(&g(&a), &g(&b), &t(&c)), $B.sides)?;
                 }
                 #[test]
-                fn tangent_dense_order(a in sample(), b in sample(), c in sample()) {
+                fn tangent_dense_order(a in sample::<$D>(), b in sample::<$D>(), c in sample::<$D>()) {
                     let k = S::sample(c[0], 0);
-                    within(laws::tangent_dense_order::<S, Gp, 3>(&t(&a), &t(&b), k), $B.tangent_order)?;
+                    within(laws::tangent_dense_order::<S, Gp, $D>(&t(&a), &t(&b), k), $B.tangent_order)?;
                 }
                 #[test]
-                fn jac_dense_order(a in sample(), b in sample(), c in sample()) {
-                    within(laws::jac_dense_order::<S, Gp, 3>(&j(&a), &j(&b), &t(&c)), $B.jac_order)?;
+                fn jac_dense_order(a in sample::<$D>(), b in sample::<$D>(), c in sample::<$D>()) {
+                    within(laws::jac_dense_order::<S, Gp, $D>(&j(&a), &j(&b), &t(&c)), $B.jac_order)?;
                 }
                 #[test]
-                fn sandwich_matches_dense(a in sample(), b in sample(), c in sample()) {
-                    within(laws::sandwich_matches_dense::<S, Gp, 3>(&j(&a), &cov(&a, &b, &c)), $B.sandwich)?;
+                fn sandwich_matches_dense(a in sample::<$D>(), b in sample::<$D>(), c in sample::<$D>()) {
+                    within(laws::sandwich_matches_dense::<S, Gp, $D>(&j(&a), &cov(&a, &b, &c)), $B.sandwich)?;
                 }
             }
         }
@@ -569,25 +576,28 @@ macro_rules! laws_for {
     // `probe` reads every method of the group; over any `f64` and with NaN, infinite and huge
     // derivative lanes the value parts must be the plain result, bit for bit (NaN sign and payload
     // of arithmetic excepted, as for `Dual`).
-    (@plain $G:ident) => {
+    (@plain $G:ident, $D:literal) => {
         proptest::proptest! {
             #[test]
             fn dual_value_is_plain_value(
-                a in proptest::array::uniform3(proptest::num::f64::ANY),
-                b in proptest::array::uniform3(proptest::num::f64::ANY),
+                a in proptest::array::uniform::<_, $D>(proptest::num::f64::ANY),
+                b in proptest::array::uniform::<_, $D>(proptest::num::f64::ANY),
                 k in proptest::num::f64::ANY,
             ) {
-                type D3 = helicoid_linalg::Dual<f64, 3>;
-                let plain = $crate::laws::probe::<f64, $G<f64>, 3>(&a, &b, k);
+                type D3 = helicoid_linalg::Dual<f64, $D>;
+                let plain = $crate::laws::probe::<f64, $G<f64>, $D>(&a, &b, k);
                 for poison in [false, true] {
-                    let lift = |v: &[f64; 3]| -> [D3; 3] {
+                    let lift = |v: &[f64; $D]| -> [D3; $D] {
                         core::array::from_fn(|i| if poison {
-                            helicoid_linalg::Dual { v: v[i], d: [f64::NAN, f64::INFINITY, -1e300] }
+                            helicoid_linalg::Dual {
+                                v: v[i],
+                                d: core::array::from_fn(|l| [f64::NAN, f64::INFINITY, -1e300][l % 3]),
+                            }
                         } else {
                             helicoid_linalg::Dual::variable(v[i], i)
                         })
                     };
-                    let dual = $crate::laws::probe::<D3, $G<D3>, 3>(
+                    let dual = $crate::laws::probe::<D3, $G<D3>, $D>(
                         &lift(&a), &lift(&b), D3::constant(k));
                     proptest::prop_assert_eq!(plain.len(), dual.len());
                     for (p, d) in plain.iter().zip(&dual) {

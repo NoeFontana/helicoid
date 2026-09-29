@@ -11,9 +11,9 @@
 //! nilpotent: it checks no series term past the first, and its `Log` has no branch.
 //!
 //! The bounds are recorded as described at [`Bounds`]. The worst errors, in `u`: `f64` and
-//! `Dual<f64, 3>` 4.00 for `group_axioms`, 3.85 for `adjoint_identity`, 3.97 for `plus_minus`, 5.43
-//! for `jac_dense_order`, 5.82 for `sandwich_matches_dense` and 0 for the rest; `f32` 4.08, 3.53,
-//! 3.95, 5.42, 3.86, 1.61 for `tangent_dense_order` and 0 for the rest.
+//! `Dual<f64, 3>` 4.00 for `group_axioms`, 3.85 for `adjoint_identity`, 3.97 for `plus_minus`, 4.97
+//! for `jac_dense_order`, 5.74 for `sandwich_matches_dense` and 0 for the rest; `f32` 4.08, 3.53,
+//! 3.95, 5.31, 4.34, 1.61 for `tangent_dense_order` and 0 for the rest.
 
 use crate::laws::{laws_for, Bounds, Sample};
 use crate::{Jac, LieGroup, Right, RnTangent, Side, Tangent};
@@ -25,12 +25,12 @@ use std::vec::Vec;
 
 /// `(x1, x2, x3)`: the exponential coordinates of `[[1, x1, x3 + x1 x2 / 2], [0, 1, x2], [0, 0, 1]]`.
 #[derive(Clone, Copy, Debug)]
-struct Heis<S>(Vector<S, 3>);
+pub(crate) struct Heis<S>(pub(crate) Vector<S, 3>);
 
 /// A dense `3 x 3` Jacobian, inverted by its adjugate; it states no domain, since `probe` inverts
 /// NaN matrices.
 #[derive(Clone, Copy, Debug)]
-struct HJac<S>(Mat3<S>);
+pub(crate) struct HJac<S>(pub(crate) Mat3<S>);
 
 impl<S: Real> Heis<S> {
     // The cross term lives here so that clippy's `suspicious_arithmetic_impl` does not read the `-`
@@ -180,12 +180,14 @@ impl<S: Real> LieGroup<S> for Heis<S> {
     }
 }
 
-/// `I + M` with `M` the circulant of the sample, `M[r][c] = v[(c - r) mod 3] / 4`: full,
-/// non-symmetric and strictly diagonally dominant, so invertible with a condition number below 7.
-fn heis_jac<S: Sample>(v: &[f64; 3]) -> HJac<S> {
+/// `I + M` with `M[r][c] = v[(2 r + c² + r c) mod 3] / 4`: full, non-symmetric, strictly diagonally
+/// dominant (so invertible with a condition number below 7) and not circulant, since circulants
+/// commute and no law could then see the operand order of `Jac::mul`.
+pub(crate) fn heis_jac<S: Sample>(v: &[f64; 3]) -> HJac<S> {
     let row = |r: usize| {
         Vector(array::from_fn(|c| {
-            S::sample(v[(c + 3 - r) % 3], (c + 3 - r) % 3)
+            let i = (2 * r + c * c + r * c) % 3;
+            S::sample(v[i], i)
         }))
     };
     let m = Matrix::from_rows([row(0), row(1), row(2)]);
@@ -202,13 +204,14 @@ const F64: Bounds = Bounds {
     ad: 0.0,
     sides: 0.0,
     tangent_order: 0.0,
-    jac_order: 11.0,
+    jac_order: 10.0,
     sandwich: 12.0,
 };
 const F32: Bounds = Bounds {
     axioms: 9.0,
     tangent_order: 4.0,
-    sandwich: 8.0,
+    jac_order: 11.0,
+    sandwich: 9.0,
     ..F64
 };
 
