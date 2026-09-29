@@ -9,6 +9,10 @@
 - [Numerics: formulas, series, domains](NUMERICS.md)
 - [API contract](API.md)
 
+# Derivations (non-normative)
+- [Maths: notation, conventions, how results are checked](maths/index.md)
+- [Lie groups, adjoints and the Jacobians of Exp](maths/lie-groups.md)
+
 # Specifications
 - [Phase 1: skeleton and the instrument](PHASE1.md)
 - [Phase 2: helicoid-linalg](PHASE2.md)
