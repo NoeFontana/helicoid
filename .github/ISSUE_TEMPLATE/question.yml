@@ -1,0 +1,37 @@
+# Labels this form sets: question. See config.yml.
+name: Question
+description: How do I …? Does it support …? Why does it work that way?
+labels: ["question"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **`docs/` is the answer to most questions, and it is a contract rather than a tour.**
+
+        - [`docs/PROJECT.md`](https://github.com/NoeFontana/helicoid/blob/main/docs/PROJECT.md):
+          what this is, the roadmap, and the decision log in §5. "Deliberately not" is usually there.
+        - `docs/PHASE1.md` … `docs/PHASE7.md`: the specs. **Each §0.0 status table is the source
+          of truth about what is implemented**, over the prose and the README.
+        - [`docs/API.md`](https://github.com/NoeFontana/helicoid/blob/main/docs/API.md): the rules
+          and surfaces.
+
+        Two things arrive here disguised as questions: **"could it also do X?"** where X widens
+        the scope (a decision record, see
+        [`docs/decisions/`](https://github.com/NoeFontana/helicoid/blob/main/docs/decisions/README.md)),
+        and **"the docs say X but it does Y"** (a bug in the documentation; file it and say where).
+  - type: textarea
+    id: question
+    attributes:
+      label: What is the question?
+    validations:
+      required: true
+  - type: textarea
+    id: goal
+    attributes:
+      label: What are you trying to do?
+      description: The underlying goal, not only the call you got stuck on.
+  - type: textarea
+    id: looked
+    attributes:
+      label: Where did you look in `docs/`?
+      description: A question a document already answers means the reader could not find it or the document does not say it; those need opposite fixes.

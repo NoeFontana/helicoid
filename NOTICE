@@ -1,0 +1,21 @@
+helicoid
+Copyright 2026 Noé Fontana
+
+This product is licensed under either of
+
+  * Apache License, Version 2.0 (see LICENSE-APACHE)
+  * MIT license (see LICENSE-MIT)
+
+at your option.
+
+Unless you explicitly state otherwise, any contribution intentionally submitted
+for inclusion in this work by you, as defined in the Apache-2.0 license, shall
+be dual licensed as above, without any additional terms or conditions.
+
+--------------------------------------------------------------------------------
+
+This file exists to satisfy Apache-2.0 section 4(d) for redistributors. The library
+crates depend on `libm` alone (plus optional `mint`), each under its own licence;
+the set is constrained by `deny.toml` and checked by `cargo deny check` (`just audit`).
+Sophus, manif, GTSAM, sophus-rs and `tf_tree_math` are measurement oracles run from
+`runners/` and `docker/oracles/`; none is linked into a library crate or a release artifact.

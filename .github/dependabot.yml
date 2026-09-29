@@ -1,0 +1,22 @@
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    groups:
+      actions:
+        patterns: ["*"]
+    open-pull-requests-limit: 10
+
+  - package-ecosystem: "cargo"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    groups:
+      rust-deps:
+        patterns: ["*"]
+    open-pull-requests-limit: 10
+
+  # Add `uv` for `conformance/generate/` and `cargo` for `runners/*` when they land: a bump
+  # there can change the corpus bytes, so each is reviewed against `just corpus-check`.
