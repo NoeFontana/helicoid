@@ -30,6 +30,8 @@ grep -m1 -H '^\*\*Status:' docs/decisions/0*.md
 | [`0013`](./0013-simd-lanes-owe-a-measurement.md) | SIMD `Real` lanes: the question and the bar; nothing decided. |
 | [`0014`](./0014-the-conformance-metrics-open-readings.md) | the readings the conformance metric takes where `NUMERICS.md` §11 is silent, the field of `PHASE1.md` §10's `b` curve, and the threshold sweep's grid, top, prior and ties; nothing decided. |
 | [`0015`](./0015-specification-gaps-found-while-building-the-instrument.md) | the gaps the generator, `helicoid-linalg`, the lint and the derivation pages found in the specs: passage, evidence, options and a recommendation each; nothing decided. |
+| [`0016`](./0016-f32-exact-strata-for-the-scalar-coefficient-ids.md) | `f32` is swept and scored on `@f32` strata whose inputs are `f32`-exact and whose references are recomputed at those inputs. |
+| [`0017`](./0017-cbrt-and-mask-valued-roots.md) | `Real::cbrt`; `solve_cubic` returns roots with an `S::Mask` validity array; per-precision power-of-two tolerances. |
 | [`0018`](./0018-libm-arch-is-bit-identical-for-exact-operations.md) | `libm` `arch` on: the routed `sqrt`/`fma`/`rint` are exactly rounded, so every non-NaN output is bit-identical; per-target dispatch read; NaN bits stay outside D16; a pinned-digest `sqrt` test. |
 | [`0019`](./0019-a-cholesky-solve-without-the-transpose.md) | `chol_solve(&L, b)`: `A x = b` from the factor, `L^T` read by column, bit-identical to the transposed-copy composition; the column solve stays private. |
 | [`0020`](./0020-dual-sqrt-at-zero-keeps-its-derivative.md) | `Dual::sqrt` at 0 keeps `d / (2 sqrt v)`: the NaN is the report, the §10 row needs it; a zero-safe norm is a later, additive record. |
