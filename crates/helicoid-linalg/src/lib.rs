@@ -4,7 +4,8 @@
 //! and [`Precision`], with `f64` and `f32` as `Real` (mask `bool`, every transcendental through
 //! `libm`), forward-mode [`Dual`] numbers (§3), also a `Real`, and the fixed-size [`Vector`],
 //! [`Point`] and column-major [`Matrix`] with [`hat`]/[`vee`], [`Mat3::inverse_adj`] and the
-//! Cholesky factorization [`chol`] with [`solve_lower`]/[`solve_upper`] (§4).
+//! Cholesky factorization [`chol`] with [`solve_lower`]/[`solve_upper`] (§4), and the strided
+//! views [`Strided`]/[`StridedMut`] over caller memory (§5).
 //! Numeric code is written once, generic over `S: Real`; a comparison yields `S::Mask` and control
 //! flow goes through [`Real::branch`] and [`Real::select`].
 //!
@@ -30,6 +31,7 @@ mod matrix;
 mod point;
 mod real;
 mod skew;
+mod strided;
 mod vector;
 
 pub use chol::{chol, solve_lower, solve_upper};
@@ -38,6 +40,7 @@ pub use matrix::{Mat2, Mat3, Matrix};
 pub use point::{Point, Point2, Point3};
 pub use real::{Blend, Mask, Precision, Real};
 pub use skew::{hat, vee};
+pub use strided::{Strided, StridedMut};
 pub use vector::{Vec2, Vec3, Vector};
 
 // `proptest` and the `format!` in its macros need `std`; the library itself stays `no_std`.

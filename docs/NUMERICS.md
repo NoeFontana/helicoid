@@ -313,7 +313,7 @@ $X(t) = X_0\,\mathrm{Exp}(t\,d)$ with $d = X_1 \ominus_R X_0$ and $\Delta = X_0^
 | `Dual` quotient derivative | $q = a_v/b_v$ finite | NaN (value $\pm\infty$) |
 | `chol` | positive definite | `(L, mask = false)`; `L` finite for every input, nothing asserted (§15.3) |
 | `solve_lower`, `solve_upper` | every diagonal entry nonzero and not NaN (`debug_assert!`) | $\pm\infty$ or NaN (§15.3) |
-| Strided writes | in bounds | **panic** (the one documented class, D11) |
+| Strided `get`, `set`, `block` | in bounds | **panic** (the one documented class, D11) |
 
 ## 13. References
 
