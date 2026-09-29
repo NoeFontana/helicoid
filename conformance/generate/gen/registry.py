@@ -3,8 +3,15 @@
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from . import check, coeff, so3
-from .strata import QUAT_STRATA, R_STRATA, SCALAR_THETA_STRATA, Stratum
+from . import check, check_sen3, coeff, sen3, so3
+from .strata import (
+    QUAT_STRATA,
+    R_STRATA,
+    SCALAR_THETA_STRATA,
+    SEN3_QUAT_STRATA,
+    SEN3_STRATA,
+    Stratum,
+)
 
 
 @dataclass(frozen=True)
@@ -49,6 +56,43 @@ FUNCTIONS: dict[str, FunctionSpec] = {
                 check.so3_jacobian(name),
             )
             for name in ("jr", "jl", "jr_inv", "jl_inv")
+        ),
+        *(
+            spec
+            for n in (1, 2, 3)
+            for spec in (
+                FunctionSpec(
+                    f"sen3_exp_n{n}",
+                    SEN3_STRATA,
+                    sen3.tau_inputs(n),
+                    sen3.exp(n),
+                    check_sen3.exp(n),
+                ),
+                FunctionSpec(
+                    f"sen3_log_n{n}",
+                    SEN3_QUAT_STRATA,
+                    sen3.x_inputs(n, both_signs=True),
+                    sen3.log(n),
+                    check_sen3.log(n),
+                ),
+                FunctionSpec(
+                    f"sen3_ad_n{n}",
+                    SEN3_QUAT_STRATA,
+                    sen3.x_inputs(n, both_signs=False),
+                    sen3.ad_of(n),
+                    check_sen3.ad(n),
+                ),
+                *(
+                    FunctionSpec(
+                        f"sen3_{name}_n{n}",
+                        SEN3_STRATA,
+                        sen3.tau_inputs(n),
+                        sen3.jacobian(n, name),
+                        check_sen3.jacobian(n, name),
+                    )
+                    for name in ("jr", "jl", "jr_inv", "jl_inv")
+                ),
+            )
         ),
     )
 }
