@@ -8,18 +8,27 @@ use super::corpus::Record;
 use super::metric::{self, Rule};
 use super::report::Row;
 use super::subject::{Output, Registered, Subject};
-use super::testkit::{Fixed, Perfect};
+use super::testkit::{record, Fixed, Perfect};
 use super::{corpus, corpus_dir, evaluate};
 
 /// The rows of `subject` over the corpus files `keep` selects.
 fn rows(subject: impl Subject + 'static, keep: impl Fn(&str) -> bool) -> Result<Vec<Row>, String> {
+    rows_at(subject, keep, Precision::F64)
+}
+
+/// [`rows`] at `precision`.
+fn rows_at(
+    subject: impl Subject + 'static,
+    keep: impl Fn(&str) -> bool,
+    precision: Precision,
+) -> Result<Vec<Row>, String> {
     let dir = corpus_dir()?;
     let entries: Vec<_> = corpus::manifest(&dir)?
         .into_iter()
         .filter(|e| keep(&e.fn_id))
         .collect();
     let registered = [Registered::new("test", Box::new(subject))];
-    Ok(evaluate(&dir, &entries, &registered, Precision::F64)?.remove(0))
+    Ok(evaluate(&dir, &entries, &registered, precision)?.remove(0))
 }
 
 /// Ids whose every output field is one number: the ones where the score of a rounding is bounded
@@ -96,6 +105,86 @@ fn the_neighbouring_ulp_scores_above_one_half_and_at_most_three_on_every_scalar_
             r.max_u
         );
     }
+    Ok(())
+}
+
+/// The ids with `@f32` strata: the scalar coefficient ids (`docs/decisions/0016`), each of one
+/// number per output field, which the `f32` sanity bounds below need.
+fn f32_ids() -> Result<Vec<String>, String> {
+    let dir = corpus_dir()?;
+    let mut ids = Vec::new();
+    for e in corpus::manifest(&dir)? {
+        if corpus::mentions_f32(&dir, &e)? {
+            assert!(scalar_output(&e.fn_id)?, "{}", e.fn_id);
+            ids.push(e.fn_id);
+        }
+    }
+    assert_eq!(ids.len(), 8, "{ids:?}");
+    Ok(ids)
+}
+
+/// The correctly rounded binary32 reference scores at most one `u = 2^-24` on every `@f32` stratum
+/// of every scalar id, and only those strata are scored.
+#[test]
+fn a_perfectly_rounded_f32_subject_scores_at_most_one_on_every_f32_stratum() -> Result<(), String> {
+    let ids = f32_ids()?;
+    let rows = rows_at(
+        Perfect::exact(),
+        |id| ids.iter().any(|i| i == id),
+        Precision::F32,
+    )?;
+    // 28 `theta:*@f32` strata in each of 8 ids, and `q:w0@f32` in `coeff_r`.
+    assert_eq!(rows.len(), 8 * 28 + 1);
+    for r in &rows {
+        assert!(
+            r.stratum.ends_with("@f32") && r.precision == Precision::F32,
+            "{r:?}"
+        );
+        assert!(r.n > 0 && r.max_u <= 1.0 && r.nonfinite == 0, "{r:?}");
+    }
+    let n: usize = rows
+        .iter()
+        .filter(|r| r.fn_id == "coeff_k")
+        .map(|r| r.n)
+        .sum();
+    assert_eq!(n, 1710);
+    Ok(())
+}
+
+/// One binary32 ulp above the correct rounding is between 0.5 and 3 `u` on every `@f32` stratum:
+/// an ulp of `x` is `2^-23` to `2^-24` of it, and the reference's own rounding adds at most half.
+#[test]
+fn the_neighbouring_f32_ulp_scores_above_one_half_and_at_most_three_on_every_f32_stratum(
+) -> Result<(), String> {
+    let ids = f32_ids()?;
+    let rows = rows_at(
+        Perfect::next_up(),
+        |id| ids.iter().any(|i| i == id),
+        Precision::F32,
+    )?;
+    assert_eq!(rows.len(), 8 * 28 + 1);
+    for r in &rows {
+        assert!(
+            r.max_u > 0.5 && r.max_u <= 3.0,
+            "{} {}: {}",
+            r.fn_id,
+            r.stratum,
+            r.max_u
+        );
+    }
+    Ok(())
+}
+
+/// The correctly rounded binary32 is rounded once from the reference: `1 + 2^-24 + 2^-60` is above
+/// the binary32 tie `1 + 2^-24`, which binary64 holds as the tie itself (to even, 1), so an oracle
+/// rounding through binary64 would return 1, the farther neighbour, and score a hair over 1 u.
+#[test]
+fn the_f32_oracle_rounds_the_reference_once_and_not_through_binary64() -> Result<(), String> {
+    let rec = record(&[], &[("v", &["1.00000005960464477625798673799e0"])])?;
+    let at = |s: Perfect| s.eval("", &rec, Precision::F32)["v"][0].to_bits();
+    let up = 1.0f32 + f32::EPSILON;
+    assert_eq!(at(Perfect::exact()), f64::from(up).to_bits());
+    assert_eq!(at(Perfect::next_up()), f64::from(up.next_up()).to_bits());
     Ok(())
 }
 

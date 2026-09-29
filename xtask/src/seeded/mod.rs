@@ -13,6 +13,19 @@
 //! [`coefficient`] with the candidate it scores, so the constants the subject runs are the
 //! candidate the sweep chose (`the_generated_kernel_scores_the_objective_the_sweep_chose`).
 //!
+//! At `f32` the same kernels run through the same adapter on `Dual<f32, 1>` over the `@f32` strata
+//! (`docs/decisions/0016` item 2): `θ` cast exactly, `z = fl(θ·θ)` formed at `f32`, the series the
+//! committed rationals rounded once at `f32`, the candidate the `tf_tree` D12 prior (`d12`), the one
+//! named candidate that needs no sweep. Generated `f32` switches are `0016` item 3, owed; the `f32`
+//! version is `d12` until then, and the D12 errors are not the correct kernel's (0014 (draft)
+//! question 27). The series is the compiled-in copy of `coeff_series.jsonl`, as the binary64
+//! constants of `generated.rs` are compiled in, so a run does not read another corpus directory's;
+//! `the_committed_series_parse_at_f32` pins that the copy is the corpus's file.
+//!
+//! The `f32` kernels model the correct kernels and the defects `b` and `k`. A subject whose
+//! defect they do not model (the planted `c`, a sweep candidate; `uniform`) has no `f32` kernel
+//! (`Registered::no_f32`): a run at `f32` is an error, not the D12 answer under its name.
+//!
 //! The planted defects are the correct kernels with one coefficient changed. `c` with a switch of
 //! `1e-8` and two terms ([`C_PLANTED`]) is named by the sweep's ranking (`conformance::selftest`);
 //! its other mechanism, the envelope, is not started. The subject receives `θ`, forms the branch
@@ -27,11 +40,12 @@ mod series;
 mod so3;
 mod switch;
 
-use helicoid_linalg::Precision;
+use helicoid_linalg::{Dual, Precision, Real};
 
-use crate::conformance::corpus::Record;
+use crate::conformance::corpus::{exact_f32, Record};
 use crate::conformance::subject::{Output, Registered, Subject};
 use generated::{A_F64, B_F64, C_F64, D_F64, E_F64, K_F64};
+use kernel::D1F32;
 use kernel::{b_no_series, k_sqrt_unsafe};
 pub(crate) use kernel::{coefficient, d12, Candidate, Coeff, D1};
 pub(crate) use series::{Series, FILE as SERIES_FILE};
@@ -87,12 +101,12 @@ impl Defect {
 
 /// One coefficient's kernel: how many terms below which switch, and the series they are the first
 /// terms of.
-struct Arm {
-    candidate: Candidate<D1>,
-    series: Vec<D1>,
+struct Arm<S> {
+    candidate: Candidate<S>,
+    series: Vec<S>,
 }
 
-impl Arm {
+impl Arm<D1> {
     /// The generated switch `(below, series)`: every term of the series, below `below`.
     fn generated((below, series): (f64, &[f64])) -> Self {
         Self {
@@ -105,12 +119,25 @@ impl Arm {
     }
 }
 
+/// The six kernels at `f32`, the D12 prior over the committed series rounded there; the error is
+/// the parse's (`the_committed_series_parse_at_f32`).
+fn arms32() -> Result<[Arm<D1F32>; 6], String> {
+    let series = Series::<D1F32>::committed()?;
+    let candidate = d12(&series)?;
+    Ok(Coeff::ALL.map(|c| Arm {
+        candidate,
+        series: series.of(c).to_vec(),
+    }))
+}
+
 pub(crate) struct Seeded {
     name: String,
     version: String,
     defect: Option<Defect>,
     /// By [`Coeff::index`].
-    arms: [Arm; 6],
+    arms: [Arm<D1>; 6],
+    /// By [`Coeff::index`], at `f32` (`arms32`), or why the subject has none.
+    arms32: Result<[Arm<D1F32>; 6], String>,
 }
 
 impl Seeded {
@@ -129,6 +156,7 @@ impl Seeded {
             version: "generated".to_string(),
             defect: None,
             arms: switches.map(Arm::generated),
+            arms32: arms32(),
         }
     }
 
@@ -144,6 +172,7 @@ impl Seeded {
                 candidate,
                 series: series.of(c).to_vec(),
             }),
+            arms32: Err("a uniform candidate is a binary64 test subject".to_string()),
         }
     }
 
@@ -158,6 +187,10 @@ impl Seeded {
                 terms,
                 switch_z: D1::constant(z),
             };
+            seeded.arms32 = Err(format!(
+                "its `c` ({terms} terms below z = {z:e}) is a candidate of the binary64 sweep, \
+                 which the f32 kernels, the D12 prior, do not plant"
+            ));
         }
         seeded
     }
@@ -184,18 +217,11 @@ impl Seeded {
         }
     }
 
-    fn kernel(&self, c: Coeff, z: D1) -> D1 {
-        let Arm { candidate, series } = &self.arms[c.index()];
-        match (self.defect, c) {
-            (Some(Defect::BNoSeries), Coeff::B) => b_no_series(z),
-            (Some(Defect::KSqrtUnsafe), Coeff::K) => k_sqrt_unsafe(z, *candidate, series),
-            _ => coefficient(c, z, *candidate, series),
-        }
-    }
-
     pub(crate) fn registered(self) -> Registered {
         Registered {
             version: self.version.clone(),
+            version_f32: "d12".to_string(),
+            no_f32: self.arms32.as_ref().err().cloned(),
             planted: self.defect.is_some(),
             subject: Box::new(self),
         }
@@ -219,29 +245,56 @@ impl Subject for Seeded {
         }
     }
 
-    /// `f32` is refused by the harness before any subject runs; an empty answer here is an error
-    /// there, never a score. An id `supports` refuses is answered with nothing, so a planted subject
-    /// never answers as the correct kernel would.
+    /// An empty answer is an error in the harness, never a score. An id `supports` refuses is
+    /// answered with nothing, so a planted subject never answers as the correct kernel would; at
+    /// `f32` only the coefficient ids are answered (`0016`: no other id has an `@f32` stratum), only
+    /// from an input that is exactly a binary32, and only by a subject with an `f32` kernel
+    /// (`Registered::no_f32`, which the harness reads first, for its reason).
     fn eval(&self, fn_id: &str, record: &Record, precision: Precision) -> Output {
-        if precision != Precision::F64 || !self.supports(fn_id) {
+        if !self.supports(fn_id) {
             return Output::new();
         }
-        match (Coeff::of_fn(fn_id), fn_id) {
-            (Some(c), _) => {
-                let Some(&theta) = record.input("theta").and_then(<[f64]>::first) else {
-                    return Output::new();
-                };
-                let r = self.kernel(c, D1::variable(theta * theta, 0));
-                Output::from([
-                    ("value".to_string(), vec![r.v]),
-                    ("d_branch".to_string(), r.d.to_vec()),
-                ])
+        let theta = record.input("theta").and_then(<[f64]>::first).copied();
+        match (Coeff::of_fn(fn_id), precision) {
+            (Some(c), Precision::F64) => {
+                let arm = &self.arms[c.index()];
+                theta.map_or_else(Output::new, |t| answer(self.defect, c, arm, t))
             }
-            (None, "so3_exp") => self.exp(record),
-            (None, "so3_log") => self.log(record),
-            (None, id) => self.sen3(id, record),
+            (Some(c), Precision::F32) => match (&self.arms32, theta.and_then(exact_f32)) {
+                (Ok(arms), Some(t)) => answer(self.defect, c, &arms[c.index()], t),
+                _ => Output::new(),
+            },
+            (None, Precision::F64) if fn_id == "so3_exp" => self.exp(record),
+            (None, Precision::F64) if fn_id == "so3_log" => self.log(record),
+            (None, Precision::F64) => self.sen3(fn_id, record),
+            (None, Precision::F32) => Output::new(),
         }
     }
+}
+
+/// The kernel of `c` at `z`, the correct one or `defect`'s if it plants this coefficient.
+fn kernel<S: Real>(defect: Option<Defect>, c: Coeff, z: S, arm: &Arm<S>) -> S {
+    let Arm { candidate, series } = arm;
+    match (defect, c) {
+        (Some(Defect::BNoSeries), Coeff::B) => b_no_series(z),
+        (Some(Defect::KSqrtUnsafe), Coeff::K) => k_sqrt_unsafe(z, *candidate, series),
+        _ => coefficient(c, z, *candidate, series),
+    }
+}
+
+/// The adapter of both precisions: `θ` at the scalar `S`, `z = fl(θ·θ)` formed there, the value and
+/// `d/dz` of one `Dual<S, 1>` evaluation, widened exactly to binary64.
+fn answer<S: Real + Into<f64>>(
+    defect: Option<Defect>,
+    c: Coeff,
+    arm: &Arm<Dual<S, 1>>,
+    theta: S,
+) -> Output {
+    let r = kernel(defect, c, Dual::variable(theta * theta, 0), arm);
+    Output::from([
+        ("value".to_string(), vec![r.v.into()]),
+        ("d_branch".to_string(), r.d.map(Into::into).to_vec()),
+    ])
 }
 
 impl Seeded {
@@ -387,10 +440,53 @@ mod tests {
         }
         let rec = record(&[("theta", &[0.5])], &[])?;
         assert!(s.eval("coeff_r", &rec, Precision::F64).is_empty());
-        assert!(s.eval("coeff_k", &rec, Precision::F32).is_empty());
-        assert!(s
-            .eval("coeff_k", &record(&[], &[])?, Precision::F64)
-            .is_empty());
+        for precision in [Precision::F64, Precision::F32] {
+            let none = record(&[], &[])?;
+            assert!(s.eval("coeff_k", &none, precision).is_empty());
+            assert_eq!(s.eval("coeff_k", &rec, precision).len(), 2);
+        }
+        // An `f32` subject receives a binary32 or nothing: 0.1 is no binary32, and is not rounded.
+        let tenth = record(&[("theta", &[0.1])], &[])?;
+        assert!(s.eval("coeff_k", &tenth, Precision::F32).is_empty());
+        assert_eq!(s.eval("coeff_k", &tenth, Precision::F64).len(), 2);
+        Ok(())
+    }
+
+    #[test]
+    fn the_committed_series_parse_at_f32() -> Result<(), String> {
+        assert!(Seeded::generated().arms32.is_ok());
+        let (loaded, compiled) = (
+            Series::<f32>::load(&corpus_dir()?)?,
+            Series::<f32>::committed()?,
+        );
+        assert!(Coeff::ALL.iter().all(|&c| loaded.of(c) == compiled.of(c)));
+        Ok(())
+    }
+
+    #[test]
+    fn at_f32_the_adapter_answers_the_binary32_kernel_widened_exactly() -> Result<(), String> {
+        let series = Series::<Dual<f32, 1>>::committed()?;
+        let cand = d12(&series)?;
+        let s = subject(None);
+        for c in Coeff::ALL {
+            for theta in [0.0f32, 1e-30, 1e-3, 0.05, 0.5, 2.0, 3.0] {
+                let rec = record(&[("theta", &[f64::from(theta)])], &[])?;
+                let out = s.eval(&format!("coeff_{}", c.name()), &rec, Precision::F32);
+                let z = Dual::variable(theta * theta, 0);
+                let want = coefficient(c, z, cand, series.of(c));
+                assert_eq!(
+                    out["value"][0].to_bits(),
+                    f64::from(want.v).to_bits(),
+                    "{c:?}"
+                );
+                let d = f64::from(want.d[0]);
+                assert_eq!(
+                    out["d_branch"][0].to_bits(),
+                    d.to_bits(),
+                    "{c:?} at {theta}"
+                );
+            }
+        }
         Ok(())
     }
 
@@ -410,6 +506,34 @@ mod tests {
         ];
         assert_eq!(names, want);
         assert!(all.iter().all(|r| r.version == "generated"));
+        // `f32` runs the D12 prior until the `f32` sweep generates its own switches; the planted
+        // `c`, a candidate of the binary64 sweep, is the one subject with no `f32` kernel.
+        assert!(all.iter().all(|r| r.version_at(Precision::F32) == "d12"));
+        let none = all.iter().filter(|r| r.no_f32.is_some());
+        let none: Vec<&str> = none.map(|r| r.subject.name()).collect();
+        assert_eq!(none, ["seeded:c-two-terms-1e-8"]);
+    }
+
+    #[test]
+    fn a_subject_the_f32_kernels_do_not_model_answers_nothing_at_f32() -> Result<(), String> {
+        let rec = record(&[("theta", &[0.5])], &[])?;
+        let c = Seeded::planted(Defect::CTwoTermsEarly);
+        for id in ["coeff_c", "coeff_b"] {
+            assert!(c.eval(id, &rec, Precision::F32).is_empty(), "{id}");
+            assert_eq!(c.eval(id, &rec, Precision::F64).len(), 2, "{id}");
+        }
+        // A uniform candidate is binary64's too; the correct kernel has one.
+        let series = Series::<D1>::load(&corpus_dir()?)?;
+        let uniform = Seeded::uniform(&series, d12(&series)?);
+        assert!(uniform.eval("coeff_b", &rec, Precision::F32).is_empty());
+        assert_eq!(subject(None).eval("coeff_b", &rec, Precision::F32).len(), 2);
+        // A defect it does model is planted there: `b` without its series is another answer than
+        // the correct kernel's at a small binary32 `θ`, where the exact arm cancels.
+        let small = record(&[("theta", &[f64::from(1e-3f32)])], &[])?;
+        let value = |d| subject(d).eval("coeff_b", &small, Precision::F32)["value"][0];
+        let (good, bad) = (value(None), value(Some(Defect::BNoSeries)));
+        assert_ne!(good.to_bits(), bad.to_bits());
+        Ok(())
     }
 
     #[test]

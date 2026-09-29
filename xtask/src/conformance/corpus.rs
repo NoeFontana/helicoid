@@ -41,8 +41,27 @@ impl Record {
 
     /// An `@f32` stratum (`docs/decisions/0016`): exact binary32 inputs, scored at `f32` only.
     pub(crate) fn is_f32_stratum(&self) -> bool {
-        self.stratum.ends_with("@f32")
+        self.stratum.ends_with(F32_SUFFIX)
     }
+
+    /// Every input is exactly a binary32, so an `f32` subject receives it by a lossless cast.
+    pub(crate) fn require_binary32(&self) -> Result<(), String> {
+        for (key, t) in &self.inputs {
+            if let Some(x) = t.data.iter().find(|&&x| exact_f32(x).is_none()) {
+                return Err(format!("input `{key}` holds {x:e}, not a binary32"));
+            }
+        }
+        Ok(())
+    }
+}
+
+/// The suffix of the `f32`-exact strata's names (`docs/decisions/0016`).
+pub(crate) const F32_SUFFIX: &str = "@f32";
+
+/// `x` as a binary32, when that is lossless: the cast an `f32` subject makes of an `@f32` input.
+pub(crate) fn exact_f32(x: f64) -> Option<f32> {
+    let y = x as f32;
+    (f64::from(y).to_bits() == x.to_bits()).then_some(y)
 }
 
 /// A JSON object that refuses a repeated key (`BTreeMap`'s own `Deserialize` keeps the last).
@@ -187,6 +206,14 @@ pub(crate) fn manifest(dir: &Path) -> Result<Vec<Entry>, String> {
     Ok(entries)
 }
 
+/// Whether `entry` may have `@f32` strata: no false negative (a stratum name ends the way no input
+/// or reference does), and a false positive is caught where the file is read.
+pub(crate) fn mentions_f32(dir: &Path, entry: &Entry) -> Result<bool, String> {
+    let path = dir.join(format!("{}.jsonl", entry.fn_id));
+    let text = std::fs::read_to_string(&path).map_err(|e| format!("{}: {e}", path.display()))?;
+    Ok(text.contains(&format!("{F32_SUFFIX}\"")))
+}
+
 /// Every record of `entry`, in file order; the count must be the manifest's and each `id` its
 /// 0-based line number.
 pub(crate) fn read(dir: &Path, entry: &Entry) -> Result<Vec<Record>, String> {
@@ -323,6 +350,35 @@ mod tests {
             twins,
             8 * 28 + 1,
             "28 theta strata in each of 8 ids, and `q:w0@f32`"
+        );
+        Ok(())
+    }
+
+    /// Every value of every input is a binary32, not the first of each: a vector input and
+    /// `coeff_r`'s two keys reach an `f32` subject through the same cast.
+    #[test]
+    fn every_value_of_every_input_must_be_a_binary32() -> Result<(), String> {
+        use crate::conformance::testkit::record;
+        let (bad, good) = (0.1, 0.5);
+        let named = |r: Record, want: &str| {
+            let e = r.require_binary32().err().unwrap_or_default();
+            assert!(e.starts_with(want), "{e}");
+        };
+        assert_eq!(
+            record(&[("n", &[good, 0.25]), ("w", &[1.0, 2.0])], &[])?.require_binary32(),
+            Ok(())
+        );
+        named(
+            record(&[("phi", &[good, bad])], &[])?,
+            "input `phi` holds 1e-1",
+        );
+        named(
+            record(&[("n", &[good]), ("w", &[bad])], &[])?,
+            "input `w` holds 1e-1",
+        );
+        named(
+            record(&[("n", &[good, bad]), ("w", &[good])], &[])?,
+            "input `n` holds 1e-1",
         );
         Ok(())
     }

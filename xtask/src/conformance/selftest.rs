@@ -15,6 +15,15 @@
 //!   gated. The stratum `theta:1e-8` reaches below `sqrt(6u)`, where `b` evaluates to 0 and the
 //!   error saturates at `1/u`; that biases `p` low (`docs/maths/coefficients.md`, "Checked
 //!   (CO.5-CO.7)").
+//! - **At `f32`** (`docs/decisions/0016` item 2) the same mechanisms run on the `@f32` strata of the
+//!   coefficient ids, in units of `2^-24`, by the same subject through the same adapter: the curve
+//!   is `theta:1e-3@f32` to `theta:1e-1@f32` (`DECADES_F32`; a reading, 0014 (draft) question 26),
+//!   in the same window, the non-finite count `theta:exact0@f32`. The "correct" kernel there is the
+//!   D12 prior (`seeded:correct` at version `d12`), not a correct one: its errors, up to 8.1e9 `u`,
+//!   are printed and pinned by a test and not gated, and "silent" says only that neither mechanism
+//!   fires (0014 (draft) question 27). The sweep's ranking is binary64's until the `f32` sweep
+//!   exists, so the planted `c` is not run there (`Registered::no_f32` refuses it); the `Log` and
+//!   SE(3) defects have no `@f32` stratum to run on.
 //! - **Non-finite** counts the (record, field) pairs of `theta:exact0` in every coefficient id, so a
 //!   NaN in `value` or in `d_branch` both count.
 //! - **The sweep's ranking** is for `c` with switch `1e-8` (as `θ`: 0014 (draft) question 14) and
@@ -49,6 +58,13 @@ use crate::thresholds::{Ranker, Ranking};
 const WINDOW: (f64, f64) = (1.8, 2.2);
 /// The strata `theta:1e-8` to `theta:1e-2` (§10).
 const DECADES: std::ops::RangeInclusive<i32> = 2..=8;
+/// At `f32`, `theta:1e-3@f32` to `theta:1e-1@f32`: the strata wholly above `√(6u)`, `6.0e-4`,
+/// below which `b` by its definition is 0 and its error a plateau of `1/u`. `DECADES` keeps the
+/// one stratum that holds `2.6e-8`, its plateau one point of seven (`p = 1.937`); here it would be
+/// one of four and fit `p = 1.64`, outside §10's window, which does not depend on `u`. The top
+/// stratum, `[0.1, 1)`, is above D12's switch: the defect and the kernel run the same exact arm
+/// there, and the two strata below it fit `p = 2.188` (0014 (draft) question 26).
+const DECADES_F32: std::ops::RangeInclusive<i32> = 1..=3;
 /// A candidate is dominated when its objective is more than this factor above the chosen one's.
 const DOMINATED_BY: f64 = 1e6;
 
@@ -65,6 +81,15 @@ impl Mechanism {
         Mechanism::NonfiniteAtZero,
         Mechanism::SweepRank,
     ];
+
+    /// The mechanisms meaningful at `precision`: the sweep that ranks `c` is binary64's until the
+    /// `f32` sweep exists (`0016` item 3).
+    fn at(precision: Precision) -> &'static [Mechanism] {
+        match precision {
+            Precision::F64 => &Self::ALL,
+            Precision::F32 => &Self::ALL[..2],
+        }
+    }
 
     fn label(self) -> &'static str {
         match self {
@@ -116,12 +141,37 @@ fn cases() -> Vec<Case> {
     all
 }
 
+/// The cases whose mechanism is meaningful at `f32`: the correct kernel and the two defects the
+/// error curve and the non-finite count detect. `c`'s is the sweep's ranking, binary64's for now.
+fn cases_f32() -> Vec<Case> {
+    let mut all = cases();
+    all.retain(|c| c.must_fire != Some(Mechanism::SweepRank));
+    all
+}
+
+/// The decades of the curve's strata, `theta:1e-k`.
+fn decades(precision: Precision) -> std::ops::RangeInclusive<i32> {
+    match precision {
+        Precision::F64 => DECADES,
+        Precision::F32 => DECADES_F32,
+    }
+}
+
+/// The suffix of the strata a precision is scored on.
+fn suffix(precision: Precision) -> &'static str {
+    match precision {
+        Precision::F64 => "",
+        Precision::F32 => corpus::F32_SUFFIX,
+    }
+}
+
 /// One subject's rows over the coefficient ids, one output field at a time, and where the sweep
 /// ranks its `c`.
 struct Rows {
     value: Vec<Row>,
     d_branch: Vec<Row>,
-    ranking: Ranking,
+    /// Only at binary64 (the sweep).
+    ranking: Option<Ranking>,
 }
 
 /// Whether a candidate's objective is beyond [`DOMINATED_BY`] times the chosen one's.
@@ -171,11 +221,12 @@ fn power_law(points: &[(f64, f64)]) -> Option<(f64, f64)> {
     Some((-sxy / sxx, r2))
 }
 
-/// The `max_u` of `coeff_b`'s value at `theta:1e-8` to `theta:1e-2`, as `(θ, max_u)`.
-fn curve(rows: &Rows) -> Result<Vec<(f64, f64)>, String> {
+/// The `max_u` of `coeff_b`'s value over the strata of `DECADES` (`DECADES_F32`), as
+/// `(θ, max_u)`, from the lowest θ.
+fn curve(rows: &Rows, precision: Precision) -> Result<Vec<(f64, f64)>, String> {
     let mut points = Vec::new();
-    for k in DECADES.rev() {
-        let stratum = format!("theta:1e-{k}");
+    for k in decades(precision).rev() {
+        let stratum = format!("theta:1e-{k}{}", suffix(precision));
         let row = rows
             .value
             .iter()
@@ -193,10 +244,11 @@ fn curve(rows: &Rows) -> Result<Vec<(f64, f64)>, String> {
 fn observe(
     mechanism: Mechanism,
     rows: &Rows,
+    precision: Precision,
     window: (f64, f64),
 ) -> Result<(bool, String), String> {
     match mechanism {
-        Mechanism::ErrorCurve => Ok(match power_law(&curve(rows)?) {
+        Mechanism::ErrorCurve => Ok(match power_law(&curve(rows, precision)?) {
             Some((p, r2)) => (
                 (window.0..=window.1).contains(&p),
                 format!("p = {p:.3}, r2 = {r2:.3}"),
@@ -205,10 +257,11 @@ fn observe(
         }),
         Mechanism::NonfiniteAtZero => {
             let fields = [("value", &rows.value), ("d_branch", &rows.d_branch)];
+            let exact0 = format!("theta:exact0{}", suffix(precision));
             let hits: Vec<String> = fields
                 .iter()
                 .flat_map(|&(field, rows)| {
-                    let zero = rows.iter().filter(|r| r.stratum == "theta:exact0");
+                    let zero = rows.iter().filter(|r| r.stratum == exact0);
                     zero.filter(|r| r.nonfinite > 0)
                         .map(move |r| format!("{} {field}: {}", r.fn_id, r.nonfinite))
                 })
@@ -221,7 +274,10 @@ fn observe(
             Ok((!hits.is_empty(), seen))
         }
         Mechanism::SweepRank => {
-            let r = &rows.ranking;
+            let r = rows
+                .ranking
+                .as_ref()
+                .ok_or("no sweep ranks a subject at f32")?;
             let seen = format!(
                 "c {:.3e} u against {:.3e} u chosen (margin {DOMINATED_BY:.0e}), rank {} of {}",
                 r.objective, r.chosen, r.rank, r.of
@@ -246,21 +302,35 @@ pub(super) struct Report {
     pub(super) failures: Vec<String>,
 }
 
-/// Runs `cases` over the coefficient ids of `dir` and judges every mechanism against `window`.
-fn check(dir: &Path, cases: Vec<Case>, window: (f64, f64)) -> Result<Report, String> {
+/// Runs `cases` over the coefficient ids of `dir`, at `precision` (its strata alone), and judges
+/// every mechanism meaningful there against `window`.
+fn check(
+    dir: &Path,
+    cases: Vec<Case>,
+    precision: Precision,
+    window: (f64, f64),
+) -> Result<Report, String> {
     let mut entries = corpus::manifest(dir)?;
     let judged = |e: &corpus::Entry| Coeff::of_fn(&e.fn_id).is_some();
     entries.retain(|e| judged(e) && cases.iter().any(|c| c.subject.subject.supports(&e.fn_id)));
     // One sweep of `c` ranks every subject's `c`.
-    let ranker = Ranker::new(dir, Coeff::C)?;
+    let ranker = match precision {
+        Precision::F64 => Some(Ranker::new(dir, Coeff::C)?),
+        Precision::F32 => None,
+    };
     let mut ranked = Vec::new();
     let (mut subjects, mut expected) = (Vec::new(), Vec::new());
     for case in cases {
-        ranked.push(ranker.rank(case.c.0, case.c.1)?);
+        ranked.push(
+            ranker
+                .as_ref()
+                .map(|r| r.rank(case.c.0, case.c.1))
+                .transpose()?,
+        );
         subjects.push(case.subject);
         expected.push(case.must_fire);
     }
-    let by = |rule| evaluate_by(dir, &entries, &subjects, Precision::F64, &|_| Some(rule));
+    let by = |rule| evaluate_by(dir, &entries, &subjects, precision, &|_| Some(rule));
     let (value, d_branch) = (by(&COEFF_VALUE)?, by(&COEFF_D_BRANCH)?);
 
     let mut text = String::new();
@@ -276,16 +346,19 @@ fn check(dir: &Path, cases: Vec<Case>, window: (f64, f64)) -> Result<Report, Str
             ranking,
         };
         let measured = measured_c(&rows);
-        if measured.map(f64::to_bits) != Some(rows.ranking.objective.to_bits()) {
-            failures.push(format!(
-                "{name}: the sweep ranks `c` at {:e} u, but the subject's `c` measures {} u: its \
-                 declared candidate is not what it runs",
-                rows.ranking.objective,
-                measured.map_or("no row".to_string(), |m| format!("{m:e}"))
-            ));
+        if let Some(ranking) = &rows.ranking {
+            if measured.map(f64::to_bits) != Some(ranking.objective.to_bits()) {
+                failures.push(format!(
+                    "{name}: the sweep ranks `c` at {:e} u, but the subject's `c` measures {} u: \
+                     its declared candidate is not what it runs",
+                    ranking.objective,
+                    measured.map_or("no row".to_string(), |m| format!("{m:e}"))
+                ));
+            }
         }
         if must_fire.is_none() {
-            let _ = writeln!(text, "{name} {}: the max over strata, in u", s.version);
+            let version = s.version_at(precision);
+            let _ = writeln!(text, "{name} {version}: the max over strata, in u");
             for c in Coeff::ALL {
                 let fn_id = format!("coeff_{}", c.name());
                 let cell = |rows: &[Row]| {
@@ -301,13 +374,13 @@ fn check(dir: &Path, cases: Vec<Case>, window: (f64, f64)) -> Result<Report, Str
                 );
             }
         }
-        let shown: Vec<String> = curve(&rows)?
+        let shown: Vec<String> = curve(&rows, precision)?
             .iter()
             .map(|p| format!("{:.2e}", p.1))
             .collect();
         let _ = writeln!(curves, "  {name:<24} {}", shown.join("  "));
-        for m in Mechanism::ALL {
-            let (fired, seen) = observe(m, &rows, window)?;
+        for &m in Mechanism::at(precision) {
+            let (fired, seen) = observe(m, &rows, precision, window)?;
             let (expects, verdict, ok) = match must_fire {
                 None => ("silent", if fired { "FAIL" } else { "ok" }, !fired),
                 Some(f) if f == m => ("detected", if fired { "ok" } else { "FAIL" }, fired),
@@ -323,31 +396,39 @@ fn check(dir: &Path, cases: Vec<Case>, window: (f64, f64)) -> Result<Report, Str
             }
         }
     }
+    let (k, end) = (decades(precision), suffix(precision));
+    let (first, last) = (k.end(), k.start());
     let _ = writeln!(
         text,
-        "\nvalue max_u of coeff_b at theta:1e-8 .. theta:1e-2 (the curve, p in [{}, {}]):\n{curves}\
-         \nsubject -> mechanism -> verdict (`detected`: must fire; `silent`: must not; `-`: the other \
-         defect's mechanism, printed and not gated):\n{verdicts}",
+        "\nvalue max_u of coeff_b at theta:1e-{first}{end} .. theta:1e-{last}{end} (the curve, p in \
+         [{}, {}]):\n{curves}\nsubject -> mechanism -> verdict (`detected`: must fire; `silent`: \
+         must not; `-`: the other defect's mechanism, printed and not gated):\n{verdicts}",
         window.0, window.1
     );
     Ok(Report { text, failures })
 }
 
-/// The three halves over `dir` (the coefficients, SO(3) and SE_N(3)): their reports joined, and
-/// every failure among them.
+/// The halves over `dir` (the coefficients, SO(3) and SE_N(3) at binary64, then the coefficients at
+/// `f32`): their reports joined, and every failure among them.
 fn halves(
     dir: &Path,
     coefficients: Vec<Case>,
     so3: Vec<selftest_so3::Case>,
     se3: Vec<selftest_se3::Case>,
 ) -> Result<Report, String> {
-    let coefficients = check(dir, coefficients, WINDOW)?;
+    let coefficients = check(dir, coefficients, Precision::F64, WINDOW)?;
     let so3 = selftest_so3::check(dir, so3, selftest_so3::BAR)?;
     let se3 = selftest_se3::check(dir, se3, selftest_se3::BAR)?;
-    let text = format!("{}\n{}\n{}", coefficients.text, so3.text, se3.text);
+    let f32 = check(dir, cases_f32(), Precision::F32, WINDOW)?;
+    let f32_title = "f32 (the @f32 strata, u = 2^-24; the vector ids have none):";
+    let text = format!(
+        "{}\n{}\n{}\n{f32_title}\n{}",
+        coefficients.text, so3.text, se3.text, f32.text
+    );
     let mut failures = coefficients.failures;
     failures.extend(so3.failures);
     failures.extend(se3.failures);
+    failures.extend(f32.failures.into_iter().map(|f| format!("f32: {f}")));
     Ok(Report { text, failures })
 }
 
@@ -385,7 +466,11 @@ mod tests {
     }
 
     fn run_cases(cases: Vec<Case>, window: (f64, f64)) -> Result<Report, String> {
-        check(&corpus_dir()?, cases, window)
+        check(&corpus_dir()?, cases, Precision::F64, window)
+    }
+
+    fn run_f32(cases: Vec<Case>, window: (f64, f64)) -> Result<Report, String> {
+        check(&corpus_dir()?, cases, Precision::F32, window)
     }
 
     /// The lines of a report that begin with `prefix`, runs of blanks collapsed to one.
@@ -696,6 +781,93 @@ mod tests {
             run_cases(vec![case], WINDOW)?.failures,
             Vec::<String>::new()
         );
+        Ok(())
+    }
+
+    #[test]
+    fn the_f32_half_detects_its_defects_and_the_correct_kernel_is_silent() -> Result<(), String> {
+        // Fitted `p`: binary64 1.937 (seven strata, the plateau one of them), binary32 2.134
+        // (three, above the plateau); the correct kernel's curve does not fit at either.
+        let report = run_f32(cases_f32(), WINDOW)?;
+        assert_eq!(report.failures, Vec::<String>::new());
+        let (curve, zero) = ("b value curve fits theta^-p", "nonfinite in theta:exact0");
+        let want = [
+            format!("seeded:b-no-series -> {curve} -> detected ok p = 2.134, r2 = 1.000"),
+            format!("seeded:correct -> {curve} -> silent ok p = -1.200, r2 = 0.753"),
+            format!("seeded:correct -> {zero} -> silent ok nonfinite = 0"),
+            format!("seeded:k-sqrt-unsafe -> {zero} -> detected ok coeff_k d_branch: 1"),
+        ];
+        for line in &want {
+            assert_eq!(lines(&report, line).len(), 1, "{line}\n{}", report.text);
+        }
+        // The planted `c` is the sweep's, and the sweep is binary64's: no `f32` subject is ranked.
+        assert!(!report.text.contains("sweep ranks"), "{}", report.text);
+        Ok(())
+    }
+
+    #[test]
+    fn the_f32_d12_kernels_errors_are_pinned_per_coefficient() -> Result<(), String> {
+        // Bit-deterministic (D16): the max over `@f32` strata, in u, of the kernel the f32 half
+        // calls correct, which is the D12 prior. Printed and not gated, so this pins it: a moved
+        // series length, switch, operand or exact-arm form moves a cell.
+        let report = run_f32(vec![Case::new(Seeded::generated(), None)], WINDOW)?;
+        let want = [
+            "coeff_k value 1.313e0 (theta:dense@f32) d_branch 1.845e3 (theta:1e-1@f32)",
+            "coeff_a value 2.918e0 (theta:dense@f32) d_branch 1.845e3 (theta:1e-1@f32)",
+            "coeff_b value 3.311e2 (theta:dense@f32) d_branch 1.141e6 (theta:dense@f32)",
+            "coeff_c value 2.387e3 (theta:1e-1@f32) d_branch 1.860e7 (theta:dense@f32)",
+            "coeff_d value 2.125e3 (theta:dense@f32) d_branch 1.653e7 (theta:dense@f32)",
+            "coeff_e value 1.829e6 (theta:1e-1@f32) d_branch 8.115e9 (theta:1e-1@f32)",
+        ];
+        assert_eq!(lines(&report, "coeff_"), want);
+        assert!(report
+            .text
+            .contains("seeded:correct d12: the max over strata"));
+        Ok(())
+    }
+
+    #[test]
+    fn a_moved_f32_window_or_a_missed_f32_defect_fails_the_f32_half() -> Result<(), String> {
+        let high = run_f32(cases_f32(), (2.5, 3.0))?;
+        assert!(failed(&high, "seeded:b-no-series"), "{:?}", high.failures);
+        let expecting = Case::new(Seeded::generated(), Some(Mechanism::ErrorCurve));
+        let missed = run_f32(vec![expecting], WINDOW)?;
+        assert_eq!(missed.failures.len(), 1, "{:?}", missed.failures);
+        Ok(())
+    }
+
+    #[test]
+    fn the_plateau_stratum_would_pull_the_f32_fit_below_the_window() -> Result<(), String> {
+        // `theta:1e-4@f32` holds `sqrt(6u) = 6e-4`: `b` is 0 there, the error `1/u` = 2^24, and
+        // with it the four strata fit `p = 1.64`; the three above it fit 2.134.
+        let dir = corpus_dir()?;
+        let b = Seeded::planted(Defect::BNoSeries).registered();
+        let entries: Vec<_> = corpus::manifest(&dir)?
+            .into_iter()
+            .filter(|e| e.fn_id == "coeff_b")
+            .collect();
+        let rows = evaluate_by(&dir, &entries, &[b], Precision::F32, &|_| {
+            Some(&COEFF_VALUE)
+        })?;
+        let max = |k: i32| {
+            let name = format!("theta:1e-{k}@f32");
+            rows[0].iter().find(|r| r.stratum == name).map(|r| r.max_u)
+        };
+        assert_eq!(max(4), Some(16_777_216.0));
+        let fit = |ks: &[i32]| {
+            let points: Option<Vec<(f64, f64)>> = ks
+                .iter()
+                .map(|&k| Some((10f64.powi(-k), max(k)?)))
+                .collect();
+            points
+                .and_then(|p| power_law(&p))
+                .map(|(p, _)| (p * 1e3).round() / 1e3)
+        };
+        assert_eq!(fit(&[4, 3, 2, 1]), Some(1.644));
+        assert_eq!(fit(&[3, 2, 1]), Some(2.134));
+        // `theta:1e-1@f32` is above D12's switch: both kernels run the exact arm there, and the two
+        // strata below it fit 0.012 from the window's edge (0014 (draft) question 26).
+        assert_eq!(fit(&[3, 2]), Some(2.188));
         Ok(())
     }
 }

@@ -27,13 +27,15 @@
 //!   can read under 1.
 //! - **Overflow.** An `F` that does not fit in binary64 (a gross error against a zero or tiny
 //!   reference) is [`Score::NonFinite`]: a finite output that wrong fails the run like a NaN.
-//! - **`f32`** is refused until it is scored (`docs/decisions/0016` item 2): its inputs are the
-//!   `@f32` strata's, exactly binary32.
+//! - **`f32`** (`docs/decisions/0016` item 2) is scored in units of `u = 2^-24` on the `@f32` strata,
+//!   whose inputs are exactly binary32 and whose references are the function at those inputs. The
+//!   smallest-normal floor is `2^-126`, `EA.4(b)`'s; an output that is not exactly a binary32 is an
+//!   error, not a score: a subject that computed in binary64 has not been measured at `f32`.
 
 use helicoid_linalg::Precision;
 use num_bigint::{BigInt, BigUint, Sign};
 
-use super::corpus::{Record, Tensor};
+use super::corpus::{exact_f32, Record, Tensor};
 use super::number::{sqrt_ratio, Decimal, Dyadic};
 use super::subject::Output;
 
@@ -189,15 +191,19 @@ pub(crate) enum Score {
     Unscored,
 }
 
-/// `log2(1/u)`: `f32` is refused (see the module docs).
-pub(crate) fn unit_bits(precision: Precision) -> Result<usize, String> {
+/// `log2(1/u)`.
+pub(crate) fn unit_bits(precision: Precision) -> usize {
     match precision {
-        Precision::F64 => Ok(53),
-        Precision::F32 => Err(
-            "f32 is not supported: the corpus inputs are binary64 and PHASE1 §4.4 \
-             does not say whether an f32 subject receives them rounded"
-                .into(),
-        ),
+        Precision::F64 => 53,
+        Precision::F32 => 24,
+    }
+}
+
+/// The exponent of the smallest normal number.
+fn min_exp(precision: Precision) -> i32 {
+    match precision {
+        Precision::F64 => -1022,
+        Precision::F32 => -126,
     }
 }
 
@@ -232,12 +238,15 @@ pub(crate) fn score(
     out: &Output,
     precision: Precision,
 ) -> Result<Score, String> {
-    let bits = unit_bits(precision)?;
+    let bits = unit_bits(precision);
     let mut worst = 0.0f64;
     for r in rules {
         let (y, yh) = pair(rec, out, r.field)?;
         if !yh.iter().all(|x| x.is_finite()) {
             return Ok(Score::NonFinite);
+        }
+        if precision == Precision::F32 && yh.iter().any(|&x| exact_f32(x).is_none()) {
+            return Err(format!("`{}` is not exactly binary32", r.field));
         }
         let floor = match r.floor {
             Floor::Unit => vec![Dyadic {
@@ -248,7 +257,7 @@ pub(crate) fn score(
             Floor::Tiny => vec![Dyadic {
                 neg: false,
                 mant: 1,
-                exp: -1022,
+                exp: min_exp(precision),
             }],
             Floor::Scale { input, skip } => rec
                 .input(input)
@@ -566,18 +575,67 @@ mod tests {
         Ok(())
     }
 
+    /// `field_score` at `f32`, with the floor of a coefficient.
+    fn f32_score(y: &str, yh: f64) -> Result<Score, String> {
+        let rec = record(&[], &[("v", &[y])])?;
+        let out = Output::from([("v".to_string(), vec![yh])]);
+        let rule = [field("v", Floor::Tiny, SignRule::Fixed)];
+        score(&rule, &rec, &out, Precision::F32)
+    }
+
     #[test]
-    fn f32_is_an_error() -> Result<(), String> {
-        let rec = record(&[], &[("v", &["1e0"])])?;
-        let out = Output::from([("v".to_string(), vec![1.0])]);
-        let e = score(
-            &[field("v", Floor::Unit, SignRule::Fixed)],
-            &rec,
-            &out,
-            Precision::F32,
-        );
-        assert!(e.is_err_and(|e| e.contains("f32 is not supported")));
-        assert!(unit_bits(Precision::F32).is_err());
+    fn f32_is_scored_in_units_of_two_to_the_minus_24() -> Result<(), String> {
+        let bits = (unit_bits(Precision::F64), unit_bits(Precision::F32));
+        assert_eq!(bits, (53, 24));
+        // One binary32 ulp above 1 is 2^-23 = 2 u.
+        let up = f64::from(1.0f32 + f32::EPSILON);
+        assert_eq!(f32_score("1e0", up)?, Score::Finite(2.0));
+        assert_eq!(f32_score("1e0", 1.0)?, Score::Finite(0.0));
+        // 0.1f32 is 0.100000001490116119384765625: its own reference scores 0, and against 1e-1
+        // (never rounded first) the difference 2^-26/10 is a quarter of 0.1 u.
+        let tenth = "1.00000001490116119384765625e-1";
+        assert_eq!(f32_score(tenth, f64::from(0.1f32))?, Score::Finite(0.0));
+        assert_eq!(f32_score("1e-1", f64::from(0.1f32))?, Score::Finite(0.25));
+        Ok(())
+    }
+
+    /// Every value of every field is a binary32, not the first of each.
+    #[test]
+    fn every_value_of_every_output_field_must_be_a_binary32_at_f32() -> Result<(), String> {
+        let rec = record(&[], &[("a", &["1e0", "2e0"]), ("b", &["1e0"])])?;
+        let rules = [
+            field("a", Floor::Tiny, SignRule::Fixed),
+            field("b", Floor::Tiny, SignRule::Fixed),
+        ];
+        let out = |a: [f64; 2], b: f64| {
+            Output::from([("a".to_string(), a.to_vec()), ("b".to_string(), vec![b])])
+        };
+        let at = |o: Output| score(&rules, &rec, &o, Precision::F32);
+        assert_eq!(at(out([1.0, 2.0], 1.0))?, Score::Finite(0.0));
+        let second_value = out([1.0, 2.0 + 2.0 * f64::EPSILON], 1.0);
+        let second_field = out([1.0, 2.0], 1.0 + f64::EPSILON);
+        for (bad, field) in [(second_value, "`a`"), (second_field, "`b`")] {
+            let e = at(bad).err().unwrap_or_default();
+            assert!(
+                e.starts_with(field) && e.contains("not exactly binary32"),
+                "{e}"
+            );
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn an_f32_output_is_a_binary32_and_the_floor_is_the_smallest_normal_of_binary32(
+    ) -> Result<(), String> {
+        let e = f32_score("1e0", 1.0 + f64::EPSILON)
+            .err()
+            .unwrap_or_default();
+        assert!(e.contains("not exactly binary32"), "{e}");
+        assert_eq!(f32_score("1e0", f64::NAN)?, Score::NonFinite);
+        // The smallest binary32 subnormal against 0 is 2^-149 over 2^-126 u: 2 (a half-spacing
+        // rounding reads 1); the floor 2^-1022 of binary64 would read 2^897.
+        let tiny = f64::from(f32::from_bits(1));
+        assert_eq!(f32_score("0e0", tiny)?, Score::Finite(2.0));
         Ok(())
     }
 

@@ -15,6 +15,9 @@ use super::series::Series;
 /// The dual number the harness evaluates at: value and `d/dz`.
 pub(crate) type D1 = Dual<f64, 1>;
 
+/// [`D1`] at binary32.
+pub(crate) type D1F32 = Dual<f32, 1>;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Coeff {
     K,

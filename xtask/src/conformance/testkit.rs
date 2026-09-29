@@ -64,7 +64,8 @@ pub(crate) fn record(
     Ok(record)
 }
 
-/// The harness's oracle: the reference correctly rounded, then moved `ulps` places up.
+/// The harness's oracle: the reference correctly rounded at the precision asked, then moved `ulps`
+/// places up there.
 pub(super) struct Perfect {
     name: &'static str,
     ulps: u32,
@@ -95,8 +96,12 @@ impl Subject for Perfect {
         true
     }
 
-    fn eval(&self, _: &str, record: &Record, _: Precision) -> Output {
-        let round = |d: &Decimal| (0..self.ulps).fold(d.to_f64(), |x, _| x.next_up());
+    fn eval(&self, _: &str, record: &Record, precision: Precision) -> Output {
+        let up = |x: f32| (0..self.ulps).fold(x, |x, _| x.next_up());
+        let round = |d: &Decimal| match precision {
+            Precision::F64 => (0..self.ulps).fold(d.to_f64(), |x, _| x.next_up()),
+            Precision::F32 => f64::from(up(d.to_f32())),
+        };
         let field =
             |(k, t): (&String, &Tensor<Decimal>)| (k.clone(), t.data.iter().map(round).collect());
         record.reference.iter().map(field).collect()

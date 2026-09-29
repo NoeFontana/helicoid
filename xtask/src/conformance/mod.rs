@@ -1,4 +1,4 @@
-//! `cargo xtask conformance [--subject NAME] [--fn ID]` (`docs/PHASE1.md` §5): runs the in-process
+//! `cargo xtask conformance [--subject NAME] [--fn ID] [--precision f64|f32]` (`docs/PHASE1.md` §5): runs the in-process
 //! subjects over the committed corpus, scores each record with the forward error of
 //! `docs/NUMERICS.md` §11 in units of `u`, aggregates per `(fn, stratum, precision, subject)`, writes
 //! `conformance/results/<subject>.csv` and prints the table by `max_u` descending. It fails on any
@@ -21,9 +21,15 @@
 //! - **A record's score** is the largest error over its output fields; a `--fn` run writes
 //!   `<subject>--<fn>.csv` so it never replaces a full result.
 //! - **`git_rev`** is `HEAD`, plus `-dirty` when the tree has uncommitted changes.
-//! - **`@f32` strata** (`docs/decisions/0016`) are `f32`'s and no other precision's; `f32` is
-//!   refused until it is scored, so no run scores them yet.
-//! - **Not implemented**: backward error (`Log` near π, `from_matrix`), `f32`, oracle runners, the
+//! - **`@f32` strata** (`docs/decisions/0016`) are `f32`'s and no other precision's: an `f32` run
+//!   scores them alone, with `u = 2^-24` ([`metric`]), and a binary64 run skips them. The inputs an
+//!   `f32` subject receives are asserted exactly binary32 (a lossless cast), its outputs likewise.
+//!   A subject asked for `f32` on an id with no `@f32` stratum is an error, and so is one with no
+//!   `f32` kernel (`Registered::no_f32`). `--precision f32` without `--fn` runs the ids that have
+//!   such strata and names the others that a selected subject supports (left out, not asked); with
+//!   `--fn` it runs the id named or fails. Its result file is `<subject>[--<fn>]--f32.csv`, the
+//!   `precision` column `f32`.
+//! - **Not implemented**: backward error (`Log` near π, `from_matrix`), oracle runners, the
 //!   envelope, the `helicoid` subject, and the `Dual` comparison of the planted `Q` defect.
 
 pub(crate) mod corpus;
@@ -49,13 +55,24 @@ use metric::Rule;
 use report::{Aggregate, Row};
 use subject::Registered;
 
-const USAGE: &str = "usage: cargo xtask conformance [--subject NAME] [--fn ID] | --self-test";
+const USAGE: &str =
+    "usage: cargo xtask conformance [--subject NAME] [--fn ID] [--precision f64|f32] | --self-test";
 
 #[derive(Default)]
 struct Options {
     subject: Option<String>,
     fn_id: Option<String>,
+    /// `f64` when absent.
+    precision: Option<Precision>,
     self_test: bool,
+}
+
+fn parse_precision(name: &str) -> Result<Precision, String> {
+    match name {
+        "f64" => Ok(Precision::F64),
+        "f32" => Ok(Precision::F32),
+        _ => Err(format!("unknown precision `{name}`; {USAGE}")),
+    }
 }
 
 fn parse_args(args: &[String]) -> Result<Options, String> {
@@ -66,19 +83,23 @@ fn parse_args(args: &[String]) -> Result<Options, String> {
             Some((f, v)) => (f, Some(v.to_string())),
             None => (arg.as_str(), None),
         };
-        let slot = match (flag, &inline) {
-            ("--subject", _) => &mut options.subject,
-            ("--fn", _) => &mut options.fn_id,
-            ("--self-test", None) => {
-                options.self_test = true;
-                continue;
-            }
-            _ => return Err(format!("unknown argument `{arg}`; {USAGE}")),
-        };
+        if flag == "--self-test" && inline.is_none() {
+            options.self_test = true;
+            continue;
+        }
+        if !matches!(flag, "--subject" | "--fn" | "--precision") {
+            return Err(format!("unknown argument `{arg}`; {USAGE}"));
+        }
         let value = inline.or_else(|| rest.next().cloned());
-        *slot = Some(value.ok_or_else(|| format!("`{flag}` needs a value; {USAGE}"))?);
+        let value = value.ok_or_else(|| format!("`{flag}` needs a value; {USAGE}"))?;
+        match flag {
+            "--subject" => options.subject = Some(value),
+            "--fn" => options.fn_id = Some(value),
+            _ => options.precision = Some(parse_precision(&value)?),
+        }
     }
-    if options.self_test && (options.subject.is_some() || options.fn_id.is_some()) {
+    let other = options.subject.is_some() || options.fn_id.is_some() || options.precision.is_some();
+    if options.self_test && other {
         return Err(format!("`--self-test` takes no other argument; {USAGE}"));
     }
     Ok(options)
@@ -97,7 +118,9 @@ pub(crate) fn corpus_dir() -> Result<PathBuf, String> {
 }
 
 /// Every subject over every entry; one row list per subject, in `subjects` order. Each corpus
-/// file is read (and so validated) once, whether or not a subject supports it.
+/// file is read (and so validated) once, whether or not a subject supports it. At `f32` only the
+/// `@f32` strata are scored, and a supporting subject is an error on an entry that has none, and
+/// where it has no `f32` kernel.
 fn evaluate(
     dir: &Path,
     entries: &[corpus::Entry],
@@ -115,7 +138,6 @@ fn evaluate_by(
     precision: Precision,
     rule_of: &dyn Fn(&str) -> Option<&'static Rule>,
 ) -> Result<Vec<Vec<Row>>, String> {
-    metric::unit_bits(precision)?;
     let mut rows: Vec<Vec<Row>> = subjects.iter().map(|_| Vec::new()).collect();
     for entry in entries {
         let fn_id = entry.fn_id.as_str();
@@ -127,19 +149,55 @@ fn evaluate_by(
             if !s.subject.supports(fn_id) {
                 continue;
             }
-            let mut aggregate = Aggregate::default();
             let f32 = precision == Precision::F32;
-            for record in records.iter().filter(|r| r.is_f32_stratum() == f32) {
+            if let (true, Some(why)) = (f32, &s.no_f32) {
+                return Err(format!("{} has no f32 kernel: {why}", s.subject.name()));
+            }
+            let scored = records.iter().filter(|r| r.is_f32_stratum() == f32);
+            let mut scored = scored.peekable();
+            if f32 && scored.peek().is_none() {
+                return Err(format!(
+                    "{} was asked for f32 on `{fn_id}`, which has no `@f32` stratum: only the \
+                     scalar coefficient ids have any (docs/decisions/0016 item 2)",
+                    s.subject.name()
+                ));
+            }
+            let mut aggregate = Aggregate::default();
+            for record in scored {
+                if f32 {
+                    record
+                        .require_binary32()
+                        .map_err(|e| format!("{fn_id} record {}: {e}", record.id))?;
+                }
                 let output = s.subject.eval(fn_id, record, precision);
                 let score = rule.score(record, &output, precision).map_err(|e| {
                     format!("{} on {fn_id} record {}: {e}", s.subject.name(), record.id)
                 })?;
                 aggregate.add(record.id, &record.stratum, score);
             }
-            out.extend(aggregate.rows(fn_id, precision, s.subject.name(), &s.version));
+            let version = s.version_at(precision);
+            out.extend(aggregate.rows(fn_id, precision, s.subject.name(), version));
         }
     }
     Ok(rows)
+}
+
+/// The entries an `f32` run without `--fn` scores, those that have `@f32` strata, and the ids of the
+/// others that a subject supports: left out, and named, so the run does not skip them in silence.
+fn split_f32(
+    dir: &Path,
+    entries: Vec<corpus::Entry>,
+    subjects: &[Registered],
+) -> Result<(Vec<corpus::Entry>, Vec<String>), String> {
+    let (mut with, mut left_out) = (Vec::new(), Vec::new());
+    for e in entries {
+        if corpus::mentions_f32(dir, &e)? {
+            with.push(e);
+        } else if subjects.iter().any(|s| s.subject.supports(&e.fn_id)) {
+            left_out.push(e.fn_id);
+        }
+    }
+    Ok((with, left_out))
 }
 
 fn git_rev(root: &Path) -> String {
@@ -160,17 +218,27 @@ fn git_rev(root: &Path) -> String {
     }
 }
 
-/// `<subject>.csv`, with a `--fn` run apart: `<subject>--<fn>.csv`.
-fn results_path(results: &Path, subject: &str, fn_id: Option<&str>) -> PathBuf {
+/// `<subject>.csv`, with a `--fn` run apart, `<subject>--<fn>.csv`, and an `f32` run apart again,
+/// `<subject>[--<fn>]--f32.csv`.
+fn results_path(
+    results: &Path,
+    subject: &str,
+    fn_id: Option<&str>,
+    precision: Precision,
+) -> PathBuf {
     let clean = |s: &str| {
         s.replace(
             |c: char| !(c.is_ascii_alphanumeric() || "_.-".contains(c)),
             "-",
         )
     };
-    results.join(match fn_id {
-        Some(f) => format!("{}--{}.csv", clean(subject), clean(f)),
-        None => format!("{}.csv", clean(subject)),
+    let name = match fn_id {
+        Some(f) => format!("{}--{}", clean(subject), clean(f)),
+        None => clean(subject),
+    };
+    results.join(match precision {
+        Precision::F64 => format!("{name}.csv"),
+        Precision::F32 => format!("{name}--f32.csv"),
     })
 }
 
@@ -184,6 +252,7 @@ fn run_with(
     options: &Options,
     mut subjects: Vec<Registered>,
 ) -> Result<(), String> {
+    let precision = options.precision.unwrap_or(Precision::F64);
     let mut entries = corpus::manifest(corpus_dir)?;
     if let Some(id) = &options.fn_id {
         entries.retain(|e| e.fn_id == *id);
@@ -200,7 +269,21 @@ fn run_with(
         }
         None => subjects.retain(|s| !s.planted),
     }
-    let per_subject = evaluate(corpus_dir, &entries, &subjects, Precision::F64)?;
+    if precision == Precision::F32 && options.fn_id.is_none() {
+        let (with, left_out) = split_f32(corpus_dir, entries, &subjects)?;
+        eprintln!(
+            "conformance: f32 runs the {} ids that have @f32 strata",
+            with.len()
+        );
+        if !left_out.is_empty() {
+            eprintln!(
+                "conformance: f32 leaves out (no @f32 stratum, supported by a selected subject): {}",
+                left_out.join(", ")
+            );
+        }
+        entries = with;
+    }
+    let per_subject = evaluate(corpus_dir, &entries, &subjects, precision)?;
     if per_subject.iter().all(Vec::is_empty) {
         return Err(if subjects.is_empty() {
             format!(
@@ -214,14 +297,15 @@ fn run_with(
     }
     let mut failing = 0;
     for (s, rows) in subjects.iter().zip(&per_subject) {
-        let path = results_path(results, s.subject.name(), options.fn_id.as_deref());
+        let fn_id = options.fn_id.as_deref();
+        let path = results_path(results, s.subject.name(), fn_id, precision);
         std::fs::create_dir_all(results).map_err(|e| format!("{}: {e}", results.display()))?;
         std::fs::write(&path, report::csv(rows, rev))
             .map_err(|e| format!("{}: {e}", path.display()))?;
         println!(
             "{} {}\n{}",
             s.subject.name(),
-            s.version,
+            s.version_at(precision),
             report::table(rows)
         );
         eprintln!("conformance: wrote {}", path.display());
@@ -267,12 +351,19 @@ mod tests {
             (o.subject.as_deref(), o.fn_id.as_deref()),
             (Some("x"), Some("so2_exp"))
         );
+        let p = |a: &[&str]| parse_args(&args(a)).map(|o| o.precision);
+        assert_eq!(p(&["--precision", "f32"]), Ok(Some(Precision::F32)));
+        assert_eq!(p(&["--precision=f64"]), Ok(Some(Precision::F64)));
+        assert_eq!(p(&[]), Ok(None));
         for bad in [
             &["--subject"][..],
             &["--nope"],
             &["--self-test=x"],
             &["--self-test", "--fn", "so2_exp"],
             &["--subject=x", "--self-test"],
+            &["--precision", "f32", "--self-test"],
+            &["--precision"],
+            &["--precision=f16"],
             &["x"],
         ] {
             assert!(parse_args(&args(bad)).is_err(), "{bad:?}");
@@ -284,21 +375,207 @@ mod tests {
     #[test]
     fn a_full_run_and_a_filtered_one_write_different_files() {
         let results = Path::new("/r");
-        assert_eq!(
-            results_path(results, "seeded:b", None),
-            Path::new("/r/seeded-b.csv")
-        );
-        let p = results_path(results, "helicoid", Some("so3_exp"));
+        let at = |f, p| results_path(results, "seeded:b", f, p);
+        assert_eq!(at(None, Precision::F64), Path::new("/r/seeded-b.csv"));
+        let p = results_path(results, "helicoid", Some("so3_exp"), Precision::F64);
         assert_eq!(p, Path::new("/r/helicoid--so3_exp.csv"));
+        assert_eq!(at(None, Precision::F32), Path::new("/r/seeded-b--f32.csv"));
+        let p = at(Some("coeff_k"), Precision::F32);
+        assert_eq!(p, Path::new("/r/seeded-b--coeff_k--f32.csv"));
     }
 
     #[test]
-    fn f32_is_refused_even_with_nothing_to_run() -> Result<(), String> {
-        let dir = corpus_dir()?;
-        let e = evaluate(&dir, &[], &[], Precision::F32)
+    fn a_subject_asked_for_f32_on_an_id_without_f32_strata_is_an_error() -> Result<(), String> {
+        let (dir, entries) = (corpus_dir()?, only("so3_exp")?);
+        let asked = |s: Registered| evaluate(&dir, &entries, &[s], Precision::F32);
+        let e = asked(registered(Perfect::exact()))
             .err()
             .unwrap_or_default();
-        assert!(e.contains("f32 is not supported"), "{e}");
+        assert!(e.contains("asked for f32 on `so3_exp`"), "{e}");
+        assert!(e.contains("no `@f32` stratum"), "{e}");
+        // Not asked: a subject that does not support the id, and nothing to run.
+        let picky = Fixed::new("p", |_| Output::new()).only("so2_log");
+        assert!(asked(registered(picky))?[0].is_empty());
+        assert!(evaluate(&dir, &[], &[], Precision::F32)?.is_empty());
+        Ok(())
+    }
+
+    #[test]
+    fn an_f32_input_that_is_not_a_binary32_is_an_error_not_a_rounding() -> Result<(), String> {
+        let scratch = Scratch::new("f32-input");
+        let io = |e: std::io::Error| e.to_string();
+        std::fs::create_dir_all(&scratch.0).map_err(io)?;
+        let manifest = r#"{"files":{"coeff_k.jsonl":{"kind":"corpus","records":1}}}"#;
+        std::fs::write(scratch.0.join("MANIFEST.json"), manifest).map_err(io)?;
+        // 1 + 2^-52 is a binary64 and no binary32; 1 + 2^-23 is both.
+        for (theta, lossless) in [("0x1.0000000000001p+0", false), ("0x1.00000p+0", true)] {
+            let record = format!(
+                r#"{{"id":0,"in":{{"theta":["{theta}"]}},"out":{{"d_branch":["1e0"],"value":["1e0"]}},"stratum":"s@f32"}}"#
+            );
+            std::fs::write(scratch.0.join("coeff_k.jsonl"), record).map_err(io)?;
+            let entries = corpus::manifest(&scratch.0)?;
+            let subject = [registered(Perfect::exact())];
+            let run = evaluate(&scratch.0, &entries, &subject, Precision::F32);
+            assert_eq!(run.is_ok(), lossless, "{theta}");
+            let e = run.err().unwrap_or_default();
+            let named = "coeff_k record 0: input `theta` holds";
+            assert_eq!(e.contains(named), !lossless, "{e}");
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn an_f32_run_scores_the_f32_strata_alone_and_writes_its_own_file() -> Result<(), String> {
+        let scratch = Scratch::new("f32-run");
+        run_in(&scratch, &["--precision=f32"], Perfect::exact())?;
+        let path = scratch.0.join("perfect--f32.csv");
+        let csv = std::fs::read_to_string(path).map_err(|e| e.to_string())?;
+        let rows: Vec<Vec<&str>> = csv
+            .lines()
+            .skip(1)
+            .map(|l| l.split(',').collect())
+            .collect();
+        // The 8 ids that have `@f32` strata: 28 each, and `coeff_r`'s `q:w0@f32`.
+        assert_eq!(rows.len(), 8 * 28 + 1);
+        assert!(rows.iter().all(|c| c[1].ends_with("@f32") && c[2] == "f32"));
+        // An id named without any is an error, not an empty run.
+        let named = ["--precision", "f32", "--fn", "so3_exp"];
+        let e = run_in(&scratch, &named, Perfect::exact()).err();
+        assert!(e.unwrap_or_default().contains("asked for f32 on `so3_exp`"));
+        Ok(())
+    }
+
+    #[test]
+    fn a_subject_with_no_f32_kernel_is_an_error_at_f32_and_a_subject_at_f64() -> Result<(), String>
+    {
+        let (dir, entries) = (corpus_dir()?, only("coeff_k")?);
+        let bare = || Registered {
+            no_f32: Some("no kernel".into()),
+            ..registered(Perfect::exact())
+        };
+        let e = evaluate(&dir, &entries, &[bare()], Precision::F32);
+        assert_eq!(
+            e.err().unwrap_or_default(),
+            "perfect has no f32 kernel: no kernel"
+        );
+        assert!(evaluate(&dir, &entries, &[bare()], Precision::F64).is_ok());
+        // Asked only for what it supports: an id it does not is not an f32 request of it.
+        let elsewhere = only("so2_exp")?;
+        let picky = Registered {
+            no_f32: Some("no kernel".into()),
+            ..registered(Fixed::new("p", |_| Output::new()).only("coeff_k"))
+        };
+        assert!(evaluate(&dir, &elsewhere, &[picky], Precision::F32)?[0].is_empty());
+        Ok(())
+    }
+
+    #[test]
+    fn a_planted_subject_the_f32_kernels_do_not_model_is_an_error_at_f32_and_writes_nothing(
+    ) -> Result<(), String> {
+        let scratch = Scratch::new("planted-c-f32");
+        let run = |name: &str, precision: &str, fn_id: Option<&str>| {
+            let mut args = vec!["--subject", name, "--precision", precision];
+            args.extend(fn_id.into_iter().flat_map(|f| ["--fn", f]));
+            let args: Vec<String> = args.iter().map(ToString::to_string).collect();
+            let all = subject::registry();
+            run_with(&corpus_dir()?, &scratch.0, "rev", &parse_args(&args)?, all)
+        };
+        // The planted `c` is a candidate of the binary64 sweep: at `f32` it would answer as the D12
+        // kernel under its own name, on one coefficient id or on every one that has `@f32` strata.
+        let c = "seeded:c-two-terms-1e-8";
+        for fn_id in [Some("coeff_c"), Some("coeff_b"), None] {
+            let e = run(c, "f32", fn_id).err().unwrap_or_default();
+            assert!(e.starts_with(&format!("{c} has no f32 kernel")), "{e}");
+        }
+        assert!(!scratch.0.exists());
+        // At binary64 it runs; a defect the `f32` kernels do model gets past the refusal, and fails
+        // on the non-finite output its own mechanism detects.
+        let ok = run(c, "f64", Some("coeff_c"));
+        assert!(ok.is_ok(), "{ok:?}");
+        let e = run("seeded:b-no-series", "f32", Some("coeff_b"));
+        assert!(e.err().unwrap_or_default().contains("non-finite output"));
+        assert!(scratch
+            .0
+            .join("seeded-b-no-series--coeff_b--f32.csv")
+            .exists());
+        Ok(())
+    }
+
+    #[test]
+    fn an_f32_run_without_fn_names_the_ids_it_leaves_out() -> Result<(), String> {
+        let dir = corpus_dir()?;
+        let split = |subjects: &[Registered]| split_f32(&dir, corpus::manifest(&dir)?, subjects);
+        let (with, left_out) = split(&[registered(Perfect::exact())])?;
+        assert_eq!(with.len(), 8);
+        assert!(with.iter().all(|e| e.fn_id.starts_with("coeff_")));
+        let total = corpus::manifest(&dir)?.len();
+        assert_eq!(left_out.len(), total - 8);
+        assert!(["so3_exp", "sen3_exp_n1", "so2_exp"]
+            .iter()
+            .all(|id| left_out.iter().any(|l| l == id)));
+        // Only what a selected subject supports is named.
+        let of = |id: &str| registered(Fixed::new("p", |_| Output::new()).only(id));
+        assert_eq!(split(&[of("so3_log")])?.1, ["so3_log"]);
+        assert!(split(&[of("coeff_k")])?.1.is_empty());
+        // The correct seeded subject answers `so3_*` and `sen3_*`, which have no `@f32` stratum.
+        let plain: Vec<Registered> = subject::registry()
+            .into_iter()
+            .filter(|r| !r.planted)
+            .collect();
+        let want = [
+            "sen3_exp_n1",
+            "sen3_exp_n2",
+            "sen3_exp_n3",
+            "sen3_jl_n1",
+            "sen3_jl_n2",
+            "sen3_jl_n3",
+            "sen3_jr_n1",
+            "sen3_jr_n2",
+            "sen3_jr_n3",
+            "so3_exp",
+            "so3_log",
+        ];
+        assert_eq!(split(&plain)?.1, want);
+        Ok(())
+    }
+
+    #[test]
+    fn a_rows_subject_version_is_the_one_of_the_precision_it_ran_at() -> Result<(), String> {
+        let scratch = Scratch::new("version");
+        let versions = || Registered {
+            version: "v64".into(),
+            version_f32: "v32".into(),
+            ..registered(Perfect::exact())
+        };
+        let cells = |file: &str| -> Result<Vec<String>, String> {
+            let csv = std::fs::read_to_string(scratch.0.join(file)).map_err(|e| e.to_string())?;
+            let cell = |l: &str| l.split(',').nth(4).unwrap_or_default().to_string();
+            Ok(csv.lines().skip(1).map(cell).collect())
+        };
+        let runs = [
+            (&["--fn", "coeff_k"][..], "perfect--coeff_k.csv", "v64"),
+            (
+                &["--precision", "f32", "--fn", "coeff_k"],
+                "perfect--coeff_k--f32.csv",
+                "v32",
+            ),
+        ];
+        for (args, file, want) in runs {
+            let args: Vec<String> = args.iter().map(ToString::to_string).collect();
+            let options = parse_args(&args)?;
+            run_with(
+                &corpus_dir()?,
+                &scratch.0,
+                "rev",
+                &options,
+                vec![versions()],
+            )?;
+            let cells = cells(file)?;
+            assert!(
+                cells.len() > 20 && cells.iter().all(|c| c == want),
+                "{file}: {cells:?}"
+            );
+        }
         Ok(())
     }
 

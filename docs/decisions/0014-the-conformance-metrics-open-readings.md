@@ -14,7 +14,8 @@ started), so each is still free to change. `xtask/src/thresholds` (`PHASE1.md` �
 the threshold sweep (questions 8 to 11) and for the file it writes, `xtask/src/seeded/generated.rs`
 (12, 13); the self-test (`PHASE1.md` §10) did for the planted `c` (14, 15) and for the seeded SO(3)
 subject and its `Log` defects (16 to 20), and for the seeded SE_N(3) subject and its defects (21
-to 25).
+to 25); `f32` scoring and the self-test's `f32` half did for the curve, its kernel and its floor
+(26 to 28).
 
 ## Decision
 
@@ -149,3 +150,26 @@ None until the open questions are resolved.
     right as written (`(φ^ρ^)φ^`, `(φ^φ^)ρ^`, `(φ^ρ^φ^)φ^`), and `W²` in `J_l(φ) = I + aW + bW²` as
     `W·W`, not `φφᵀ − θ²I`. Another association moves the max by a few roundings, and 21's bar
     reads it. State the association, or leave it to the `helicoid` subject?
+26. **The `f32` curve** (`PHASE1.md` §10 fixes `theta:1e-8`…`1e-2` and `p ∈ [1.8, 2.2]`, at no
+    precision). The `f32` half fits the value of `coeff_b` over `theta:1e-3@f32`…`theta:1e-1@f32`,
+    the strata wholly above `√(6u) = 6·10^-4` at `u = 2^-24`: `p = 2.134`, against 1.937 at
+    binary64. `theta:1e-4@f32` holds `6·10^-4`, where `b` by its definition is 0 and the error a
+    plateau of `1/u`; with it the four fit `p = 1.644`, outside a window that does not depend on
+    `u`, whereas binary64's range keeps its plateau stratum (one of seven). The top stratum is
+    `[0.1, 1)`, above D12's switch, so the defect and the kernel run the same exact arm there
+    (297 `u` both) and the two strata below it fit `p = 2.188`, 0.012 from the window's edge. The
+    range was chosen after the fit. Which is meant: the strata above the plateau (as coded), the
+    strata below D12's switch, or a range and window stated per precision?
+27. **D12 as the `f32` "correct" kernel** (§10: "the correct seeded kernel"). Until the `f32`
+    sweep (`0016` item 3), `seeded:correct` runs the `tf_tree` D12 prior at `f32`, four terms
+    below `z = 0.01` for all six coefficients (`NUMERICS.md` §4 lists it for `a`, `b`, `c` only),
+    its `subject_version` `d12`. Its errors on the `@f32` strata are large (up to 8.1e9 `u`,
+    `coeff_e`'s `d_branch` at `theta:1e-1@f32`; 1.9e7 for `c`), printed and pinned by a test, not
+    gated, and its `b` curve fits `p = -1.200` (`r² = 0.753`): silent because it rises with `θ`.
+    Is a kernel that is not the correct one the subject the `f32` half is silent on, or does the
+    half wait for the sweep's switches?
+28. **The floor at `f32`** (question 1 at binary64). The code takes `2^-126`, the smallest normal
+    binary32, as it takes `2^-1022` at binary64. No reference of an `@f32` stratum of the eight
+    scalar ids is zero and the smallest is `1.6·10^-9` (`coeff_r`, `q:w0@f32`, `d_branch`), so the
+    floor is not exercised today; it would read a subnormal by its quantization on the vector ids
+    that a later record gives `@f32` strata. Is question 1's reading right at `f32`?

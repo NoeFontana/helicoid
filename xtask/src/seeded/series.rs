@@ -61,14 +61,28 @@ struct Line {
 #[derive(Clone, Debug)]
 pub(crate) struct Series<S>(Vec<Vec<S>>);
 
+/// The committed series file, compiled in: until the `f32` sweep generates its own constants
+/// (`docs/decisions/0016` item 3) the seeded kernels at `f32` read the exact rationals from it.
+const COMMITTED: &str = include_str!("../../../conformance/corpus/coeff_series.jsonl");
+
 impl<S: Real> Series<S> {
     pub(crate) fn load(corpus: &Path) -> Result<Self, String> {
         let path = corpus.join(FILE);
         let text =
             std::fs::read_to_string(&path).map_err(|e| format!("{}: {e}", path.display()))?;
+        Self::parse(&text, &path.display().to_string())
+    }
+
+    /// The compiled-in series, rounded at `S`.
+    pub(crate) fn committed() -> Result<Self, String> {
+        Self::parse(COMMITTED, FILE)
+    }
+
+    /// The series of `text`, a `coeff_series.jsonl` read from `origin`.
+    fn parse(text: &str, origin: &str) -> Result<Self, String> {
         let mut found: [Option<Vec<S>>; 6] = Default::default();
         for (i, line) in text.lines().enumerate() {
-            let at = |e: String| format!("{}:{}: {e}", path.display(), i + 1);
+            let at = |e: String| format!("{origin}:{}: {e}", i + 1);
             let l: Line = serde_json::from_str(line).map_err(|e| at(e.to_string()))?;
             if l.id != i as u64 {
                 return Err(at(format!("id {} on line {}", l.id, i + 1)));
@@ -93,11 +107,10 @@ impl<S: Real> Series<S> {
         for c in Coeff::ALL {
             let series = found[c.index()]
                 .take()
-                .ok_or_else(|| format!("{}: no series for `{}`", path.display(), c.name()))?;
+                .ok_or_else(|| format!("{origin}: no series for `{}`", c.name()))?;
             if series.is_empty() || series.len() != all.first().map_or(series.len(), Vec::len) {
                 return Err(format!(
-                    "{}: `{}` has {} terms",
-                    path.display(),
+                    "{origin}: `{}` has {} terms",
                     c.name(),
                     series.len()
                 ));
@@ -199,6 +212,37 @@ mod tests {
             "{overflow32} {subnormal32}"
         );
         Ok(())
+    }
+
+    /// `(2^70 + k 2^46 ± 1) / 2^70` is `1 + k 2^-24` off by `2^-70`, under half a binary64 ulp: it
+    /// rounds to that binary32 tie in binary64, and the tie goes to even. Rounded once at binary32
+    /// it is on its own side, one binary32 ulp from where the double rounding lands.
+    #[test]
+    fn a_rational_next_to_a_binary32_tie_rounds_once_at_binary32() -> Result<(), String> {
+        let one = BigUint::from(1u32);
+        let den = &one << 70usize;
+        let text = |k: u32, above: bool| {
+            let num = &den + (BigUint::from(k) << 46usize);
+            format!("{}/{den}", if above { num + &one } else { num - &one })
+        };
+        let ulp = f32::EPSILON;
+        // Above the tie between 1 and 1 + 2^-23: up, where double rounding ties to the even 1.
+        let (above, below) = (text(1, true), text(3, false));
+        assert_eq!(rational::<f32>(&above)?, 1.0 + ulp);
+        assert_eq!(rational::<f64>(&above)? as f32, 1.0);
+        // Below the tie between 1 + 2^-23 and 1 + 2^-22: down, where double rounding ties to even up.
+        assert_eq!(rational::<f32>(&below)?, 1.0 + ulp);
+        assert_eq!(rational::<f64>(&below)? as f32, 1.0 + 2.0 * ulp);
+        assert_eq!(rational::<f32>(&format!("-{above}"))?, -(1.0 + ulp));
+        Ok(())
+    }
+
+    #[test]
+    fn a_parse_error_names_its_origin_and_line() {
+        // The `f32` kernels read the compiled-in text: a broken one is reported as this, not lost.
+        let e = Series::<f32>::parse("{}\n", FILE).err().unwrap_or_default();
+        assert!(e.starts_with("coeff_series.jsonl:1: "), "{e}");
+        assert!(Series::<f32>::committed().is_ok());
     }
 
     #[test]
