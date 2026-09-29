@@ -69,3 +69,9 @@ defined by the status tables in `docs/`; they win over this file.
   `f64`/`f32` as `Real` with every transcendental through `libm`; `Blend` for scalars, tuples up
   to arity 8 and arrays. `Real` has no `PartialOrd`/`PartialEq` (`compile_fail` doctests). New
   public API, nothing breaks.
+- `helicoid-linalg`: forward-mode `Dual<S, N>` (`docs/PHASE2.md` §3), a `Real` and a `Blend<S>`
+  with every derivative rule of §3; its value path is bitwise the plain `S` evaluation, NaN sign
+  and payload of arithmetic outputs excepted. `copysign` takes `sgn(s)` from the sign bit. The
+  derivative of `sqrt` at 0 is infinite or NaN, that of `atan2` is inexact once `x^2 + y^2` leaves
+  the normal range, and the quotient's is NaN once `a / b` overflows (`NUMERICS.md` §12). New
+  public API, nothing breaks.
