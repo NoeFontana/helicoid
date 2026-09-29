@@ -1,7 +1,8 @@
 //! `cargo xtask conformance --self-test` (`docs/PHASE1.md` §10): the instrument shown to detect what
 //! it claims to. It runs the correct seeded kernel, which no mechanism may fire on, and every
 //! planted defect (`crate::seeded`), which must fire its named mechanism, over the `coeff_*` corpus
-//! ids, and fails when either does not hold. Nothing is written to `conformance/results/`.
+//! ids (the `Log` defects over `so3_log`: `selftest_so3`), and fails when either does not hold.
+//! Nothing is written to `conformance/results/`.
 //!
 //! Readings where §10 is silent, each the smallest:
 //!
@@ -39,7 +40,7 @@ use helicoid_linalg::Precision;
 use super::metric::{COEFF_D_BRANCH, COEFF_VALUE};
 use super::report::Row;
 use super::subject::Registered;
-use super::{corpus, evaluate_by};
+use super::{corpus, evaluate_by, selftest_so3};
 use crate::seeded::{Coeff, Defect, Seeded};
 use crate::thresholds::{Ranker, Ranking};
 
@@ -72,12 +73,14 @@ impl Mechanism {
         }
     }
 
-    /// The mechanism that must detect `defect` (§10).
-    fn of(defect: Defect) -> Self {
+    /// The mechanism that must detect the coefficient `defect` (§10); the `Log` defects are
+    /// judged by `so3` and have none here.
+    fn of(defect: Defect) -> Option<Self> {
         match defect {
-            Defect::BNoSeries => Mechanism::ErrorCurve,
-            Defect::KSqrtUnsafe => Mechanism::NonfiniteAtZero,
-            Defect::CTwoTermsEarly => Mechanism::SweepRank,
+            Defect::BNoSeries => Some(Mechanism::ErrorCurve),
+            Defect::KSqrtUnsafe => Some(Mechanism::NonfiniteAtZero),
+            Defect::CTwoTermsEarly => Some(Mechanism::SweepRank),
+            Defect::LogAcos | Defect::LogNoFlip => None,
         }
     }
 }
@@ -103,8 +106,8 @@ impl Case {
 
 fn cases() -> Vec<Case> {
     let mut all = vec![Case::new(Seeded::generated(), None)];
-    for d in Defect::ALL {
-        all.push(Case::new(Seeded::planted(d), Some(Mechanism::of(d))));
+    for d in Defect::COEFFICIENT {
+        all.push(Case::new(Seeded::planted(d), Mechanism::of(d)));
     }
     all
 }
@@ -225,7 +228,7 @@ fn observe(
 }
 
 /// The largest `max_u` of `fn_id`, with its stratum.
-fn worst<'a>(rows: &'a [Row], fn_id: &str) -> Option<&'a Row> {
+pub(super) fn worst<'a>(rows: &'a [Row], fn_id: &str) -> Option<&'a Row> {
     let mut of_fn = rows
         .iter()
         .filter(|r| r.fn_id == fn_id && !r.max_u.is_nan());
@@ -234,15 +237,16 @@ fn worst<'a>(rows: &'a [Row], fn_id: &str) -> Option<&'a Row> {
         .map(|first| of_fn.fold(first, |w, r| if r.max_u > w.max_u { r } else { w }))
 }
 
-struct Report {
-    text: String,
-    failures: Vec<String>,
+pub(super) struct Report {
+    pub(super) text: String,
+    pub(super) failures: Vec<String>,
 }
 
 /// Runs `cases` over the coefficient ids of `dir` and judges every mechanism against `window`.
 fn check(dir: &Path, cases: Vec<Case>, window: (f64, f64)) -> Result<Report, String> {
     let mut entries = corpus::manifest(dir)?;
-    entries.retain(|e| cases.iter().any(|c| c.subject.subject.supports(&e.fn_id)));
+    let judged = |e: &corpus::Entry| Coeff::of_fn(&e.fn_id).is_some();
+    entries.retain(|e| judged(e) && cases.iter().any(|c| c.subject.subject.supports(&e.fn_id)));
     // One sweep of `c` ranks every subject's `c`.
     let ranker = Ranker::new(dir, Coeff::C)?;
     let mut ranked = Vec::new();
@@ -327,9 +331,12 @@ fn check(dir: &Path, cases: Vec<Case>, window: (f64, f64)) -> Result<Report, Str
 
 #[allow(clippy::print_stdout)]
 pub(crate) fn run(dir: &Path) -> Result<(), String> {
-    let report = check(dir, cases(), WINDOW)?;
-    print!("{}", report.text);
-    match report.failures.as_slice() {
+    let coefficients = check(dir, cases(), WINDOW)?;
+    let so3 = selftest_so3::check(dir, selftest_so3::cases(), selftest_so3::BAR)?;
+    print!("{}\n{}", coefficients.text, so3.text);
+    let mut failures = coefficients.failures;
+    failures.extend(so3.failures);
+    match failures.as_slice() {
         [] => Ok(()),
         failed => Err(format!("self-test: {}", failed.join("; "))),
     }
@@ -366,6 +373,11 @@ mod tests {
         let squeeze = |l: &str| l.split_whitespace().collect::<Vec<_>>().join(" ");
         let all = report.text.lines().map(squeeze);
         all.filter(|l| l.starts_with(prefix)).collect()
+    }
+
+    #[test]
+    fn the_self_test_runs_both_halves_over_the_committed_corpus() -> Result<(), String> {
+        run(&corpus_dir()?)
     }
 
     #[test]
@@ -503,7 +515,7 @@ mod tests {
             .iter()
             .all(|f| f.contains("is not detected")));
         // A defect where the correct kernel belongs: its own mechanism breaks the silence.
-        for d in Defect::ALL {
+        for d in Defect::COEFFICIENT {
             let loud = run_cases(vec![Case::new(Seeded::planted(d), None)], WINDOW)?;
             assert!(failed(&loud, &format!("seeded:{}", d.name())), "{d:?}");
         }
