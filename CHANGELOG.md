@@ -233,6 +233,22 @@ defined by the status tables in `docs/`; they win over this file.
   grid, top, prior and tie readings are `0014` (draft) questions 8 to 11. Not swept: `r`, `f32`,
   SE(2)'s `α`, `β`; `generated.rs` waits for Phase 3. No new dependency, no library code changes;
   breaks nothing.
+- `cargo xtask thresholds` also writes `xtask/src/seeded/generated.rs` (`docs/PHASE1.md` §6, `0004`
+  item 3), registered with `cargo xtask lint`: per coefficient a `Switch<f64, terms>` (the switch as a
+  bit pattern with its decimal in a comment, the series as the shortest decimal that reads back as
+  each exact rational rounded once at binary64, laid out as `rustfmt` leaves it, an objective line)
+  under the `@generated` header and the SHA-256 of the sweep CSV and of `coeff_series.jsonl` as the
+  source revisions. `just thresholds-check` (the CI job) now fails on any difference in the CSV or in
+  that file and writes nothing; tests edit one character of each and drive the entry point under a
+  scratch root, and the check names the file and the line (an edit that no longer compiles stops
+  `xtask` building: `git restore` the file). `seeded:correct` runs the generated switches, where it
+  ran the `tf_tree` D12 candidate (still the sweep's prior, its errors still pinned): its per-field
+  maxima equal the CSV's, to the bit. `seeded:c-two-terms-1e-8`, `c` with switch `1e-8` and two
+  terms, joins `--self-test`: detected when the sweep's objective for its candidate is more than
+  `10^6` times the chosen one's (measured `10^30`, rank 7841 of 8200), while the correct kernel,
+  whose `c` is the chosen candidate, stays silent; the self-test also fails when a subject's
+  measured `c` objective is not the ranked one, to the bit. `xtask` gains `sha2` (the revisions;
+  `xtask` only, `0007`); no library code changes; breaks nothing.
 
 ### Changed
 
