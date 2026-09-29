@@ -171,6 +171,18 @@ defined by the status tables in `docs/`; they win over this file.
   `f32`), `from_wxyz_normalized` and `renormalize` (first-order Newton step, no domain
   asserted since `NUMERICS.md` states none; accuracy domain documented), and the converters
   `from_xyzw`, `to_xyzw`, `from_jpl`. New public API, nothing breaks; `SO3` is not here yet.
+- `helicoid`: `SEn3Tangent<S, N>` with the `Twist` alias and `Twist::{omega, v,
+  from_translation_first, to_translation_first}`, and `SEn3Jac<S, N>` with the dual-matrix algebra
+  of `docs/PHASE3.md` §5 as a `Jac` (`mul` at `27 + 54N` multiplications, `inverse`, `neg`,
+  `apply`, `apply_transpose`, `write_dense`, `sandwich`, `identity`). `helicoid::reference`
+  (public) opens with the dense twins `sen3jac_mul` and `sen3jac_inverse` (Gauss-Jordan), writing
+  into caller memory, and the proptests `sen3jac_mul_matches_reference` and
+  `sen3jac_inverse_matches_reference` (`N = 1, 2, 3`; `f64`, `f32`, `Dual<f64, 3>`; the inverse's
+  tolerance scales with the conditioning of the dense matrix). New public API, nothing breaks; the
+  `SEn3` group is not here yet.
+- `just test` also runs the workspace tests in the release profile, where `debug_assert!` is
+  compiled out: the tests of the documented out-of-domain behaviour are `cfg(not(debug_assertions))`
+  and the dev profile skipped them. Nothing breaks.
 
 ### Changed
 

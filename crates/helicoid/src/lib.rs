@@ -2,7 +2,9 @@
 //!
 //! Implemented so far (`docs/PHASE3.md` §0.0): the traits [`Tangent`], [`Jac`] and [`LieGroup`],
 //! [`Side`] with [`Left`] and [`Right`], the translation group [`Rn`], which proves the traits
-//! compile generically, and the quaternion [`Quat`]. Every group is written against the traits and generic over the scalar
+//! compile generically, the quaternion [`Quat`], the SE_N(3) tangent [`SEn3Tangent`] with its
+//! [`Twist`] converters, and the dual-matrix Jacobian [`SEn3Jac`] with its dense twins in
+//! [`mod@reference`]. Every group is written against the traits and generic over the scalar
 //! `S: Real` of `helicoid-linalg`.
 //!
 //! # Conventions
@@ -26,13 +28,18 @@
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
 
+mod dualmat;
 mod quat;
+pub mod reference;
 mod rn;
+mod sen3;
 mod side;
 mod traits;
 
+pub use dualmat::SEn3Jac;
 pub use quat::Quat;
 pub use rn::{Rn, RnJac, RnTangent};
+pub use sen3::{SEn3Tangent, Twist};
 pub use side::{Left, Right, Side};
 pub use traits::{Jac, LieGroup, Tangent};
 
@@ -41,6 +48,8 @@ pub use traits::{Jac, LieGroup, Tangent};
 extern crate std;
 
 #[cfg(test)]
+mod dualmat_tests;
+#[cfg(test)]
 mod heis_tests;
 #[cfg(test)]
 mod laws;
@@ -48,3 +57,5 @@ mod laws;
 mod quat_tests;
 #[cfg(test)]
 mod rn_tests;
+#[cfg(test)]
+mod sen3_tests;

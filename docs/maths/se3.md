@@ -326,9 +326,16 @@ against the dual inverse $3.0\times10^{-110}$ (relative), two-sided identity $1.
 $\det\iota - (\det A)^{N+1}$ $5.3\times10^{-111}$ (relative); (c) both formulas exact; (d) the multiplications
 counted by instrumenting a naive $3\times3$ product equal $27 + 54N$ (the generic column by enumerating
 the block products of a lower-triangular product, $N = 1, 2, 3$: $4, 10, 20$; the dense one is arithmetic); (e) $\mathrm{ad}^5 = W^5 + \epsilon\sum_{j=0}^4W^j\Xi_iW^{4-j}$, relative $2.1\times10^{-111}$; the dual
-inverse of $\mathrm{Ad}_X$ equals $\mathrm{Ad}_{X^{-1}} = (R^\top, [-R^\top x_i]_\times R^\top)$, $1.3\times10^{-110}$. Script not
-committed. **Permanent:** planned, proptests `sen3jac_mul_matches_reference`,
-`sen3jac_inverse_matches_reference`.
+inverse of $\mathrm{Ad}_X$ equals $\mathrm{Ad}_{X^{-1}} = (R^\top, [-R^\top x_i]_\times R^\top)$, $1.3\times10^{-110}$. Rounding of the
+code, mpmath 1.4.1 at 60 digits against the dense product and `mp.inverse`, `f64` and `f32`, $N = 1, 2, 3$, 200
+seeded cases each, $A$ alternately Gaussian and $U\,\mathrm{diag}(1, s_2, s_3)V^\top$ with $s_2, s_3$ log-uniform on
+$[10^{-4}, 1]$ ($\kappa_F$ up to $6\times10^9$), $B_i$ Gaussian of standard deviation 2: `SEn3Jac::mul` within
+$1.6\,u$ and `sen3jac_mul` within $2.7\,u$ of the true product (Frobenius, over $\max(\lVert P\rVert_F, 1)$),
+`SEn3Jac::inverse` within $0.14\,\kappa u$ and `sen3jac_inverse` within $0.32\,\kappa u$ of the true inverse
+(over $\lVert M^{-1}\rVert_F$, $\kappa = \lVert M\rVert_F\lVert M^{-1}\rVert_F$); worst cases of one sample, not
+bounds. Script not committed. **Permanent:** proptests `sen3jac_mul_matches_reference`,
+`sen3jac_inverse_matches_reference` (`PHASE3.md` §0.0: the inverse on entries uniform on $[-1, 1)$ with
+$\kappa u \le 10^{-3}$ only).
 
 ## 6. The inverses of the Jacobians
 
