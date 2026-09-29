@@ -1,8 +1,8 @@
 //! Lie groups, Jacobians, charts and geodesics.
 //!
 //! Implemented so far (`docs/PHASE3.md` §0.0): the traits [`Tangent`], [`Jac`] and [`LieGroup`],
-//! [`Side`] with [`Left`] and [`Right`], and the translation group [`Rn`], which proves the traits
-//! compile generically. Every group is written against the traits and generic over the scalar
+//! [`Side`] with [`Left`] and [`Right`], the translation group [`Rn`], which proves the traits
+//! compile generically, and the quaternion [`Quat`]. Every group is written against the traits and generic over the scalar
 //! `S: Real` of `helicoid-linalg`.
 //!
 //! # Conventions
@@ -26,10 +26,12 @@
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
 
+mod quat;
 mod rn;
 mod side;
 mod traits;
 
+pub use quat::Quat;
 pub use rn::{Rn, RnJac, RnTangent};
 pub use side::{Left, Right, Side};
 pub use traits::{Jac, LieGroup, Tangent};
@@ -42,5 +44,7 @@ extern crate std;
 mod heis_tests;
 #[cfg(test)]
 mod laws;
+#[cfg(test)]
+mod quat_tests;
 #[cfg(test)]
 mod rn_tests;
