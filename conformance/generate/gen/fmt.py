@@ -1,10 +1,18 @@
 """Corpus text: hex-float inputs, 30-significant-digit decimal outputs, compact sorted JSON."""
 
 import json
+from typing import NamedTuple
 
 from .precision import signed_man_exp
 
 SIG = 30
+
+
+class Mat(NamedTuple):
+    """A matrix value of a record: `data` column-major, written beside a `"shape"` key."""
+
+    shape: tuple[int, int]
+    data: list
 
 
 def hex_float(x: float) -> str:

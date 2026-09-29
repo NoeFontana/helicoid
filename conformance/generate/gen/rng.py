@@ -46,3 +46,10 @@ def unit_vector_s2(rng: SplitMix64) -> tuple[float, float, float]:
     phi = 2 * mp.pi * rng.uniform()
     r = mp.sqrt(1 - z * z)
     return to_f64(r * mp.cos(phi)), to_f64(r * mp.sin(phi)), to_f64(z)
+
+
+def unit_quaternion_s3(rng: SplitMix64) -> tuple:
+    """Uniform on S3 (Shoemake 1992): a Haar-random rotation, at working precision, unrounded."""
+    u1, u2, u3 = (mpf(rng.uniform()) for _ in range(3))
+    a, b, s, t = mp.sqrt(1 - u1), mp.sqrt(u1), 2 * mp.pi * u2, 2 * mp.pi * u3
+    return a * mp.sin(s), a * mp.cos(s), b * mp.sin(t), b * mp.cos(t)

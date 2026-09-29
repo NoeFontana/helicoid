@@ -5,7 +5,7 @@ closed forms in `docs/NUMERICS.md` (`docs/PHASE1.md` §2, §4; `docs/decisions/0
 binary64 values; the corpus in `../corpus/` is committed and regenerates byte-identically.
 
 ```
-just corpus         # regenerate ../corpus, deleting a stale *.jsonl   (python -m gen all --out DIR)
+just corpus         # regenerate ../corpus, deleting a stale *.jsonl   (python -m gen all --out DIR [--jobs N])
 just corpus-check   # regenerate into a temp dir, compare every file byte for byte, run the tests
 just corpus-test    # unit tests only (stdlib unittest)
 uv run --frozen python -m gen list
@@ -18,9 +18,9 @@ uv run --frozen python -m gen list
 | `pyproject.toml`, `uv.lock`, `.python-version` | CPython 3.12, `mpmath` pinned exactly; no numpy, no gmpy2 (`setup` refuses a non-Python backend) |
 | `gen/precision.py` | the only place `mp.dps` is set (120; rechecks at 150); `to_f64` |
 | `gen/rng.py` | splitmix64, per-stratum streams, log-uniform, uniform on S² |
-| `gen/strata.py` | the strata; `gen/registry.py` the function ids; `gen/coeff.py` their definitions |
+| `gen/strata.py` | the strata; `gen/registry.py` the function ids; `gen/coeff.py`, `gen/so3.py` their definitions |
 | `gen/series.py`, `gen/check.py` | the exact Taylor series (`coeff_series`); the per-record cross-checks |
-| `gen/fmt.py`, `gen/corpus.py`, `gen/manifest.py` | text formats, assembly and recheck, `MANIFEST.json` |
+| `gen/fmt.py`, `gen/corpus.py`, `gen/manifest.py` | text formats and `Mat`, assembly (parallel by stratum) and recheck, `MANIFEST.json` |
 
 ## Record schema
 
@@ -34,15 +34,16 @@ One JSONL file per function id, one record per line, compact JSON with sorted ke
   stratum appended to the end never renumbers the rest.
 - `in`: exact binary64 as `float.hex()`. `out`: decimal strings, 30 significant digits, `d.ddd…e<n>`
   (no `+`, no zero padding), rounded half-to-even from the 120-digit value in integer arithmetic.
-- Vectors are arrays. Matrices (column-major flat array plus a sibling `shape`) are not emitted yet;
-  the first matrix id fixes the key name.
+- Vectors are arrays. A matrix (`fmt.Mat`) is its column-major flat array plus a sibling
+  `"shape":[rows,cols]` in the same `in` or `out` object, so an object holds at most one:
+  `"out":{"J":[…9 entries…],"shape":[3,3]}`.
 - `MANIFEST.json`: generator identity, Python (major.minor) and mpmath versions, `dps`, seed, recheck
   parameters, and per file the SHA-256, record count, `kind` and one check count: `rechecked`
   (records recomputed at 150 digits) for `kind: "corpus"`, the files of the schema above;
   `verified` (series equal to exact algebra) for `kind: "series"`, i.e. `coeff_series`, which has
   its own record schema below. A reader of function-id files skips every other `kind`.
 
-## Strata for scalar-θ ids (`SCALAR_THETA_STRATA`)
+## Strata (`SCALAR_THETA_STRATA`, `QUAT_STRATA`)
 
 | Stratum | θ values (binary64) | Records |
 |---|---|---|
@@ -53,9 +54,48 @@ One JSONL file per function id, one record per line, compact JSON with sorted ke
 | `theta:pi-1e-k`, k = 1…12 | the single value fl(π − 10⁻ᵏ) | 1 each |
 | `theta:dense` | 10^(j/200 − 4), j = 0…800, rounded: a grid, no randomness | 801 |
 
-For vector-valued ids every stratum except `theta:exact0` and `theta:dense` (θ only) carries axes
-(`Stratum.axes`: 64 uniform on S², z uniform then φ uniform, from the stratum's `axis` stream). A
-scalar id sees each fixed-θ stratum once.
+A scalar id sees each fixed-θ stratum once. A vector id (`so3_*`) gives every θ an axis
+(`Stratum.samples`), uniform on S² (z uniform, then φ uniform, from the stratum's `axis` stream):
+one axis per random or dense θ, 64 for a fixed θ (`theta:pi-1e-k`), and (1, 0, 0) for
+`theta:exact0`, where nothing reads it. `so3_exp` and the four Jacobians take φ = fl(θ · axis)
+componentwise (‖φ‖ = θ(1 + O(u))): 2466 records. The quaternion ids (`so3_log`, `so3_act`,
+`so3_from_matrix`) take the unit quaternion (cos θ/2, sin θ/2 · axis) rounded componentwise, and two
+strata of their own, after the θ strata (`Stratum.quaternions`):
+
+| Stratum | Quaternions | Samples |
+|---|---|---|
+| `q:w0` | (+0, u), u a unit vector, an angle of exactly π (`coeff_r`'s `q:w0` is its own, below) | 64 |
+| `q:nonunit` | a Haar-random unit quaternion (Shoemake), scaled to ‖q‖² − 1 = +2⁻⁴⁵ (even samples) or −2⁻⁴⁵ (odd), rounded: the norm is that to ~1e-16 | 64 |
+
+## SO(3)
+
+| Id | In | Out | Reference, from the definition |
+|---|---|---|---|
+| `so3_exp` | `phi` | `q` | Σ pⁿ/n!, p = (0, φ/2), by Hamilton products |
+| `so3_jr`, `so3_jl` | `phi` | `J` (3×3) | Σ (∓W)ⁿ/(n+1)!, W = [φ]× |
+| `so3_jr_inv`, `so3_jl_inv` | `phi` | `J` | `mp.inverse` of the above |
+| `so3_log` | `q` | `phi` | the φ with Exp(φ) = q/‖q‖ on θ ∈ [0, π], by Newton's method on the series |
+| `so3_act` | `q`, `p` | `Rp` | R(q/‖q‖) p, R(q) of `docs/NUMERICS.md` §1; p uniform on S² |
+| `so3_from_matrix` | `R` (3×3) | `q` | the quaternion of the rotation nearest to R in Frobenius norm |
+
+- **Series** stop when two terms in a row are below 10^-(dps−10) of the partial sum, entry by entry
+  (each part of the quaternion): an entry of 10⁻³¹¹ keeps its 30 digits, as at `theta:subnormal`.
+  A zero component of φ (of vec q for `log`) stays exactly zero in the result: vec Exp(φ) ∥ φ.
+- **`so3_log`** solves Exp(φ) = q̂ by φ += J_r(φ)⁻¹ · 2 vec(Exp(φ)* q̂) at precisions that follow
+  the accuracy reached (float seed, 14 digits → 120), and stops when the residual, at the full
+  precision, is below 10⁻¹¹⁰ of |vec q̂|. The series is the definition, so the float `atan2` that
+  seeds it cannot bias the result, and the form of `docs/NUMERICS.md` §3.2 is never evaluated. q̂ is q/‖q‖ flipped
+  to w ≥ 0 (§3.2: w < 0 negates, w = +0 stays): at w = +0, (+0, u) gives +πû and (+0, −u) gives
+  −πû, the function of the quaternion, not of the rotation. Every stratum but `q:w0` holds each
+  quaternion and then its negative (the half a `Log` without the flip gets wrong; `PHASE1.md` §10);
+  the negative of (+0, u) has w = −0, not the +0 of `q:w0`, so that stratum has none.
+- **`so3_from_matrix`**: R is R(q) of the stratum's quaternion rounded to binary64, so not exactly
+  orthogonal, and a scaled rotation for `q:nonunit`. The reference is the polar factor Q of the
+  exact input (Higham's iteration X ← (X + X⁻ᵀ)/2, the nearest rotation in Frobenius norm), then q
+  with R(q) = Q by q ← q(1, d/2) with d = vee skew(R(q)ᵀQ) (cubic), sign w > 0, else the first
+  nonzero of x, y, z positive. A rotation by exactly π (`q:w0` rounds to a symmetric matrix) has
+  w = 0 and either sign; |w| below 10⁻¹¹⁰ is that zero. `docs/NUMERICS.md` §11 scores this id by
+  backward error, so `q` is informational.
 
 ## Coefficients
 
@@ -109,6 +149,21 @@ Every `coeff_*` record is compared, at generation, to 100 digits, with (`check.p
 
 Neither shares code with `mp.diff` on the definition. The 150-digit recheck still applies.
 
+Every `so3_*` record is checked to 100 digits by a property that fixes its output without the
+algorithm that produced it (`check.py`):
+
+- `exp`, `log`: R(q) is `mp.expm` of the hat matrix, entries to 10⁻¹⁰⁰ and the skew part (which
+  carries vec q) to 10⁻¹⁰⁰ of the off-diagonal size; R(q) is orthogonal with det +1; for `log`
+  also the series residual (w > 0 side, to 10⁻¹⁰⁰ of |vec q|) and |φ| ≤ π.
+- `act`: R(q/‖q‖) p is the sandwich q p q*. `from_matrix`: A = R(q) H with H symmetric positive
+  definite, which pins the polar factor down.
+- `jr`, `jl`: J_l = R J_r (`docs/NUMERICS.md` §1) against the other series; the inverses: J J⁻¹ = I
+  against the series. The diagonal is held to 10⁻¹⁰⁰, the off-diagonal part to 10⁻¹⁰⁰ of the
+  series' own size: at `theta:subnormal` J = I + 10⁻³¹⁰, and an absolute 10⁻¹⁰⁰ would pass any
+  off-diagonal entry.
+- `act` at `theta:subnormal` has no tiny part to check: Rp = p + O(10⁻³¹⁰) is p at the working
+  precision (all 64 records), so 10⁻¹⁰⁰ is all its value carries.
+
 ## Decisions
 
 - **Guard digits.** A definition that cancels is evaluated by `coeff.stable`: twice, at growing
@@ -136,8 +191,14 @@ Neither shares code with `mp.diff` on the definition. The 150-digit recheck stil
   `pyproject.toml`, `uv.lock`, `.python-version` and `gen/**/*.py`, not a git revision, which would
   change with every commit and cannot appear inside the commit it names. Any edit to those files
   changes the manifest, so the corpus is regenerated in the same PR.
-- **Serial.** A full run takes about ten seconds, most of it the cross-checks. Per-stratum streams make a process pool
-  order-independent when a later id needs one.
+- **Tests.** The unit tests regenerate a three-stratum subset (`exact0`, `1e-6`, `q:w0`) serially
+  and with two workers and compare it with the committed records: the worker count cannot change a
+  byte. The whole corpus is regenerated once, and compared to the committed one byte for byte,
+  manifest included, by `just corpus-check`; a second full regeneration inside the tests would
+  only double its four CPU-minutes.
+- **Parallel.** One task per (id, stratum), joined in catalogue order, so the bytes are those of a
+  serial run whatever `--jobs` (`build_all`; default every core). The corpus is about 4 CPU-minutes
+  (`so3_log` and the Jacobians the most), about a minute on four cores.
 
 ## Adding a function id
 
@@ -145,6 +206,7 @@ Neither shares code with `mp.diff` on the definition. The 150-digit recheck stil
    mpf) out, computed from the definition at the current `mp.dps`, with no dependence on the closed
    forms under test.
 2. Add one `FunctionSpec` to `FUNCTIONS` in `gen/registry.py` with its strata and input builder;
-   a new stratum family goes in `gen/strata.py` and needs a decision record first.
+   a new stratum family goes in `gen/strata.py` and needs a decision record first (`q:w0` and
+   `q:nonunit` are `PHASE1.md` §4.4's).
 3. Add a test against an independent computation and, where a second formulation exists, a
    `check` for `FunctionSpec`; run `just corpus`, and commit the result.
