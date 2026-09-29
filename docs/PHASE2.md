@@ -18,7 +18,7 @@ signatures in code blocks are normative.
 | `Vector`, `Matrix`, `Point`, `hat`/`vee`, `Mat3::inverse_adj`, `chol` (§4) | Partial: `Vector`, `Point`, `Matrix`, the aliases, every listed operation, `Blend`, `hat`/`vee`, `Mat3::inverse_adj` done; algebra proptests under `f64`, `f32`, `Dual<f64, 2>` with derived and measured bounds (10^6 cases, seeded recipe in the test header); summation order and `-0` pinned to the bit; no `PartialEq` and no `Point + Point` pinned by `compile_fail` doctests; the magnitude range of `norm` and `inverse_adj` documented and pinned; `chol`, `solve_lower`, `solve_upper` done (Cholesky-Crout, `NUMERICS.md` §15; mask `0 < pivot` and every entry finite; a failed pivot gives `L_jj = 1` and a zero column, an overflowing entry is stored as `+0`, so `L` is finite for every input; summation order pinned to the bit; proptests at `N = 1..=6` under `f64`, `f32`, `Dual<f64, 2>` against Higham's Thm 8.5, 10.3, 10.4 bounds, rank-deficient, near-singular and wide-dynamic-range inputs, the mask at a zero pivot, the solves' `debug_assert!` under `should_panic`; no corpus stratum or reference twin yet, §8); `Mat2` adjugate not started |
 | `Strided`, `StridedMut` (§5) | Done: `col_major`, `row_major`, `with_strides`, `block`, `get`, `rows`, `cols`, `set`; out-of-bounds access panics in release (saturating index, never wraps); the constructors `debug_assert!` the fit; tested against the index formula, faer/Ceres layouts and an exact `u128` model over both view types; `write_dense` (Phase 3) is the first consumer |
 | `eig3`, `svd3`, `solve_cubic` + corpus ids (§6) | Not started |
-| `mint` feature (§7) | Not started |
+| `mint` feature (§7) | Done: optional feature `mint` (`mint` >= 0.5.7, no default features), `From`/`Into` both ways for `Vector<S, 2..=4>`, `Point<S, 2..=3>` and `Matrix<S, N, N>` at `N` = 2..=4 (`ColumnMatrixN`, field `x` is column 0), `S = f32, f64`; bitwise round trips (`-0`, infinities, subnormals, signalling and payload NaNs pinned in every slot, plus random bit patterns) and component and column order tested; `mint` has no `Point4`, so `Point` stops at 3; `just lint test` cover the feature, `just msrv no-std wasm` build it |
 | omnisac migration (§9) | Not started |
 
 ## 0. Non-goals and guardrails — read first
@@ -204,8 +204,9 @@ their Jacobian through these (faer `MatMut` and Ceres row-major buffers both map
 
 ## 7. `mint`
 
-`From`/`Into` between `Vector<S, N>`/`Point<S, N>` (`N` = 2, 3, 4) and `mint::VectorN`/`PointN`,
-and between `Matrix<S, N, N>` and `mint::ColumnMatrixN`, for `S = f32, f64`. Nothing else.
+`From`/`Into` between `Vector<S, N>`/`Point<S, N>` (`N` = 2, 3, 4) and `mint::VectorN`/`PointN`
+(`mint` defines no `Point4`, so `Point` converts at `N` = 2, 3), and between `Matrix<S, N, N>` and
+`mint::ColumnMatrixN`, for `S = f32, f64`. Nothing else.
 
 ## 8. Tests
 

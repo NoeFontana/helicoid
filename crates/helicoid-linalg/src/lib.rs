@@ -6,6 +6,12 @@
 //! [`Point`] and column-major [`Matrix`] with [`hat`]/[`vee`], [`Mat3::inverse_adj`] and the
 //! Cholesky factorization [`chol`] with [`solve_lower`]/[`solve_upper`] (§4), and the strided
 //! views [`Strided`]/[`StridedMut`] over caller memory (§5).
+//!
+//! The optional feature `mint` (off by default) adds `From`/`Into` between [`Vector`]/[`Point`]/
+//! [`Matrix`] and the `mint` types, for `f32` and `f64` (§7); it is the only interop, so
+//! nalgebra, glam and cgmath reach these types through `mint`. `mint` has no 4-D point, so
+//! `Point` converts at `N` = 2 and 3 only.
+//!
 //! Numeric code is written once, generic over `S: Real`; a comparison yields `S::Mask` and control
 //! flow goes through [`Real::branch`] and [`Real::select`].
 //!
@@ -28,6 +34,8 @@ mod chol;
 mod dual;
 mod float;
 mod matrix;
+#[cfg(feature = "mint")]
+mod mint;
 mod point;
 mod real;
 mod skew;
@@ -53,5 +61,7 @@ mod chol_tests;
 mod dual_tests;
 #[cfg(test)]
 mod linalg_tests;
+#[cfg(all(test, feature = "mint"))]
+mod mint_tests;
 #[cfg(test)]
 mod tests;

@@ -18,8 +18,13 @@ workspace = true
 all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
 
+[features]
+# `From`/`Into` between `Vector`, `Point`, `Matrix` and `mint` (`docs/PHASE2.md` §7). Off by default.
+mint = ["dep:mint"]
+
 [dependencies]
 libm.workspace = true
+mint = { workspace = true, optional = true }
 
 [dev-dependencies]
 proptest.workspace = true

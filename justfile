@@ -13,12 +13,15 @@ build:
 test:
     cargo nextest run --workspace --no-tests=pass
     cargo test --doc --workspace
+    cargo nextest run -p helicoid-linalg --features mint
+    cargo test --doc -p helicoid-linalg --features mint
 
 # fmt, clippy with warnings denied, then the repository checks of `cargo xtask lint`.
 lint:
     cargo fmt --all -- --check
     cargo clippy --workspace --all-targets -- -D warnings
     cargo xtask lint
+    cargo clippy -p helicoid-linalg --all-targets --features mint -- -D warnings
 
 # cargo-deny: advisories, licenses, sources for the whole workspace; the `0007` bans for the normal
 # dependencies of everything but `xtask` (dev-dependencies such as `proptest` are out of scope).
@@ -43,11 +46,14 @@ msrv:
     rustup toolchain list | grep -q "^$want" \
         || { echo "the floor is $want; install it: rustup toolchain install $want --profile minimal"; exit 1; }
     cargo "+$want" build --workspace --lib --bins --locked
+    cargo "+$want" build -p helicoid-linalg --features mint --lib --locked
 
 # No `std`, no `alloc`: the library crates on a bare-metal target.
 no-std:
     cargo build --target thumbv7em-none-eabihf -p helicoid-linalg -p helicoid --locked
+    cargo build --target thumbv7em-none-eabihf -p helicoid-linalg --features mint --locked
 
 # Library crates on wasm32. Runs under wasmtime once the conformance subject exists.
 wasm:
     cargo build --target wasm32-wasip1 -p helicoid-linalg -p helicoid --locked
+    cargo build --target wasm32-wasip1 -p helicoid-linalg --features mint --locked
