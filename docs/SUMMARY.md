@@ -12,6 +12,7 @@
 # Derivations (non-normative)
 - [Maths: notation, conventions, how results are checked](maths/index.md)
 - [Lie groups, adjoints and the Jacobians of Exp](maths/lie-groups.md)
+- [SO(3): quaternion, Exp, Log, Jacobians, from_matrix](maths/so3.md)
 
 # Specifications
 - [Phase 1: skeleton and the instrument](PHASE1.md)
