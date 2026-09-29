@@ -41,11 +41,31 @@ struct Runner {
     answers: &'static [&'static str],
 }
 
-const RUNNERS: &[Runner] = &[Runner {
-    name: "tf_tree_math",
-    dir: "runners/tf_tree_math",
-    answers: &["so3_exp", "so3_log", "sen3_exp_n1", "sen3_log_n1"],
-}];
+const RUNNERS: &[Runner] = &[
+    Runner {
+        name: "tf_tree_math",
+        dir: "runners/tf_tree_math",
+        answers: &["so3_exp", "so3_log", "sen3_exp_n1", "sen3_log_n1"],
+    },
+    Runner {
+        name: "sophus_rs",
+        dir: "runners/sophus_rs",
+        answers: &[
+            "so3_exp",
+            "so3_log",
+            "so3_jl",
+            "so3_jr",
+            "so3_jl_inv",
+            "so3_jr_inv",
+            "sen3_exp_n1",
+            "sen3_log_n1",
+            "sen3_jl_n1",
+            "sen3_jr_n1",
+            "sen3_jl_inv_n1",
+            "sen3_jr_inv_n1",
+        ],
+    },
+];
 
 /// A runner's answers, read back from its files.
 pub(crate) struct FileSubject {
@@ -425,9 +445,32 @@ mod tests {
                 .err()
                 .unwrap_or_default()
         };
-        assert!(go("nope", None).contains("no oracle runner `nope`; have [\"tf_tree_math\"]"));
+        assert!(go("nope", None)
+            .contains("no oracle runner `nope`; have [\"tf_tree_math\", \"sophus_rs\"]"));
         assert!(go("tf_tree_math", Some("nope")).contains("no corpus file for `--fn nope`"));
         assert!(!scratch.0.exists());
+        Ok(())
+    }
+
+    /// A misspelled id would otherwise never be looked for: `execute` checks only the owed ids
+    /// that the corpus has.
+    #[test]
+    fn every_owed_function_is_a_corpus_function_of_a_runner_that_exists() -> Result<(), String> {
+        let (root, entries) = (super::super::root()?, corpus::manifest(&corpus_dir()?)?);
+        for runner in RUNNERS {
+            assert!(
+                root.join(runner.dir).join("Cargo.toml").is_file(),
+                "{}",
+                runner.name
+            );
+            for id in runner.answers {
+                assert!(
+                    entries.iter().any(|e| e.fn_id == *id),
+                    "{}: {id}",
+                    runner.name
+                );
+            }
+        }
         Ok(())
     }
 

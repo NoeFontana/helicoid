@@ -453,6 +453,19 @@ defined by the status tables in `docs/`; they win over this file.
   underflow to 0). The pin exports no `V`/`V⁻¹` and no Jacobian, so there is no `coeff_*` row; the
   file protocol and the ids not answered are 0014 (draft) questions 26 and 27. No library code
   changes; breaks nothing.
+- `runners/sophus_rs`, oracle #2 (`docs/PHASE1.md` §7): a workspace-excluded runner with its own
+  `Cargo.lock` and `sophus_lie` 0.15.0 (with `sophus_autodiff` 0.15.0) as exact registry pins. It
+  answers `so3_{exp,log,jl,jr,jl_inv,jr_inv}` and `sen3_{exp,log,jl,jr,jl_inv,jr_inv}_n1` through
+  `helicoid_to_sophus_rs_*` / `sophus_rs_to_helicoid_*` conversions with hand-computed tests: 0.15.0
+  is rotation-first and `w`-first like `0002` (0.14.0 and earlier are translation-first), so they
+  change a layout, not an order. The right Jacobians are the left ones at `−τ`. `just
+  oracle-sophus-rs` runs it, audited with the runner's own `deny.toml` (one `paste` advisory).
+  Measured, 484 rows, no non-finite output: `so3_exp` and `so3_log` at most 2.74 `u`, and every
+  Jacobian up to 7.3e12 `u` for `θ ≤ 1e-3`, where `left_jacobian` and `inv_left_jacobian` take a
+  small-angle arm of the wrong sign; `sen3_exp_n1` at most 5.8e8 `u`; `sen3_log_n1` 1.78e16 `u` in
+  `q:w0`, the other branch of `Log` at `θ = π`. The per-stratum rows are only in the untracked
+  `conformance/results/sophus_rs.csv`. The pin, the right Jacobians and that branch are 0014 (draft)
+  questions 28 to 30. No library code changes; breaks nothing.
 - `helicoid-linalg`: `Real::cbrt` (`docs/PHASE2.md` §2 and §3, `docs/API.md` §2, `docs/NUMERICS.md`
   §12; step 1 of `0017`, which `solve_cubic` needs): the real cube root, total and odd, through
   `libm::cbrt`/`cbrtf`. `Dual` differentiates it as `d / (3 c^2)`, `c = cbrt v`: infinite at 0
