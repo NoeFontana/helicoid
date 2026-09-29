@@ -1,7 +1,6 @@
 //! Subjects (`docs/PHASE1.md` §5): anything the harness evaluates over the corpus in process.
 
 use std::collections::BTreeMap;
-use std::path::Path;
 
 use helicoid_linalg::Precision;
 
@@ -41,6 +40,6 @@ impl Registered {
 
 /// The in-process subjects: the seeded kernels and defects (`crate::seeded`); `helicoid` arrives
 /// with Phase 3. The harness's own oracles are test subjects and never rows a bar reads.
-pub(crate) fn registry(corpus: &Path) -> Result<Vec<Registered>, String> {
-    crate::seeded::registry(corpus)
+pub(crate) fn registry() -> Vec<Registered> {
+    crate::seeded::registry()
 }

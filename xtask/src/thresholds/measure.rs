@@ -89,7 +89,7 @@ mod tests {
     use crate::conformance::corpus_dir;
     use crate::conformance::metric::rule;
     use crate::conformance::subject::Subject;
-    use crate::seeded::{d12, Seeded};
+    use crate::seeded::{d12, Defect, Seeded};
     use crate::thresholds::grid::grid;
     use crate::thresholds::search::score;
 
@@ -100,13 +100,17 @@ mod tests {
         series: &Series<D1>,
         candidate: Candidate<D1>,
     ) -> Result<f64, String> {
+        whole_subject(c, &Seeded::uniform(series, candidate))
+    }
+
+    /// [`whole_kernel`] of `subject`, whatever it runs `c` with.
+    fn whole_subject(c: Coeff, subject: &Seeded) -> Result<f64, String> {
         let dir = corpus_dir()?;
         let fn_id = format!("coeff_{}", c.name());
         let entry = corpus::manifest(&dir)?
             .into_iter()
             .find(|e| e.fn_id == fn_id)
             .ok_or("no entry")?;
-        let subject = Seeded::correct(series.clone(), candidate);
         let rule = rule(&fn_id).ok_or("no rule")?;
         let mut worst = 0.0f64;
         for rec in corpus::read(&dir, &entry)? {
@@ -150,6 +154,91 @@ mod tests {
                     "{c:?} {terms} {switch:e}"
                 );
             }
+        }
+        Ok(())
+    }
+
+    /// `(terms, switch_bits, value_max_u, deriv_max_u)` of `c`'s row of the committed sweep.
+    fn committed_row(c: Coeff) -> Result<(usize, u64, f64, f64), String> {
+        let path = crate::conformance::root()?.join(super::super::CSV);
+        let text = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
+        let header: Vec<&str> = super::super::HEADER.split(',').collect();
+        let row = text
+            .lines()
+            .find(|l| l.starts_with(&format!("{},", c.name())))
+            .ok_or("no row")?;
+        let cells: Vec<&str> = row.split(',').collect();
+        let cell = |name: &str| {
+            let i = header.iter().position(|h| *h == name).ok_or(name)?;
+            Ok::<_, String>(cells[i])
+        };
+        let float = |name: &str| cell(name)?.parse::<f64>().map_err(|e| e.to_string());
+        let bits = u64::from_str_radix(cell("switch_bits")?.trim_start_matches("0x"), 16)
+            .map_err(|e| e.to_string())?;
+        let terms = cell("terms")?.parse().map_err(|e| format!("{e}"))?;
+        Ok((terms, bits, float("value_max_u")?, float("deriv_max_u")?))
+    }
+
+    #[test]
+    fn the_generated_kernel_scores_the_objective_the_sweep_chose() -> Result<(), String> {
+        // The subject that runs `generated.rs` is the candidate the CSV records: the same terms and
+        // switch bits, the same series (the largest score is the sweep's objective to the bit),
+        // whatever order the constants are listed in.
+        let generated = Seeded::generated();
+        for c in Coeff::ALL {
+            let (terms, bits, value, deriv) = committed_row(c)?;
+            let cand = generated.candidate(c);
+            assert_eq!(cand.terms, terms, "{c:?}");
+            assert_eq!(cand.switch_z.v.to_bits(), bits, "{c:?}");
+            assert_eq!(generated.series(c).len(), terms, "{c:?}");
+            let worst = whole_subject(c, &generated)?;
+            assert_eq!(worst.to_bits(), value.max(deriv).to_bits(), "{c:?}");
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn the_generated_series_is_the_corpus_series_rounded_once() -> Result<(), String> {
+        let (generated, corpus) = (Seeded::generated(), Series::<f64>::load(&corpus_dir()?)?);
+        for c in Coeff::ALL {
+            let got: Vec<u64> = generated.series(c).iter().map(|x| x.v.to_bits()).collect();
+            let want: Vec<u64> = corpus.of(c).iter().map(|x| x.to_bits()).collect();
+            assert_eq!(got, want[..got.len()], "{c:?}");
+            assert!(generated.series(c).iter().all(|x| x.d[0] == 0.0), "{c:?}");
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn the_planted_c_scores_what_the_sweep_ranks() -> Result<(), String> {
+        // The subject that plants `c` scores, over the whole corpus, exactly the objective the
+        // sweep's `score` gives its candidate: the ranking is of the subject that runs.
+        let dir = corpus_dir()?;
+        let series = Series::<D1>::load(&dir)?;
+        let samples = samples(&dir, &series, Coeff::C)?.samples;
+        let (terms, switch) = crate::seeded::C_PLANTED;
+        let planted = Seeded::planted(Defect::CTwoTermsEarly);
+        assert_eq!(planted.candidate(Coeff::C).terms, terms);
+        assert_eq!(
+            planted.candidate(Coeff::C).switch_z.v.to_bits(),
+            switch.to_bits()
+        );
+        let (whole, spliced) = (
+            whole_subject(Coeff::C, &planted)?,
+            score(&samples, terms, switch).objective(),
+        );
+        assert_eq!(whole.to_bits(), spliced.to_bits());
+        // Every other coefficient of the planted subject is the generated one.
+        let generated = Seeded::generated();
+        for c in Coeff::ALL
+            .into_iter()
+            .filter(|&c| c != Coeff::C && c != Coeff::B && c != Coeff::K)
+        {
+            assert_eq!(
+                whole_subject(c, &planted)?.to_bits(),
+                whole_subject(c, &generated)?.to_bits(),
+                "{c:?}"
+            );
         }
         Ok(())
     }

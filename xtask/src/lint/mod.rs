@@ -160,12 +160,13 @@ mod tests {
     /// One violation of each kind, so a check dropped from `CHECKS` fails here.
     #[test]
     fn every_check_runs() {
-        let files = [
+        let mut files = vec![
             File::new("docs/decisions/0013-x.md", "**Status:** draft\n"),
             File::new("docs/A.md", &line_cite("foo", 3)),
             File::new("crates/a/src/lib.rs", "// settled by 0013\n"),
             File::new("docs/G.md", "<!-- @generated -->\n"),
         ];
+        files.extend(generated::stubs());
         let out: Vec<String> = check_all(&files).iter().map(ToString::to_string).collect();
         for tag in ["[citations]", "[drafts]", "[generated]"] {
             assert_eq!(
@@ -219,6 +220,12 @@ mod tests {
                     .ok_or(format!("git {args:?}"))
             })
         };
+        for stub in generated::stubs() {
+            let path = root.join(&stub.path);
+            let dir = path.parent().ok_or("no parent")?;
+            std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+            std::fs::write(&path, &stub.text).map_err(|e| e.to_string())?;
+        }
         let out = git(&["init", "-q"])
             .and_then(|()| git(&["add", "."]))
             .and_then(|()| check_root(root));
@@ -266,10 +273,11 @@ mod tests {
 
     #[test]
     fn violations_format_and_sort() {
-        let files = [
+        let mut files = vec![
             File::new("b.md", &line_cite("x", 3)),
             File::new("a.md", &line_cite("y", 9)),
         ];
+        files.extend(generated::stubs());
         let out: Vec<String> = check_all(&files).iter().map(ToString::to_string).collect();
         assert_eq!(out.len(), 2);
         assert!(out[0].starts_with("a.md:1: "), "{out:?}");

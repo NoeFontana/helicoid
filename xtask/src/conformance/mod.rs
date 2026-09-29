@@ -236,13 +236,12 @@ pub(crate) fn run(args: &[String]) -> Result<(), String> {
         return selftest::run(&corpus_dir()?);
     }
     let rev = git_rev(&root);
-    let corpus = corpus_dir()?;
     run_with(
-        &corpus,
+        &corpus_dir()?,
         &results,
         &rev,
         &options,
-        subject::registry(&corpus)?,
+        subject::registry(),
     )
 }
 
@@ -437,7 +436,7 @@ mod tests {
         let scratch = Scratch::new("planted");
         let run = |args: &[&str]| {
             let args: Vec<String> = args.iter().map(ToString::to_string).collect();
-            let all = subject::registry(&corpus_dir()?)?;
+            let all = subject::registry();
             run_with(&corpus_dir()?, &scratch.0, "rev", &parse_args(&args)?, all)
         };
         let ok = run(&["--fn", "coeff_k"]);

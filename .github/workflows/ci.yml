@@ -41,7 +41,10 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
+      # `rustfmt`: a test runs it over the emitter's layouts (`xtask/src/thresholds/emit.rs`).
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
       - uses: Swatinem/rust-cache@v2
       - uses: taiki-e/install-action@v2
         with:
@@ -124,7 +127,8 @@ jobs:
           tool: just
       - run: just conformance --self-test
 
-  # The seeded kernels' sweep must equal the committed conformance/sweeps/thresholds.csv.
+  # The seeded kernels' sweep must equal the committed conformance/sweeps/thresholds.csv and
+  # xtask/src/seeded/generated.rs, which a hand edit fails.
   thresholds:
     name: thresholds-check
     runs-on: ubuntu-latest

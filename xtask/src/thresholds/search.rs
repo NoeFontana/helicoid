@@ -104,6 +104,17 @@ fn preference(a: &Score, b: &Score) -> Ordering {
         .then(b.switch.total_cmp(&a.switch))
 }
 
+/// 1 + the candidates of `1..=TERMS` times `grid` whose objective is strictly below `objective`:
+/// where a candidate stands in the sweep, the rank [`Sweep::prior_rank`] reports for the prior.
+pub(super) fn rank_of(samples: &[Sample], grid: &[f64], objective: f64) -> usize {
+    let swept = (1..=TERMS).flat_map(|terms| grid.iter().map(move |&switch| (terms, switch)));
+    let below = swept.filter(|&(terms, switch)| {
+        let o = score(samples, terms, switch).objective();
+        o.total_cmp(&objective).is_lt()
+    });
+    1 + below.count()
+}
+
 /// The outcome of one search.
 #[derive(Debug)]
 pub(super) struct Sweep {
@@ -221,6 +232,9 @@ mod tests {
         // The prior at `g[10]` selects the exact arm below `t`: 1e6, beaten by every candidate
         // that has the switch right, which is one per length.
         assert_eq!((s.prior.objective(), s.prior_rank), (1e6, 9));
+        // The same rank from the objective alone, and the chosen candidate's is 1.
+        assert_eq!(rank_of(&samples, &g, 1e6), 9);
+        assert_eq!(rank_of(&samples, &g, s.chosen.objective()), 1);
         Ok(())
     }
 

@@ -68,11 +68,13 @@ conformance *args:
     cargo xtask conformance {{args}}
 
 # The threshold sweep of the seeded kernels over the corpus (`docs/PHASE1.md` §6): writes
-# conformance/sweeps/thresholds.csv. `coeffs/generated.rs` joins it with Phase 3.
+# conformance/sweeps/thresholds.csv and xtask/src/seeded/generated.rs. `coeffs/generated.rs`
+# joins them with Phase 3. The second is compiled into xtask: a hand edit that no longer compiles
+# stops this recipe too, and `git restore xtask/src/seeded/generated.rs` is the way back.
 thresholds:
     cargo xtask thresholds
 
-# A fresh sweep must equal the committed CSV byte for byte.
+# A fresh sweep must equal both committed files byte for byte; nothing is written.
 thresholds-check:
     cargo xtask thresholds --check
 

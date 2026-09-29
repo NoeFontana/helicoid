@@ -11,6 +11,9 @@ use serde::Deserialize;
 use super::kernel::Coeff;
 use crate::conformance::number::{ratio_to_f32, ratio_to_f64};
 
+/// The series file, in the corpus directory.
+pub(crate) const FILE: &str = "coeff_series.jsonl";
+
 /// `"num/den"` (`"-1/48"`, a denominator is required) as sign, numerator and denominator.
 fn parse_rational(text: &str) -> Result<(bool, BigUint, BigUint), String> {
     let bad = || format!("bad rational `{text}`");
@@ -60,7 +63,7 @@ pub(crate) struct Series<S>(Vec<Vec<S>>);
 
 impl<S: Real> Series<S> {
     pub(crate) fn load(corpus: &Path) -> Result<Self, String> {
-        let path = corpus.join("coeff_series.jsonl");
+        let path = corpus.join(FILE);
         let text =
             std::fs::read_to_string(&path).map_err(|e| format!("{}: {e}", path.display()))?;
         let mut found: [Option<Vec<S>>; 6] = Default::default();
