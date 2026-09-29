@@ -50,3 +50,4 @@
 - [0019: A Cholesky solve without the transpose](decisions/0019-a-cholesky-solve-without-the-transpose.md)
 - [0020: `Dual::sqrt` at zero keeps its derivative](decisions/0020-dual-sqrt-at-zero-keeps-its-derivative.md)
 - [0021: The Cholesky finite guard stays](decisions/0021-the-cholesky-finite-guard-stays.md)
+- [0022: `solve_cubic`'s `acos` and the limits it inherits (draft)](decisions/0022-solve-cubic-acos-and-inherited-limits.md)

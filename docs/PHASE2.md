@@ -17,7 +17,7 @@ signatures in code blocks are normative.
 | `Dual<S, N>` (§3) | Partial: type, `constant`/`variable`, `Real` with every §3 rule, `Blend<S>`, `dual_value_is_plain_value` over every `Real` method (`f64`, `f32`, nested, poisoned derivatives; bitwise up to NaN sign and payload of arithmetic outputs), second order through nesting on `sin_cos`, `atan2` and `cbrt`, `sqrt` and `cbrt` at 0 tested, `sqrt` also through `Vector<Dual>::norm` of the zero vector and `chol` on a zero or negative pivot; `copysign` takes `sgn(s)` from the sign bit; the `atan2`, `sqrt`, `cbrt` and quotient derivative domains are documented and pinned; `dual_matches_mpmath_derivative` runs on an inline mpmath fixture (`sqrt`, `sin_cos`, `atan2`, quotient, product) and `dual_cbrt_matches_mpmath_derivative` on its own (`cbrt`, first order, `f64` and `f32`; second order and the Hessian of `cbrt(x y)` at `f64`, in two nesting tests), not yet on the corpus ids `real_*` (§8, needs the Phase 1 generator) |
 | `Vector`, `Matrix`, `Point`, `hat`/`vee`, `Mat3::inverse_adj`, `chol` (§4) | Partial: `Vector`, `Point`, `Matrix`, the aliases, every listed operation, `Blend`, `hat`/`vee`, `Mat3::inverse_adj` done; algebra proptests under `f64`, `f32`, `Dual<f64, 2>` with derived and measured bounds (10^6 cases, seeded recipe in the test header); summation order and `-0` pinned to the bit; no `PartialEq` and no `Point + Point` pinned by `compile_fail` doctests; the magnitude range of `norm` and `inverse_adj` documented and pinned; `chol`, `solve_lower`, `solve_upper`, `chol_solve` done (Cholesky-Crout, `NUMERICS.md` §15; mask `0 < pivot` and every entry finite; a failed pivot gives `L_jj = 1` and a zero column, an overflowing entry is stored as `+0`, so `L` is finite for every input; summation order pinned to the bit; proptests at `N = 1..=6` under `f64`, `f32`, `Dual<f64, 2>` against Higham's Thm 8.5, 10.3, 10.4 bounds, rank-deficient, near-singular and wide-dynamic-range inputs, the mask at a zero pivot, the solves' `debug_assert!` under `should_panic`; `chol_solve` reads `L` by column, bit-identical (NaN sign and payload aside) to its reference twin `solve_upper(&l.transpose(), solve_lower(&l, b))` by `chol_solve_matches_reference` over every special value, [`0019`](./decisions/0019-a-cholesky-solve-without-the-transpose.md); no corpus stratum for any of them and no reference twin for the other three yet, §8); `Mat2` adjugate not started |
 | `Strided`, `StridedMut` (§5) | Done: `col_major`, `row_major`, `with_strides`, `block`, `get`, `rows`, `cols`, `set`; out-of-bounds access panics in release (saturating index, never wraps); the constructors `debug_assert!` the fit; tested against the index formula, faer/Ceres layouts and an exact `u128` model over both view types; `write_dense` (Phase 3) is the first consumer |
-| `eig3`, `svd3`, `solve_cubic` + corpus ids (§6) | Not started (`Real::cbrt`, which `solve_cubic` needs, is done) |
+| `eig3`, `svd3`, `solve_cubic` + corpus ids (§6) | Partial: `solve_cubic` done ([`0017`](./decisions/0017-cbrt-and-mask-valued-roots.md) step 2): omnisac's algorithm generic over `S: Real`, the roots as `(Vec3<S>, [S::Mask; 3])`, every branch a `branch`/`select` at a safe argument, `acos` as `atan2(sqrt((1 - x)(1 + x)), x)` and `pi` as `atan2(+0, -1)` (a reading, [`0022`](./decisions/0022-solve-cubic-acos-and-inherited-limits.md) (draft): `Real` has no `acos`), the tolerances power-of-two literals per precision; tested against omnisac's cases, an inline mpmath fixture of the four strata (`f64`, `f32`; `mp.polyroots`, sympy exact roots for the repeated roots), a planted-root proptest (exact dyadic roots, five families, `f64`, `f32`, `Dual`) against a measured error model that holds where `disc` exceeds its own rounding error, 36 golden rows equal to omnisac's algorithm with the port's tolerances to the bit outside the trigonometric arm (pinned inside it), the slot order, the `Dual` value path, its derivative, two lanes, and the mask (a random-bit proptest); the limits outside the model (a dropped repeated root, underflow, the one-real-root cancellation) are pinned and in the rustdoc `# Domain`, none fixed (`0022` (draft)); **no corpus id and no conformance subject yet**, and the one-real-root arm is not backward stable; `eig3` and `svd3` not started |
 | `mint` feature (§7) | Done: optional feature `mint` (`mint` >= 0.5.7, no default features), `From`/`Into` both ways for `Vector<S, 2..=4>`, `Point<S, 2..=3>` and `Matrix<S, N, N>` at `N` = 2..=4 (`ColumnMatrixN`, field `x` is column 0), `S = f32, f64`; bitwise round trips (`-0`, infinities, subnormals, signalling and payload NaNs pinned in every slot, plus random bit patterns) and component and column order tested; `mint` has no `Point4`, so `Point` stops at 3; `just lint test` cover the feature, `just msrv no-std wasm` build it |
 | omnisac migration (§9) | Not started |
 
@@ -207,8 +207,17 @@ their Jacobian through these (faer `MatMut` and Ceres row-major buffers both map
 - `svd3(a: &Mat3<S>) -> (Mat3<S>, Vec3<S>, Mat3<S>)`: McAdams et al., fixed Jacobi sweep count
   (no convergence loop), signed so $\det U = \det V = +1$ and only $\sigma_3$ may be negative
   (`nearest_rotation` is $U V^\top$ directly). Against `mp.svd_r`.
-- `solve_cubic`: **omnisac's current signature, unchanged**, so its migration is a pure move.
-  Against `mp.polyroots`; strata: distinct roots, near-double, triple, one real root.
+- `solve_cubic<S: Real>(a: S, b: S, c: S, d: S) -> (Vec3<S>, [S::Mask; 3])`: the real roots of
+  `a x³ + b x² + c x + d` and, per slot, whether it is a root (a clear slot is `+0`); omnisac's
+  algorithm as is, with the signature amended by
+  [`0017`](./decisions/0017-cbrt-and-mask-valued-roots.md): `ArrayVec<f64, 3>` is outside the
+  budget and a root count from float comparisons is a mask (R4). Its tolerances are power-of-two
+  literals per precision, the nearest multiples of `u` to omnisac's `1e-14` and `1e-12` (128 `u` and
+  8192 `u` against 90 `u` and 9007 `u`), stated in its rustdoc. `Real` has no `acos`: it is
+  `atan2(sqrt((1 - x)(1 + x)), x)` and `pi` is `atan2(+0, -1)`, a reading proposed by
+  [`0022`](./decisions/0022-solve-cubic-acos-and-inherited-limits.md) (draft). Against
+  `mp.polyroots` (sympy exact roots where the discriminant is exactly zero) and planted roots;
+  strata: distinct roots, near-double, triple, one real root.
 - All three branch only through `S::branch`/`S::select`.
 
 ## 7. `mint`
@@ -230,6 +239,12 @@ their Jacobian through these (faer `MatMut` and Ceres row-major buffers both map
 ## 9. The omnisac migration
 
 omnisac never ships its own numeric crate: its primitives depend on `helicoid-linalg`.
+`solve_cubic` is not a pure move ([`0017`](./decisions/0017-cbrt-and-mask-valued-roots.md)): its
+`ArrayVec<f64, 3>` becomes `(Vec3<S>, [S::Mask; 3])`, so each call site (the fundamental 7-point
+cubic, Lambda Twist's γ cubic) gets an adapter that pushes the roots whose mask is set, in slot
+order. It falls under the gate's second clause: the three-real-root arm takes `acos` through
+`atan2` and the tolerances differ, so values move by ulps and a polynomial between the old and the
+new tolerance can change its root count; both are recorded per stratum in omnisac's PR.
 **Gate:** omnisac's RunRecords are bit-identical where omnisac already routed through `libm`;
 otherwise discrete outputs (inlier sets, `residual_evals`, iteration counts) are identical and value
 differences are recorded per stratum in the omnisac PR. omnisac's LM core stays in omnisac
