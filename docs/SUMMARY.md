@@ -16,6 +16,7 @@
 - [The coefficient catalogue: series, cancellation, switch points](maths/coefficients.md)
 - [SE_N(3): Exp, Log, adjoints, the Q block, the dual-matrix algebra](maths/se3.md)
 - [SO(2) and SE(2): Exp, Log, adjoints, the rotation-first Jacobians](maths/so2-se2.md)
+- [Error analysis, conditioning, forward-mode AD, the reference corpus](maths/error-analysis.md)
 
 # Specifications
 - [Phase 1: skeleton and the instrument](PHASE1.md)

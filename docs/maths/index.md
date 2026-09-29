@@ -37,19 +37,20 @@ $\begin{bmatrix}R & [t]_\times R\\ 0 & R\end{bmatrix}$ in Solà et al.
 | $\mathrm D^s F$ | derivative of $F$ in the convention of side $s \in \{R, L\}$ (Definition LG.11); the $\partial/\partial$ of `NUMERICS.md` §2.3 |
 | $A + \epsilon B$ | dual-block matrix (`NUMERICS.md` §2.2): diagonal blocks $A$, first block column $B_i$ |
 | $\Gamma_m(\varphi)$ | $\sum_{k \ge 0} W^k/(k+m)!$ (`NUMERICS.md` §7); $\Gamma_1 = J_l(\varphi)$ |
-| $u$ | unit roundoff (`NUMERICS.md` §2.1), except on `so3.md`, where $u$ is the quaternion's vector part (`NUMERICS.md` §1), $n = \lVert u\rVert$ (not the tangent dimension of the first row) and the roundoff is written $\mathsf u$; `coefficients.md` keeps $u$ for the roundoff and writes the vector part $q_{\mathrm v}$ |
+| $u$ | unit roundoff (`NUMERICS.md` §2.1), except on `so3.md`, where $u$ is the quaternion's vector part (`NUMERICS.md` §1), $n = \lVert u\rVert$ (not the tangent dimension of the first row) and the roundoff is written $\mathsf u$; `coefficients.md` and `error-analysis.md` keep $u$ for the roundoff and write the vector part $q_{\mathrm v}$ |
 | $\Xi$, $\Pi$, $T_M$ | on `se3.md` only: $[\rho]_\times$ for one translation block (so the $P$ above is $\Pi$ there), the block permutation $\Pi_N$ (SE.14; $\Pi_1 = P$), and CO.1's $\tau_M$ (renamed because $\tau$ is the tangent); it uses $\sigma_m$ as in CO.1, $n$ for a power (the tangent dimension is written $3 + 3N$), $\mu$ for $\varphi\times\rho$ (SE.7) and $s(\theta) = 2\sin(\theta/2)/\theta$ (SE.16, LG.16) |
 | $K$, $\gamma$, $\Pi$, $\nu$ | on `so2-se2.md` only: the quarter turn $\begin{bmatrix}0&-1\\1&0\end{bmatrix}$ (not `so3.md`'s $K(M)$), $\gamma = \frac\theta2\cot\frac\theta2$, the $3\times3$ shift $\tau_{\mathrm{tf}} = \Pi\tau$ (not `se3.md`'s $\Pi_N$) and $\nu = \lVert\rho\rVert/2$; $\theta$ and $\theta(X) = \mathrm{atan2}(R_{10}, R_{00})\in[-\pi,\pi]$ are signed there: the $\theta(X)$ row above (branch $[0,\pi]$) and `NUMERICS.md` §1, §12 ("$\theta<2\pi$", "$\theta(X)<\pi$") are read as $\lvert\theta\rvert$, $\lvert\theta(X)\rvert$, $\alpha$, $\beta$ are `NUMERICS.md` §6's (not an angle or a relative rounding) and $a, b, c$ are §4's; label prefix `PL` |
 | $\sigma_m$, $\tau_m$, $\rho_m$, $E_x$, $E_s$, $E_\times$, $s_j$ | on `coefficients.md` (and $\sigma_m$ on `se3.md`, as in the row above), not the tangents, translation tangent or $\mathrm{Exp}$ above: the series families (CO.1), a relative truncation size, the errors of the exact arm, of the series arm and at the crossing, and the coefficient of $z^j$; its symbol note lists the rest |
+| $\mathcal F$, $\mathcal B$, $\mathcal B_M$, $\beta$, $e$, $\underline y$, $\nu_g$, $\zeta$, $\chi$, $\mathsf G$ | on `error-analysis.md` only: forward and backward error in units of $u$ (EA.3), $\mathcal B_M$ the Frobenius residual of `from_matrix`; the residual rotation vector $\mathrm{Log}(X^{-1}\mathrm{Exp}\,\hat\varphi)$ (not `so2-se2.md`'s $\beta$ nor LG.16's singular value) and the tangent error $\hat\varphi - \varphi$ (not `NUMERICS.md` §4's coefficient $e$, which EA.20 also names); the floor of the §11 metric; the accuracy factor of a library function ($\lvert\delta\rvert \le \nu_gu$); $\pi - \theta$; the measured constant of EA.10(c); splitmix64's increment. $\eta = 2\pi - \theta$ there (not `so3.md`'s $\eta$), $\varepsilon$ is a relative perturbation size (not the dual unit $\epsilon_i$), $\lambda$ the azimuth of EA.22 (and $\lambda_{\max}(K)$ of EA.9 is `so3.md`'s eigenvalue), $\hat n$ the axis (a sample of EA.22), $n$ the vector norm $\lVert q_{\mathrm v}\rVert$ or a sample count; label prefix `EA` |
 | $O(\lVert\delta\rVert^2)$ | remainder bounded by $C\lVert\delta\rVert^2$ as $\delta \to 0$, $C$ locally uniform in the base point |
 
 ## Labels and the `Checked:` line
 
 - A statement is labelled `<page>.<n>` (`LG` for [`lie-groups.md`](./lie-groups.md), `SO` for
   [`so3.md`](./so3.md), `CO` for [`coefficients.md`](./coefficients.md), `SE` for
-  [`se3.md`](./se3.md), `PL` (planar) for [`so2-se2.md`](./so2-se2.md)), numbered in order of
-  appearance. Labels are stable: later results are appended, never renumbered, so other pages and PR
-  descriptions can cite them.
+  [`se3.md`](./se3.md), `PL` (planar) for [`so2-se2.md`](./so2-se2.md), `EA` (error analysis) for
+  [`error-analysis.md`](./error-analysis.md)), numbered in order of appearance. Labels are stable:
+  later results are appended, never renumbered, so other pages and PR descriptions can cite them.
 - Each result states its domain and carries a proof, or says which step is only outlined.
 - Each proposition ends with one **Checked:** line: what was run, at which precision, over which
   sample, and whether the script is committed; then **Permanent:** the corpus function id
@@ -62,12 +63,13 @@ $\begin{bmatrix}R & [t]_\times R\\ 0 & R\end{bmatrix}$ in Solà et al.
 - The scripts are **not committed**. A figure records one scratch run at the stated
   precision and sampling: it is not a gate and cannot be rerun from the repository. Only a
   `Permanent:` item is a check. Where a sampled figure is not a proved bound, the line says so.
-- The mpmath version is that of the run, stated in the `Checked:` line: `lie-groups.md` ran at 1.4.1,
-  `so3.md` and `coefficients.md` at 1.3.0 (the latter with sympy 1.14.0 for the exact rational
-  series), `se3.md` at 1.4.1 (sympy 1.14.0, run with mpmath 1.3.0, for its exact identities),
-  `so2-se2.md` at 1.3.0 (sympy 1.14.0). It is not a pin, and no claim on these pages depends on it; the
-  claims about mpmath's own behaviour (`mp.logm` of an $\mathrm{SO}(3)$, an $\mathrm{SE}_N(3)$ and an
-  $\mathrm{SE}(2)$ matrix, below) were checked on both 1.3.0 and 1.4.1.
+- The mpmath version is that of the run, stated in the `Checked:` line: `lie-groups.md` ran at
+  1.4.1, `so3.md` and `coefficients.md` at 1.3.0 (the latter with sympy 1.14.0 for the exact
+  rational series), `se3.md` at 1.4.1 (sympy 1.14.0, run with mpmath 1.3.0, for its exact
+  identities), `so2-se2.md` at 1.3.0 (sympy 1.14.0), `error-analysis.md` at 1.3.0 (numpy 2.5.3; the
+  `libm` 0.2.16 crate; wasmtime 49.0.0 for its wasm32 run). It is not a pin, and no claim on these
+  pages depends on it; the claims about mpmath's own behaviour (`mp.logm` of an $\mathrm{SO}(3)$, an
+  $\mathrm{SE}_N(3)$ and an $\mathrm{SE}(2)$ matrix, below) were checked on both 1.3.0 and 1.4.1.
 - A wrong variant is characterised by its exact gap to the right formula (`lie-groups.md` §6),
   never by a sampled minimum: every wrong variant tends to the right one as the tangent tends to
   $0$, so a sampled minimum measures the sampler.
@@ -81,10 +83,11 @@ $\begin{bmatrix}R & [t]_\times R\\ 0 & R\end{bmatrix}$ in Solà et al.
 | [`coefficients.md`](./coefficients.md) | §4 (all seven coefficients and the $\cos\frac\theta2$ of §3.1: series, cancellation, switch-point magnitudes, derivatives), §2.1, §7 ($\Gamma_2$'s coefficients), §12 (the $\theta = 0$, $\pi$, $2\pi$ behaviour); `PHASE1.md` §2 item 3, §4.3, §6 | `coeffs::{exp_coeffs, jr_coeffs, jr_inv_coeff, q_coeffs, gamma2_coeffs, log_ratio, se2_coeffs}` (`pub(crate)`, `PHASE3.md` §3), `coeffs::generated`, `xtask thresholds` |
 | [`se3.md`](./se3.md) | §1 (SE_N(3), rotation-first tangents), §2.2 (the dual-matrix algebra), §2.4 (SE(3) action Jacobians), §5.1–§5.5 ($\mathrm{Exp}$, $\mathrm{Log}$, $\mathrm{Ad}$, $\mathrm{ad}$, the $Q$ block, $J^{-1}$), §14 (`SEn3Jac`, `jr_inv`, `jl`); the order conversion of `0002` | `SEn3::{exp, log, adjoint, ad, jr, jl, jr_inv, jl_inv}`, `SEn3Jac::{mul, inverse, apply, apply_transpose, write_dense}`, `SE3::act_jacobians`, `Twist::{from_translation_first, to_translation_first}`, `coeffs::q_coeffs` |
 | [`so2-se2.md`](./so2-se2.md) | §1 (SE(2) tangent), §2.3 (its rows, instantiated), §2.4 (SO(2), SE(2) action rows: proposed), §4 ($a, b, c$ and $\alpha, \beta$: series, singularities), §6, §12, §14 (missing SE(2) rows) | `SO2::{exp, log, adjoint, ad, jr, jl, jr_inv, jl_inv, act_jacobians}`, `SE2::{exp, log, adjoint, ad, jr, jl, jr_inv, jl_inv, act_jacobians}`, `coeffs::se2_coeffs` |
+| [`error-analysis.md`](./error-analysis.md) | §2.1 ($u$), §3.2, §11 (the metric, its floors, the conditioning of `Log`, `from_matrix`, $J^{-1}$), §12 ($J^{-1}$ near $2\pi$, `Exp` at large $\theta$), D8, D16; `PHASE1.md` §2, §4.3, §4.4, §5, §8; `PHASE2.md` §3, §8 | `Dual<S, N>`, `Real::{select, branch}`, `xtask::conformance` metrics, `xtask envelope`, `conformance/generate` (splitmix64, stratum sampling, the precision budget) |
 
 Not derived yet, so `NUMERICS.md` alone states them: every section outside the Map rows, notably
-§7–§10 (of these only $\Gamma_m$'s coefficients are placed, CO.4(d)) and §11 (the conditioning of the
-exact $J$ and $\mathrm{Ad}$ is LG.16; the metrics of §11 are used, not derived). The switch points and
+§7–§10 (of these only $\Gamma_m$'s coefficients are placed, CO.4(d)); §11 is placed by `error-analysis.md`
+(EA.3–EA.13) and LG.16 (the conditioning of the exact $J$ and $\mathrm{Ad}$). The switch points and
 series lengths of §4 are generated (0004), not derived: `coefficients.md` derives the magnitudes to check
 them against (CO.10).
 
@@ -156,7 +159,9 @@ them against (CO.10).
 - `NUMERICS.md` §12 has no row for the domain of `Exp` (and the other coefficient users), while
   `PHASE2.md` §2 promises a finite result for finite in-domain input: $\theta^2$ overflows for
   $\lVert\varphi\rVert > 1.3\times10^{154}$ (`f64`), $1.8\times10^{19}$ (`f32`) and the exact arm
-  returns `NaN` (CO.15).
+  returns `NaN` (CO.15). Accuracy is a separate matter: $\theta u/2$ for `Exp` and $2\pi u/\eta$ for
+  $J^{-1}$ of SO(3) near $2\pi$ are the conditioning of the input (EA.6, EA.10) and no stratum lies beyond
+  $\pi$.
 - `NUMERICS.md` §4 and `PHASE3.md` §3 make each call site "one `S::branch` over a tuple" while
   `generated.rs` holds "a `Switch` per coefficient": a group with one mask shares one $\theta_s$, which
   costs the worst member up to $\sim3\times$ ($m = 8$) or $\sim10\times$ ($m = 4$) over its own optimum
@@ -192,6 +197,40 @@ them against (CO.10).
   as §3.6 does for quaternions (PL.3(e)).
 - `PHASE1.md` §4.3 defines `so2_*`, `se2_*` as "analogous"; `se2_log` by `mp.logm` fails as `so3_log` does: the
   result is complex and non-principal from an onset in $(3.02, 3.03]$ (PL.5, `Checked:`).
+- `NUMERICS.md` §11 gives no floor for a tangent output: `Log`'s $\varphi$ has norm $\theta$, and
+  with the floor of "1 for rotations" the strata `theta:1e-k` measure absolute error (a total loss
+  at $\theta = 10^{-12}$ reads $9\times10^{3}u$, not $9\times10^{15}u$; strata with
+  $\theta < 10^{7}u$ cannot show the seeded `acos` defect of `PHASE1.md` §10; EA.4(b)). Nor for
+  `theta:subnormal`, where a subnormal output has fewer than $p$ significant bits and $\mathcal F$
+  measures its quantization unless the floor is at least the smallest normal number (EA.4(b)).
+- `NUMERICS.md` §11 calls matrix inputs "ill-conditioned near $\pi$ in the axis". The map
+  $M \mapsto \pm q_\star$ is uniformly conditioned, $\frac1{2\sqrt2}$ for every $\theta$ (EA.9(a));
+  what is ill conditioned is the orientation of the axis (the `Log` cut, distance
+  $\sqrt2(\pi - \theta)$) and the trace pivot. Reporting backward error only is justified by the
+  reference being undetermined below $O(d_M)$ (`PHASE1.md` §4.3's "`mp.logm`-consistent quaternion"
+  has no value for a non-orthogonal double matrix) and by the floor $\mathcal B_M \ge d_M/u$ (EA.9(c),
+  (d)), not by conditioning. §11 does not define this backward error; $\mathcal B_M$ (Frobenius,
+  absolute, EA.3) is a reading of "backward error only".
+- `NUMERICS.md` §11 and `PHASE1.md` §5 do not say how $\mathcal B$ is evaluated (it needs
+  $\mathrm{Exp}$ at the subject's output, which the corpus cannot hold; EA.5 gives a first-order
+  form from the stored $\varphi$, valid only for $\lVert e\rVert \ll 1$ and after reducing the
+  output to the logarithm nearest $\varphi$: an output on the other branch reads $2\pi$ otherwise
+  and $\mathcal B$'s branch invariance, EA.8(b), is lost), nor how $\hat y - y$ is formed from a 30-digit reference: parsing
+  it to `f64` first quantizes $\mathcal F$ to an ulp and blinds the exact no-regress bar (EA.19(b)).
+- `PHASE1.md` §4.2, §4.4: an `f32` subject is not said to receive `f32`-exact inputs; if the
+  binary64 corpus inputs are rounded, $\mathcal F$ includes $\kappa u_{32}$ of input rounding
+  (EA.19(c)). `theta:1e-k` is read as $[10^{-k}, 10^{-k+1})$, and the realized $\pi - \theta$ of
+  `theta:pi-1e-k` is nominal to $\approx\pi u$ (EA.19(a), EA.21).
+- `PHASE1.md` §2 item 4: how a stratum's splitmix64 stream is derived is unspecified (counter seeds
+  $a_0 + i\mathsf G$ overlap for every pair with $\lvert i - j\rvert < L$; one global stream shifts every later stratum when one
+  changes; EA.23), and so is the p99 method (at $n = 64$ the nearest-rank p99 is the maximum;
+  EA.11(d)).
+- `PHASE2.md` §3 states no rule for $\times$ and $\div$; the two equal forms of the quotient rule
+  differ in the last bit on $57\%$ of random inputs (EA.15), so the derivative column of the sweep
+  (`0004` item 1) depends on the choice. §3 promises nested `Dual` "tested to second order on
+  `sin_cos`, `atan2`" and §8 names no such test; through an exact arm the second derivative loses
+  $\theta^{-6}$ (all digits at $\theta \approx 10^{-2}$ for $b$) and the sweep measures the first
+  order only (EA.17).
 
 ## References
 
@@ -209,8 +248,12 @@ them against (CO.10).
   J. Opt. Soc. Am. A 4(4), 1987. **[Bar-Itzhack]** I. Y. Bar-Itzhack, "New method for extracting the
   quaternion from a rotation matrix", J. Guidance, Control, and Dynamics 23(6), 2000.
 - **[Higham]** N. J. Higham, *Accuracy and Stability of Numerical Algorithms*, 2nd ed., SIAM, 2002
-  (ch. 2: Sterbenz's lemma; ch. 3: the $\gamma_n$ bound for inner products; §5.1: Horner's method).
+  (ch. 1: forward and backward error, conditioning; ch. 2: Sterbenz's lemma; ch. 3: the $\gamma_n$
+  bound for inner products; §5.1: Horner's method).
 - **[DLMF]** *NIST Digital Library of Mathematical Functions*, https://dlmf.nist.gov, §4.19 and §4.22
   (the series and the partial fractions of $\cot$), §24.2 (Bernoulli numbers).
+- **[SLF]** G. L. Steele Jr., D. Lea, R. Flood, "Fast splittable pseudorandom number generators",
+  OOPSLA 2014. **[Vigna]** S. Vigna, `splitmix64.c`, public domain,
+  https://prng.di.unimi.it/splitmix64.c (the reference outputs of EA.23).
 - **[mpmath]** F. Johansson et al., *mpmath: a Python library for arbitrary-precision
   floating-point arithmetic* (the checking tool; version stated in each `Checked:` line).

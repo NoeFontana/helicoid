@@ -44,3 +44,14 @@ defined by the status tables in `docs/`; they win over this file.
   translation-first permutation; the scalar functions with series and singularities; rounding, the
   conditioning of `J` and a sign audit). Documentation only; no code, no formula change. Four open items
   for the normative documents are added in the maths index.
+- `docs/maths/error-analysis.md`: the rounding model (`u = 2⁻⁵³`, `2⁻²⁴`; `libm` is not correctly rounded, measured),
+  forward and backward error and the metric of `NUMERICS.md` §11 (chord, floors, what a norm-wise metric cannot
+  see, `𝓑` from the stored reference and where it holds, why Jacobians are judged by forward error); the
+  conditioning of `Log` (norm-wise `1/sin(θ/2)`, componentwise `≤ √5`, the cut), what backward error adds near π
+  (branch invariance), `from_matrix` (uniform `1/(2√2)`, the backward-error floor `d_M`) and `J⁻¹` of SO(3) near
+  `2π`; why bars are max and p99 and never a mean, non-finite counts, domination, exact no-regress and what D16
+  buys (bit reproducibility across x86_64 and wasm32 with `libm`'s default features off, measured; not accuracy); forward-mode `Dual` (the
+  rules, the value-path theorem, what the derivative of a branch or a series arm is, second order by nesting, the
+  `sqrt`-at-0 hazard and the safe argument); the mpmath corpus (exact inputs, 30 digits, precision budget and the
+  `dps = 150` recheck, log-uniform decades, uniform axes on S² by Archimedes, splitmix64 and per-stratum streams).
+  Documentation only; no code, no formula change. Six open items for the normative documents are added in the maths index and one extended, and `coefficients.md`'s remark on the `libm` crate is corrected.

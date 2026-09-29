@@ -16,7 +16,9 @@ For $r$, $n = \sqrt{n^2}$ and $w$ are the vector norm and the scalar part of a q
 [`so3.md`](./so3.md)). Rounding statements are for `f64` unless a precision is named. Measured
 constants are for the evaluation orders written in §3 and depend on `sin`/`cos` at the ulp level:
 they were measured with glibc, whose `sin`/`cos` are essentially correctly rounded; the `libm` crate
-promises under one ulp, so its constants can be up to twice these.
+errs by up to $1.09u$ on `sin`, `cos` and $1.96u$ on `atan2` (measured, glibc $\le1.00u$,
+[`error-analysis.md`](./error-analysis.md) EA.2(d)), so the transcendental part of its constants can
+be up to $\sim1.1\times$ (`sin`, `cos`) or $\sim2\times$ (`atan2`) these.
 
 Symbols that the [index](./index.md) reserves are reused here with a local meaning: $\sigma_m$,
 $\tau_m$ are the series families of CO.1 (not tangents); $\rho_m$ is a relative size (CO.8(e); not a
