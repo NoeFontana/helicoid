@@ -2,7 +2,7 @@ import argparse
 from pathlib import Path
 
 from . import corpus
-from .precision import RECHECK_DPS
+from .manifest import CHECKED
 from .registry import FUNCTIONS
 
 
@@ -20,6 +20,6 @@ def main(argv: list[str] | None = None) -> int:
         for name, spec in FUNCTIONS.items():
             print(f"{name}\t{sum(s.count for s in spec.strata)} records\t{len(spec.strata)} strata")
     else:
-        for name, (_, records, rechecked) in corpus.write(args.out).items():
-            print(f"{name}: {records} records, {rechecked} rechecked at {RECHECK_DPS} digits")
+        for name, built in corpus.write(args.out).items():
+            print(f"{name}: {built.records} records, {built.checked} {CHECKED[built.kind]}")
     return 0

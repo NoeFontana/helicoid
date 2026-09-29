@@ -1,13 +1,56 @@
 {
   "dps": 120,
   "files": {
+    "coeff_a.jsonl": {
+      "kind": "corpus",
+      "rechecked": 36,
+      "records": 1710,
+      "sha256": "7c5ad759a95b86813b07db5451246197b0af60d22f1570b7279164f426fbee6b"
+    },
+    "coeff_b.jsonl": {
+      "kind": "corpus",
+      "rechecked": 36,
+      "records": 1710,
+      "sha256": "1dee3879fc9bf15735e5e7f86458d73829b7c948282b7872f44a652047a30277"
+    },
+    "coeff_c.jsonl": {
+      "kind": "corpus",
+      "rechecked": 36,
+      "records": 1710,
+      "sha256": "8fe97376d610a21a0faa9566ad7cdda7706f4ba4d6f5ee1561bd49003148bc81"
+    },
+    "coeff_d.jsonl": {
+      "kind": "corpus",
+      "rechecked": 36,
+      "records": 1710,
+      "sha256": "7bb45abfffc8f01934e4bb9a1f17fa8b128d43806f5565d08b144512dc91cf0c"
+    },
+    "coeff_e.jsonl": {
+      "kind": "corpus",
+      "rechecked": 36,
+      "records": 1710,
+      "sha256": "1553b4e79641dafe2740623525df6c29fa997b4811bc14af1309b3610c0f4761"
+    },
     "coeff_k.jsonl": {
+      "kind": "corpus",
       "rechecked": 36,
       "records": 1710,
       "sha256": "73ea03fc2f2701e67fba44c00952766f0af97515101561d586467a09ee670fda"
+    },
+    "coeff_r.jsonl": {
+      "kind": "corpus",
+      "rechecked": 37,
+      "records": 1713,
+      "sha256": "9f248c970ecb94f2662d389bdca2423e595a16e2f10c60192eef101df1e5d7e1"
+    },
+    "coeff_series.jsonl": {
+      "kind": "series",
+      "records": 7,
+      "sha256": "bbcad103ed55b545f61fa24c7b01a66b562d3bd71d40019f9aee6bb6a552b9e1",
+      "verified": 7
     }
   },
-  "generator": "sha256:b95c89fcb0871c036bdb146731b1bfd5a2bbfbafd97b7a5bf877edb0aac95cc9",
+  "generator": "sha256:a6313966742cb68ea74eebbf671f44ada1547b5bcd804ed3f5818e5a3f23c8bc",
   "mpmath": "1.4.1",
   "python": "3.12",
   "recheck": {

@@ -113,6 +113,12 @@ defined by the status tables in `docs/`; they win over this file.
   splitmix64, per-stratum streams, `MANIFEST.json`, 150-digit recheck) and the first corpus file,
   `coeff_k`, all scalar-θ strata. New recipes `just corpus`, `corpus-check`, `corpus-test` and a
   `corpus-check` CI job. No library code changes; breaks nothing.
+- Corpus files `coeff_a`…`coeff_e` and `coeff_r` (the θ strata, plus `q:w0` at three norms for `r`)
+  and `coeff_series`, the exact 16-term rational Taylor series of every `NUMERICS.md` §4
+  coefficient (manifest `kind: "series"`, `verified` in place of `rechecked`; `PHASE1.md` §4.3).
+  Every record is cross-checked at generation against the series and a second formulation;
+  cancelling definitions carry guard digits, so `theta:subnormal` is evaluated correctly. Manifest
+  entries gain `kind`; `coeff_k` is unchanged. No library code changes; breaks nothing.
 
 ### Changed
 
