@@ -3,7 +3,9 @@
 //! (`coeff_r` has no coefficient kernel of its own: `Log` evaluates `r` inline).
 //!
 //! The correct subject also runs `Exp` and `Log` of SO(3) over `so3_exp` and `so3_log` (`so3`), on
-//! the generated `k`; the planted `Log` defects run over `so3_log` only.
+//! the generated `k`; the planted `Log` defects run over `so3_log` only. It runs SE_N(3)'s `Exp`,
+//! `J_r` and `J_l` over `sen3_{exp,jr,jl}_n{1,2,3}` (`se3`) on the generated `k, a, b, d, e`; the
+//! planted SE(3) defects run over `sen3_exp_n{1,2,3}` and over the two Jacobians.
 //!
 //! The correct kernel runs the **generated** switches of each coefficient: its series length,
 //! switch and series terms are `generated.rs`'s, which `cargo xtask thresholds` writes
@@ -20,6 +22,7 @@
 
 mod generated;
 mod kernel;
+pub(crate) mod se3;
 mod series;
 mod so3;
 mod switch;
@@ -51,6 +54,10 @@ pub(crate) enum Defect {
     LogAcos,
     /// `Log` without the `w < 0` flip (`so3::log_no_flip`).
     LogNoFlip,
+    /// SE(3) `Exp` reading the tangent translation-first (`se3::Order::TranslationFirst`).
+    Se3ExpTranslationFirst,
+    /// `Q` with `-½ρ^` where `NUMERICS.md` §5.3 has `+½ρ^` (`se3::jacobian`'s `half`).
+    QMinusHalf,
 }
 
 impl Defect {
@@ -62,6 +69,8 @@ impl Defect {
     ];
     /// The defects of `Log`, run over `so3_log`.
     pub(crate) const LOG: [Defect; 2] = [Defect::LogAcos, Defect::LogNoFlip];
+    /// The defects of SE(3), run over `sen3_exp_n*` and `sen3_{jr,jl}_n*`.
+    pub(crate) const SE3: [Defect; 2] = [Defect::Se3ExpTranslationFirst, Defect::QMinusHalf];
 
     pub(crate) fn name(self) -> &'static str {
         match self {
@@ -70,6 +79,8 @@ impl Defect {
             Defect::CTwoTermsEarly => "c-two-terms-1e-8",
             Defect::LogAcos => "log-acos",
             Defect::LogNoFlip => "log-no-flip",
+            Defect::Se3ExpTranslationFirst => "se3-exp-translation-first",
+            Defect::QMinusHalf => "q-minus-half",
         }
     }
 }
@@ -162,6 +173,17 @@ impl Seeded {
         &self.arms[c.index()].series
     }
 
+    /// The generated kernels of all six coefficients, as `se3` reads them: the correct subject's,
+    /// a coefficient defect being planted by `kernel`, which no `sen3_*` id reaches (`supports`).
+    fn kernels(&self) -> se3::Kernels<'_, D1> {
+        se3::Kernels {
+            arms: std::array::from_fn(|i| {
+                let Arm { candidate, series } = &self.arms[i];
+                (*candidate, series.as_slice())
+            }),
+        }
+    }
+
     fn kernel(&self, c: Coeff, z: D1) -> D1 {
         let Arm { candidate, series } = &self.arms[c.index()];
         match (self.defect, c) {
@@ -187,17 +209,21 @@ impl Subject for Seeded {
 
     fn supports(&self, fn_id: &str) -> bool {
         let coefficient = Coeff::of_fn(fn_id).is_some();
+        let sen3 = se3::parse(fn_id);
         match self.defect {
-            None => coefficient || matches!(fn_id, "so3_exp" | "so3_log"),
+            None => coefficient || sen3.is_some() || matches!(fn_id, "so3_exp" | "so3_log"),
             Some(Defect::LogAcos | Defect::LogNoFlip) => fn_id == "so3_log",
+            Some(Defect::Se3ExpTranslationFirst) => sen3.is_some_and(|(op, _)| op == se3::Op::Exp),
+            Some(Defect::QMinusHalf) => sen3.is_some_and(|(op, _)| op != se3::Op::Exp),
             Some(_) => coefficient,
         }
     }
 
     /// `f32` is refused by the harness before any subject runs; an empty answer here is an error
-    /// there, never a score.
+    /// there, never a score. An id `supports` refuses is answered with nothing, so a planted subject
+    /// never answers as the correct kernel would.
     fn eval(&self, fn_id: &str, record: &Record, precision: Precision) -> Output {
-        if precision != Precision::F64 {
+        if precision != Precision::F64 || !self.supports(fn_id) {
             return Output::new();
         }
         match (Coeff::of_fn(fn_id), fn_id) {
@@ -213,7 +239,7 @@ impl Subject for Seeded {
             }
             (None, "so3_exp") => self.exp(record),
             (None, "so3_log") => self.log(record),
-            _ => Output::new(),
+            (None, id) => self.sen3(id, record),
         }
     }
 }
@@ -227,6 +253,41 @@ impl Seeded {
         let phi = [x, y, z].map(D1::constant);
         let q = so3::exp(phi, *candidate, series).map(|c| c.v);
         Output::from([("q".to_string(), q.to_vec())])
+    }
+
+    /// `sen3_{exp,jr,jl}_n<N>`: `q`, `x` or the dense `J`, of the value of one `D1` evaluation.
+    fn sen3(&self, fn_id: &str, record: &Record) -> Output {
+        let (Some((op, n)), Some(tau)) = (se3::parse(fn_id), record.input("tau")) else {
+            return Output::new();
+        };
+        if tau.len() != 3 + 3 * n {
+            return Output::new();
+        }
+        let tau: Vec<D1> = tau.iter().map(|&t| D1::constant(t)).collect();
+        let (kernels, value) = (self.kernels(), |v: &[D1]| v.iter().map(|c| c.v).collect());
+        match op {
+            se3::Op::Exp => {
+                let order = match self.defect {
+                    Some(Defect::Se3ExpTranslationFirst) => se3::Order::TranslationFirst,
+                    _ => se3::Order::RotationFirst,
+                };
+                let Some((q, x)) = se3::exp(&tau, &kernels, order) else {
+                    return Output::new();
+                };
+                Output::from([("q".to_string(), value(&q)), ("x".to_string(), value(&x))])
+            }
+            se3::Op::Jr | se3::Op::Jl => {
+                let sign = if self.defect == Some(Defect::QMinusHalf) {
+                    -0.5
+                } else {
+                    0.5
+                };
+                let j = se3::jacobian(&tau, op == se3::Op::Jr, &kernels, D1::constant(sign));
+                j.map_or_else(Output::new, |j| {
+                    Output::from([("J".to_string(), value(&j))])
+                })
+            }
+        }
     }
 
     fn log(&self, record: &Record) -> Output {
@@ -246,7 +307,10 @@ impl Seeded {
 /// planted: a run that names no subject skips them.
 pub(crate) fn registry() -> Vec<Registered> {
     let mut all = vec![Seeded::generated().registered()];
-    let defects = Defect::COEFFICIENT.into_iter().chain(Defect::LOG);
+    let defects = Defect::COEFFICIENT
+        .into_iter()
+        .chain(Defect::LOG)
+        .chain(Defect::SE3);
     all.extend(defects.map(|d| Seeded::planted(d).registered()));
     all
 }
@@ -341,6 +405,8 @@ mod tests {
             ("seeded:c-two-terms-1e-8", true),
             ("seeded:log-acos", true),
             ("seeded:log-no-flip", true),
+            ("seeded:se3-exp-translation-first", true),
+            ("seeded:q-minus-half", true),
         ];
         assert_eq!(names, want);
         assert!(all.iter().all(|r| r.version == "generated"));
@@ -401,6 +467,71 @@ mod tests {
             .is_empty());
         let unit = record(&[("q", &[1.0, 0.0, 0.0, 0.0])], &[])?;
         assert!(s.eval("so3_log", &unit, Precision::F32).is_empty());
+        Ok(())
+    }
+
+    #[test]
+    fn the_sen3_ids_belong_to_the_correct_subject_and_each_se3_defect_answers_only_its_own(
+    ) -> Result<(), String> {
+        let ids = [
+            "sen3_exp_n1",
+            "sen3_exp_n2",
+            "sen3_jr_n3",
+            "sen3_jl_n1",
+            "sen3_exp_n4",
+            "sen3_log_n1",
+            "sen3_jr_inv_n1",
+        ];
+        let supported = |s: &Seeded| ids.map(|id| s.supports(id));
+        let (t, f) = (true, false);
+        assert_eq!(supported(&subject(None)), [t, t, t, t, f, f, f]);
+        let first = subject(Some(Defect::Se3ExpTranslationFirst));
+        assert_eq!(supported(&first), [t, t, f, f, f, f, f]);
+        assert_eq!(
+            supported(&subject(Some(Defect::QMinusHalf))),
+            [f, f, t, t, f, f, f]
+        );
+        for d in Defect::COEFFICIENT.into_iter().chain(Defect::LOG) {
+            assert_eq!(supported(&subject(Some(d))), [f; 7]);
+        }
+        let s = subject(None);
+        let answer = |id: &str, n: usize, precision| -> Result<Output, String> {
+            let tau = vec![0.1; 3 + 3 * n];
+            Ok(s.eval(id, &record(&[("tau", &tau)], &[])?, precision))
+        };
+        let exp = answer("sen3_exp_n2", 2, Precision::F64)?;
+        assert_eq!(exp.keys().collect::<Vec<_>>(), ["q", "x"]);
+        assert_eq!((exp["q"].len(), exp["x"].len()), (4, 6));
+        let jr = answer("sen3_jr_n3", 3, Precision::F64)?;
+        assert_eq!(jr.keys().collect::<Vec<_>>(), ["J"]);
+        assert_eq!(jr["J"].len(), 144);
+        // A tangent of the wrong length, no tangent, and `f32` are answered with nothing.
+        assert!(answer("sen3_exp_n1", 2, Precision::F64)?.is_empty());
+        assert!(answer("sen3_jl_n1", 1, Precision::F32)?.is_empty());
+        let none = record(&[], &[])?;
+        assert!(s.eval("sen3_jl_n1", &none, Precision::F64).is_empty());
+        Ok(())
+    }
+
+    #[test]
+    fn a_planted_subject_answers_nothing_it_does_not_support() -> Result<(), String> {
+        // Every input a `theta`, `phi`, `q` or `tau` id reads, so only `supports` can refuse.
+        let rec = record(
+            &[
+                ("theta", &[0.5]),
+                ("phi", &[0.1, 0.2, 0.3]),
+                ("q", &[1.0, 0.0, 0.0, 0.0]),
+                ("tau", &[0.1; 6]),
+            ],
+            &[],
+        )?;
+        let ids = ["coeff_k", "so3_exp", "so3_log", "sen3_exp_n1", "sen3_jr_n1"];
+        let defects = Defect::COEFFICIENT.into_iter().chain(Defect::LOG);
+        for d in defects.chain(Defect::SE3) {
+            let s = subject(Some(d));
+            let answered = ids.map(|id| !s.eval(id, &rec, Precision::F64).is_empty());
+            assert_eq!(answered, ids.map(|id| s.supports(id)), "{d:?}");
+        }
         Ok(())
     }
 }

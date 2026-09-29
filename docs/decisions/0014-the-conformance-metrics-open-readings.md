@@ -13,7 +13,8 @@ bar every envelope baseline is blessed against (`0006`); none is blessed yet (`P
 started), so each is still free to change. `xtask/src/thresholds` (`PHASE1.md` §6) did the same for
 the threshold sweep (questions 8 to 11) and for the file it writes, `xtask/src/seeded/generated.rs`
 (12, 13); the self-test (`PHASE1.md` §10) did for the planted `c` (14, 15) and for the seeded SO(3)
-subject and its `Log` defects (16 to 20).
+subject and its `Log` defects (16 to 20), and for the seeded SE_N(3) subject and its defects (21
+to 25).
 
 ## Decision
 
@@ -116,3 +117,35 @@ None until the open questions are resolved.
     the one `n`, so `Log` is scale-invariant (§3.2) to the bits a subnormal `n²` keeps, where a
     bound at the smallest normal number returns 1.0926 for the rotation of angle 1 scaled to
     `1.4·10^-154`. Is `0 < n²` the intended switch, or `s = n²/w²`?
+21. **The SE_N(3) correct kernel's bar** (§10 names none). The self-test holds `seeded:correct`'s
+    `Exp`, `J_r` and `J_l` to 12 `u` on every stratum's max of the nine
+    `sen3_{exp,jr,jl}_n{1,2,3}` ids: 1.35 times the measured 8.90 (`J_l`, `rho:1e4/theta=pi-1e-6`;
+    `Exp` at most 3.47), one bar for the nine as 16 has one for two. `Q` is several products deeper
+    than SO(3)'s `Exp`, so it is not 16's 4. The maxima are of the per-coefficient kernel (24). State
+    one bar, one per id, or leave it to the envelope?
+22. **When an SE(3) defect "fails"** (§10: "every `rho:*` stratum fails", "`sen3_jr*` fails"). No
+    magnitude is stated. The self-test takes the line of the SO(3) defects (17, 18): a stratum
+    whose max reaches `10^7 u`, a million times 21's bar, or a non-finite output; a `NaN` or an
+    unscored stratum does not fail, so it cannot fire a mechanism. The weakest stratum of the
+    Jacobians is `rho:1e-6/theta=1e-8`, whose block is `5·10^-7` against §11's floor of 1, and it
+    still reaches 5.2e9 `u`. Is `10^7 u` the line, a multiple of the bar, or any stratum over it?
+23. **What "every stratum" counts** (§10). "Every `rho:*` stratum" is the 25 cells
+    `rho:<scale>/theta=<θ>` (§4.4: 5 scales times 5 angles) of each of `sen3_exp_n1`, `_n2` and
+    `_n3` (75, all three failing at least 8.9e15 `u`), translation-first being `[ρ₁; …; ρ_N; φ]` at
+    every `N` (`docs/maths/se3.md` SE.14(c)); the `theta:*` strata are not read. "`sen3_jr*`
+    fails" is every one of the 52 strata (27 `theta:*` without `theta:dense`, and the 25 cells) of
+    every `sen3_jr_n<N>` and `sen3_jl_n<N>`, `Q` being in both (312 of 312); a file with fewer
+    strata than that fires nothing. Must a mechanism have every stratum of a whole file, or a
+    stated subset?
+24. **Per-coefficient switches against §4's group rule.** §4 says a call site never evaluates one
+    coefficient alone: `jr_coeffs` is (a, b) and `q_coeffs` is (b, d, e) in one `branch`. The
+    sweep generates one switch per coefficient (`z < 0.7234` for `a`, `0.9647` for `b` and `e`, `1`
+    for `d`), and the seeded `Exp` and `Q` run each at its own, so on `z` in `[0.9647, 1)` one `Q`
+    has `b` and `e` on the exact arm and `d` on the series arm. The `helicoid` crate will not run
+    that. Is a switch per call-site group owed to the sweep before 21's bar is measured, or is the
+    per-coefficient kernel the subject until the `helicoid` one exists?
+25. **The association of `Q`'s words** (§5.3 states the words, not an order of rounding). The
+    subject forms 3×3 products, entry `(r, c)` as `(t₀ + t₁) + t₂`, each word associated left to
+    right as written (`(φ^ρ^)φ^`, `(φ^φ^)ρ^`, `(φ^ρ^φ^)φ^`), and `W²` in `J_l(φ) = I + aW + bW²` as
+    `W·W`, not `φφᵀ − θ²I`. Another association moves the max by a few roundings, and 21's bar
+    reads it. State the association, or leave it to the `helicoid` subject?
