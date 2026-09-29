@@ -58,4 +58,10 @@ defined by the status tables in `docs/`; they win over this file.
 - `cargo xtask lint`, run by `just lint`: no line citations in markdown or comments, no draft
   decision record cited as settled (status-table rows, Rust comments, amendment banners; not
   prose elsewhere), and `@generated` files registered with their owning task and header. Owed:
-  dependency closure, `__sweep`, twin table (`docs/PHASE1.md`).
+  twin table (`docs/PHASE1.md`).
+- `cargo xtask lint` reads `cargo metadata --locked` (all features): the normal-dependency
+  closure of `helicoid-linalg` and `helicoid` must equal the `0007` set (`mint` only as an
+  optional direct dependency, never enabled by `default`), reporting the path that brings in an
+  offender; no crate but `xtask` may enable `__sweep`. `xtask` gains `serde` and `serde_json`;
+  `deny.toml` allows `Unicode-3.0` for `unicode-ident` and bans the `0007` list, which
+  `just audit` checks for every crate but `xtask`.

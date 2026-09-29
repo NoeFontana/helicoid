@@ -1,15 +1,21 @@
 //! `cargo xtask lint` (`docs/PHASE1.md` §3). Each check is a pure function from a virtual file
-//! set to violations; only [`load_tree`] touches the disk, so every check tests on fixtures.
+//! set (or parsed `cargo metadata`) to violations; only [`load_tree`] and `metadata::load` touch
+//! the disk, so every check tests on fixtures.
 
 mod citations;
+mod closure;
 mod comments;
 mod drafts;
 mod generated;
+mod metadata;
+mod sweep;
 
 use std::fmt;
 use std::io::ErrorKind;
 use std::path::Path;
 use std::process::Command;
+
+use metadata::Metadata;
 
 /// One tracked text file: repo-relative `/` path and content.
 pub(crate) struct File {
@@ -56,9 +62,21 @@ type Check = fn(&[File]) -> Vec<Violation>;
 /// Independent checks; add a line here and nothing else.
 const CHECKS: &[Check] = &[citations::check, drafts::check, generated::check_registry];
 
+/// Checks over the parsed `cargo metadata` of the workspace.
+type ManifestCheck = fn(&Metadata) -> Vec<Violation>;
+
+const MANIFEST_CHECKS: &[ManifestCheck] = &[closure::check_metadata, sweep::check_metadata];
+
 /// Runs every check over `files`; sorted by path then line.
 pub(crate) fn check_all(files: &[File]) -> Vec<Violation> {
     let mut all: Vec<Violation> = CHECKS.iter().flat_map(|c| c(files)).collect();
+    all.sort();
+    all
+}
+
+/// Runs every manifest check over `meta`; sorted by path then line.
+pub(crate) fn check_manifests(meta: &Metadata) -> Vec<Violation> {
+    let mut all: Vec<Violation> = MANIFEST_CHECKS.iter().flat_map(|c| c(meta)).collect();
     all.sort();
     all
 }
@@ -68,7 +86,15 @@ pub(crate) fn run() -> Result<Vec<Violation>, String> {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .ok_or("xtask has no parent dir")?;
-    Ok(check_all(&load_tree(root)?))
+    check_root(root)
+}
+
+/// Every check over the workspace rooted at `root`, files and manifests together.
+fn check_root(root: &Path) -> Result<Vec<Violation>, String> {
+    let mut all = check_all(&load_tree(root)?);
+    all.extend(check_manifests(&metadata::load(&root.join("Cargo.toml"))?));
+    all.sort();
+    Ok(all)
 }
 
 /// Tracked regular files as text (`git add` is the precondition, so untracked scratch files never
@@ -117,9 +143,11 @@ mod tests {
         let root = Path::new(env!("CARGO_MANIFEST_DIR"))
             .parent()
             .ok_or("no parent")?;
-        let files = load_tree(root)?;
-        assert!(files.len() > 20, "the tree loaded suspiciously few files");
-        let violations = check_all(&files);
+        assert!(
+            load_tree(root)?.len() > 20,
+            "the tree loaded suspiciously few files"
+        );
+        let violations = check_root(root)?;
         let report: Vec<String> = violations.iter().map(ToString::to_string).collect();
         assert!(
             violations.is_empty(),
@@ -147,6 +175,58 @@ mod tests {
             );
         }
         assert_eq!(out.len(), 3, "{out:?}");
+    }
+
+    /// One violation of each manifest check, so one dropped from `MANIFEST_CHECKS` fails here.
+    #[test]
+    fn every_manifest_check_runs() {
+        use metadata::fixture::Fx;
+        let m = Metadata::fixture(&[
+            Fx::member("helicoid").deps(&[("nalgebra", None, false, &["__sweep"])]),
+            Fx::dep("nalgebra"),
+        ]);
+        let out: Vec<String> = check_manifests(&m)
+            .iter()
+            .map(ToString::to_string)
+            .collect();
+        for tag in ["[closure]", "[sweep]"] {
+            assert!(out.iter().any(|l| l.contains(tag)), "{tag}: {out:?}");
+        }
+    }
+
+    /// `check_root`, the gate itself, runs the manifest checks: a planted `nalgebra` in a tracked
+    /// temporary workspace comes back from it.
+    #[test]
+    fn check_root_runs_the_manifest_checks() -> Result<(), String> {
+        let ok = "[dependencies]\nlibm = { path = \"../libm\" }\n";
+        let helicoid = format!(
+            "{ok}helicoid-linalg = {{ path = \"../helicoid-linalg\" }}\nnalgebra = {{ path = \"../nalgebra\" }}\n"
+        );
+        let crates = [
+            ("libm", ""),
+            ("nalgebra", ""),
+            ("helicoid-linalg", ok),
+            ("helicoid", helicoid.as_str()),
+        ];
+        let manifest = metadata::tests::workspace("root", &crates)?;
+        let root = manifest.parent().ok_or("no parent")?;
+        let git = |args: &[&str]| {
+            let out = Command::new("git").arg("-C").arg(root).args(args).output();
+            out.map_err(|e| e.to_string()).and_then(|o| {
+                o.status
+                    .success()
+                    .then_some(())
+                    .ok_or(format!("git {args:?}"))
+            })
+        };
+        let out = git(&["init", "-q"])
+            .and_then(|()| git(&["add", "."]))
+            .and_then(|()| check_root(root));
+        let _ = std::fs::remove_dir_all(root);
+        let out: Vec<String> = out?.iter().map(ToString::to_string).collect();
+        assert_eq!(out.len(), 1, "{out:?}");
+        assert!(out[0].contains("[closure] `nalgebra`"), "{out:?}");
+        Ok(())
     }
 
     #[cfg(unix)]
