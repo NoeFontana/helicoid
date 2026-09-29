@@ -18,10 +18,7 @@ fn rows(subject: impl Subject + 'static, keep: impl Fn(&str) -> bool) -> Result<
         .into_iter()
         .filter(|e| keep(&e.fn_id))
         .collect();
-    let registered = [Registered {
-        version: "test".into(),
-        subject: Box::new(subject),
-    }];
+    let registered = [Registered::new("test", Box::new(subject))];
     Ok(evaluate(&dir, &entries, &registered, Precision::F64)?.remove(0))
 }
 

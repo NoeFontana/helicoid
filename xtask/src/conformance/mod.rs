@@ -2,9 +2,9 @@
 //! subjects over the committed corpus, scores each record with the forward error of
 //! `docs/NUMERICS.md` §11 in units of `u`, aggregates per `(fn, stratum, precision, subject)`, writes
 //! `conformance/results/<subject>.csv` and prints the table by `max_u` descending. It fails on any
-//! non-finite output, and when nothing was scored. The registry is empty (`subject::registry`), so
-//! today a run reads the whole corpus (each file parses, ids are line numbers, record counts match
-//! `MANIFEST.json`) and then fails: a run that scored nothing is not a pass.
+//! non-finite output, and when nothing was scored. A run reads the whole corpus (each file parses,
+//! ids are line numbers, record counts match `MANIFEST.json`); a run that scored nothing is not a
+//! pass. `--self-test` runs the seeded kernels and defects instead (`selftest`).
 //!
 //! Exact by construction: inputs are hex floats, references are 30-digit decimals, and the error
 //! is formed in integers ([`metric`]), never through `f64` parsing of a reference. The output is a
@@ -22,18 +22,19 @@
 //!   `<subject>--<fn>.csv` so it never replaces a full result.
 //! - **`git_rev`** is `HEAD`, plus `-dirty` when the tree has uncommitted changes.
 //! - **Not implemented**: backward error (`Log` near π, `from_matrix`), `f32`, oracle runners, the
-//!   envelope, `--self-test` and the seeded defects.
+//!   envelope, the `helicoid` subject, and the seeded defects that need the sweep or a group.
 
-mod corpus;
+pub(crate) mod corpus;
 mod metric;
-mod number;
+pub(crate) mod number;
 mod report;
-mod subject;
+mod selftest;
+pub(crate) mod subject;
 
 #[cfg(test)]
 mod sanity;
 #[cfg(test)]
-mod testkit;
+pub(crate) mod testkit;
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -44,12 +45,13 @@ use metric::Rule;
 use report::{Aggregate, Row};
 use subject::Registered;
 
-const USAGE: &str = "usage: cargo xtask conformance [--subject NAME] [--fn ID]";
+const USAGE: &str = "usage: cargo xtask conformance [--subject NAME] [--fn ID] | --self-test";
 
 #[derive(Default)]
 struct Options {
     subject: Option<String>,
     fn_id: Option<String>,
+    self_test: bool,
 }
 
 fn parse_args(args: &[String]) -> Result<Options, String> {
@@ -60,16 +62,20 @@ fn parse_args(args: &[String]) -> Result<Options, String> {
             Some((f, v)) => (f, Some(v.to_string())),
             None => (arg.as_str(), None),
         };
-        let slot = match flag {
-            "--subject" => &mut options.subject,
-            "--fn" => &mut options.fn_id,
-            "--self-test" => {
-                return Err("`--self-test` needs the seeded defects (docs/PHASE1.md §10)".into())
+        let slot = match (flag, &inline) {
+            ("--subject", _) => &mut options.subject,
+            ("--fn", _) => &mut options.fn_id,
+            ("--self-test", None) => {
+                options.self_test = true;
+                continue;
             }
             _ => return Err(format!("unknown argument `{arg}`; {USAGE}")),
         };
         let value = inline.or_else(|| rest.next().cloned());
         *slot = Some(value.ok_or_else(|| format!("`{flag}` needs a value; {USAGE}"))?);
+    }
+    if options.self_test && (options.subject.is_some() || options.fn_id.is_some()) {
+        return Err(format!("`--self-test` takes no other argument; {USAGE}"));
     }
     Ok(options)
 }
@@ -82,7 +88,7 @@ fn root() -> Result<PathBuf, String> {
         .ok_or_else(|| "xtask has no parent dir".into())
 }
 
-fn corpus_dir() -> Result<PathBuf, String> {
+pub(crate) fn corpus_dir() -> Result<PathBuf, String> {
     Ok(root()?.join("conformance/corpus"))
 }
 
@@ -94,11 +100,22 @@ fn evaluate(
     subjects: &[Registered],
     precision: Precision,
 ) -> Result<Vec<Vec<Row>>, String> {
+    evaluate_by(dir, entries, subjects, precision, &metric::rule)
+}
+
+/// [`evaluate`] with the rule of each function id chosen by `rule_of`.
+fn evaluate_by(
+    dir: &Path,
+    entries: &[corpus::Entry],
+    subjects: &[Registered],
+    precision: Precision,
+    rule_of: &dyn Fn(&str) -> Option<&'static Rule>,
+) -> Result<Vec<Vec<Row>>, String> {
     metric::unit_bits(precision)?;
     let mut rows: Vec<Vec<Row>> = subjects.iter().map(|_| Vec::new()).collect();
     for entry in entries {
         let fn_id = entry.fn_id.as_str();
-        let rule = metric::rule(fn_id).ok_or_else(|| {
+        let rule = rule_of(fn_id).ok_or_else(|| {
             format!("no metric rule for `{fn_id}`: add its row to `metric::TABLE`")
         })?;
         let records = corpus::read(dir, entry)?;
@@ -173,11 +190,14 @@ fn run_with(
             return Err(format!("no corpus file for `--fn {id}`"));
         }
     }
-    if let Some(name) = &options.subject {
-        subjects.retain(|s| s.subject.name() == name);
-        if subjects.is_empty() {
-            return Err(format!("no in-process subject `{name}` is registered"));
+    match &options.subject {
+        Some(name) => {
+            subjects.retain(|s| s.subject.name() == name);
+            if subjects.is_empty() {
+                return Err(format!("no in-process subject `{name}` is registered"));
+            }
         }
+        None => subjects.retain(|s| !s.planted),
     }
     let per_subject = evaluate(corpus_dir, &entries, &subjects, Precision::F64)?;
     if per_subject.iter().all(Vec::is_empty) {
@@ -216,13 +236,17 @@ pub(crate) fn run(args: &[String]) -> Result<(), String> {
     let root = root()?;
     let results = root.join("conformance/results");
     let options = parse_args(args)?;
+    if options.self_test {
+        return selftest::run(&corpus_dir()?);
+    }
     let rev = git_rev(&root);
+    let corpus = corpus_dir()?;
     run_with(
-        &corpus_dir()?,
+        &corpus,
         &results,
         &rev,
         &options,
-        subject::registry(),
+        subject::registry(&corpus)?,
     )
 }
 
@@ -243,9 +267,17 @@ mod tests {
             (o.subject.as_deref(), o.fn_id.as_deref()),
             (Some("x"), Some("so2_exp"))
         );
-        for bad in [&["--subject"][..], &["--nope"], &["--self-test"], &["x"]] {
+        for bad in [
+            &["--subject"][..],
+            &["--nope"],
+            &["--self-test=x"],
+            &["--self-test", "--fn", "so2_exp"],
+            &["--subject=x", "--self-test"],
+            &["x"],
+        ] {
             assert!(parse_args(&args(bad)).is_err(), "{bad:?}");
         }
+        assert!(parse_args(&args(&["--self-test"]))?.self_test);
         Ok(())
     }
 
@@ -271,10 +303,7 @@ mod tests {
     }
 
     fn registered(subject: impl Subject + 'static) -> Registered {
-        Registered {
-            version: "1".into(),
-            subject: Box::new(subject),
-        }
+        Registered::new("1", Box::new(subject))
     }
 
     fn only(fn_id: &str) -> Result<Vec<corpus::Entry>, String> {
@@ -404,6 +433,30 @@ mod tests {
             .unwrap_or_default();
         assert!(e.contains("no selected subject supports"), "{e}");
         assert!(!scratch.0.exists());
+        Ok(())
+    }
+
+    #[test]
+    fn a_plain_run_skips_planted_subjects_and_naming_one_runs_it() -> Result<(), String> {
+        let scratch = Scratch::new("planted");
+        let run = |args: &[&str]| {
+            let args: Vec<String> = args.iter().map(ToString::to_string).collect();
+            let all = subject::registry(&corpus_dir()?)?;
+            run_with(&corpus_dir()?, &scratch.0, "rev", &parse_args(&args)?, all)
+        };
+        let ok = run(&["--fn", "coeff_k"]);
+        assert!(ok.is_ok(), "{ok:?}");
+        let (correct, planted) = (
+            "seeded-correct--coeff_k.csv",
+            "seeded-k-sqrt-unsafe--coeff_k.csv",
+        );
+        assert!(scratch.0.join(correct).exists() && !scratch.0.join(planted).exists());
+        // The planted `k` has a NaN derivative at `theta:exact0`: named, it fails like any subject.
+        let e = run(&["--subject", "seeded:k-sqrt-unsafe", "--fn", "coeff_k"])
+            .err()
+            .unwrap_or_default();
+        assert!(e.contains("non-finite output"), "{e}");
+        assert!(scratch.0.join(planted).exists());
         Ok(())
     }
 

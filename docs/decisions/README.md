@@ -28,7 +28,7 @@ grep -m1 -H '^\*\*Status:' docs/decisions/0*.md
 | [`0011`](./0011-continuous-time-waits-for-a-consumer.md) | `helicoid-spline` is gated on a consumer record; the core owes only `Ad`, `ad`, `Jr`, `Jr⁻¹`. |
 | [`0012`](./0012-a-retraction-is-a-chart.md) | retractions are chart types; SE(3) has `Screw`, `Decoupled`, `WorldTranslation`; S² charts are frozen. |
 | [`0013`](./0013-simd-lanes-owe-a-measurement.md) | SIMD `Real` lanes: the question and the bar; nothing decided. |
-| [`0014`](./0014-the-conformance-metrics-open-readings.md) | the readings the conformance metric takes where `NUMERICS.md` §11 is silent; nothing decided. |
+| [`0014`](./0014-the-conformance-metrics-open-readings.md) | the readings the conformance metric takes where `NUMERICS.md` §11 is silent, and the field of `PHASE1.md` §10's `b` curve; nothing decided. |
 | [`0015`](./0015-specification-gaps-found-while-building-the-instrument.md) | the gaps the generator, `helicoid-linalg`, the lint and the derivation pages found in the specs: passage, evidence, options and a recommendation each; nothing decided. |
 | [`0018`](./0018-libm-arch-is-bit-identical-for-exact-operations.md) | `libm` `arch` on: the routed `sqrt`/`fma`/`rint` are exactly rounded, so every non-NaN output is bit-identical; per-target dispatch read; NaN bits stay outside D16; a pinned-digest `sqrt` test. |
 | [`0019`](./0019-a-cholesky-solve-without-the-transpose.md) | `chol_solve(&L, b)`: `A x = b` from the factor, `L^T` read by column, bit-identical to the transposed-copy composition; the column solve stays private. |

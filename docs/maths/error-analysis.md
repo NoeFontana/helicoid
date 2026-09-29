@@ -623,9 +623,13 @@ $\mathrm d\sqrt z = (\mathtt{NaN}, \mathtt{NaN}, \mathtt{NaN})$; `branch` with t
 $z = 0$: $(1/6, -1/120)$ exactly; the same code with the series arm masked out:
 $(\mathtt{NaN}, \mathtt{NaN})$; $\lvert x\rvert$ rule at $\pm0$: $+1$; $\mathrm{atan2}(0, 0)$:
 $(\mathtt{NaN}, \mathtt{NaN})$; the 8-term series of $b$ at $z = 10^{45}$ is finite and at $10^{50}$
-is $-\infty$, where $0\cdot P_8 + 1\cdot0.5$ is $\mathtt{NaN}$. Script not committed. **Permanent:** planned, the seeded defect
-"`sqrt` of $\theta^2$ without the safe argument, under `Dual`" (`PHASE1.md` §10; `nonfinite > 0` in
-`theta:exact0`).
+is $-\infty$, where $0\cdot P_8 + 1\cdot0.5$ is $\mathtt{NaN}$. Script not committed. **Permanent:** (b) implemented, the seeded defect
+"`sqrt` of $\theta^2$ without the safe argument, under `Dual`" as `seeded:k-sqrt-unsafe` (the shared
+$\theta$; `PHASE1.md` §10; `nonfinite > 0` in `theta:exact0`, `just conformance --self-test`); (c)
+implemented for the exact arm, by the tests `a_lane_that_evaluates_both_arms_never_sees_a_non_finite_operation`
+(a mask that evaluates both arms and counts non-finite operations: none, in value or derivative, at $z = 0$,
+subnormal, $10^{-16}$ and either side of the switch) and `a_lane_that_evaluates_both_arms_sees_the_missing_safe_argument`;
+no `bool` subject can show (c). The series arm's own safe argument at $z \gtrsim 10^{44}$ is not tested.
 
 ## 6. The reference corpus
 

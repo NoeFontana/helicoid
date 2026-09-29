@@ -265,7 +265,11 @@ fit $\theta^{-p}$, $p \in [1.8, 2.2]$) covers $b$ only, and its window contains 
 `theta:1e-8` ($b = 0$ below $\sqrt{6u} = 2.6\times10^{-8}$, error exactly $1$ instead of $\sim6.7$):
 in three simulated runs (64 samples per stratum, per-stratum maximum, least squares in
 $\log\theta$) the fitted $p$ is $1.91$–$1.94$, inside the window but biased low by $0.07$ ($2.00$ without
-that stratum), so a tighter window would fail (open item in the index).
+that stratum), so a tighter window would fail (open item in the index). Implemented as
+`seeded:b-no-series` (`just conformance --self-test`; test
+`the_window_the_decades_and_the_measured_exponent_are_pinned`): on the committed corpus, the `value`
+field's per-stratum maximum over the seven strata fits $p = 1.937$ (correct kernel: $-0.10$), as
+predicted; the record maximum over `value` and `d_branch` fits $3.98$ (open question 7 of 0014 (draft)).
 
 ## 4. The series arm
 
@@ -563,7 +567,8 @@ six; $b$ by its definition returns $0$ at $\theta \le 2\times10^{-8}$; $c$ near 
 per $\delta$ as in CO.7; $c'(\pi)$ by `mp.diff` against the formula; magnitudes of $z$ from the
 `f64`/`f32` limits. **Permanent:** planned, corpus strata `theta:exact0`, `theta:subnormal`,
 `theta:pi-1e-k` and the `nonfinite` column (`PHASE1.md` §4.4, §5); the seeded defect "`sqrt` of
-$\theta^2$ without the safe argument, under `Dual`" (§10).
+$\theta^2$ without the safe argument, under `Dual`" (§10), implemented as `seeded:k-sqrt-unsafe` and
+the both-arms mask tests of EA.18.
 
 ## 8. The $r$ kernel
 

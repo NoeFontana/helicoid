@@ -146,10 +146,41 @@ fn pow2(k: i64) -> f64 {
 
 /// `num / den` correctly rounded to binary64 (nearest, ties to even, subnormals and overflow
 /// included). `den` must be non-zero. The quotient is cut at the last bit the result keeps, so
-/// there is one rounding and no double rounding through a wider format. Test-only: it is the
-/// oracle subjects' reference rounding.
-#[cfg(test)]
+/// there is one rounding and no double rounding through a wider format. It rounds the seeded
+/// kernels' series constants and is the test oracles' reference rounding.
 pub(crate) fn ratio_to_f64(num: &BigUint, den: &BigUint) -> f64 {
+    ratio_to_binary(num, den, Format::F64)
+}
+
+/// [`ratio_to_f64`] for binary32: the same single rounding, cut at the last bit binary32 keeps.
+pub(crate) fn ratio_to_f32(num: &BigUint, den: &BigUint) -> f32 {
+    // A binary32 value or infinity, exact in binary64, so the cast rounds nothing.
+    ratio_to_binary(num, den, Format::F32) as f32
+}
+
+/// A binary format by its fraction bits and its normal exponent range.
+#[derive(Clone, Copy)]
+struct Format {
+    fraction: i64,
+    emin: i64,
+    emax: i64,
+}
+
+impl Format {
+    const F64: Self = Self {
+        fraction: 52,
+        emin: -1022,
+        emax: 1023,
+    };
+    const F32: Self = Self {
+        fraction: 23,
+        emin: -126,
+        emax: 127,
+    };
+}
+
+/// `num / den` rounded once to `format`, returned as a binary64 (exact for either format).
+fn ratio_to_binary(num: &BigUint, den: &BigUint, format: Format) -> f64 {
     if num.bits() == 0 {
         return 0.0;
     }
@@ -160,10 +191,10 @@ pub(crate) fn ratio_to_f64(num: &BigUint, den: &BigUint) -> f64 {
         (num << (-e) as usize) < *den
     };
     e -= i64::from(below);
-    if e > 1023 {
+    if e > format.emax {
         return f64::INFINITY;
     }
-    let quantum = e.max(-1022) - 52;
+    let quantum = e.max(format.emin) - format.fraction;
     let (n, d) = if quantum >= 0 {
         (num.clone(), den << quantum as usize)
     } else {
@@ -174,7 +205,8 @@ pub(crate) fn ratio_to_f64(num: &BigUint, den: &BigUint) -> f64 {
     if twice > d || (twice == d && q.bit(0)) {
         q += 1u32;
     }
-    // `q <= 2^53`: exact as an `f64`, and `q * 2^quantum` is representable by construction.
+    // `q <= 2^(fraction + 1)`: exact as an `f64`, and `q * 2^quantum` is representable by
+    // construction or overflows to infinity.
     let q = q.iter_u64_digits().next().unwrap_or(0);
     q as f64 * pow2(quantum)
 }
@@ -369,6 +401,39 @@ mod tests {
             ratio_to_f64(&(&top - (&one << 970usize)), &one),
             f64::INFINITY
         );
+    }
+
+    #[test]
+    fn ratio_rounds_to_binary32_once() {
+        let r = |n: u128, d: u128| ratio_to_f32(&BigUint::from(n), &BigUint::from(d));
+        let (two24, one) = (1u128 << 24, BigUint::from(1u32));
+        // Ties go to the even neighbour.
+        assert_eq!(r(two24 + 1, 1), 16_777_216.0);
+        assert_eq!(r(two24 + 3, 1), 16_777_220.0);
+        // Just above the tie 2^24 + 1 by 2^-60: binary64 holds it as the tie itself, and rounding
+        // that to binary32 again would give 2^24. One rounding gives 2^24 + 2.
+        assert_eq!(r(((two24 + 1) << 60) + 1, 1 << 60), 16_777_218.0);
+        assert_eq!(r(1, 3).to_bits(), (1.0f32 / 3.0).to_bits());
+        // Subnormal: 1.5 * 2^-149 ties to the even 2 * 2^-149; 0.5 * 2^-149 ties to 0.
+        let tiny =
+            |k: u32, d: usize| ratio_to_f32(&BigUint::from(k), &(BigUint::from(1u32) << (149 + d)));
+        assert_eq!(tiny(3, 1), f32::from_bits(2));
+        assert_eq!(tiny(1, 1), 0.0);
+        assert_eq!(tiny(3, 0), f32::from_bits(3));
+        // The largest finite is 2^128 - 2^104; the tie above it rounds to the even 2^128: overflow.
+        let big = |k: u32| BigUint::from(1u32) << k;
+        let (max, tie) = (big(128) - big(104), big(128) - big(103));
+        assert_eq!(ratio_to_f32(&max, &one), f32::MAX);
+        assert_eq!(ratio_to_f32(&(&tie - &one), &one), f32::MAX);
+        assert_eq!(ratio_to_f32(&tie, &one), f32::INFINITY);
+        // Integers a binary32 holds: the quotient of two binary32 values is correctly rounded.
+        let mut state = 5;
+        for _ in 0..2000 {
+            let n = crate::conformance::testkit::splitmix(&mut state) >> 40;
+            let d = (crate::conformance::testkit::splitmix(&mut state) >> 40) | 1;
+            let want = n as f32 / d as f32;
+            assert_eq!(r(n.into(), d.into()).to_bits(), want.to_bits(), "{n}/{d}");
+        }
     }
 
     #[test]

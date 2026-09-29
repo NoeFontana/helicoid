@@ -215,6 +215,21 @@ defined by the status tables in `docs/`; they win over this file.
   and proposed by draft record 0014. Backward error, `f32` (refused), `--self-test` and the
   `helicoid` and seeded subjects are not implemented. `xtask` gains `num-bigint` and
   `helicoid-linalg`; no library code changes; breaks nothing.
+- `cargo xtask conformance --self-test` (`just conformance --self-test`, a CI job) and the seeded
+  subjects of `docs/PHASE1.md` §10 (`xtask/src/seeded`): the coefficient kernels `k, a, b, c, d, e`
+  generic over `Real` (exact arm at the safe argument, one `S::branch`; series read at run time from
+  `coeff_series.jsonl` and rounded once, in integers, at the precision they run at, `f64` or `f32`),
+  evaluated over the `coeff_*` ids as value and `d/dz` of one `Dual<f64, 1>` at a
+  `Candidate { terms, switch_z }`; `seeded:correct` is the `tf_tree` D12 candidate (for all six
+  coefficients, though `NUMERICS.md` §4 lists it for `a`, `b`, `c`), and `b` by its definition and `k`
+  with an unsafe `sqrt` of `θ²` under `Dual` are planted. The self-test fails unless the correct kernel
+  fires no mechanism and each defect fires its own (`b`: the value's error curve over
+  `theta:1e-8`…`theta:1e-2` fits `θ^-p`, `p` in [1.8, 2.2], 1.937 measured; `k`: `nonfinite > 0` in
+  `theta:exact0`), and prints the correct kernel's errors and every mechanism's reading for every
+  subject. Unit tests pin the correct kernel's `max_u` per coefficient and field, and check its safe
+  argument on a mask that evaluates both arms. A plain `just conformance` now scores `seeded:correct`
+  and skips planted subjects unless named. `xtask` gains `libm` (the fit's logarithm, the same bits on
+  every host). No library code changes; breaks nothing.
 
 ### Changed
 
