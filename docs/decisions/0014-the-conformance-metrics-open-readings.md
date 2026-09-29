@@ -12,7 +12,8 @@ the smallest reading of each so that the harness core runs (`PHASE1.md` §5). Th
 bar every envelope baseline is blessed against (`0006`); none is blessed yet (`PHASE1.md` §8 is not
 started), so each is still free to change. `xtask/src/thresholds` (`PHASE1.md` §6) did the same for
 the threshold sweep (questions 8 to 11) and for the file it writes, `xtask/src/seeded/generated.rs`
-(12, 13); the self-test (`PHASE1.md` §10) did for the planted `c` (14, 15).
+(12, 13); the self-test (`PHASE1.md` §10) did for the planted `c` (14, 15) and for the seeded SO(3)
+subject and its `Log` defects (16 to 20).
 
 ## Decision
 
@@ -87,3 +88,31 @@ None until the open questions are resolved.
     7.4e3 u, rank 7841 of 8200), and ranks the `(terms, switch)` the subject declares, which it
     checks against the objective the harness measures for the subject's `c`, to the bit. State a
     margin, a rank, or neither?
+16. **The correct kernel's bar** (§10 names none for it). The self-test holds `seeded:correct`'s
+    `Exp` and `Log` to 4 `u` on every stratum's max: 1.4 times the measured 2.91 `u`, a few
+    roundings (`docs/maths/so3.md` SO.6, `docs/maths/coefficients.md` CO.16). `0006` blesses a
+    baseline against a bar. State one, or leave it to the envelope?
+17. **Which `acos` strata reach `10^7 u`** (§10: "`theta:1e-k` and `theta:pi-1e-k` max ≥ `10^7 u`").
+    Not every stratum can: `θ` from `χ = cos θ` errs by `≈ u/(2θ²)` (`so3.md` SO.6(a)). The
+    self-test gates every stratum of `theta:1e-k` from `k = 4` and of `theta:pi-1e-k` from `k = 7`,
+    the boundaries as measured (8.2e7 `u` at `theta:1e-4`, 1.5e7 at `theta:pi-1e-7`), and prints
+    the family maxima (9.0e15, 8.5e7). Every stratum from those `k`, the family max alone, or a
+    stated `k`?
+18. **`Log` without the flip: "every `so3_log` stratum"** (§10). Where every negated record has
+    `n² = 0` (`theta:exact0`, `theta:subnormal`), `r`'s series arm `2/w` is analytic in the sign of
+    `w`, so no defect can fail there. The self-test excuses a stratum only when that holds of its
+    records and the defect answers it bit for bit as the correct kernel; every other negated half
+    must fail (at least `10^7 u`; the missing flip is `2π` in `φ`), and one must. Amend §10 for the
+    two strata, or plant a defect that survives the arm?
+19. **`cos(θ/2)` in the seeded `Exp`.** §3.1 has the series arm compute it from its own series and
+    one `sin_cos` in the exact arm; §4 evaluates `(k, cos θ/2)` in one `branch`. No series of
+    `cos(θ/2)` is committed (`PHASE1.md` §0.0, *Missing*), so `Exp` takes `k` from `coefficient`
+    alone and `cos(θ/2)` by the exact arm at every `z`, on a second `sin_cos`; the `sqrt(z)` under
+    it has an infinite `Dual` derivative at `z = 0`, so `Exp` is a value subject. Acceptable until
+    the series lands, or is the group rule owed first?
+20. **The switch of `r`** (§4: generated; `PHASE1.md` §0.0: its branch variable and `w ≤ 0` domain
+    are open, so it is not swept). The seeded `Log` takes the series arm where `n² = 0`, the one
+    place the exact arm is `0/0`, and types no constant: elsewhere `atan2` and the division share
+    the one `n`, so `Log` is scale-invariant (§3.2) to the bits a subnormal `n²` keeps, where a
+    bound at the smallest normal number returns 1.0926 for the rotation of angle 1 scaled to
+    `1.4·10^-154`. Is `0 < n²` the intended switch, or `s = n²/w²`?

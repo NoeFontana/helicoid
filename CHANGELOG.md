@@ -249,6 +249,19 @@ defined by the status tables in `docs/`; they win over this file.
   whose `c` is the chosen candidate, stays silent; the self-test also fails when a subject's
   measured `c` objective is not the ranked one, to the bit. `xtask` gains `sha2` (the revisions;
   `xtask` only, `0007`); no library code changes; breaks nothing.
+- Seeded SO(3) subject and its two `Log` defects (`docs/PHASE1.md` §10, `xtask/src/seeded/so3.rs`):
+  `seeded:correct` now also runs `Exp` (`k` at the generated switch, `cos θ/2` by its exact arm: no
+  series is committed for it) and `Log` (the `copysign` flip, `r = 2 atan2(n, w)/n` at the safe
+  argument, its series arm `2/w` taken where `n² = 0`, no constant typed) over `so3_exp` and
+  `so3_log`, at most 2.91 `u` on every stratum (`--self-test` gates 4), non-finite-free, its safe
+  arguments checked on a mask that evaluates both arms. `seeded:log-acos` and `seeded:log-no-flip`
+  join `--self-test`, which fails unless each fires its own mechanism and the correct kernel fires
+  none: `acos` when every stratum of `theta:1e-k` from `k = 4` and of `theta:pi-1e-k` from `k = 7`
+  reaches `10^7` (§10's per-`k` wording cannot hold for every `k`); the flip when every stratum with
+  a negated half either fails or has nothing to detect (`n² = 0`, derived from the records: 27 of 29
+  fail, `theta:exact0` and `theta:subnormal` cannot), and one fails. A stratum with no score, a
+  non-finite output and a `NaN` fail the gate. The two defects run over `so3_log` only. The readings
+  are 0014 (draft) questions 16 to 20. No new dependency, no library code changes; breaks nothing.
 
 ### Changed
 

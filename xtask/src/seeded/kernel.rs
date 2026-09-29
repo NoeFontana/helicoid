@@ -162,7 +162,7 @@ pub(crate) fn k_sqrt_unsafe<S: Real>(z: S, cand: Candidate<S>, series: &[S]) -> 
 
 #[cfg(test)]
 #[allow(clippy::float_cmp)]
-mod tests {
+pub(super) mod tests {
     use std::cell::Cell;
 
     use helicoid_linalg::Mask;
@@ -171,11 +171,11 @@ mod tests {
     use crate::conformance::corpus_dir;
     use crate::conformance::testkit::splitmix;
 
-    thread_local!(static NONFINITE: Cell<usize> = const { Cell::new(0) });
+    thread_local!(pub(in crate::seeded) static NONFINITE: Cell<usize> = const { Cell::new(0) });
 
     /// An `f64` that counts every operation with a non-finite result.
     #[derive(Clone, Copy, Debug)]
-    struct Lane(f64);
+    pub(in crate::seeded) struct Lane(pub(in crate::seeded) f64);
 
     fn note(x: f64) -> Lane {
         if !x.is_finite() {
@@ -186,7 +186,7 @@ mod tests {
 
     /// A mask that evaluates both arms and blends, as a SIMD lane does (`docs/PHASE2.md` §2).
     #[derive(Clone, Copy)]
-    struct Both(bool);
+    pub(in crate::seeded) struct Both(bool);
 
     impl Mask for Both {
         fn and(self, o: Self) -> Self {
