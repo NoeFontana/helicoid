@@ -1,0 +1,23 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cargo nextest run *)",
+      "Bash(cargo clippy *)",
+      "Bash(cargo build *)",
+      "Bash(cargo check *)",
+      "Bash(cargo fmt --all --check)",
+      "Bash(cargo fmt --check *)",
+      "Bash(cargo deny check *)",
+      "Bash(cargo tree *)",
+      "Bash(just --list)",
+      "Bash(just build)",
+      "Bash(just test)",
+      "Bash(just lint)",
+      "Bash(just doc)",
+      "Bash(just msrv)",
+      "Bash(just no-std)",
+      "Bash(just wasm)",
+      "Bash(just audit)"
+    ]
+  }
+}

@@ -1,0 +1,4 @@
+# `cargo xtask <task>` runs the automation binary in `xtask/`; the `just` recipes call it.
+# No `target-cpu`, no `rustflags` here: outputs are bit-identical across targets (D16, `0007`).
+[alias]
+xtask = "run --quiet --package xtask --"

@@ -1,0 +1,9 @@
+# A hung test must be a failure, not a wedged run. Retries are off on purpose: a retry that
+# turns a real flake green would hide a determinism failure (D16).
+[profile.default]
+slow-timeout = { period = "60s", terminate-after = 3 }
+final-status-level = "slow"
+
+[profile.ci]
+slow-timeout = { period = "60s", terminate-after = 3 }
+fail-fast = false

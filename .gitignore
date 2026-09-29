@@ -1,0 +1,34 @@
+# Rust. `target*/`, not `target/`: a parallel build with `CARGO_TARGET_DIR=target-x` writes a
+# sibling the anchored rule would miss (tf_tree committed 358 MiB that way).
+/target*/
+**/*.rs.bk
+
+# Conformance run output (`docs/PHASE1.md` §1); the corpus, sweeps and baseline are committed.
+/conformance/results/
+
+# Runners are workspace-excluded, so cargo gives each its own `target/`.
+/runners/*/target/
+
+# Python reference generator (`uv`).
+__pycache__/
+*.py[cod]
+.venv/
+.ruff_cache/
+.pytest_cache/
+
+# mdbook output.
+/docs/book/
+
+# Local agent state.
+.claude/worktrees/
+.claude/settings.local.json
+
+# Editors, OS.
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+*.swp
+*~
+.env
+.env.*
