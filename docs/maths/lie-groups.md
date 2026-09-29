@@ -223,7 +223,7 @@ map $A + \epsilon B \mapsto A$ is an algebra homomorphism, and $\mathrm{ad}_\tau
 $3(N+1)$-square products and `mp.inverse` on six unstructured random block pairs, max $0$ and
 $1.3\times10^{-111}$; zero pattern and equal diagonal blocks of dense $\mathrm{Ad}_X$, $\mathrm{ad}_\tau$,
 $J_r$, $J_l$ and (for $\theta < 2\pi - 10^{-3}$) $J_r^{-1}$, $J_l^{-1}$ over the $\tau$ of LG.2, max
-deviation $3.3\times10^{-108}$. Script not committed. **Permanent:** planned, proptests `sen3jac_mul_matches_reference`,
+deviation $3.3\times10^{-108}$. Script not committed. **Permanent:** proptests `sen3jac_mul_matches_reference`,
 `sen3jac_inverse_matches_reference` ([`0005`](../decisions/0005-the-jacobian-is-a-dual-matrix.md)).
 
 ## 4. First-order calculus with sides
