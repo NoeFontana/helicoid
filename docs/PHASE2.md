@@ -13,7 +13,7 @@ signatures in code blocks are normative.
 
 | Area | Status |
 |---|---|
-| `Mask`, `Real`, `Blend`, `Precision`; `f64`/`f32` impls (§2) | Not started |
+| `Mask`, `Real`, `Blend`, `Precision`; `f64`/`f32` impls (§2) | Partial: all four traits and both scalar impls done, `compile_fail` doctests for `<` and `==` in place; `Blend` for `Vector`/`Matrix`/`Point` and the `Dual` impl of `Real` land with §3–§4 |
 | `Dual<S, N>` (§3) | Not started |
 | `Vector`, `Matrix`, `Point`, `hat`/`vee`, `Mat3::inverse_adj`, `chol` (§4) | Not started |
 | `Strided`, `StridedMut` (§5) | Not started |

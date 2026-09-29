@@ -102,7 +102,7 @@ each stratum's max.
   artifact, not an implementation authorization**
   ([`0011`](./decisions/0011-continuous-time-waits-for-a-consumer.md)).
 
-All phases: **not started**. The §0.0 table heading each spec is authoritative.
+Status per phase: the §0.0 table heading each spec is authoritative.
 
 ## 5. Decision log
 

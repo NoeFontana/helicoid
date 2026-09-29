@@ -9,7 +9,7 @@ Every switch point is generated from a committed sweep; every routine is measure
 against an mpmath corpus and an envelope of oracles (Sophus, manif, GTSAM, sophus-rs,
 `tf_tree_math`), and must dominate it.
 
-**Status:** pre-implementation. The design is in [`docs/`](./docs/); start at
+**Status:** early implementation; each spec's §0.0 table is the source of truth. The design is in [`docs/`](./docs/); start at
 [`docs/PROJECT.md`](./docs/PROJECT.md). Agents: [`CLAUDE.md`](./CLAUDE.md).
 
 Crates: `helicoid-linalg` (the leaf: scalar model, fixed-size linear algebra), `helicoid` (groups,
