@@ -11,7 +11,7 @@ use super::number::Decimal;
 use super::subject::{Output, Subject};
 
 /// splitmix64, the generator's stream (`docs/maths/error-analysis.md` EA.23).
-pub(super) fn splitmix(state: &mut u64) -> u64 {
+pub(crate) fn splitmix(state: &mut u64) -> u64 {
     *state = state.wrapping_add(0x9E37_79B9_7F4A_7C15);
     let mut z = *state;
     z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
@@ -20,10 +20,10 @@ pub(super) fn splitmix(state: &mut u64) -> u64 {
 }
 
 /// A directory under the system temp dir, removed when the test ends.
-pub(super) struct Scratch(pub(super) PathBuf);
+pub(crate) struct Scratch(pub(crate) PathBuf);
 
 impl Scratch {
-    pub(super) fn new(tag: &str) -> Self {
+    pub(crate) fn new(tag: &str) -> Self {
         let dir =
             std::env::temp_dir().join(format!("xtask-conformance-{}-{tag}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
@@ -38,7 +38,7 @@ impl Drop for Scratch {
 }
 
 /// A record with the given binary64 inputs and decimal reference strings.
-pub(super) fn record(
+pub(crate) fn record(
     inputs: &[(&str, &[f64])],
     reference: &[(&str, &[&str])],
 ) -> Result<Record, String> {

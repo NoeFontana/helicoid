@@ -5,6 +5,7 @@
 
 mod conformance;
 mod lint;
+mod seeded;
 
 use std::process::ExitCode;
 

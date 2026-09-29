@@ -62,7 +62,8 @@ wasm:
 
 # In-process subjects over the corpus: forward error per (fn, stratum) into conformance/results/,
 # the table by max_u descending; fails on any non-finite output and when nothing was scored.
-# Arguments: --subject NAME, --fn ID.
+# Arguments: --subject NAME, --fn ID; or --self-test alone: the correct seeded kernel must fire no
+# mechanism and every planted defect must fire its own (`docs/PHASE1.md` §10).
 conformance *args:
     cargo xtask conformance {{args}}
 

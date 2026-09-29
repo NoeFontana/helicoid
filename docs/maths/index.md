@@ -176,7 +176,9 @@ below, are collected for decision, with a recommendation each, in the draft reco
   over `theta:1e-8`…`theta:1e-2`, but $b$ is $0$ (relative error exactly $1$) below
   $\sqrt{6u} = 2.6\times10^{-8}$, inside `theta:1e-8`: simulated fits give $p = 1.91$–$1.94$ ($2.00$
   without that stratum), inside the window by $0.1$ (CO.6, *Checked*). The window should start above
-  $2.6\times10^{-8}$, or the fit skip saturated strata.
+  $2.6\times10^{-8}$, or the fit skip saturated strata. Measured by the self-test on the committed
+  corpus: $p = 1.937$ (`value` field, seven strata), inside by $0.137$; the record maximum over `value`
+  and `d_branch` fits $3.98$, so the field is a reading too (0014 (draft), question 7).
 - `0004` item 1 and `PHASE1.md` §6 minimize each coefficient's own value and `Dual`-derivative error, but
   a consumer multiplies a coefficient by a word of size $\theta^p$: with the exact arms of $b, d, e$ alone,
   the value of $Q$ errs by $\lesssim(16.3/\theta + 20.8)u$ (measured $\le6.5u/\theta$, `f64`; $39u$ at a
