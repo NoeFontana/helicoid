@@ -13,6 +13,7 @@
 - [Maths: notation, conventions, how results are checked](maths/index.md)
 - [Lie groups, adjoints and the Jacobians of Exp](maths/lie-groups.md)
 - [SO(3): quaternion, Exp, Log, Jacobians, from_matrix](maths/so3.md)
+- [The coefficient catalogue: series, cancellation, switch points](maths/coefficients.md)
 
 # Specifications
 - [Phase 1: skeleton and the instrument](PHASE1.md)

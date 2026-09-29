@@ -2,7 +2,8 @@
 
 > Non-normative companion to [`NUMERICS.md`](../NUMERICS.md) §2.4 (SO(3) rows), §3 and the
 > *definitions* of $k, a, b, c, r$ in §4 (their series, switch points and cancellation analysis
-> beyond the amplification factors quoted here are not derived). **`NUMERICS.md` wins on any
+> are derived in [`coefficients.md`](./coefficients.md); the amplification factors quoted here are
+> `NUMERICS.md` §4's magnitudes, whose sampled maxima CO.6 there gives). **`NUMERICS.md` wins on any
 > conflict; a disagreement is an open item in the [maths index](./index.md)**, which also holds the
 > notation and the `Checked:` convention; the general algebra ($\mathrm{Ad}$,
 > $\mathrm{ad}$, $J = g(\pm\mathrm{ad})$, the sides table) is in [`lie-groups.md`](./lie-groups.md).
@@ -284,7 +285,8 @@ $W^{2j} = (-\theta^2)^{j-1}W^2$ gives the series, whose radius $2\pi$ is the dom
 
 *Consequences.* Terms of $c = \theta^{-2} - \cot(\theta/2)/2\theta$ are $\approx\theta^{-2}$ for a
 value $\to\frac1{12}$: amplification $12/\theta^2$ (as $6/\theta^2$ for $b$ and $2/\theta^2$ for the
-naive $a$, `NUMERICS.md` §4); the $\cot$ form is finite at $\pi$ where $(1+\cos\theta)/\sin\theta$
+naive $a$, `NUMERICS.md` §4; a magnitude, not a bound: the sampled maximum for $c$ is $\approx48/\theta^2$
+and the rounding-count bound $72/\theta^2$, CO.6); the $\cot$ form is finite at $\pi$ where $(1+\cos\theta)/\sin\theta$
 is $0/0$. On the plane $\perp\varphi$, $W$ acts as multiplication by $i\theta$ and $J_r^{-1}$ as
 $\frac\theta2\cot\frac\theta2 + i\frac\theta2$, of modulus
 $\theta/(2\sin\frac\theta2) = \lVert J^{-1}\rVert_2$ (LG.16(a)): the blow-up of $c$ at $2\pi$ is the
