@@ -149,6 +149,17 @@ defined by the status tables in `docs/`; they win over this file.
   cancellation in `f64` value at small angle or near π, the per-type 0/0 guard, the `Dual` translation derivative that loses about 1/α whatever series is used, the endpoints, the cut at π); SO(3) slerp).
   Documentation only; no code, no formula change, no normative document changed. Five open items for the
   normative documents are added in the maths index.
+- `docs/maths/charts.md`: charts of `PHASE5.md` §1–§2 (a chart as a frozen retraction with a local inverse and
+  its two Jacobians read in the chart of the retracted point, `lj(ret δ) = rj(δ)⁻¹`; `RightChart` and `LeftChart` from
+  the rows of `NUMERICS.md` §2.3; `Screw`, `Decoupled` and `WorldTranslation` as two retractions in three frames, with
+  the block-diagonal `rj`, `lj` of the last two derived and why they are not dual matrices; the change-of-chart
+  identity, which contains `se3.md` SE.9(b), (c); what a chart change alters in an LM iterate: not the step of `Screw`
+  and `Decoupled`, but the trial point by at most `θ‖ρ‖/2`; S²: the Householder basis and its closed form, `retract`
+  as the sphere's exponential of the rotation vector, `local` and the `r` kernel, `rj = ZᵀA(δ)`, `lj = A(δ)⁻¹Z`, the
+  reflection at `n_z = 0`, the hairy-ball argument for freezing the chart, the antipode). Documentation only; no
+  code, no formula change, no normative document changed. Four open items for the normative documents are added
+  in the maths index (`PHASE5.md` §1.3's first-order claim is false for `WorldTranslation` unless `R = I`; `sgn(-0)`;
+  `mp.logm` as the `s2_local` reference; the unit-norm domain of `S2`) and two extended.
 - `cargo xtask lint`, run by `just lint`: no line citations in markdown or comments, no draft
   decision record cited as settled (status-table rows, Rust comments, amendment banners; not
   prose elsewhere), and `@generated` files registered with their owning task and header. Owed:
