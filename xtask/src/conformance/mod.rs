@@ -2,9 +2,11 @@
 //! subjects over the committed corpus, scores each record with the forward error of
 //! `docs/NUMERICS.md` §11 in units of `u`, aggregates per `(fn, stratum, precision, subject)`, writes
 //! `conformance/results/<subject>.csv` and prints the table by `max_u` descending. It fails on any
-//! non-finite output, and when nothing was scored. A run reads the whole corpus (each file parses,
+//! non-finite output (an oracle's is recorded, not failed: `docs/PHASE1.md` §7), and when nothing
+//! was scored. A run reads the whole corpus (each file parses,
 //! ids are line numbers, record counts match `MANIFEST.json`); a run that scored nothing is not a
-//! pass. `--self-test` runs the seeded kernels and defects instead (`selftest`).
+//! pass. `--self-test` runs the seeded kernels and defects instead (`selftest`); `--oracle NAME`
+//! runs an out-of-process oracle runner and scores its answer files (`oracle`).
 //!
 //! Exact by construction: inputs are hex floats, references are 30-digit decimals, and the error
 //! is formed in integers ([`metric`]), never through `f64` parsing of a reference. The output is a
@@ -31,12 +33,14 @@
 //!   `precision` column `f32`.
 //! - **`helicoid`** (`crate::shipped`) is a plain subject over the eight `coeff_*` ids at both
 //!   precisions; a plain run of any of them prints its rows beside `seeded:correct`'s.
-//! - **Not implemented**: backward error (`Log` near π, `from_matrix`), oracle runners, the
-//!   envelope, `helicoid` on any other id, and the `Dual` comparison of the planted `Q` defect.
+//! - **Not implemented**: backward error (`Log` near π, `from_matrix`), the container and sophus-rs
+//!   oracle runners, the envelope, `helicoid` on any other id, and the `Dual` comparison of the
+//!   planted `Q` defect.
 
 pub(crate) mod corpus;
 pub(crate) mod metric;
 pub(crate) mod number;
+mod oracle;
 mod report;
 mod selftest;
 mod selftest_se3;
@@ -58,11 +62,12 @@ use report::{Aggregate, Row};
 use subject::Registered;
 
 const USAGE: &str =
-    "usage: cargo xtask conformance [--subject NAME] [--fn ID] [--precision f64|f32] | --self-test";
+    "usage: cargo xtask conformance [--subject NAME | --oracle NAME] [--fn ID] [--precision f64|f32] | --self-test";
 
 #[derive(Default)]
 struct Options {
     subject: Option<String>,
+    oracle: Option<String>,
     fn_id: Option<String>,
     /// `f64` when absent.
     precision: Option<Precision>,
@@ -89,20 +94,29 @@ fn parse_args(args: &[String]) -> Result<Options, String> {
             options.self_test = true;
             continue;
         }
-        if !matches!(flag, "--subject" | "--fn" | "--precision") {
+        if !matches!(flag, "--subject" | "--oracle" | "--fn" | "--precision") {
             return Err(format!("unknown argument `{arg}`; {USAGE}"));
         }
         let value = inline.or_else(|| rest.next().cloned());
         let value = value.ok_or_else(|| format!("`{flag}` needs a value; {USAGE}"))?;
         match flag {
             "--subject" => options.subject = Some(value),
+            "--oracle" => options.oracle = Some(value),
             "--fn" => options.fn_id = Some(value),
             _ => options.precision = Some(parse_precision(&value)?),
         }
     }
-    let other = options.subject.is_some() || options.fn_id.is_some() || options.precision.is_some();
+    let other = options.subject.is_some()
+        || options.oracle.is_some()
+        || options.fn_id.is_some()
+        || options.precision.is_some();
     if options.self_test && other {
         return Err(format!("`--self-test` takes no other argument; {USAGE}"));
+    }
+    if options.subject.is_some() && options.oracle.is_some() {
+        return Err(format!(
+            "`--subject` and `--oracle` exclude each other; {USAGE}"
+        ));
     }
     Ok(options)
 }
@@ -311,7 +325,16 @@ fn run_with(
             report::table(rows)
         );
         eprintln!("conformance: wrote {}", path.display());
-        failing += rows.iter().map(|r| r.nonfinite).sum::<usize>();
+        let nonfinite = rows.iter().map(|r| r.nonfinite).sum::<usize>();
+        match (nonfinite, options.oracle.is_some()) {
+            (0, _) => {}
+            // Oracles may be wrong: the count is in the row, the run still passes (§7).
+            (n, true) => eprintln!(
+                "conformance: {} has {n} record(s) with a non-finite output, recorded",
+                s.subject.name()
+            ),
+            (n, false) => failing += n,
+        }
     }
     match failing {
         0 => Ok(()),
@@ -327,13 +350,18 @@ pub(crate) fn run(args: &[String]) -> Result<(), String> {
         return selftest::run(&corpus_dir()?);
     }
     let rev = git_rev(&root);
-    run_with(
-        &corpus_dir()?,
-        &results,
-        &rev,
-        &options,
-        subject::registry(),
-    )
+    let corpus = corpus_dir()?;
+    let subjects = match &options.oracle {
+        Some(name) => vec![oracle::run(
+            name,
+            &root,
+            &corpus,
+            &results,
+            options.fn_id.as_deref(),
+        )?],
+        None => subject::registry(),
+    };
+    run_with(&corpus, &results, &rev, &options, subjects)
 }
 
 #[cfg(test)]
@@ -357,6 +385,8 @@ mod tests {
         assert_eq!(p(&["--precision", "f32"]), Ok(Some(Precision::F32)));
         assert_eq!(p(&["--precision=f64"]), Ok(Some(Precision::F64)));
         assert_eq!(p(&[]), Ok(None));
+        let o = parse_args(&args(&["--oracle=tf_tree_math", "--fn", "so2_exp"]))?;
+        assert_eq!(o.oracle.as_deref(), Some("tf_tree_math"));
         for bad in [
             &["--subject"][..],
             &["--nope"],
@@ -366,6 +396,9 @@ mod tests {
             &["--precision", "f32", "--self-test"],
             &["--precision"],
             &["--precision=f16"],
+            &["--oracle", "x", "--self-test"],
+            &["--oracle", "x", "--subject", "y"],
+            &["--oracle"],
             &["x"],
         ] {
             assert!(parse_args(&args(bad)).is_err(), "{bad:?}");
@@ -649,16 +682,39 @@ mod tests {
         Ok(())
     }
 
-    #[test]
-    fn a_non_finite_output_fails_the_run_after_the_rows_are_written() -> Result<(), String> {
-        let scratch = Scratch::new("nan");
-        let nan = Fixed::new("nan", |r| {
+    /// `Perfect::exact` but for a NaN `theta` at record 7, in the first stratum of `so2_log`.
+    fn nan_at_record_7() -> Fixed {
+        Fixed::new("nan", |r| {
             let mut out = Perfect::exact().eval("", r, Precision::F64);
             if r.id == 7 {
                 out.insert("theta".into(), vec![f64::NAN]);
             }
             out
-        });
+        })
+    }
+
+    #[test]
+    fn a_non_finite_oracle_answer_is_recorded_and_the_run_passes() -> Result<(), String> {
+        let scratch = Scratch::new("oracle-nan");
+        run_in(
+            &scratch,
+            &["--oracle=nan", "--fn=so2_log"],
+            nan_at_record_7(),
+        )?;
+        let csv = std::fs::read_to_string(scratch.0.join("nan--so2_log.csv"))
+            .map_err(|e| e.to_string())?;
+        let first = csv.lines().nth(1).unwrap_or_default();
+        assert!(
+            first.starts_with("so2_log,theta:1e-12,f64,nan,1,128,"),
+            "{first}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn a_non_finite_output_fails_the_run_after_the_rows_are_written() -> Result<(), String> {
+        let scratch = Scratch::new("nan");
+        let nan = nan_at_record_7();
         let e = run_in(&scratch, &["--fn=so2_log"], nan)
             .err()
             .unwrap_or_default();

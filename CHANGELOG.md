@@ -440,6 +440,19 @@ defined by the status tables in `docs/`; they win over this file.
   waits for the `helicoid` subject. The readings (the bar, "fails", the strata counted, the
   per-coefficient switches, the association of `Q`'s words) are 0014 (draft) questions 21 to 25. No
   new dependency, no library code changes; breaks nothing.
+- `runners/tf_tree_math`, oracle #1 (`docs/PHASE1.md` §7, `0010`): a workspace-excluded runner with
+  its own `Cargo.lock` and `tf_tree` commit `20bc5a05` as a pinned git dependency. It reads corpus
+  JSONL and writes hex-float answers for `so3_exp`, `so3_log`, `sen3_exp_n1` and `sen3_log_n1`,
+  through `helicoid_to_tf_tree_*` / `tf_tree_to_helicoid_*` conversions with hand-computed tests on
+  values whose components all differ. `cargo xtask conformance --oracle NAME` (`FileSubject`) builds
+  and runs a runner and scores its answers with the harness's exact metric, `subject_version` being
+  the pin; a skipped or extra record, a stray file and an owed id with no file are errors, a
+  non-finite answer a recorded row. `just oracle-tf-tree-math` runs it, with the runner's `doc` and
+  `cargo deny` (`deny.toml` allows its git source; Dependabot covers its registry dependencies).
+  Measured: at most 4.69 `u` on every stratum but `so3_log` `theta:subnormal` (3.97e14, an
+  underflow to 0). The pin exports no `V`/`V⁻¹` and no Jacobian, so there is no `coeff_*` row; the
+  file protocol and the ids not answered are 0014 (draft) questions 26 and 27. No library code
+  changes; breaks nothing.
 - `helicoid-linalg`: `Real::cbrt` (`docs/PHASE2.md` §2 and §3, `docs/API.md` §2, `docs/NUMERICS.md`
   §12; step 1 of `0017`, which `solve_cubic` needs): the real cube root, total and odd, through
   `libm::cbrt`/`cbrtf`. `Dual` differentiates it as `d / (3 c^2)`, `c = cbrt v`: infinite at 0

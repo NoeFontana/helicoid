@@ -65,7 +65,7 @@ pub(crate) fn exact_f32(x: f64) -> Option<f32> {
 }
 
 /// A JSON object that refuses a repeated key (`BTreeMap`'s own `Deserialize` keeps the last).
-struct Object(BTreeMap<String, Value>);
+pub(crate) struct Object(pub(crate) BTreeMap<String, Value>);
 
 impl<'de> Deserialize<'de> for Object {
     fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {

@@ -89,6 +89,24 @@ conformance *args:
 # names one. Each generated file is compiled into xtask: a hand edit that no longer compiles stops
 # this recipe too, and `git restore` of that file is the way back. When the corpus's series change,
 # the first run writes the new series beside placeholder switches and fails: run it again.
+# The tf_tree_math oracle (`docs/PHASE1.md` §7, `0010`): the runner's own checks, since it is
+# workspace-excluded and `lint`, `test`, `doc` and `audit` never reach it, then the corpus through it,
+# scored with the harness's exact metric into conformance/results/tf_tree_math.csv
+# (`subject_version` is the pinned tf_tree commit). A runner that fails, or stops answering an id
+# it owes, fails the recipe; a wrong or non-finite answer is recorded in its row, not a failure
+# (oracles may be wrong: §7). The first build fetches the pinned commit from GitHub.
+oracle-tf-tree-math:
+    cargo fmt --manifest-path runners/tf_tree_math/Cargo.toml -- --check
+    cargo clippy --manifest-path runners/tf_tree_math/Cargo.toml --locked --all-targets -- -D warnings
+    RUSTDOCFLAGS='-D warnings' cargo doc --manifest-path runners/tf_tree_math/Cargo.toml --locked --no-deps --document-private-items
+    cargo deny --manifest-path runners/tf_tree_math/Cargo.toml check advisories licenses sources
+    cargo nextest run --manifest-path runners/tf_tree_math/Cargo.toml --locked
+    cargo xtask conformance --oracle tf_tree_math
+
+# The threshold sweep of the seeded kernels over the corpus (`docs/PHASE1.md` §6): writes
+# conformance/sweeps/thresholds.csv and xtask/src/seeded/generated.rs. `coeffs/generated.rs`
+# joins them with Phase 3. The second is compiled into xtask: a hand edit that no longer compiles
+# stops this recipe too, and `git restore xtask/src/seeded/generated.rs` is the way back.
 thresholds:
     cargo xtask thresholds
 

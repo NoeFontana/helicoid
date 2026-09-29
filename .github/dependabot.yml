@@ -26,4 +26,11 @@ updates:
       interval: "weekly"
     open-pull-requests-limit: 10
 
-  # Add `cargo` for `runners/*` when they land, reviewed the same way.
+  # An oracle runner is a workspace-excluded crate with its own lockfile, reviewed like the root's.
+  # Its git pin (`rev` in Cargo.toml, `PIN` in src/main.rs, Cargo.lock) moves by hand: a test
+  # compares the three.
+  - package-ecosystem: "cargo"
+    directory: "/runners/tf_tree_math"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
