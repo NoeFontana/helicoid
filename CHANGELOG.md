@@ -36,3 +36,11 @@ defined by the status tables in `docs/`; they win over this file.
   what the exact arms of `b, d, e` cost `Exp` and `Q` (and the error of `Q` at a switch), and the rounding of
   `Log`'s translation part and of the blocks of `J⁻¹`). Documentation only; no code, no formula
   change. One open item for the normative documents is extended and one added in the maths index.
+- `docs/maths/so2-se2.md`: SO(2) and SE(2) derivations (unit-complex `SO2`, `atan2` sensitivity; `Exp` with
+  `V = αI + βK = s(θ)R(θ/2)`, `Log` and the three forms of `V⁻¹`, the two preimages at `|θ| = π`; `Ad`,
+  `ad` and `ad³ = −θ²ad`; the rotation-first `J_r`, `J_l` and their inverses derived as `I ± a·ad + b·ad²`
+  and `I ∓ ½ad + c·ad²`, with the dense entries written out and marked **Proposed** for `NUMERICS.md` §6
+  and §2.4; the reduction of `Q` on the plane and agreement with Solà et al. App. C through the
+  translation-first permutation; the scalar functions with series and singularities; rounding, the
+  conditioning of `J` and a sign audit). Documentation only; no code, no formula change. Four open items
+  for the normative documents are added in the maths index.
