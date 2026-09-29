@@ -151,6 +151,13 @@ defined by the status tables in `docs/`; they win over this file.
   `theta:dense`) at 8 records each with the sign of θ alternating; z = (−1, ±0), θ = π, and a
   non-unit z are not sampled. `docs/PHASE1.md` §4.3 and §4.4 state the readings. `just corpus` is
   17 CPU-minutes. No library code changes; breaks nothing.
+- `docs/decisions/0015-specification-gaps-found-while-building-the-instrument.md` (draft): the 29 gaps
+  that the corpus generator, `helicoid-linalg`, `cargo xtask lint` and the maths pages found in
+  `PHASE1.md`, `PHASE2.md`, `PHASE3.md` and `NUMERICS.md`, each with the passage, the evidence, the
+  options, a recommended resolution and the work it blocks; the decisions in blocking order, then the
+  readings and edits of the implementing PRs that await ratification (including the widening of D11 to
+  strided reads). It decides nothing and edits no spec; `docs/maths/index.md` gains a pointer to it.
+  Documentation only; breaks nothing.
 
 ### Changed
 
