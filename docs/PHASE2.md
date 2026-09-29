@@ -13,11 +13,11 @@ signatures in code blocks are normative.
 
 | Area | Status |
 |---|---|
-| `Mask`, `Real`, `Blend`, `Precision`; `f64`/`f32` impls (§2) | Partial: all four traits and both scalar impls done, `compile_fail` doctests for `<` and `==` in place; `Real::sqrt` (`f64`, `f32`) is checked bit for bit against an integer square root over `2 x 10^6` cases with a pinned digest, with `libm`'s `arch` feature on (`0018`); checked by hand on x86_64, aarch64 (`qemu-user`) and wasm32 (node WASI), run by CI on x86_64 and aarch64; `Dual` is a `Real` and a `Blend<S>` (§3); `Blend` for `Vector`/`Matrix`/`Point` done (§4); the `Blend` impls for `helicoid` value types land with their types |
-| `Dual<S, N>` (§3) | Partial: type, `constant`/`variable`, `Real` with every §3 rule, `Blend<S>`, `dual_value_is_plain_value` over every `Real` method (`f64`, `f32`, nested, poisoned derivatives; bitwise up to NaN sign and payload of arithmetic outputs), second order through nesting on `sin_cos` and `atan2`, `sqrt` at 0 tested, also through `Vector<Dual>::norm` of the zero vector and `chol` on a zero or negative pivot; `copysign` takes `sgn(s)` from the sign bit; the `atan2`, `sqrt` and quotient derivative domains are documented and pinned; `dual_matches_mpmath_derivative` runs on an inline mpmath fixture (`sqrt`, `sin_cos`, `atan2`, quotient, product), not yet on the corpus ids `real_*` (§8, needs the Phase 1 generator) |
+| `Mask`, `Real`, `Blend`, `Precision`; `f64`/`f32` impls (§2) | Partial: all four traits and both scalar impls done, `Real::cbrt` included (`libm::cbrt`/`cbrtf`, total and odd, [`0017`](./decisions/0017-cbrt-and-mask-valued-roots.md) step 1), `compile_fail` doctests for `<` and `==` in place; `Real::sqrt` (`f64`, `f32`) is checked bit for bit against an integer square root over `2 x 10^6` cases with a pinned digest, with `libm`'s `arch` feature on (`0018`); checked by hand on x86_64, aarch64 (`qemu-user`) and wasm32 (node WASI), run by CI on x86_64 and aarch64; `Dual` is a `Real` and a `Blend<S>` (§3); `Blend` for `Vector`/`Matrix`/`Point` done (§4); the `Blend` impls for `helicoid` value types land with their types |
+| `Dual<S, N>` (§3) | Partial: type, `constant`/`variable`, `Real` with every §3 rule, `Blend<S>`, `dual_value_is_plain_value` over every `Real` method (`f64`, `f32`, nested, poisoned derivatives; bitwise up to NaN sign and payload of arithmetic outputs), second order through nesting on `sin_cos`, `atan2` and `cbrt`, `sqrt` and `cbrt` at 0 tested, `sqrt` also through `Vector<Dual>::norm` of the zero vector and `chol` on a zero or negative pivot; `copysign` takes `sgn(s)` from the sign bit; the `atan2`, `sqrt`, `cbrt` and quotient derivative domains are documented and pinned; `dual_matches_mpmath_derivative` runs on an inline mpmath fixture (`sqrt`, `sin_cos`, `atan2`, quotient, product) and `dual_cbrt_matches_mpmath_derivative` on its own (`cbrt`, first order, `f64` and `f32`; second order and the Hessian of `cbrt(x y)` at `f64`, in two nesting tests), not yet on the corpus ids `real_*` (§8, needs the Phase 1 generator) |
 | `Vector`, `Matrix`, `Point`, `hat`/`vee`, `Mat3::inverse_adj`, `chol` (§4) | Partial: `Vector`, `Point`, `Matrix`, the aliases, every listed operation, `Blend`, `hat`/`vee`, `Mat3::inverse_adj` done; algebra proptests under `f64`, `f32`, `Dual<f64, 2>` with derived and measured bounds (10^6 cases, seeded recipe in the test header); summation order and `-0` pinned to the bit; no `PartialEq` and no `Point + Point` pinned by `compile_fail` doctests; the magnitude range of `norm` and `inverse_adj` documented and pinned; `chol`, `solve_lower`, `solve_upper`, `chol_solve` done (Cholesky-Crout, `NUMERICS.md` §15; mask `0 < pivot` and every entry finite; a failed pivot gives `L_jj = 1` and a zero column, an overflowing entry is stored as `+0`, so `L` is finite for every input; summation order pinned to the bit; proptests at `N = 1..=6` under `f64`, `f32`, `Dual<f64, 2>` against Higham's Thm 8.5, 10.3, 10.4 bounds, rank-deficient, near-singular and wide-dynamic-range inputs, the mask at a zero pivot, the solves' `debug_assert!` under `should_panic`; `chol_solve` reads `L` by column, bit-identical (NaN sign and payload aside) to its reference twin `solve_upper(&l.transpose(), solve_lower(&l, b))` by `chol_solve_matches_reference` over every special value, [`0019`](./decisions/0019-a-cholesky-solve-without-the-transpose.md); no corpus stratum for any of them and no reference twin for the other three yet, §8); `Mat2` adjugate not started |
 | `Strided`, `StridedMut` (§5) | Done: `col_major`, `row_major`, `with_strides`, `block`, `get`, `rows`, `cols`, `set`; out-of-bounds access panics in release (saturating index, never wraps); the constructors `debug_assert!` the fit; tested against the index formula, faer/Ceres layouts and an exact `u128` model over both view types; `write_dense` (Phase 3) is the first consumer |
-| `eig3`, `svd3`, `solve_cubic` + corpus ids (§6) | Not started |
+| `eig3`, `svd3`, `solve_cubic` + corpus ids (§6) | Not started (`Real::cbrt`, which `solve_cubic` needs, is done) |
 | `mint` feature (§7) | Done: optional feature `mint` (`mint` >= 0.5.7, no default features), `From`/`Into` both ways for `Vector<S, 2..=4>`, `Point<S, 2..=3>` and `Matrix<S, N, N>` at `N` = 2..=4 (`ColumnMatrixN`, field `x` is column 0), `S = f32, f64`; bitwise round trips (`-0`, infinities, subnormals, signalling and payload NaNs pinned in every slot, plus random bit patterns) and component and column order tested; `mint` has no `Point4`, so `Point` stops at 3; `just lint test` cover the feature, `just msrv no-std wasm` build it |
 | omnisac migration (§9) | Not started |
 
@@ -75,6 +75,7 @@ pub trait Real:
         m.decide(t, f, |m, a, b| T::blend(m, a, b))
     }
     fn sqrt(self) -> Self;
+    fn cbrt(self) -> Self;
     fn sin_cos(self) -> (Self, Self);
     fn atan2(self, x: Self) -> Self;
     fn abs(self) -> Self;
@@ -88,9 +89,9 @@ pub trait Blend<S: Real>: Sized {
 }
 ```
 
-- **`f64`/`f32` impls** route every transcendental through `libm` (`sqrt`, `sincos`, `atan2`,
-  `fabs`, `copysign`), never `std` (D16). `Mask = bool`. **`impl Mask for bool` is the only place in
-  the workspace where a float comparison's result reaches an `if`.**
+- **`f64`/`f32` impls** route every transcendental through `libm` (`sqrt`, `cbrt`, `sincos`,
+  `atan2`, `fabs`, `copysign`), never `std` (D16). `Mask = bool`. **`impl Mask for bool` is the
+  only place in the workspace where a float comparison's result reaches an `if`.**
 - **`Blend`** is implemented for `S`, tuples up to arity 8, `[T; N]` where `T: Blend<S>`, `Vector`,
   `Matrix`, `Point`, and (in `helicoid`) every value type.
 - **The safe-argument pattern** is how the exact arm stays finite in every lane:
@@ -114,8 +115,9 @@ impl<S: Real, const N: usize> Real for Dual<S, N> { type Mask = S::Mask; /* … 
 
 - `PRECISION = S::PRECISION`; comparisons and masks act on the value part only.
 - Rules: `a / b` → $(a_d - q\,b_d)/b_v$ with $q = a_v/b_v$ (the quotient rule with no $b_v^2$ to
-  overflow); `sqrt` → $d/(2\sqrt v)$; `sin_cos` → $(d\cos v, -d\sin v)$; `atan2(y, x)` →
-  $(x_v y_d - y_v x_d)/(x_v^2 + y_v^2)$; `abs` → $\mathrm{sgn}(v)\,d$ with $\mathrm{sgn}(\pm 0) = +1$;
+  overflow); `sqrt` → $d/(2\sqrt v)$; `cbrt` → $d/(3c^2)$, $c = \mathrm{cbrt}(v)$; `sin_cos` →
+  $(d\cos v, -d\sin v)$; `atan2(y, x)` → $(x_v y_d - y_v x_d)/(x_v^2 + y_v^2)$; `abs` →
+  $\mathrm{sgn}(v)\,d$ with $\mathrm{sgn}(\pm 0) = +1$;
   `copysign(x, s)` → $\mathrm{sgn}(x_v)\,\mathrm{sgn}(s_v)\,x_d$, with $\mathrm{sgn}(\pm 0) = +1$
   for $x_v$ and $\mathrm{sgn}(s_v) = -1$ iff the **sign bit** of $s_v$ is set, so
   $\mathrm{copysign}(x, -0.0) = -\lvert x\rvert$ and differentiates as such: the derivative of
@@ -125,10 +127,10 @@ impl<S: Real, const N: usize> Real for Dual<S, N> { type Mask = S::Mask; /* … 
   arithmetic or a `libm` call: Rust leaves them unspecified and a release build may commute
   operands. Sign-bit operations and `select` are compared exactly, NaN included. This is what
   makes "the derivative of the shipped code" true.
-- `sqrt` at 0 has an infinite derivative by the rule above (NaN, $0/0$, in a component whose $d$
-  is zero, untouched components included); the safe-argument pattern keeps it out of any selected
-  arm, and Phase 1's seeded defect proves the harness notices when it does not
-  ([`0020`](./decisions/0020-dual-sqrt-at-zero-keeps-its-derivative.md)).
+- `sqrt` and `cbrt` at 0 have an infinite derivative by the rules above (NaN, $0/0$, in a
+  component whose $d$ is zero, untouched components included); the safe-argument pattern keeps a
+  zero out of any selected arm, and Phase 1's seeded defect, on `sqrt`, proves the harness notices
+  when it does not ([`0020`](./decisions/0020-dual-sqrt-at-zero-keeps-its-derivative.md)).
 - **Derivative domains** (`# Domain` on each method, `NUMERICS.md` §12), none asserted: a check
   would panic on inputs the plain value path accepts. `atan2` divides by $x_v^2 + y_v^2$ and is
   accurate only while that sum is normal (the larger argument in about $10^{\pm154}$ for `f64`,
@@ -136,7 +138,8 @@ impl<S: Real, const N: usize> Real for Dual<S, N> { type Mask = S::Mask; /* … 
   $q$ is subnormal; the value is unaffected in every case. Two tests pin them
   (`dual_atan2_derivative_is_accurate_to_the_edge_of_its_domain_and_only_there`,
   `dual_quotient_derivative_is_nan_once_the_quotient_overflows`).
-- Nesting (`Dual<Dual<f64, M>, N>`) is supported and tested to second order on `sin_cos`, `atan2`.
+- Nesting (`Dual<Dual<f64, M>, N>`) is supported and tested to second order on `sin_cos`,
+  `atan2`, `cbrt`.
 
 ## 4. Fixed-size types
 
@@ -219,7 +222,7 @@ their Jacobian through these (faer `MatMut` and Ceres row-major buffers both map
 - Proptests for every operation's algebra (associativity to a recorded bound, transpose/product
   identities), under `f64`, `f32` and `Dual<f64, 2>`.
 - `dual_value_is_plain_value` over every `Real` method; `dual_matches_mpmath_derivative` for
-  `sqrt`, `sin_cos`, `atan2` on corpus ids `real_*` (Phase 1 generator, added here).
+  `sqrt`, `cbrt`, `sin_cos`, `atan2` on corpus ids `real_*` (Phase 1 generator, added here).
 - `eig3`/`svd3`/`solve_cubic` as conformance subjects over their strata; envelope rows include
   nalgebra's `SymmetricEigen`/`SVD` through a runner (reported, not gated).
 - `just no-std` builds the crate with no `alloc`.

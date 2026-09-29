@@ -195,6 +195,9 @@ fn abs<S: Real>(x: S) -> S {
 fn sqrt<S: Real>(x: S) -> S {
     x.sqrt()
 }
+fn cbrt<S: Real>(x: S) -> S {
+    x.cbrt()
+}
 fn copysign<S: Real>(x: S, sign: S) -> S {
     x.copysign(sign)
 }
@@ -229,6 +232,15 @@ fn ieee_corners<S: Real>(pi: f64, half_pi: f64) {
     assert_eq!(b(copysign(z(-0.0), z(1.0))), bits(0.0));
     assert_eq!(b(sqrt(z(-0.0))), bits(-0.0));
     assert_eq!(b(sqrt(z(4.0))), bits(2.0));
+    // `cbrt` is total: a zero and an infinity keep their sign, a cube is recovered exactly.
+    let inf = S::one() / S::zero();
+    assert_eq!(b(cbrt(z(-0.0))), bits(-0.0));
+    assert_eq!(b(cbrt(z(0.0))), bits(0.0));
+    assert_eq!(b(cbrt(z(-27.0))), bits(-3.0));
+    assert_eq!(b(cbrt(z(0.125))), bits(0.5));
+    assert_eq!(b(cbrt(inf)), bits(f64::INFINITY));
+    assert_eq!(b(cbrt(-inf)), bits(f64::NEG_INFINITY));
+    assert!(cbrt(S::zero() / S::zero()).value_f64().is_nan());
 }
 
 #[test]
@@ -292,6 +304,7 @@ fn f64_routes_through_libm_bit_for_bit() {
         if x >= 0.0 {
             assert_eq!(bits(sqrt(x)), bits(libm::sqrt(x)), "sqrt({x:e})");
         }
+        assert_eq!(bits(cbrt(x)), bits(libm::cbrt(x)), "cbrt({x:e})");
         assert_eq!(bits(abs(x)), bits(libm::fabs(x)));
         for y in [prev, 1.0, -1.0, 0.0] {
             assert_eq!(
@@ -320,6 +333,7 @@ fn f32_routes_through_libm_bit_for_bit() {
         if x >= 0.0 {
             assert_eq!(sqrt(x).to_bits(), libm::sqrtf(x).to_bits(), "sqrt({x:e})");
         }
+        assert_eq!(cbrt(x).to_bits(), libm::cbrtf(x).to_bits(), "cbrt({x:e})");
         assert_eq!(abs(x).to_bits(), libm::fabsf(x).to_bits());
         for y in [prev, 1.0, -1.0, 0.0] {
             assert_eq!(
@@ -331,6 +345,25 @@ fn f32_routes_through_libm_bit_for_bit() {
         }
         prev = x;
     });
+}
+
+/// `cbrt` is odd to the bit at every point of the sweep, subnormals and extremes included, and
+/// `libm` rounds `-x` to the negation of `x`'s result, so `Dual::cbrt`'s derivative is even.
+fn cbrt_is_odd<S: Real>(conv: fn(f64) -> S) {
+    for_each_point(|x| {
+        let (p, n) = (cbrt(conv(x)).value_f64(), cbrt(conv(-x)).value_f64());
+        assert_eq!(n.to_bits(), (-p).to_bits(), "cbrt(-x) at {x:e}");
+    });
+}
+
+#[test]
+fn cbrt_is_odd_f64() {
+    cbrt_is_odd::<f64>(|x| x);
+}
+
+#[test]
+fn cbrt_is_odd_f32() {
+    cbrt_is_odd::<f32>(|x| x as f32);
 }
 
 #[test]
@@ -461,6 +494,9 @@ impl Real for L2 {
     }
     fn sqrt(self) -> Self {
         self.map(sqrt)
+    }
+    fn cbrt(self) -> Self {
+        self.map(cbrt)
     }
     fn sin_cos(self) -> (Self, Self) {
         (self.map(|a| sin_cos(a).0), self.map(|a| sin_cos(a).1))

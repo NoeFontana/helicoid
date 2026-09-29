@@ -274,6 +274,9 @@ pub(super) mod tests {
         fn sqrt(self) -> Self {
             note(libm::sqrt(self.0))
         }
+        fn cbrt(self) -> Self {
+            note(libm::cbrt(self.0))
+        }
         fn sin_cos(self) -> (Self, Self) {
             let (s, c) = libm::sincos(self.0);
             (note(s), note(c))

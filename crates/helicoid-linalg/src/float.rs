@@ -39,7 +39,7 @@ impl Mask for bool {
 }
 
 macro_rules! impl_real {
-    ($t:ty, $prec:expr, $sqrt:ident, $sincos:ident, $atan2:ident, $fabs:ident, $copysign:ident, $lit:ident) => {
+    ($t:ty, $prec:expr, $sqrt:ident, $cbrt:ident, $sincos:ident, $atan2:ident, $fabs:ident, $copysign:ident, $lit:ident) => {
         impl Real for $t {
             type Mask = bool;
             const PRECISION: Precision = $prec;
@@ -71,6 +71,10 @@ macro_rules! impl_real {
             fn sqrt(self) -> Self {
                 debug_assert!(!Real::lt(self, 0.0), "Real::sqrt: negative argument");
                 libm::$sqrt(self)
+            }
+            #[inline]
+            fn cbrt(self) -> Self {
+                libm::$cbrt(self)
             }
             #[inline]
             fn sin_cos(self) -> (Self, Self) {
@@ -113,6 +117,7 @@ impl_real!(
     f64,
     Precision::F64,
     sqrt,
+    cbrt,
     sincos,
     atan2,
     fabs,
@@ -123,6 +128,7 @@ impl_real!(
     f32,
     Precision::F32,
     sqrtf,
+    cbrtf,
     sincosf,
     atan2f,
     fabsf,

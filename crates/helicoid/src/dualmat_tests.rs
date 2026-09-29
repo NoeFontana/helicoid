@@ -600,6 +600,9 @@ impl Real for Counted {
     fn sqrt(self) -> Self {
         Self(self.0.sqrt())
     }
+    fn cbrt(self) -> Self {
+        Self(libm::cbrt(self.0))
+    }
     fn sin_cos(self) -> (Self, Self) {
         let (s, c) = self.0.sin_cos();
         (Self(s), Self(c))

@@ -19,7 +19,8 @@ comparison is an `S::Mask`). Its one-real-root arm needs a cube root, which `Rea
 1. **`Real::cbrt`**, routed through `libm::cbrt` / `cbrtf` (D16). `Dual`: `d/(3·c²)` with
    `c = cbrt(v)`; like `sqrt` it is infinite at `v = 0` where `d ≠ 0`, and the safe-argument pattern
    applies. `NUMERICS.md` §12 gains a `cbrt` note (no domain restriction; derivative singular at 0);
-   `PHASE2.md` §2 and `API.md` §2 list it; `dual_value_is_plain_value` covers it.
+   `PHASE2.md` §2 (signature), §3 (the `Dual` rule and its zero) and §8 (its derivative check) and
+   `API.md` §2 list it; `dual_value_is_plain_value` covers it.
 2. **`solve_cubic` returns its roots with a validity mask**: a `Vec3<S>` of roots and a
    `[S::Mask; 3]` in which slot `k` is a root iff its mask is set (a thin named wrapper struct is
    permitted; no `ArrayVec`, no `usize` count). The algorithm is otherwise omnisac's, ported as is

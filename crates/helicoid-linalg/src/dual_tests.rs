@@ -22,10 +22,10 @@ const POINTS: &[f64] = &[
 /// commute operands (`NaN * -NaN`), so those outputs treat every NaN as one value. Sign-bit
 /// operations and selection are deterministic and compared exactly.
 #[rustfmt::skip]
-const OUTPUTS: [(&str, bool); 25] = [
+const OUTPUTS: [(&str, bool); 26] = [
     ("add", false), ("sub", false), ("mul", false), ("div", false), ("neg", true),
     ("lit", true), ("lit", true), ("zero", true), ("one", true), ("sin", false), ("cos", false),
-    ("sqrt", false), ("atan2", false), ("abs", true), ("copysign", true), ("lt", true),
+    ("sqrt", false), ("cbrt", false), ("atan2", false), ("abs", true), ("copysign", true), ("lt", true),
     ("le", true), ("not", true), ("and", true), ("or", true), ("select", true),
     ("branch", false), ("branch", false), ("chain", false), ("chain", false),
 ];
@@ -33,14 +33,14 @@ const OUTPUTS: [(&str, bool); 25] = [
 /// One output per `Real` method and operator, so a mismatch names the method. `sqrt` takes the
 /// `abs` of its argument: its domain is non-negative.
 #[rustfmt::skip]
-fn probe<S: Real>(x: S, y: S, z: S) -> [S; 25] {
+fn probe<S: Real>(x: S, y: S, z: S) -> [S; 26] {
     let (s, c) = x.sin_cos();
     let (lt, le) = (x.lt(y), y.le(z));
     let pick = |m: S::Mask| S::select(m, S::one(), S::zero());
     let (bt, bf) = S::branch(lt, || (x + z, y * z), || (x - z, y / z));
     [
         x + y, x - y, x * y, x / y, -x, S::lit(0.5), S::lit(-3.0), S::zero(), S::one(),
-        s, c, x.abs().sqrt(), x.atan2(y), x.abs(), x.copysign(y),
+        s, c, x.abs().sqrt(), x.cbrt(), x.atan2(y), x.abs(), x.copysign(y),
         pick(lt), pick(le), pick(lt.not()), pick(lt.and(le)), pick(lt.or(le)),
         S::select(le, x, z), bt, bf,
         (x * y - z).atan2(x + z), (x.abs() + y.abs()).sqrt() * z.copysign(x),
@@ -320,11 +320,185 @@ fn nesting_gives_the_hessian_of_atan2() {
     }
 }
 
+// Rows: `CBRT` is `(x, cbrt x, cbrt' x)`, `CBRT_D2` is `(x, cbrt' x, cbrt'' x)`, `CBRT_HESS` is
+// `(x, y, f_x, f_y, f_xx, f_xy, f_yy)` of `f = cbrt(x y)` and `CBRT32` is `CBRT` at `f32`, rounded
+// to nearest. From mpmath at 120 digits and exact inputs: the real `y` with `y^3 = x` by Newton's
+// method on that equation (checked by cubing to 70 digits) and its derivatives by central
+// differences with a step of `2^-40` times the argument. The closed forms `1 / (3 c^2)`,
+// `-2 / (9 c^5)` and the partials of `cbrt(x) cbrt(y)` only cross-check them, to at least 18
+// digits. Both signs; `f64` and `f32` subnormals, the smallest normal and the largest finite
+// number. The generator is not committed.
+#[rustfmt::skip]
+const CBRT: [(f64, f64, f64); 23] = [
+    (5e-324, 1.7031839360032603e-108, 1.1490942214795806e+215),
+    (1e-310, 4.641588833612774e-104, 1.5471962778709295e+206),
+    (2.2250738585072014e-308, 2.812644285236262e-103, 4.2135594353157945e+204),
+    (1e-300, 1e-100, 3.3333333333333334e+199),
+    (1e-08, 0.002154434690031884, 71814.48966772946),
+    (0.001, 0.1, 33.333333333333336),
+    (0.125, 0.5, 1.3333333333333333),
+    (0.5, 0.7937005259840998, 0.5291336839893999),
+    (1.0, 1.0, 0.3333333333333333),
+    (2.0, 1.2599210498948732, 0.20998684164914552),
+    (3.0, 1.4422495703074083, 0.1602499522563787),
+    (27.0, 3.0, 0.037037037037037035),
+    (100000.0, 46.415888336127786, 0.00015471962778709262),
+    (1e+22, 21544346.90031884, 7.181448966772946e-16),
+    (1e+300, 1e+100, 3.3333333333333335e-201),
+    (1.7976931348623157e+308, 5.643803094122362e+102, 1.046489893941144e-206),
+    (-5e-324, -1.7031839360032603e-108, 1.1490942214795806e+215),
+    (-1e-310, -4.641588833612774e-104, 1.5471962778709295e+206),
+    (-1e-300, -1e-100, 3.3333333333333334e+199),
+    (-0.3, -0.6694329500821695, 0.7438143889801884),
+    (-1.0, -1.0, 0.3333333333333333),
+    (-27.0, -3.0, 0.037037037037037035),
+    (-1e+300, -1e+100, 3.3333333333333335e-201),
+];
+#[rustfmt::skip]
+const CBRT_D2: [(f64, f64, f64); 10] = [
+    (1e-08, 71814.48966772946, -4787632644515.297),
+    (0.125, 1.3333333333333333, -7.111111111111111),
+    (0.5, 0.5291336839893999, -0.7055115786525331),
+    (1.0, 0.3333333333333333, -0.2222222222222222),
+    (2.0, 0.20998684164914552, -0.06999561388304851),
+    (27.0, 0.037037037037037035, -0.0009144947416552355),
+    (100000.0, 0.00015471962778709262, -1.0314641852472842e-09),
+    (-0.125, 1.3333333333333333, 7.111111111111111),
+    (-1.0, 0.3333333333333333, 0.2222222222222222),
+    (-27.0, 0.037037037037037035, 0.0009144947416552355),
+];
+#[rustfmt::skip]
+const CBRT_HESS: [[f64; 7]; 5] = [
+    [2.0, 3.0, 0.3028534321386899, 0.20190228809245997, -0.10095114404622998, 0.033650381348743326, -0.04486717513165777],
+    [0.5, 8.0, 1.0582673679787997, 0.06614171049867498, -1.4110231573050662, 0.04409447366578332, -0.005511809208222915],
+    [-1.5, 4.0, 0.40380457618491994, -0.15142671606934496, 0.17946870052663108, 0.033650381348743326, 0.025237786011557496],
+    [-0.25, -2.0, -1.0582673679787997, -0.13228342099734997, -2.8220463146101324, 0.17637789466313328, -0.04409447366578332],
+    [0.001, 7.0, 63.764372759079635, 0.009109196108439948, -42509.581839386425, 3.036398702813316, -0.0008675424865180903],
+];
+#[rustfmt::skip]
+const CBRT32: [(f32, f32, f32); 13] = [
+    (1e-45_f32, 1.1190347e-15_f32, 2.6618994e+29_f32),
+    (1e-40_f32, 4.6415806e-14_f32, 1.5472018e+26_f32),
+    (1.1754944e-38_f32, 2.2737368e-13_f32, 6.4476046e+24_f32),
+    (1e-30_f32, 1e-10_f32, 3.3333333e+19_f32),
+    (0.125_f32, 0.5_f32, 1.3333334_f32),
+    (1.0_f32, 1.0_f32, 0.33333334_f32),
+    (3.0_f32, 1.4422495_f32, 0.16024995_f32),
+    (27.0_f32, 3.0_f32, 0.037037037_f32),
+    (1e+10_f32, 2154.4346_f32, 7.181449e-08_f32),
+    (3.4028235e+38_f32, 6.9814636e+12_f32, 6.8388925e-27_f32),
+    (-1e-30_f32, -1e-10_f32, 3.3333333e+19_f32),
+    (-27.0_f32, -3.0_f32, 0.037037037_f32),
+    (-0.3_f32, -0.66943294_f32, 0.74381435_f32),
+];
+
+/// `ulps` for `f32`.
+fn ulps32(a: f32, b: f32) -> u64 {
+    let key = |x: f32| {
+        let bits = x.to_bits();
+        if bits >> 31 == 1 {
+            !bits
+        } else {
+            bits | (1 << 31)
+        }
+    };
+    u64::from(key(a).abs_diff(key(b)))
+}
+
+// The bounds, 1 ulp on the value and 2 on every derivative, are those of these rows, not of the
+// rule. Over these rows the value is 0 (`libm::cbrt` is correctly rounded, `cbrtf` agrees here),
+// the derivative `d / (3 c^2)` at most 2, the second derivative and the Hessian entries at most 2.
+// Random inputs against mpmath, `f64` and `f32` alike, reach about 4 ulp on the first derivative
+// and about 10 on the second (the roundings of `c`, `c c`, `3 *` and `/`, and the nesting); the
+// value stays at 0. First order runs at both precisions, second order at `f64`.
+#[test]
+fn dual_cbrt_matches_mpmath_derivative() {
+    for (x, c, want) in CBRT {
+        let r = D1::variable(x, 0).cbrt();
+        assert_eq!(r.v.to_bits(), libm::cbrt(x).to_bits());
+        near(r.v, c, 1, format_args!("cbrt at {x:e}"));
+        near(r.d[0], want, 2, format_args!("cbrt' at {x:e}"));
+    }
+    for (x, c, want) in CBRT32 {
+        let r = Dual::<f32, 1>::variable(x, 0).cbrt();
+        assert_eq!(r.v.to_bits(), libm::cbrtf(x).to_bits());
+        assert!(ulps32(r.v, c) <= 1, "f32 cbrt at {x:e}: {:e} vs {c:e}", r.v);
+        let d = ulps32(r.d[0], want);
+        assert!(d <= 2, "f32 cbrt' at {x:e}: {:e} vs {want:e}", r.d[0]);
+    }
+}
+
+#[test]
+fn nesting_gives_second_derivatives_of_cbrt() {
+    type D11 = Dual<Dual<f64, 1>, 1>;
+    for (x, first, second) in CBRT_D2 {
+        let r = D11::variable(Dual::variable(x, 0), 0).cbrt();
+        near(r.v.d[0], first, 2, format_args!("cbrt' at {x:e}"));
+        near(r.d[0].v, first, 2, format_args!("cbrt' (outer) at {x:e}"));
+        near(r.d[0].d[0], second, 2, format_args!("cbrt'' at {x:e}"));
+    }
+}
+
+// `cbrt(x y)` puts the chain rule through the product into the second order.
+#[test]
+fn nesting_gives_the_hessian_of_cbrt_of_a_product() {
+    let var = |v: f64, i: usize| Hess::variable(Dual::variable(v, i), i);
+    for [x, y, fx, fy, fxx, fxy, fyy] in CBRT_HESS {
+        let r = (var(x, 0) * var(y, 1)).cbrt();
+        let at = format_args!("at ({x:e}, {y:e})");
+        near(r.v.d[0], fx, 2, format_args!("d/dx {at}"));
+        near(r.d[1].v, fy, 2, format_args!("d/dy {at}"));
+        near(r.d[0].d[0], fxx, 2, format_args!("d2/dx2 {at}"));
+        near(r.d[0].d[1], fxy, 2, format_args!("d2/dxdy {at}"));
+        near(r.d[1].d[0], fxy, 2, format_args!("d2/dydx {at}"));
+        near(r.d[1].d[1], fyy, 2, format_args!("d2/dy2 {at}"));
+    }
+}
+
+// `cbrt` is odd and `libm` rounds symmetrically, so the derivative `d / (3 c^2)` is even to the
+// bit, zeros and infinities included; only NaN is left out, whose bits are unspecified.
+#[test]
+fn dual_cbrt_value_is_odd_and_derivative_is_even() {
+    for &x in POINTS.iter().filter(|x| !x.is_nan()) {
+        let (p, n) = (D1::variable(x, 0).cbrt(), D1::variable(-x, 0).cbrt());
+        assert_eq!(n.v.to_bits(), (-p.v).to_bits(), "value at {x:e}");
+        assert_eq!(n.d[0].to_bits(), p.d[0].to_bits(), "derivative at {x:e}");
+    }
+}
+
+// Unlike `sqrt`, whose derivative at a zero has that zero's sign, `c^2` is `+0` for both zeros, so
+// the infinity has the sign of `d` alone.
+#[test]
+fn dual_cbrt_at_zero_has_an_infinite_derivative_and_the_plain_value() {
+    for zero in [0.0_f64, -0.0] {
+        let up = D2::variable(zero, 0).cbrt();
+        assert_eq!(up.v.to_bits(), zero.to_bits());
+        assert!(up.d[0].is_infinite() && up.d[0] > 0.0);
+        assert!(up.d[1].is_nan(), "0 / 0");
+        let down = (-D1::variable(zero, 0)).cbrt();
+        assert!(down.d[0].is_infinite() && down.d[0] < 0.0);
+    }
+    // The safe argument keeps the selected arm finite.
+    let t = D1::variable(0.0, 0);
+    let safe = D1::select(t.lt(D1::lit(0.25)), D1::one(), t);
+    assert!(safe.cbrt().d[0].is_finite());
+    // Past the finite range the derivative is the limit `0`, and NaN stays NaN.
+    let inf = D1::variable(f64::INFINITY, 0).cbrt();
+    assert_eq!(
+        (inf.v.to_bits(), inf.d[0].to_bits()),
+        (f64::INFINITY.to_bits(), 0)
+    );
+    let nan = D1::variable(f64::NAN, 0).cbrt();
+    assert!(nan.v.is_nan() && nan.d[0].is_nan());
+}
+
 /// Every rule in one function, so the chain rule between them is exercised too.
 fn composite<S: Real>(x: S, y: S) -> S {
     let (s, c) = x.sin_cos();
     let r = (x * x + y * y).sqrt();
-    y.atan2(x) * r + s / (c + S::lit(2.0)) - x.copysign(y) * y.abs() + (x - y) / (r + S::one())
+    y.atan2(x) * r + s / (c + S::lit(2.0)) - x.copysign(y) * y.abs()
+        + (x - y) / (r + S::one())
+        + (x * y).cbrt()
 }
 
 /// Five-point stencil: error `h^4 f^(5) / 30`, about `1e-13` here.
@@ -503,4 +677,7 @@ fn dual_over_lanes_selects_per_lane() {
     let r = DL::branch(M2([true, false]), || x * x, || -x);
     assert_eq!(lanes(r.v), [4.0, -3.0].map(f64::to_bits));
     assert_eq!(lanes(r.d[0]), [-4.0, -1.0].map(f64::to_bits));
+    let c = DL::variable(L2([-8.0, 27.0]), 0).cbrt();
+    assert_eq!(lanes(c.v), [-2.0, 3.0].map(f64::to_bits));
+    assert_eq!(lanes(c.d[0]), [1.0 / 12.0, 1.0 / 27.0].map(f64::to_bits));
 }
