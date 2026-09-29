@@ -67,6 +67,15 @@ wasm:
 conformance *args:
     cargo xtask conformance {{args}}
 
+# The threshold sweep of the seeded kernels over the corpus (`docs/PHASE1.md` §6): writes
+# conformance/sweeps/thresholds.csv. `coeffs/generated.rs` joins it with Phase 3.
+thresholds:
+    cargo xtask thresholds
+
+# A fresh sweep must equal the committed CSV byte for byte.
+thresholds-check:
+    cargo xtask thresholds --check
+
 # Regenerate the mpmath corpus into conformance/corpus (`docs/PHASE1.md` §4; needs `uv`).
 corpus:
     cd conformance/generate && uv run --frozen python -m gen all --out ../corpus

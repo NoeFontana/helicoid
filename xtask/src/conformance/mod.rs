@@ -25,7 +25,7 @@
 //!   envelope, the `helicoid` subject, and the seeded defects that need the sweep or a group.
 
 pub(crate) mod corpus;
-mod metric;
+pub(crate) mod metric;
 pub(crate) mod number;
 mod report;
 mod selftest;
@@ -80,7 +80,7 @@ fn parse_args(args: &[String]) -> Result<Options, String> {
     Ok(options)
 }
 
-fn root() -> Result<PathBuf, String> {
+pub(crate) fn root() -> Result<PathBuf, String> {
     let manifest = Path::new(env!("CARGO_MANIFEST_DIR"));
     manifest
         .parent()
@@ -126,11 +126,7 @@ fn evaluate_by(
             let mut aggregate = Aggregate::default();
             for record in &records {
                 let output = s.subject.eval(fn_id, record, precision);
-                let score = match rule {
-                    Rule::Forward(fields) => metric::score(fields, record, &output, precision),
-                    Rule::BackwardOnly => metric::finiteness(record, &output),
-                }
-                .map_err(|e| {
+                let score = rule.score(record, &output, precision).map_err(|e| {
                     format!("{} on {fn_id} record {}: {e}", s.subject.name(), record.id)
                 })?;
                 aggregate.add(record.id, &record.stratum, score);
