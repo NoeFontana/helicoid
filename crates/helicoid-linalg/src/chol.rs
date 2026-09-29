@@ -5,14 +5,8 @@
 //! a float: the comparisons (the pivot test, the finiteness of an entry) are masks.
 
 use crate::matrix::Matrix;
-use crate::real::{Mask, Real};
+use crate::real::{is_finite, Mask, Real};
 use crate::vector::{sum, Vector};
-
-/// Set iff `x` is finite: `x * 0` is `+-0` for a finite `x` and NaN for NaN and `+-inf`.
-#[inline]
-fn is_finite<S: Real>(x: S) -> S::Mask {
-    (x * S::zero()).le(S::zero())
-}
 
 /// The Cholesky factor of `a` and whether `a` is positive definite.
 ///

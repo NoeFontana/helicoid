@@ -56,9 +56,10 @@ covariance. Ambient Jacobians (Phase 6) follow the same rule.
 
 **NORMATIVE.** Every function with a restricted domain carries a `# Domain` rustdoc section naming
 it (`NUMERICS.md` §12) and a `debug_assert!` enforcing it. Release builds never check; out-of-domain
-release behaviour is an unspecified value, never a panic (bar out-of-bounds strided access, D11), never UB. The one function that
-asserts nothing is `chol`: it accepts every input and its mask is the report (R4). Unit-norm inputs are
-checked by `*_unchecked` constructors in debug only; `*_normalized` constructors normalize.
+release behaviour is an unspecified value, never a panic (bar out-of-bounds strided access, D11),
+never UB. The functions that assert nothing are `chol` and `solve_cubic`: each accepts every input
+and its mask is the report (R4). Unit-norm inputs are checked by `*_unchecked` constructors in debug
+only; `*_normalized` constructors normalize.
 
 ## 2. `helicoid-linalg` — the leaf (Phase 2)
 
