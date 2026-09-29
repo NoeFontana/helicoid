@@ -55,3 +55,7 @@ defined by the status tables in `docs/`; they win over this file.
   `sqrt`-at-0 hazard and the safe argument); the mpmath corpus (exact inputs, 30 digits, precision budget and the
   `dps = 150` recheck, log-uniform decades, uniform axes on S² by Archimedes, splitmix64 and per-stratum streams).
   Documentation only; no code, no formula change. Six open items for the normative documents are added in the maths index and one extended, and `coefficients.md`'s remark on the `libm` crate is corrected.
+- `cargo xtask lint`, run by `just lint`: no line citations in markdown or comments, no draft
+  decision record cited as settled (status-table rows, Rust comments, amendment banners; not
+  prose elsewhere), and `@generated` files registered with their owning task and header. Owed:
+  dependency closure, `__sweep`, twin table (`docs/PHASE1.md`).

@@ -13,7 +13,7 @@ defects and `tf_tree_math`, which becomes oracle #1 ([`0010`](./decisions/0010-s
 
 | Area | Status |
 |---|---|
-| Workspace, lints, `justfile`, CI matrix (§3) | Partial: workspace, lints, `justfile` and CI for `build`/`test`/`lint`/`audit`/`msrv`/`no-std`/`wasm`/`doc`; `xtask lint`, `determinism`, `oracles`, `bench-check` jobs not started |
+| Workspace, lints, `justfile`, CI matrix (§3) | Partial: workspace, lints, `justfile` and CI for `build`/`test`/`lint`/`audit`/`msrv`/`no-std`/`wasm`/`doc`; `cargo xtask lint` Partial: line citations, draft-record citations (only `0.0`/`0.` status tables, Rust comments under `crates/` and `xtask/`, amendment banners; not prose, not `PROJECT.md` §5.1), `@generated` header and registry (registry empty, regeneration comparison arrives with each generator); owed: dependency closure, `__sweep`, twin table; `determinism`, `oracles`, `bench-check` jobs not started |
 | Reference generator and committed corpus v1 (§4) | Not started |
 | Conformance harness and result schema (§5) | Not started |
 | Threshold sweep and generated-file format (§6) | Not started |

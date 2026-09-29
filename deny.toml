@@ -14,7 +14,7 @@ confidence-threshold = 0.93
 
 # `0007`'s bans (`nalgebra`, `faer`, `num-traits`, `bytemuck`, `serde`) bind the library crates
 # only, and cargo-deny cannot scope a ban to a crate: `xtask` will need `serde`. The
-# normal-dependency closure lint in `cargo xtask lint` enforces them (`docs/PHASE1.md` §3).
+# normal-dependency closure lint in `cargo xtask lint` will enforce them (owed, `docs/PHASE1.md` §3).
 [bans]
 multiple-versions = "warn"
 wildcards = "deny"
