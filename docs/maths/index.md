@@ -140,7 +140,14 @@ below, are collected for decision, with a recommendation each, in the draft reco
   measured optimum of $k$, $b$, $d$, $e$ (`f64`, $m = 8$; $e$: $\theta_s \approx 1.4$) and, in `f32`,
   of all six lies above $1$ (CO.10); a switch capped at $1$ costs $e$ a factor $6$ (value) and $7.5$
   (derivative) in `f64`, and up to $8\times10^3$ (derivative of $e$) in `f32`. `PHASE1.md` §6 also
-  fixes $m \le 8$; with it, the derivative of $e$ cannot fall below $\sim2\times10^3u$ (`f64`).
+  fixes $m \le 8$; with it, the derivative of $e$ cannot fall below $\sim2\times10^3u$ (`f64`). The
+  committed sweep (`conformance/sweeps/thresholds.csv`, `f64`; $m = 8$, the cap, for every row but $e$)
+  puts $k$ and $d$ at the top of the grid, $b$ one step below it (a unique optimum $1.3\%$ under the
+  top, decided by two records), $a$ at $\theta = 0.85$ and $c$ at $0.75$; for $k$, $b$, $d$ its objective
+  is the exact arm's error over the records with $\theta > 1$, which no switch on the grid changes.
+  $e$ is one step below the top at $8.7\times10^3u$, the exact arm's derivative error at the one record
+  at $\theta = 1$, which the strict $z < \text{switch}$ leaves on the exact arm; a grid top of
+  $\operatorname{nextUp}(1)$ gives it $2.6\times10^3u$.
 - `NUMERICS.md` §4 (Continuity) says $\lvert\text{series} - \text{exact}\rvert$ at a switch is at
   most the recorded max error; the two arms can each err by that much in opposite directions, so it
   is at most twice, and $1.4$–$1.7\times$ was measured at the crossing (CO.12):

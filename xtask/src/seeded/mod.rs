@@ -1,7 +1,7 @@
 //! Seeded subjects (`docs/PHASE1.md` §10): the correct coefficient kernels and the planted
 //! defects, run over the `coeff_*` corpus ids as in-process subjects. Only `k, a, b, c, d, e`
-//! (`coeff_r` has no seeded kernel), and only the defects that need no sweep: `c` with a switch of
-//! `1e-8` and two terms arrives with it. The subject receives `θ`, forms the branch variable
+//! (`coeff_r` has no seeded kernel), and only the defects a subject can show on its own: `c` with a
+//! switch of `1e-8` and two terms is ranked by the sweep (`crate::thresholds`) and awaits the envelope. The subject receives `θ`, forms the branch variable
 //! `z = fl(θ·θ)` itself (`conformance/generate/README.md`) and reports the value and `d/dz` of one
 //! `Dual<f64, 1>` evaluation, so the value path is the plain one (`the_dual_value_path_is_the_plain_value`).
 
@@ -14,8 +14,8 @@ use helicoid_linalg::Precision;
 
 use crate::conformance::corpus::Record;
 use crate::conformance::subject::{Output, Registered, Subject};
-use kernel::{b_no_series, coefficient, k_sqrt_unsafe, Coeff};
-pub(crate) use kernel::{d12, Candidate, D1};
+use kernel::{b_no_series, k_sqrt_unsafe};
+pub(crate) use kernel::{coefficient, d12, Candidate, Coeff, D1};
 pub(crate) use series::Series;
 
 /// A planted defect (`docs/PHASE1.md` §10), applied to one coefficient; the others stay correct.

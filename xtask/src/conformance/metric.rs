@@ -69,6 +69,21 @@ pub(crate) enum Rule {
     BackwardOnly,
 }
 
+impl Rule {
+    /// The score of `out` against the reference of `rec` under this rule.
+    pub(crate) fn score(
+        &self,
+        rec: &Record,
+        out: &Output,
+        precision: Precision,
+    ) -> Result<Score, String> {
+        match self {
+            Rule::Forward(fields) => score(fields, rec, out, precision),
+            Rule::BackwardOnly => finiteness(rec, out),
+        }
+    }
+}
+
 const fn field(field: &'static str, floor: Floor, sign: SignRule) -> FieldRule {
     FieldRule { field, floor, sign }
 }

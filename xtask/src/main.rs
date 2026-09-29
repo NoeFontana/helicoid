@@ -6,15 +6,16 @@
 mod conformance;
 mod lint;
 mod seeded;
+mod thresholds;
 
 use std::process::ExitCode;
 
 /// Every implemented task; the usage line and the unknown-task error read this list.
-const TASKS: &[&str] = &["lint", "conformance"];
+const TASKS: &[&str] = &["lint", "conformance", "thresholds"];
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
-    if dispatch(&args, lint::run, conformance::run) {
+    if dispatch(&args, lint::run, conformance::run, thresholds::run) {
         ExitCode::SUCCESS
     } else {
         ExitCode::FAILURE
@@ -28,6 +29,7 @@ fn dispatch(
     args: &[String],
     lint: impl FnOnce() -> Result<Vec<lint::Violation>, String>,
     conformance: impl FnOnce(&[String]) -> Result<(), String>,
+    thresholds: impl FnOnce(&[String]) -> Result<(), String>,
 ) -> bool {
     match args.first().map(String::as_str) {
         Some("lint") => match lint() {
@@ -48,6 +50,13 @@ fn dispatch(
             Ok(()) => true,
             Err(e) => {
                 eprintln!("xtask conformance: {e}");
+                false
+            }
+        },
+        Some("thresholds") => match thresholds(&args[1..]) {
+            Ok(()) => true,
+            Err(e) => {
+                eprintln!("xtask thresholds: {e}");
                 false
             }
         },
@@ -73,7 +82,7 @@ mod tests {
                    lint: Result<Vec<lint::Violation>, String>,
                    conf: Result<(), String>| {
             let args: Vec<String> = args.iter().map(ToString::to_string).collect();
-            dispatch(&args, || lint, |_| conf)
+            dispatch(&args, || lint, |_| conf, |_| Err("unused".into()))
         };
         assert!(run(&["lint"], Ok(vec![]), Ok(())));
         assert!(!run(&["lint"], Ok(vec![violation()]), Ok(())));
@@ -86,6 +95,16 @@ mod tests {
             Ok(())
         ));
         assert!(!run(&["conformance"], Ok(vec![]), Err("nonfinite".into())));
+        // `thresholds` gets the arguments after its name, and its `Err` fails the run.
+        let thr = |args: &[&str]| {
+            let args: Vec<String> = args.iter().map(ToString::to_string).collect();
+            let check = |rest: &[String]| match *rest == ["--check"] {
+                true => Ok(()),
+                false => Err("usage".to_string()),
+            };
+            dispatch(&args, || Ok(vec![]), |_| Ok(()), check)
+        };
+        assert!(thr(&["thresholds", "--check"]) && !thr(&["thresholds"]));
     }
 
     #[test]
@@ -101,6 +120,7 @@ mod tests {
                 seen.borrow_mut().extend(rest.iter().cloned());
                 Ok(())
             },
+            |_| Err("unused".into()),
         );
         assert!(ok && *seen.borrow() == ["--fn", "so2_exp"]);
     }

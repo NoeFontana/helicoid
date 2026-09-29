@@ -124,6 +124,19 @@ jobs:
           tool: just
       - run: just conformance --self-test
 
+  # The seeded kernels' sweep must equal the committed conformance/sweeps/thresholds.csv.
+  thresholds:
+    name: thresholds-check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: just
+      - run: just thresholds-check
+
   # The committed corpus must regenerate byte-identically from the pinned generator.
   # About 17 CPU-minutes of generation plus the generator's tests; the timeout stops a runaway.
   corpus-check:
