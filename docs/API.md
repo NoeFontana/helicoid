@@ -65,7 +65,7 @@ checked by `*_unchecked` constructors in debug only; `*_normalized` constructors
 | Item | Kind | Notes |
 |---|---|---|
 | `Mask` | trait | `and`, `or`, `not`, `all`, `any`, `decide`. `impl Mask for bool`. |
-| `Real` | trait | `PRECISION`, `lit`, `zero`, `one`, `lt`, `le`, `select`, `branch` (provided), `sqrt`, `sin_cos`, `atan2`, `abs`, `copysign`, `value_f64`. `impl` for `f64`, `f32`, `Dual<S, N>`. |
+| `Real` | trait | `PRECISION`, `lit`, `zero`, `one`, `lt`, `le`, `select`, `branch` (provided), `sqrt`, `cbrt`, `sin_cos`, `atan2`, `abs`, `copysign`, `value_f64`. `impl` for `f64`, `f32`, `Dual<S, N>`. |
 | `Blend<S>` | trait | Lane-wise select for tuples, arrays, `Vector`, `Matrix` and every `helicoid` value type. |
 | `Precision` | enum | `F32`, `F64`; selects generated constants. |
 | `Dual<S, const N: usize>` | struct | `{ v: S, d: [S; N] }`; `variable(v, i)`, `constant(v)`; nests. |
