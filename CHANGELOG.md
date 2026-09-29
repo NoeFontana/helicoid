@@ -82,3 +82,9 @@ defined by the status tables in `docs/`; they win over this file.
   `Point`. `hat`/`vee` and `Mat3::inverse_adj` (adjugate over determinant, plus the determinant).
   `Blend` for all three. No `PartialEq`. Every reduction sums left to right. New public API,
   nothing breaks. `proptest` is a dev-dependency only.
+- `helicoid-linalg`: `chol` (lower-triangular `L` and a positive-definiteness `S::Mask`, set iff
+  every computed pivot is strictly positive and every computed entry finite), `solve_lower` and
+  `solve_upper` (`docs/PHASE2.md` §4; maths in `docs/NUMERICS.md` §15). Branch-free: `sqrt` gets a
+  safe argument, a failed pivot gives `L_jj = 1` and a zero column, an overflowing entry is stored
+  as `+0` and clears the mask, so `L` is finite for every input. The solves `debug_assert!` a
+  nonzero diagonal. New public API, nothing breaks.

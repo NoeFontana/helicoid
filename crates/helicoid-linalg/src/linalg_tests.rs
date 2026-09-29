@@ -21,10 +21,10 @@ use core::array;
 use proptest::prelude::*;
 use std::vec::Vec;
 
-type D = Dual<f64, 2>;
+pub(crate) type D = Dual<f64, 2>;
 
 /// A scalar whose lanes tests can read and build: `f64` and `f32` have one, `D` has three.
-trait Lane: Real {
+pub(crate) trait Lane: Real {
     const LANES: usize;
     fn make(v: f64, d: [f64; 2]) -> Self;
     fn lane(self, k: usize) -> f64;
@@ -71,21 +71,21 @@ impl Lane for D {
     }
 }
 
-fn unit<S: Real>() -> f64 {
+pub(crate) fn unit<S: Real>() -> f64 {
     match S::PRECISION {
         Precision::F64 => f64::EPSILON / 2.0,
         Precision::F32 => f64::from(f32::EPSILON) / 2.0,
     }
 }
 
-fn gamma<S: Real>(k: usize) -> f64 {
+pub(crate) fn gamma<S: Real>(k: usize) -> f64 {
     let ku = k as f64 * unit::<S>();
     ku / (1.0 - ku)
 }
 
 /// Extra roundings a derivative lane carries per multiplication level: `a.d b.v + a.v b.d` is two
 /// products and a sum where the value lane has one product.
-fn extra(lane: usize, levels: usize) -> usize {
+pub(crate) fn extra(lane: usize, levels: usize) -> usize {
     if lane == 0 {
         0
     } else {
@@ -93,24 +93,26 @@ fn extra(lane: usize, levels: usize) -> usize {
     }
 }
 
-fn shadow<S: Lane>(x: S) -> D {
+pub(crate) fn shadow<S: Lane>(x: S) -> D {
     Dual {
         v: x.lane(0).abs(),
         d: [x.lane(1).abs(), x.lane(2).abs()],
     }
 }
 
-fn shadow_m<S: Lane, const R: usize, const C: usize>(m: &Matrix<S, R, C>) -> Matrix<D, R, C> {
+pub(crate) fn shadow_m<S: Lane, const R: usize, const C: usize>(
+    m: &Matrix<S, R, C>,
+) -> Matrix<D, R, C> {
     Matrix::from_cols(array::from_fn(|c| {
         Vector(array::from_fn(|r| shadow(m.get(r, c))))
     }))
 }
 
-fn shadow_v<S: Lane, const N: usize>(v: Vector<S, N>) -> Vector<D, N> {
+pub(crate) fn shadow_v<S: Lane, const N: usize>(v: Vector<S, N>) -> Vector<D, N> {
     Vector(v.0.map(shadow))
 }
 
-fn flat<S: Real, const R: usize, const C: usize>(m: &Matrix<S, R, C>) -> Vec<S> {
+pub(crate) fn flat<S: Real, const R: usize, const C: usize>(m: &Matrix<S, R, C>) -> Vec<S> {
     (0..R * C).map(|i| m.get(i % R, i / R)).collect()
 }
 
@@ -119,7 +121,7 @@ fn col_of<S: Real, const N: usize>(v: Vector<S, N>) -> Matrix<S, N, 1> {
 }
 
 /// The worst `|x - y| / (bound(lane) scale)` over entries and lanes; NaN propagates.
-fn ratio<S: Lane>(x: &[S], y: &[S], scale: &[D], bound: &dyn Fn(usize) -> f64) -> f64 {
+pub(crate) fn ratio<S: Lane>(x: &[S], y: &[S], scale: &[D], bound: &dyn Fn(usize) -> f64) -> f64 {
     let mut worst = 0.0_f64;
     for ((&a, &b), s) in x.iter().zip(y).zip(scale) {
         for k in 0..S::LANES {
@@ -150,32 +152,32 @@ fn same<S: Lane>(x: &[S], y: &[S], zeros: bool) -> bool {
     })
 }
 
-fn within(name: &str, worst: f64) -> Result<(), TestCaseError> {
+pub(crate) fn within(name: &str, worst: f64) -> Result<(), TestCaseError> {
     prop_assert!(worst <= 1.0, "{name}: {worst} of the bound");
     Ok(())
 }
 
 /// The entries the algebra tests draw from: `(m 2^e, d0, d1)`.
-struct Pool<'a>(core::slice::Iter<'a, [f64; 3]>);
+pub(crate) struct Pool<'a>(pub(crate) core::slice::Iter<'a, [f64; 3]>);
 
 impl Pool<'_> {
-    fn next<S: Lane>(&mut self) -> S {
+    pub(crate) fn next<S: Lane>(&mut self) -> S {
         let entry = self.0.next().copied();
         debug_assert!(entry.is_some(), "the pool of {POOL} entries is exhausted");
         let [v, a, b] = entry.unwrap_or([0.5, 0.0, 0.0]);
         S::make(v, [a, b])
     }
-    fn vec<S: Lane, const N: usize>(&mut self) -> Vector<S, N> {
+    pub(crate) fn vec<S: Lane, const N: usize>(&mut self) -> Vector<S, N> {
         Vector(array::from_fn(|_| self.next()))
     }
-    fn mat<S: Lane, const R: usize, const C: usize>(&mut self) -> Matrix<S, R, C> {
+    pub(crate) fn mat<S: Lane, const R: usize, const C: usize>(&mut self) -> Matrix<S, R, C> {
         Matrix::from_cols(array::from_fn(|_| self.vec()))
     }
 }
 
-const POOL: usize = 64;
+pub(crate) const POOL: usize = 64;
 
-fn pool() -> impl Strategy<Value = Vec<[f64; 3]>> {
+pub(crate) fn pool() -> impl Strategy<Value = Vec<[f64; 3]>> {
     let entry = (-1.0_f64..1.0, -6_i32..=6, -1.0_f64..1.0, -1.0_f64..1.0)
         .prop_map(|(m, e, a, b)| [libm::ldexp(m, e), a, b]);
     prop::collection::vec(entry, POOL)
@@ -184,7 +186,7 @@ fn pool() -> impl Strategy<Value = Vec<[f64; 3]>> {
 /// `max_global_rejects` is raised for the `prop_assume!` in `adj_exact` (singular integer
 /// matrices, about 10%) and `adj_residual` (nearly singular ones, about 5%): proptest's default of
 /// 1024 aborts a run of a few 10^4 cases.
-fn cfg() -> ProptestConfig {
+pub(crate) fn cfg() -> ProptestConfig {
     ProptestConfig {
         cases: 512,
         max_global_rejects: 1 << 24,
