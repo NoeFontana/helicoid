@@ -75,3 +75,10 @@ defined by the status tables in `docs/`; they win over this file.
   derivative of `sqrt` at 0 is infinite or NaN, that of `atan2` is inexact once `x^2 + y^2` leaves
   the normal range, and the quotient's is NaN once `a / b` overflows (`NUMERICS.md` §12). New
   public API, nothing breaks.
+- `helicoid-linalg`: `Vector<S, N>`, `Point<S, N>` and column-major `Matrix<S, R, C>` with the
+  aliases `Vec2`/`Vec3`/`Mat2`/`Mat3`/`Point2`/`Point3` (`docs/PHASE2.md` §4): sums, `scale`,
+  `dot`, `cross`, `norm`, generic matrix product, `transpose`, `identity`, `from_cols`,
+  `from_rows`, `col`, `row`, `get`, `set`; `Point - Point` is a `Vector`, `Point + Vector` a
+  `Point`. `hat`/`vee` and `Mat3::inverse_adj` (adjugate over determinant, plus the determinant).
+  `Blend` for all three. No `PartialEq`. Every reduction sums left to right. New public API,
+  nothing breaks. `proptest` is a dev-dependency only.

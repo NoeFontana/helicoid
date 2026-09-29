@@ -2,9 +2,10 @@
 //!
 //! Implemented so far: the scalar model (`docs/PHASE2.md` §2), i.e. [`Mask`], [`Real`], [`Blend`]
 //! and [`Precision`], with `f64` and `f32` as `Real` (mask `bool`, every transcendental through
-//! `libm`), and forward-mode [`Dual`] numbers (§3), also a `Real`. Numeric code is written once,
-//! generic over `S: Real`; a comparison yields `S::Mask` and control flow goes through
-//! [`Real::branch`] and [`Real::select`].
+//! `libm`), forward-mode [`Dual`] numbers (§3), also a `Real`, and the fixed-size [`Vector`],
+//! [`Point`] and column-major [`Matrix`] with [`hat`]/[`vee`] and [`Mat3::inverse_adj`] (§4).
+//! Numeric code is written once, generic over `S: Real`; a comparison yields `S::Mask` and control
+//! flow goes through [`Real::branch`] and [`Real::select`].
 //!
 //! ```
 //! use helicoid_linalg::Real;
@@ -23,12 +24,26 @@
 
 mod dual;
 mod float;
+mod matrix;
+mod point;
 mod real;
+mod skew;
+mod vector;
 
 pub use dual::Dual;
+pub use matrix::{Mat2, Mat3, Matrix};
+pub use point::{Point, Point2, Point3};
 pub use real::{Blend, Mask, Precision, Real};
+pub use skew::{hat, vee};
+pub use vector::{Vec2, Vec3, Vector};
+
+// `proptest` and the `format!` in its macros need `std`; the library itself stays `no_std`.
+#[cfg(test)]
+extern crate std;
 
 #[cfg(test)]
 mod dual_tests;
+#[cfg(test)]
+mod linalg_tests;
 #[cfg(test)]
 mod tests;
