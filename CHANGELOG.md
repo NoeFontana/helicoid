@@ -262,6 +262,19 @@ defined by the status tables in `docs/`; they win over this file.
   fail, `theta:exact0` and `theta:subnormal` cannot), and one fails. A stratum with no score, a
   non-finite output and a `NaN` fail the gate. The two defects run over `so3_log` only. The readings
   are 0014 (draft) questions 16 to 20. No new dependency, no library code changes; breaks nothing.
+- Seeded SE_N(3) subject and its two defects (`docs/PHASE1.md` §10, `xtask/src/seeded/se3.rs`):
+  `seeded:correct` now also runs `Exp` (`so3::exp` and `J_l(φ)ρ_i`) and the Jacobians `J_l` and
+  `J_r = J_l(−τ)` with Barfoot's block `Q` of `NUMERICS.md` §5.3 over `sen3_{exp,jr,jl}_n{1,2,3}`
+  (`k, a, b, d, e` each at its own generated switch, dense column-major output): at most 3.47 `u`
+  (`Exp`) and 8.90 `u` (`J`) on every stratum (`--self-test` gates 12), no non-finite output; the
+  errors are of this per-coefficient kernel, not of the grouped one of `NUMERICS.md` §4.
+  `seeded:se3-exp-translation-first` and `seeded:q-minus-half` join `--self-test`, which fails
+  unless each fires its own mechanism and the correct kernel fires none: every `rho:*` stratum of
+  `sen3_exp_n{1,2,3}` reaches `10^7` `u`, and so does every stratum of every `sen3_jr_n*` and
+  `sen3_jl_n*` (measured at least 8.9e15 and 5.2e9). §10's `Dual` comparison of the `Q` defect
+  waits for the `helicoid` subject. The readings (the bar, "fails", the strata counted, the
+  per-coefficient switches, the association of `Q`'s words) are 0014 (draft) questions 21 to 25. No
+  new dependency, no library code changes; breaks nothing.
 
 ### Changed
 

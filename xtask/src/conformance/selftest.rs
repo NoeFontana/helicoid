@@ -1,7 +1,8 @@
 //! `cargo xtask conformance --self-test` (`docs/PHASE1.md` §10): the instrument shown to detect what
 //! it claims to. It runs the correct seeded kernel, which no mechanism may fire on, and every
 //! planted defect (`crate::seeded`), which must fire its named mechanism, over the `coeff_*` corpus
-//! ids (the `Log` defects over `so3_log`: `selftest_so3`), and fails when either does not hold.
+//! ids (the `Log` defects over `so3_log`: `selftest_so3`; the SE(3) defects over `sen3_*`:
+//! `selftest_se3`), and fails when either does not hold.
 //! Nothing is written to `conformance/results/`.
 //!
 //! Readings where §10 is silent, each the smallest:
@@ -40,7 +41,7 @@ use helicoid_linalg::Precision;
 use super::metric::{COEFF_D_BRANCH, COEFF_VALUE};
 use super::report::Row;
 use super::subject::Registered;
-use super::{corpus, evaluate_by, selftest_so3};
+use super::{corpus, evaluate_by, selftest_se3, selftest_so3};
 use crate::seeded::{Coeff, Defect, Seeded};
 use crate::thresholds::{Ranker, Ranking};
 
@@ -74,13 +75,16 @@ impl Mechanism {
     }
 
     /// The mechanism that must detect the coefficient `defect` (§10); the `Log` defects are
-    /// judged by `so3` and have none here.
+    /// judged by `selftest_so3` and the SE(3) ones by `selftest_se3`, and have none here.
     fn of(defect: Defect) -> Option<Self> {
         match defect {
             Defect::BNoSeries => Some(Mechanism::ErrorCurve),
             Defect::KSqrtUnsafe => Some(Mechanism::NonfiniteAtZero),
             Defect::CTwoTermsEarly => Some(Mechanism::SweepRank),
-            Defect::LogAcos | Defect::LogNoFlip => None,
+            Defect::LogAcos
+            | Defect::LogNoFlip
+            | Defect::Se3ExpTranslationFirst
+            | Defect::QMinusHalf => None,
         }
     }
 }
@@ -329,14 +333,30 @@ fn check(dir: &Path, cases: Vec<Case>, window: (f64, f64)) -> Result<Report, Str
     Ok(Report { text, failures })
 }
 
-#[allow(clippy::print_stdout)]
-pub(crate) fn run(dir: &Path) -> Result<(), String> {
-    let coefficients = check(dir, cases(), WINDOW)?;
-    let so3 = selftest_so3::check(dir, selftest_so3::cases(), selftest_so3::BAR)?;
-    print!("{}\n{}", coefficients.text, so3.text);
+/// The three halves over `dir` (the coefficients, SO(3) and SE_N(3)): their reports joined, and
+/// every failure among them.
+fn halves(
+    dir: &Path,
+    coefficients: Vec<Case>,
+    so3: Vec<selftest_so3::Case>,
+    se3: Vec<selftest_se3::Case>,
+) -> Result<Report, String> {
+    let coefficients = check(dir, coefficients, WINDOW)?;
+    let so3 = selftest_so3::check(dir, so3, selftest_so3::BAR)?;
+    let se3 = selftest_se3::check(dir, se3, selftest_se3::BAR)?;
+    let text = format!("{}\n{}\n{}", coefficients.text, so3.text, se3.text);
     let mut failures = coefficients.failures;
     failures.extend(so3.failures);
-    match failures.as_slice() {
+    failures.extend(se3.failures);
+    Ok(Report { text, failures })
+}
+
+#[allow(clippy::print_stdout)]
+pub(crate) fn run(dir: &Path) -> Result<(), String> {
+    let cases = (cases(), selftest_so3::cases(), selftest_se3::cases());
+    let report = halves(dir, cases.0, cases.1, cases.2)?;
+    print!("{}", report.text);
+    match report.failures.as_slice() {
         [] => Ok(()),
         failed => Err(format!("self-test: {}", failed.join("; "))),
     }
@@ -376,8 +396,23 @@ mod tests {
     }
 
     #[test]
-    fn the_self_test_runs_both_halves_over_the_committed_corpus() -> Result<(), String> {
+    fn the_self_test_runs_every_half_over_the_committed_corpus() -> Result<(), String> {
         run(&corpus_dir()?)
+    }
+
+    #[test]
+    fn a_failure_in_the_se3_half_fails_the_self_test() -> Result<(), String> {
+        let dir = corpus_dir()?;
+        let (so3, se3) = (selftest_so3::cases(), selftest_se3::defect_not_planted());
+        let report = halves(&dir, cases(), so3, se3)?;
+        let want = "seeded:correct: `every stratum of sen3_jr, sen3_jl fails` is not detected";
+        assert_eq!(report.failures.len(), 1, "{:?}", report.failures);
+        assert!(
+            report.failures[0].starts_with(want),
+            "{:?}",
+            report.failures
+        );
+        Ok(())
     }
 
     #[test]

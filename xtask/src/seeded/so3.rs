@@ -28,7 +28,7 @@ use helicoid_linalg::Real;
 use super::kernel::{coefficient, Candidate, Coeff};
 
 /// `x·x + y·y + z·z`, left to right: `θ²` and `n²` are dot products (`NUMERICS.md` §2.1).
-fn norm_sq<S: Real>([x, y, z]: [S; 3]) -> S {
+pub(super) fn norm_sq<S: Real>([x, y, z]: [S; 3]) -> S {
     (x * x + y * y) + z * z
 }
 
