@@ -95,11 +95,11 @@ def adjoint(R, xs: list, n: int):
     return [[cols[j][i] for j in range(m)] for i in range(m)]
 
 
-def series(tau, n: int, sign: int):
-    """sum (sign * ad_tau)^k / (k+1)!, stopping like `so3.matrix_series`. sign -1 is J_r, +1 J_l."""
-    m, eps = 3 + 3 * n, so3._eps()
-    A = [[sign * a for a in row] for row in ad(tau, n)]
-    term = total = eye(m)
+def matrix_series(A):
+    """sum A^k / (k+1)!, stopping like `so3.matrix_series`: two terms in a row below `so3._eps()`
+    of the partial sum, entry by entry."""
+    eps = so3._eps()
+    term = total = eye(len(A))
     quiet = 0
     for k in range(1, so3.MAX_ITER):
         term = [[x / (k + 1) for x in row] for row in mul(term, A)]
@@ -109,6 +109,11 @@ def series(tau, n: int, sign: int):
         if quiet == 2:
             return total
     raise ArithmeticError("Jacobian series does not converge")
+
+
+def series(tau, n: int, sign: int):
+    """sum (sign * ad_tau)^k / (k+1)!. sign -1 is J_r, +1 J_l."""
+    return matrix_series([[sign * a for a in row] for row in ad(tau, n)])
 
 
 def structural_zero(bi: int, bj: int) -> bool:

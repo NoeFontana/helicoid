@@ -33,6 +33,14 @@ class HexTest(unittest.TestCase):
         )  # half the smallest subnormal: ties to even
         self.assertEqual(precision.to_f64(mpf(2) ** -1075 * 1.5), 5e-324)
 
+    def test_to_f64_rounds_a_subnormal_to_the_subnormal_grid(self):
+        """1e-310 is an integer times 2^-1074: 0.3 and 0.7 of a step above it round to it and to
+        the next step. A 53-bit rounding, as a gmpy true division gives, keeps the fraction: the
+        corpus inputs at `theta:subnormal` would then not be binary64 numbers."""
+        x, step = 1e-310, mpf(2) ** -1074
+        self.assertEqual(precision.to_f64(mpf(x) + step * mpf("0.3")), x)
+        self.assertEqual(precision.to_f64(mpf(x) + step * mpf("0.7")), x + 5e-324)
+
 
 class Dec30Test(unittest.TestCase):
     def test_shape_and_known_values(self):

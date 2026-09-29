@@ -147,3 +147,10 @@ SEN3_STRATA = (
     ),
 )
 SEN3_QUAT_STRATA = (*SEN3_STRATA, *Q_STRATA)
+
+
+# SE(2) ids (`se2_*`) see SE_N(3)'s strata, `theta:dense` excluded for the same reason, with the
+# angle's sign alternating along the samples: even records +theta, odd -theta. A stratum is
+# SE2_SAMPLES records. The `so2_*` ids see `SCALAR_THETA_STRATA`, each theta in both signs.
+SE2_SAMPLES = 8
+SE2_STRATA = SEN3_STRATA
