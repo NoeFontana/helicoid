@@ -38,15 +38,16 @@ $\begin{bmatrix}R & [t]_\times R\\ 0 & R\end{bmatrix}$ in Solà et al.
 | $A + \epsilon B$ | dual-block matrix (`NUMERICS.md` §2.2): diagonal blocks $A$, first block column $B_i$ |
 | $\Gamma_m(\varphi)$ | $\sum_{k \ge 0} W^k/(k+m)!$ (`NUMERICS.md` §7); $\Gamma_1 = J_l(\varphi)$ |
 | $u$ | unit roundoff (`NUMERICS.md` §2.1), except on `so3.md`, where $u$ is the quaternion's vector part (`NUMERICS.md` §1), $n = \lVert u\rVert$ (not the tangent dimension of the first row) and the roundoff is written $\mathsf u$; `coefficients.md` keeps $u$ for the roundoff and writes the vector part $q_{\mathrm v}$ |
-| $\sigma_m$, $\tau_m$, $\rho_m$, $E_x$, $E_s$, $E_\times$, $s_j$ | on `coefficients.md` only, not the tangents, translation tangent or $\mathrm{Exp}$ above: the series families (CO.1), a relative truncation size, the errors of the exact arm, of the series arm and at the crossing, and the coefficient of $z^j$; its symbol note lists the rest |
+| $\Xi$, $\Pi$, $T_M$ | on `se3.md` only: $[\rho]_\times$ for one translation block (so the $P$ above is $\Pi$ there), the block permutation $\Pi_N$ (SE.14; $\Pi_1 = P$), and CO.1's $\tau_M$ (renamed because $\tau$ is the tangent); it uses $\sigma_m$ as in CO.1, $n$ for a power (the tangent dimension is written $3 + 3N$), $\mu$ for $\varphi\times\rho$ (SE.7) and $s(\theta) = 2\sin(\theta/2)/\theta$ (SE.16, LG.16) |
+| $\sigma_m$, $\tau_m$, $\rho_m$, $E_x$, $E_s$, $E_\times$, $s_j$ | on `coefficients.md` (and $\sigma_m$ on `se3.md`, as in the row above), not the tangents, translation tangent or $\mathrm{Exp}$ above: the series families (CO.1), a relative truncation size, the errors of the exact arm, of the series arm and at the crossing, and the coefficient of $z^j$; its symbol note lists the rest |
 | $O(\lVert\delta\rVert^2)$ | remainder bounded by $C\lVert\delta\rVert^2$ as $\delta \to 0$, $C$ locally uniform in the base point |
 
 ## Labels and the `Checked:` line
 
 - A statement is labelled `<page>.<n>` (`LG` for [`lie-groups.md`](./lie-groups.md), `SO` for
-  [`so3.md`](./so3.md), `CO` for [`coefficients.md`](./coefficients.md)), numbered in order of
-  appearance. Labels are stable: later results are appended, never renumbered, so other pages and PR
-  descriptions can cite them.
+  [`so3.md`](./so3.md), `CO` for [`coefficients.md`](./coefficients.md), `SE` for
+  [`se3.md`](./se3.md)), numbered in order of appearance. Labels are stable: later results are
+  appended, never renumbered, so other pages and PR descriptions can cite them.
 - Each result states its domain and carries a proof, or says which step is only outlined.
 - Each proposition ends with one **Checked:** line: what was run, at which precision, over which
   sample, and whether the script is committed; then **Permanent:** the corpus function id
@@ -61,8 +62,9 @@ $\begin{bmatrix}R & [t]_\times R\\ 0 & R\end{bmatrix}$ in Solà et al.
   `Permanent:` item is a check. Where a sampled figure is not a proved bound, the line says so.
 - The mpmath version is that of the run, stated in the `Checked:` line: `lie-groups.md` ran at 1.4.1,
   `so3.md` and `coefficients.md` at 1.3.0 (the latter with sympy 1.14.0 for the exact rational
-  series). It is not a pin, and no claim on these pages depends on it; the one claim about mpmath's
-  own behaviour (`mp.logm`, below) was checked on both.
+  series), `se3.md` at 1.4.1 (sympy 1.14.0, run with mpmath 1.3.0, for its exact identities). It is not
+  a pin, and no claim on these pages depends on it; the claims about mpmath's own behaviour (`mp.logm`
+  of an $\mathrm{SO}(3)$ and of an $\mathrm{SE}_N(3)$ matrix, below) were checked on both.
 - A wrong variant is characterised by its exact gap to the right formula (`lie-groups.md` §6),
   never by a sampled minimum: every wrong variant tends to the right one as the tangent tends to
   $0$, so a sampled minimum measures the sampler.
@@ -74,12 +76,11 @@ $\begin{bmatrix}R & [t]_\times R\\ 0 & R\end{bmatrix}$ in Solà et al.
 | [`lie-groups.md`](./lie-groups.md) | §1, §2.2, §2.3, §5.1, §5.2, §5.4 (the algebra, given §5.3), §12 (`jr_inv` domain), §14 (`jl`, `*_jacobians`) | `LieGroup::{exp, log, adjoint, ad, jr, jr_inv, jl, jl_inv, rplus, lplus, rminus, lminus, *_jacobians, compose_jacobians, inverse_jacobian}`, `Side`, `SEn3Jac` |
 | [`so3.md`](./so3.md) | §1 (quaternion), §2.4, §3.1–§3.6, §4 (definitions of $k, a, b, c, r$; the $c$ series), §11 (`Log` conditioning, matrix input), §12 (`jr_inv`, `from_wxyz_unchecked`), §14 (`act_many`) | `SO3::{exp, log, act, act_many, to_matrix, from_matrix, renormalize, adjoint, ad, jr, jr_inv, jl, jl_inv, act_jacobians}`, `Quat::{from_wxyz_unchecked, from_wxyz_normalized}` |
 | [`coefficients.md`](./coefficients.md) | §4 (all seven coefficients and the $\cos\frac\theta2$ of §3.1: series, cancellation, switch-point magnitudes, derivatives), §2.1, §7 ($\Gamma_2$'s coefficients), §12 (the $\theta = 0$, $\pi$, $2\pi$ behaviour); `PHASE1.md` §2 item 3, §4.3, §6 | `coeffs::{exp_coeffs, jr_coeffs, jr_inv_coeff, q_coeffs, gamma2_coeffs, log_ratio, se2_coeffs}` (`pub(crate)`, `PHASE3.md` §3), `coeffs::generated`, `xtask thresholds` |
+| [`se3.md`](./se3.md) | §1 (SE_N(3), rotation-first tangents), §2.2 (the dual-matrix algebra), §2.4 (SE(3) action Jacobians), §5.1–§5.5 ($\mathrm{Exp}$, $\mathrm{Log}$, $\mathrm{Ad}$, $\mathrm{ad}$, the $Q$ block, $J^{-1}$), §14 (`SEn3Jac`, `jr_inv`, `jl`); the order conversion of `0002` | `SEn3::{exp, log, adjoint, ad, jr, jl, jr_inv, jl_inv}`, `SEn3Jac::{mul, inverse, apply, apply_transpose, write_dense}`, `SE3::act_jacobians`, `Twist::{from_translation_first, to_translation_first}`, `coeffs::q_coeffs` |
 
-Not derived yet, so `NUMERICS.md` alone states them: every section outside the Map rows, notably §5.3
-(the $Q$ block: `lie-groups.md` uses only $J = g(\mathrm{ad})$ and `coefficients.md` derives its
-coefficients $b, d, e$, not the block) and §6–§11 (the SE(2) matrices, of which only the pair
-$\alpha, \beta$ is placed in the coefficient family; the conditioning of the exact $J$ and $\mathrm{Ad}$
-is LG.16; the metrics of §11 are used, not derived). The switch points and series lengths of §4 are
+Not derived yet, so `NUMERICS.md` alone states them: every section outside the Map rows, notably
+§6–§11 (the SE(2) matrices, of which only the pair $\alpha, \beta$ is placed in the coefficient family;
+the conditioning of the exact $J$ and $\mathrm{Ad}$ is LG.16; the metrics of §11 are used, not derived). The switch points and series lengths of §4 are
 generated (0004), not derived: `coefficients.md` derives the magnitudes to check them against
 (CO.10).
 
@@ -101,7 +102,10 @@ generated (0004), not derived: `coefficients.md` derives the magnitudes to check
   angle $\theta \ge 3.03$ (onset in $(3.02, 3.03]$ depending on the axis; 30 axes, 30 and 80 digits,
   identical in mpmath 1.3.0 and 1.4.1), so both ids are wrong at every `theta:pi-1e-k` stratum
   and at the top of `theta:1e0` ($[1, \pi - 0.1)$). An eigendecomposition-based principal logarithm
-  agrees with the `atan2` form there (SO.5, `Checked:`).
+  agrees with the `atan2` form there (SO.5, `Checked:`). `sen3_log_n{1,2,3}` (`mp.logm` of the
+  $(3+N)$-square matrix) fails the same way, with onset in $(3.02, 3.04]$ ($N = 1, 2, 3$, 8 axes each,
+  40 digits, identical in mpmath 1.3.0 and 1.4.1; SE.3, `Checked:`), where the geometric $\mathrm{SO}(3)$
+  logarithm with a $\Gamma_1$ solve agrees.
 - `NUMERICS.md` §3.4 says "then normalize" without saying how, and gives the output no sign rule.
   (i) §3.6's Newton step reaches rounding level only for $\lvert\eta\rvert \lesssim 2^{-26}$ (`f64`,
   SO.15(a)): a matrix further than about $2\times10^{-9}$ (max entry; $\lvert\eta\rvert \le 6\varepsilon$,
@@ -160,6 +164,15 @@ generated (0004), not derived: `coefficients.md` derives the magnitudes to check
   $\sqrt{6u} = 2.6\times10^{-8}$, inside `theta:1e-8`: simulated fits give $p = 1.91$–$1.94$ ($2.00$
   without that stratum), inside the window by $0.1$ (CO.6, *Checked*). The window should start above
   $2.6\times10^{-8}$, or the fit skip saturated strata.
+- `0004` item 1 and `PHASE1.md` §6 minimize each coefficient's own value and `Dual`-derivative error, but
+  a consumer multiplies a coefficient by a word of size $\theta^p$: with the exact arms of $b, d, e$ alone,
+  the value of $Q$ errs by $\lesssim(16.3/\theta + 20.8)u$ (measured $\le6.5u/\theta$, `f64`; $39u$ at a
+  switch of $0.9$, measured $\le 9.4u$) and the translation column of `Exp` by $O(u)\lVert\rho\rVert$ at every
+  $\theta \le 1$ (SE.15), against $6u\theta^{-2}$ for $b$ and $360u\theta^{-4}$ for $e$. The value strata of
+  `sen3_exp_n*`, `sen3_jl_n*` are far less sensitive to the
+  switch of $b$ and $e$ than `coeff_b`, `coeff_e`, so a switch that minimizes the coefficient is
+  conservative for those values; whether the objective should be the consumer's is a `0004` question. The
+  derivative through `Dual` was not examined.
 
 ## References
 

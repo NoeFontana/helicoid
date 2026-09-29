@@ -27,3 +27,12 @@ defined by the status tables in `docs/`; they win over this file.
   cases, the reference precision budget, the cost of one shared switch per call-site group).
   Documentation only; no code, no formula change. Nine open items for the normative documents are
   recorded in the maths index.
+- `docs/maths/se3.md`: SE_N(3) derivations (the matrix group and the `x_1 = v`, `x_2 = p` convention of
+  SE₂(3), `Exp`/`Log` from the hat matrix's series, `Ad`/`ad`, Barfoot's `Q` block derived from
+  `J_l = Σ adⁿ/(n+1)!` by the block-triangular powers of `ad` and `W³ = −θ²W` and identified with `b, d, e`,
+  `J_r` and two block relations, the dual-matrix algebra with proofs of closure, product (27 + 54N
+  multiplications), inverse and `apply_transpose`, `J⁻¹` without a second closed form, the SE(3) action
+  Jacobians, the rotation-first/translation-first permutation of tangents, Jacobians and covariances,
+  what the exact arms of `b, d, e` cost `Exp` and `Q` (and the error of `Q` at a switch), and the rounding of
+  `Log`'s translation part and of the blocks of `J⁻¹`). Documentation only; no code, no formula
+  change. One open item for the normative documents is extended and one added in the maths index.
