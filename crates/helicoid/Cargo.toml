@@ -21,3 +21,6 @@ rustdoc-args = ["--cfg", "docsrs"]
 [dependencies]
 helicoid-linalg.workspace = true
 libm.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true

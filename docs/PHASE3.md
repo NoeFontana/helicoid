@@ -15,12 +15,12 @@ first blessed envelope. SO(3)/SE(3) start as a port of `tf_tree_math` generalize
 
 | Area | Status |
 |---|---|
-| Traits: `Tangent`, `Jac`, `LieGroup`, `Side` (§2) | Not started |
+| Traits: `Tangent`, `Jac`, `LieGroup`, `Side` (§2) | Partial: the four traits and `Left`/`Right` as written in §2, `Side` delegating to `rplus`/`lplus`/`rminus`/`lminus` and their `*_jacobians`; the `DOF` tie (in each impl's `identity` and in every generic law) and `sandwich`'s `D == T::DOF` are `const` assertions, so a mismatch fails `cargo build`/`cargo test`, not `cargo check` (`sandwich`'s pinned by a `compile_fail` doctest); implemented by `Rn` and by a test-only non-abelian group (Heisenberg, `heis_tests.rs`; 2-step nilpotent, so no series term past the first is checked and its `Log` has no branch), both checked by the generic laws of `laws.rs` (axioms, `Exp`/`Log`, `Ad`, `ad` as a bracket with its series against `Ad`, `J_r`, `J_l`, `J_l = Ad J_r`, `⊕`/`⊖` round trips, `Side`, the rows of `NUMERICS.md` §2.3 against `Ad` and `J`, dense order, `sandwich`, `dual_value_is_plain_value`) under `f64`, `f32`, `Dual<f64, 3>`; `Side` has no first-class selector for the side row of `compose_jacobians`/`inverse_jacobian` (the test group compares `TypeId`s; whether `Side` gets a method or the groups use `TypeId` is for the SO(3) PR to decide); the rows are not compared with `Dual` differentiation: `jacobians_match_dual_*` and the twins (§8) not started |
 | Coefficient kernel + `__sweep` + generated thresholds (§3) | Not started |
 | `Quat`, `SO3` (§4) | Not started |
 | `SEn3<S, N>`, `SEn3Tangent`, `SEn3Jac`; `SE3`, `SE23` (§5) | Not started |
 | `SO2`, `SE2` (§6) | Not started |
-| `Rn`, `Product` (§7) | Not started |
+| `Rn`, `Product` (§7) | Partial: `Rn<S, N>` with tangent `RnTangent { rho }` and `RnJac`, a scalar multiple `k I` (`I`, `-I` and `ad = 0`); every §2.3 row for both sides, all `±I` and symmetric; addition is `Mul` and `Rn + Rn` is pinned by a `compile_fail` doctest; `Product` not started |
 | Side Jacobians, action Jacobians (§8) | Not started |
 | Reference twins and proptests (§9) | Not started |
 | Envelope blessed; `docs/evidence/ENVELOPE.md` (§10) | Not started |
@@ -200,10 +200,12 @@ PR adds the rotation-first permuted SE(2) Jacobians to `NUMERICS.md` §6 before 
 
 ## 7. Rⁿ and products
 
-`Rn<S, N>(Vector<S, N>)`: addition as the group law, `Jac = Mat<N>` identity-structured
-(`jr = I`, `Ad = I`), so generic code needs no special case. `Product<A, B>(A, B)` with tangent
-`(A::Tangent, B::Tangent)`, `ProductJac(A::Jac, B::Jac)` block-diagonal, `DOF = A::DOF + B::DOF`,
-dense order A then B. `Product<SO3<S>, Rn<S, 3>>` is the tf2-semantics pose.
+`Rn<S, N>(Vector<S, N>)`: addition as the group law, tangent `RnTangent { rho: Vector<S, N> }`,
+`Jac = RnJac`, the matrices `k I` (`jr = I`, `Ad = I`, `ad = 0`, `-I` in the `⊖` rows; a `Mat<N>`
+has no inverse at general `N`), so generic code needs no special case. `Product<A, B>(A, B)` with
+tangent `(A::Tangent, B::Tangent)`, `ProductJac(A::Jac, B::Jac)` block-diagonal,
+`DOF = A::DOF + B::DOF`, dense order A then B. `Product<SO3<S>, Rn<S, 3>>` is the tf2-semantics
+pose.
 
 ## 8. Side and action Jacobians
 

@@ -84,7 +84,7 @@ checked by `*_unchecked` constructors in debug only; `*_normalized` constructors
 | `SEn3<S, const N: usize>`; `SE3<S> = SEn3<S, 1>`, `SE23<S> = SEn3<S, 2>` | struct, aliases | 3 | `{ q: Quat<S>, x: [Vec3<S>; N] }`. |
 | `SEn3Tangent<S, N>`; `Twist<S> = SEn3Tangent<S, 1>` | struct, alias | 3 | `{ phi, rho: [Vec3; N] }`; `Twist::omega()`, `Twist::v()`. |
 | `SEn3Jac<S, N>` | struct | 3 | `{ diag: Mat3, col: [Mat3; N] }` ([`0005`](./decisions/0005-the-jacobian-is-a-dual-matrix.md)). |
-| `Rn<S, N>`, `Product<A, B>`, `ProductJac<A, B>` | structs | 3 | Block-diagonal Jacobians. |
+| `Rn<S, N>`, `RnTangent<S, N>`, `RnJac<S, N>`, `Product<A, B>`, `ProductJac<A, B>` | structs | 3 | Block-diagonal Jacobians; `RnJac` is `k I`. |
 | `act`, `act_many`, `act_jacobians` | methods | 3 | SO(2), SO(3), SE(2), SE(3), Sim(3) only. |
 | `from_matrix` | method | 3 | SO(3): Shepperd, closed form, never iterative. |
 | `LieGroup::geodesic`, `geodesic_jacobians`, `geodesic_velocity` | provided methods | 4 | Reference twin = definition. |

@@ -45,5 +45,5 @@ libm = { version = "0.2", default-features = false, features = ["arch"] }
 # Optional interop of `helicoid-linalg` (`0007`); `mint` has no default features, the flag says so.
 # 0.5.7 is the floor: the first with `From<mint::VectorN<T>> for [T; N]`, which the conversions use.
 mint = { version = "0.5.7", default-features = false }
-# Dev only: the algebra proptests of `helicoid-linalg`. Never in a library crate's normal closure.
+# Dev only: the proptests of the library crates. Never in a library crate's normal closure.
 proptest = { version = "1", default-features = false, features = ["std"] }

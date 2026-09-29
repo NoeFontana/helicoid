@@ -158,6 +158,14 @@ defined by the status tables in `docs/`; they win over this file.
   readings and edits of the implementing PRs that await ratification (including the widening of D11 to
   strided reads). It decides nothing and edits no spec; `docs/maths/index.md` gains a pointer to it.
   Documentation only; breaks nothing.
+- `helicoid`: the traits `Tangent`, `Jac` and `LieGroup`, `Side` with `Left` and `Right`
+  (`docs/PHASE3.md` §2), the conventions of `0002` in the crate docs, and the trivial group
+  `Rn<S, N>` with `RnTangent` and `RnJac` (§7): addition is `Mul`, there is no `Add` or `Sub`
+  (`compile_fail` doctests), and every row of `NUMERICS.md` §2.3 is written for both sides.
+  `Jac::sandwich` and the `DOF` tie are `const` assertions. Generic law checks (test-only
+  `laws`) run for `Rn` and for a test-only non-abelian group (Heisenberg) under `f64`, `f32` and
+  `Dual<f64, 3>` with recorded bounds. `docs/PHASE3.md` §7 and `docs/API.md` §3 name `RnTangent`
+  and `RnJac`. New public API, nothing breaks. `proptest` becomes a dev-dependency of `helicoid`.
 
 ### Changed
 
