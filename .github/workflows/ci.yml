@@ -110,3 +110,15 @@ jobs:
           tool: just,mdbook,mdbook-katex
       - run: just doc
       - run: just book
+
+  # The committed corpus must regenerate byte-identically from the pinned generator.
+  corpus-check:
+    name: corpus-check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.2.0
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: just
+      - run: just corpus-check

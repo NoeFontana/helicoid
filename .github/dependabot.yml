@@ -18,5 +18,12 @@ updates:
         patterns: ["*"]
     open-pull-requests-limit: 10
 
-  # Add `uv` for `conformance/generate/` and `cargo` for `runners/*` when they land: a bump
-  # there can change the corpus bytes, so each is reviewed against `just corpus-check`.
+  # A bump here changes the manifest, and possibly the corpus bytes: review it against
+  # `just corpus-check`.
+  - package-ecosystem: "uv"
+    directory: "/conformance/generate"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+
+  # Add `cargo` for `runners/*` when they land, reviewed the same way.

@@ -13,7 +13,7 @@ point, tangent ordering or sign.
 `rustup` (the toolchain and its targets come from `rust-toolchain.toml`; also `rustup toolchain
 install 1.87 --profile minimal` for `just msrv`), [`just`](https://github.com/casey/just),
 `cargo-nextest`, `cargo-deny`, and `mdbook` + `mdbook-katex` for `just book`. The reference
-generator (later) needs [`uv`](https://docs.astral.sh/uv/).
+generator (`just corpus`, `just corpus-check`) needs [`uv`](https://docs.astral.sh/uv/).
 
 ## Workflow for significant changes
 
