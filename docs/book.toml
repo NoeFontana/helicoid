@@ -1,0 +1,11 @@
+[book]
+title = "helicoid"
+authors = ["Noé Fontana"]
+language = "en"
+src = "."
+
+# NUMERICS.md is LaTeX-heavy; `cargo install mdbook mdbook-katex`.
+[preprocessor.katex]
+after = ["links"]
+
+[output.html]

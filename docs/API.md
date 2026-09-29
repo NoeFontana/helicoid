@@ -1,0 +1,130 @@
+# helicoid — the API contract
+
+> **Companions:** [`PROJECT.md`](./PROJECT.md) (decision log D1–D18),
+> [`NUMERICS.md`](./NUMERICS.md) (formulas), [`PHASE1.md`](./PHASE1.md)–[`PHASE6.md`](./PHASE6.md)
+> (per-phase specs), [`PHASE7.md`](./PHASE7.md) (gated).
+
+The rules that generate every public item. Sections marked **NORMATIVE** are requirements; item
+lists are the target surface, delivered by the phase named in each row. **Status:** ready; this
+document schedules nothing.
+
+## 1. The six rules
+
+A question none of these answers is a decision record, not an API choice.
+
+### R1 — Spell the side
+
+**NORMATIVE.** Every perturbation operation names its side: `rplus`, `lplus`, `rminus`, `lminus`,
+and their `*_jacobians`. Generic code takes `Sd: Side` (`Left`, `Right`). **No group, tangent or
+manifold type implements `Add`, `Sub`, `AddAssign` or `SubAssign`.** `Mul` is composition
+(`a * b` is `T_a_x · T_x_b`) and action (`x * p`). Each side's Jacobians are expressed in that
+side's perturbation convention (`NUMERICS.md` §2.3).
+
+### R2 — Values in, values out
+
+**NORMATIVE.** Groups, tangents, Jacobians, charts and `Gaussian` are `Copy`. No method allocates,
+locks, reads global state or mutates hidden state; the only `&mut self` numeric method is
+`renormalize`. Batch operations write into caller memory (`act_many(&self, &[Point3<S>],
+&mut [Point3<S>])`); there is no `Vec` anywhere.
+
+### R3 — Order is stated, never inferred
+
+**NORMATIVE.** Tangents have named fields (`phi`, `rho`, `theta`, `sigma`). A flat array appears
+only through `write_dense`/`read_dense`, whose order is `NUMERICS.md` §1's (rotation first), and a
+foreign order only through a converter named after that order: `from_translation_first`,
+`to_translation_first`, `Quat::from_xyzw`, `Quat::to_xyzw`, `Quat::from_jpl`. There is no
+`From<[S; N]>`, no `Into<[S; N]>`, and no `Index` on a tangent.
+
+### R4 — No boolean from a float
+
+**NORMATIVE.** `Real` has no `PartialOrd`/`PartialEq`. Comparisons return `S::Mask`; control flow
+goes through `S::branch`/`S::select`. A public function whose answer depends on a float comparison
+returns `S::Mask` (e.g. `chol` returns `(L, S::Mask)` for positive-definiteness). `value_f64` exists
+for tests and `debug_assert!` only.
+
+### R5 — Jacobians are typed; dense is a write
+
+**NORMATIVE.** A group's Jacobian is `G::Jac`, a structured type closed under `mul` and `inverse`
+([`0005`](./decisions/0005-the-jacobian-is-a-dual-matrix.md)). A dense matrix is produced only by
+writing into caller memory (`write_dense(&mut StridedMut)`) or by `sandwich` into a fixed-size
+covariance. Ambient Jacobians (Phase 6) follow the same rule.
+
+### R6 — The domain is part of the contract
+
+**NORMATIVE.** Every function with a restricted domain carries a `# Domain` rustdoc section naming
+it (`NUMERICS.md` §12) and a `debug_assert!` enforcing it. Release builds never check; out-of-domain
+release behaviour is an unspecified value, never a panic, never UB (D11). Unit-norm inputs are
+checked by `*_unchecked` constructors in debug only; `*_normalized` constructors normalize.
+
+## 2. `helicoid-linalg` — the leaf (Phase 2)
+
+| Item | Kind | Notes |
+|---|---|---|
+| `Mask` | trait | `and`, `or`, `not`, `all`, `any`, `decide`. `impl Mask for bool`. |
+| `Real` | trait | `PRECISION`, `lit`, `zero`, `one`, `lt`, `le`, `select`, `branch` (provided), `sqrt`, `sin_cos`, `atan2`, `abs`, `copysign`, `value_f64`. `impl` for `f64`, `f32`, `Dual<S, N>`. |
+| `Blend<S>` | trait | Lane-wise select for tuples, arrays, `Vector`, `Matrix` and every `helicoid` value type. |
+| `Precision` | enum | `F32`, `F64`; selects generated constants. |
+| `Dual<S, const N: usize>` | struct | `{ v: S, d: [S; N] }`; `variable(v, i)`, `constant(v)`; nests. |
+| `Vector<S, N>`, `Matrix<S, R, C>`, `Point<S, N>` | structs | `repr(C)`; `Matrix` column-major `[[S; R]; C]`; aliases `Vec2`, `Vec3`, `Mat2`, `Mat3`, `Point2`, `Point3`. |
+| `hat`, `vee` | fns | `Vec3 ↔ Mat3` skew. |
+| `Mat3::inverse_adj` | fn | `(adjugate/det, det)`; the caller decides what `det` means. |
+| `chol<S, N>` | fn | Fixed-size Cholesky; `(L, S::Mask)`. |
+| `Strided<'a, S>`, `StridedMut<'a, S>` | structs | `col_major`, `row_major`, `block`; bounds-checked (`# Panics`). |
+| `eig3`, `svd3`, `solve_cubic` | fns | `NUMERICS.md` §13 references; signatures in `PHASE2.md` §6. |
+| `mint` | feature | `From`/`Into` for `Vector`, `Matrix`, `Point` at sizes 2–4. |
+
+## 3. `helicoid` — groups and geometry
+
+| Item | Kind | Phase | Notes |
+|---|---|---|---|
+| `Tangent<S>`, `Jac<S, T>`, `LieGroup<S>`, `Side`, `Left`, `Right` | traits/ZSTs | 3 | Signatures `PHASE3.md` §2. |
+| `Quat<S>` | struct | 3 | `{ w, x, y, z }`; `from_wxyz_unchecked`, `from_wxyz_normalized`, `from_xyzw`, `to_xyzw`, `from_jpl`. |
+| `SO2<S>`, `SO3<S>`, `SE2<S>` | structs | 3 | |
+| `SEn3<S, const N: usize>`; `SE3<S> = SEn3<S, 1>`, `SE23<S> = SEn3<S, 2>` | struct, aliases | 3 | `{ q: Quat<S>, x: [Vec3<S>; N] }`. |
+| `SEn3Tangent<S, N>`; `Twist<S> = SEn3Tangent<S, 1>` | struct, alias | 3 | `{ phi, rho: [Vec3; N] }`; `Twist::omega()`, `Twist::v()`. |
+| `SEn3Jac<S, N>` | struct | 3 | `{ diag: Mat3, col: [Mat3; N] }` ([`0005`](./decisions/0005-the-jacobian-is-a-dual-matrix.md)). |
+| `Rn<S, N>`, `Product<A, B>`, `ProductJac<A, B>` | structs | 3 | Block-diagonal Jacobians. |
+| `act`, `act_many`, `act_jacobians` | methods | 3 | SO(2), SO(3), SE(2), SE(3), Sim(3) only. |
+| `from_matrix` | method | 3 | SO(3): Shepperd, closed form, never iterative. |
+| `LieGroup::geodesic`, `geodesic_jacobians`, `geodesic_velocity` | provided methods | 4 | Reference twin = definition. |
+| `Chart<S, M>`, `Manifold<S>`, `WithChart<M, C>` | traits/struct | 5 | [`0012`](./decisions/0012-a-retraction-is-a-chart.md). |
+| `Screw`, `Decoupled`, `WorldTranslation`, `RightChart<G>`, `LeftChart<G>` | charts | 5 | |
+| `S2<S>`, `S2Chart<S>` | structs | 5 | Frozen Householder basis. |
+| `Sim3<S>` | struct | 5 | Formula block owed (`NUMERICS.md` §9). |
+| `so3::gamma1`, `so3::gamma2`, `so3::gamma_apply_jacobian` | fns | 5 | Directional Jacobians via `Dual<S, 3>`. |
+| `Gaussian<S, G, Sd, const D: usize>` | struct | 5 | `D == G::DOF` asserted at compile time. |
+| `AmbientChart` | trait | 6 | Ceres-style `PlusJacobian`/`MinusJacobian`. |
+| `reference::*` | module | 3–5 | Public and documented: the twins are the definition of *correct* (D6). |
+
+`coeffs` is `pub(crate)`. Its `__sweep` feature exposes evaluators to `xtask` only and is not part of
+the API ([`0004`](./decisions/0004-switch-points-are-generated-not-typed.md)); `just lint` fails if
+any crate other than `xtask` enables it.
+
+## 4. Interop
+
+- **`mint`** (optional, both crates): `Vector`, `Matrix`, `Point`; `Quat ↔ mint::Quaternion`
+  (`{ v, s }` — field names, no order ambiguity). nalgebra, glam and cgmath convert through `mint`;
+  there is no `nalgebra` or `faer` feature ([`0007`](./decisions/0007-the-budget-a-foundation-can-afford.md)).
+- **Dense order converters** (R3): the only way a translation-first or `xyzw` array enters or
+  leaves.
+- **Solvers** consume `Manifold`, `Chart`, `Jac::write_dense` and `AmbientChart`; `helicoid` adds
+  nothing solver-specific ([`0009`](./decisions/0009-what-helicoid-does-not-own.md)).
+
+## 5. Stability
+
+`0.0.x` until [`PHASE6.md`](./PHASE6.md) §6 holds: every release may break every other. From 1.0:
+`cargo-semver-checks` gates every release. **A change to a generated switch point or series length
+changes outputs without changing the API**: it ships in a minor release with a changelog line
+naming the functions, strata and the old/new max error.
+
+## 6. The check a new surface has to pass
+
+A PR adding public API answers each line in its description:
+
+1. Which rule of §1 could it violate, and why does it not?
+2. Does it have a corpus stratum, or is it a composite with a reference twin (`NUMERICS.md` §14)?
+3. Is its domain stated (`# Domain`) and `debug_assert!`ed?
+4. Does it return a `bool` from a float, a dense Jacobian, or an unlabeled array?
+5. Does it duplicate an existing path (a second spelling)? Document the one that exists instead.
+6. Does it pass the ownership test ([`0009`](./decisions/0009-what-helicoid-does-not-own.md))?
+7. Is it `no_std`, allocation-free, dependency-free, and bit-identical across targets?

@@ -1,0 +1,350 @@
+# helicoid — Numerics: formulas, series, domains
+
+> **Companions:** [`PROJECT.md`](./PROJECT.md) D3–D9, D16;
+> [`0002`](./decisions/0002-one-convention-for-a-stack-that-already-disagrees.md) (conventions),
+> [`0004`](./decisions/0004-switch-points-are-generated-not-typed.md) (switch points),
+> [`0005`](./decisions/0005-the-jacobian-is-a-dual-matrix.md) (Jacobian structure),
+> [`0006`](./decisions/0006-the-instrument-comes-first.md) (the instrument).
+
+Every formula a phase implements, **already stated in this repository's conventions**
+(rotation-first, right perturbation, Hamilton `w`-first). Literature formulas (Barfoot, Solà,
+Sophus) are translation-first; they have been permuted here. **Never permute them again in your
+head: implement what is written.** The whole document is **NORMATIVE** except §13.
+
+A formula here is a claim; the corpus is its test. The generator never uses these closed forms: it
+computes from definitions (`PHASE1.md` §4.3), so a wrong line in this file fails the envelope.
+
+## 0. Status
+
+| Section | Status |
+|---|---|
+| §1–§8, §10–§12, §14 | **Ready** |
+| §9 Sim(3) | **Owed**: group law and `Ad` stated; `Exp`, `Log`, `Jr` block must be derived and generator-verified before `PHASE5.md` §3 starts |
+
+## 1. Conventions
+
+- **Quaternions.** $q = (w, x, y, z) = w + x\,i + y\,j + z\,k$, Hamilton ($i^2 = j^2 = k^2 = ijk = -1$),
+  stored `w` first. Active: $v' = q\,v\,q^*$. With $u = (x, y, z)$:
+  $R(q) = (w^2 - \|u\|^2)\,I + 2\,u u^\top + 2w\,[u]_\times$.
+- **SE_N(3).** $X = (R, x_1, \dots, x_N)$, i.e. the $(3+N)\times(3+N)$ matrix
+  $\begin{bmatrix} R & x_1 \cdots x_N \\ 0 & I_N \end{bmatrix}$. Composition
+  $XY = (R_X R_Y,\ R_X y_i + x_i)$; inverse $(R^\top, -R^\top x_i)$. SE(3) is $N = 1$ with $x_1 = t$;
+  `a * b` is $T_{a x}\,T_{x b}$ and `X * p` is $R p + t$.
+- **Tangents are rotation-first.** $\tau = [\varphi;\ \rho_1;\ \dots;\ \rho_N] \in \mathbb{R}^{3+3N}$;
+  a twist is $[\omega; v]$. Hat:
+  $\tau^\wedge = \begin{bmatrix} \varphi^\wedge & \rho_1 \cdots \rho_N \\ 0 & 0 \end{bmatrix}$,
+  $\varphi^\wedge = [\varphi]_\times$. SE(2): $[\theta; \rho]$. Sim(3): $[\varphi; \rho; \sigma]$.
+- **Exp/Log.** $\mathrm{Exp}(\tau) = \exp(\tau^\wedge)$. $\mathrm{Log}$ is its inverse on the canonical
+  branch $\theta = \|\varphi\| \in [0, \pi]$.
+- **Perturbations.** Right (default): $X \oplus_R \tau = X\,\mathrm{Exp}(\tau)$,
+  $Y \ominus_R X = \mathrm{Log}(X^{-1} Y)$. Left: $X \oplus_L \tau = \mathrm{Exp}(\tau)\,X$,
+  $Y \ominus_L X = \mathrm{Log}(Y X^{-1})$.
+- **Adjoints.** $X\,\mathrm{Exp}(\tau)\,X^{-1} = \mathrm{Exp}(\mathrm{Ad}_X\,\tau)$;
+  $\mathrm{ad}_\tau\,\sigma = [\tau^\wedge, \sigma^\wedge]^\vee$.
+- **Jacobians of Exp.** $\mathrm{Exp}(\tau + \delta) \approx \mathrm{Exp}(\tau)\,\mathrm{Exp}(J_r(\tau)\,\delta)
+  \approx \mathrm{Exp}(J_l(\tau)\,\delta)\,\mathrm{Exp}(\tau)$, and
+  $J_l(\tau) = J_r(-\tau) = \mathrm{Ad}_{\mathrm{Exp}(\tau)}\,J_r(\tau)$.
+
+## 2. Notation and generic identities
+
+### 2.1 Notation
+
+$\theta^2 = \varphi \cdot \varphi$ is always computed as a dot product, never as the square of a
+`sqrt`. $\theta = \sqrt{\theta^2}$ is formed only inside an exact arm, at the safe argument
+(`PROJECT.md` §7). $W = \varphi^\wedge$. $u$ is the unit roundoff of the precision: $2^{-53}$ (`f64`,
+`Dual<f64, N>`) or $2^{-24}$ (`f32`).
+
+### 2.2 Dual-matrix notation for SE_N(3) Jacobians
+
+A structured Jacobian `SEn3Jac { diag: A, col: [B_1, …, B_N] }` denotes the rotation-first dense
+matrix
+
+$$
+\begin{bmatrix} A & 0 & \cdots & 0 \\ B_1 & A & & \\ \vdots & & \ddots & \\ B_N & & & A \end{bmatrix},
+$$
+
+written $A + \epsilon B$. Products and inverses (0005):
+$(A + \epsilon B)(C + \epsilon D) = AC + \epsilon\,(B_i C + A D_i)$ and
+$(A + \epsilon B)^{-1} = A^{-1} - \epsilon\,A^{-1} B_i A^{-1}$.
+
+### 2.3 Sides and their Jacobians
+
+Each side's Jacobians are expressed **in that side's perturbation convention**. Right: perturb as
+$X \oplus_R \delta$. Left: perturb as $X \oplus_L \delta$.
+
+| Operation | Right: $\partial/\partial$ first | Right: $\partial/\partial$ second | Left: $\partial/\partial$ first | Left: $\partial/\partial$ second |
+|---|---|---|---|---|
+| $X \oplus \tau$ | $\mathrm{Ad}_{\mathrm{Exp}(\tau)}^{-1}$ | $J_r(\tau)$ | $\mathrm{Ad}_{\mathrm{Exp}(\tau)}$ | $J_l(\tau)$ |
+| $\tau = Y \ominus X$ ($\partial/\partial Y$, $\partial/\partial X$) | $J_r^{-1}(\tau)$ | $-J_l^{-1}(\tau)$ | $J_l^{-1}(\tau)$ | $-J_r^{-1}(\tau)$ |
+| $XY$ | $\mathrm{Ad}_Y^{-1}$ | $I$ | $I$ | $\mathrm{Ad}_X$ |
+| $X^{-1}$ | $-\mathrm{Ad}_X$ | — | $-\mathrm{Ad}_X^{-1}$ | — |
+| $\mathrm{Exp}(\tau)$ | $J_r(\tau)$ | — | $J_l(\tau)$ | — |
+| $\mathrm{Log}(X)$ | $J_r^{-1}(\mathrm{Log}\,X)$ | — | $J_l^{-1}(\mathrm{Log}\,X)$ | — |
+
+### 2.4 Action Jacobians (SE(3), rotation-first)
+
+$\partial(X p)/\partial X$: right $[\,-R[p]_\times,\ R\,]$; left $[\,-[Rp + t]_\times,\ I\,]$.
+$\partial(Xp)/\partial p = R$. SO(3): right $-R[p]_\times$, left $-[Rp]_\times$.
+
+## 3. SO(3)
+
+### 3.1 Exp
+
+$q = \left(\cos\tfrac{\theta}{2},\ k(\theta)\,\varphi\right)$, with $k$ from §4. One `sin_cos` of
+$\theta/2$ in the exact arm; the series arm needs no transcendental for $k$ and computes
+$\cos\tfrac{\theta}{2}$ from its own series (generated alongside $k$).
+
+### 3.2 Log
+
+1. If $w < 0$, $q \leftarrow -q$ (implemented as `copysign`, not a branch). At $w = +0$ nothing flips:
+   **at exactly $\theta = \pi$, `Log` is a function of the quaternion, not of the rotation** — $q$
+   and $-q$ return $\pm\pi\hat n$.
+2. $n^2 = x^2 + y^2 + z^2$; $\theta = 2\,\mathrm{atan2}(n, w)$.
+3. $\varphi = r(n^2, w)\,u$ with $r = 2\,\mathrm{atan2}(n, w)/n$ (§4).
+
+`Log` is exactly scale-invariant in $q$ ($\mathrm{atan2}$ and $u/n$ are), so a non-unit input within
+rounding returns the `Log` of its normalization. **Never $\mathrm{acos}((\mathrm{tr}R - 1)/2)$**
+(D5): it resolves $\theta$ only to $\sim\sqrt{2u}$ near $0$ and $\pi$.
+
+### 3.3 Action
+
+$v' = v + 2w\,(u \times v) + 2\,u \times (u \times v)$. `act_many` forms $R(q)$ once and applies it
+per point; its reference twin is the per-point `act`.
+
+### 3.4 From a matrix
+
+Shepperd's method: select the largest of $\{\mathrm{tr}R, R_{00}, R_{11}, R_{22}\}$ through nested
+`branch`es and extract from that pivot (e.g. trace pivot: $w = \tfrac12\sqrt{1 + \mathrm{tr}R}$,
+$x = (R_{21} - R_{12})/(4w)$, …), then normalize. **Closed form, never iterative**: locus-tag's
+`quat_from_so3` regression (nalgebra's Müller iteration looping forever on degenerate input) is a
+Phase 3 test. Projecting an arbitrary $3\times3$ onto SO(3) is `svd3` first
+($U\,\mathrm{diag}(1, 1, \det UV^\top)\,V^\top$), then this.
+
+### 3.5 Jacobians and adjoints
+
+$$
+J_r = I - a\,W + b\,W^2,\quad J_l = I + a\,W + b\,W^2,\quad
+J_r^{-1} = I + \tfrac12 W + c\,W^2,\quad J_l^{-1} = I - \tfrac12 W + c\,W^2,
+$$
+
+$\mathrm{Ad}_R = R$, $\mathrm{ad}_\varphi = W$.
+
+### 3.6 Renormalization
+
+Composition never normalizes. Construction from external data and the explicit `renormalize`
+apply the first-order Newton step $q \leftarrow q\,(3 - \|q\|^2)/2$ (exact to
+$O((\|q\|^2 - 1)^2)$, no `sqrt`). `from_wxyz_unchecked` debug-asserts
+$|\|q\|^2 - 1| \le 2^{-40}$ (`f64`; `tf_tree_math`'s `1e-12`) or $2^{-16}$ (`f32`).
+
+## 4. The coefficient catalogue
+
+**Only `helicoid::coeffs` evaluates these.** Each is a function of a branch variable ($\theta^2$,
+or $n^2$ for $r$) with an exact arm and a series arm; the switch point and the number of series
+terms are **generated per precision** by `cargo xtask thresholds`
+([`0004`](./decisions/0004-switch-points-are-generated-not-typed.md)). The series coefficients are
+generated from mpmath's Taylor expansion as exact rationals; **the leading four below are asserted
+by the generator**, as a cross-check, not typed into code.
+
+| Name | Definition | Exact arm computes | Series (leading four) | Naive cancellation | Prior |
+|---|---|---|---|---|---|
+| $k$ | $\sin(\theta/2)/\theta$ | definition (0/0 only) | $\tfrac12 - \tfrac{\theta^2}{48} + \tfrac{\theta^4}{3840} - \tfrac{\theta^6}{645120}$ | none | — |
+| $a$ | $(1 - \cos\theta)/\theta^2$ | $2k^2$ | $\tfrac12 - \tfrac{\theta^2}{24} + \tfrac{\theta^4}{720} - \tfrac{\theta^6}{40320}$ | $\sim 2u/\theta^2$ naive; none after rewrite | `tf_tree` D12: $\theta < 0.1$, 4 terms |
+| $b$ | $(\theta - \sin\theta)/\theta^3$ | definition — **no rewrite exists** | $\tfrac16 - \tfrac{\theta^2}{120} + \tfrac{\theta^4}{5040} - \tfrac{\theta^6}{362880}$ | $\sim 6u/\theta^2$ | `tf_tree` D12 |
+| $c$ | $1/\theta^2 - (1 + \cos\theta)/(2\theta\sin\theta)$ | $1/\theta^2 - \cot(\theta/2)/(2\theta)$ (exact at $\pi$) | $\tfrac1{12} + \tfrac{\theta^2}{720} + \tfrac{\theta^4}{30240} + \tfrac{\theta^6}{1209600}$ | $\sim 12u/\theta^2$ | `tf_tree` D12 |
+| $d$ | $(\theta^2 + 2\cos\theta - 2)/(2\theta^4)$ | $(\theta^2 - 4\sin^2(\theta/2))/(2\theta^4)$ | $\tfrac1{24} - \tfrac{\theta^2}{720} + \tfrac{\theta^4}{40320} - \tfrac{\theta^6}{3628800}$ | $\sim 24u/\theta^4$ naive, $\sim 24u/\theta^2$ rewritten | — |
+| $e$ | $(2\theta - 3\sin\theta + \theta\cos\theta)/(2\theta^5)$ | definition — **no rewrite exists** | $\tfrac1{120} - \tfrac{\theta^2}{2520} + \tfrac{\theta^4}{120960} - \tfrac{\theta^6}{9979200}$ | $\sim 360u/\theta^4$ | — |
+| $r$ | $2\,\mathrm{atan2}(n, w)/n$ | definition | $\tfrac{2}{w}\left(1 - \tfrac{s}{3} + \tfrac{s^2}{5} - \tfrac{s^3}{7}\right)$, $s = n^2/w^2$ | none (0/0) | — |
+
+What the "naive cancellation" column means: evaluating the definition in the exact arm keeps
+$-\log_{10}$ of that relative error in digits. $e$ is the reason one global threshold is wrong by
+construction: at $\theta = 10^{-2}$ it keeps about five digits, at $10^{-3}$ about one.
+
+**Call sites evaluate coefficients in groups, inside one `branch`:** `exp_coeffs` → $(k, \cos\tfrac\theta2)$;
+`jr_coeffs` → $(a, b)$; `jr_inv_coeff` → $c$; `q_coeffs` → $(b, d, e)$; `gamma2_coeffs` → $(b, d)$;
+`log_ratio` → $r$. A call site never evaluates one coefficient from the catalogue on its own.
+
+**Continuity.** At every generated switch point, $|\text{series} - \text{exact}|$ is at most the
+recorded max error of that coefficient; `branch_continuity_*` tests assert it.
+
+## 5. SE_N(3)
+
+### 5.1 Exp and Log
+
+$\mathrm{Exp}(\tau) = (\mathrm{Exp}(\varphi),\ J_l(\varphi)\rho_1,\ \dots,\ J_l(\varphi)\rho_N)$.
+$\mathrm{Log}(X) = (\varphi = \mathrm{Log}(R),\ \rho_i = J_l^{-1}(\varphi)\,x_i)$.
+$J_l(\varphi)$ and $J_l^{-1}(\varphi)$ are §3.5's (the `V` and `V⁻¹` of `tf_tree_math`).
+
+### 5.2 Adjoints
+
+$\mathrm{Ad}_X = R + \epsilon\,[x_i]_\times R$, i.e. `diag = R`, `col[i] = [x_i]× R`.
+$\mathrm{ad}_\tau = W + \epsilon\,[\rho_i]_\times$.
+
+### 5.3 Jacobians
+
+$$
+J_l(\tau) = J_l(\varphi) + \epsilon\,Q(\rho_i, \varphi),\qquad
+J_r(\tau) = J_r(\varphi) + \epsilon\,Q(-\rho_i, -\varphi),
+$$
+
+with Barfoot's block (Barfoot 2017; Barfoot & Furgale 2014), written with §4's coefficients:
+
+$$
+\begin{aligned}
+Q(\rho, \varphi) ={}& \tfrac12\,\rho^\wedge
++ b\,\big(\varphi^\wedge\rho^\wedge + \rho^\wedge\varphi^\wedge + \varphi^\wedge\rho^\wedge\varphi^\wedge\big) \\
+&+ d\,\big(\varphi^\wedge\varphi^\wedge\rho^\wedge + \rho^\wedge\varphi^\wedge\varphi^\wedge - 3\,\varphi^\wedge\rho^\wedge\varphi^\wedge\big)
++ e\,\big(\varphi^\wedge\rho^\wedge\varphi^\wedge\varphi^\wedge + \varphi^\wedge\varphi^\wedge\rho^\wedge\varphi^\wedge\big).
+\end{aligned}
+$$
+
+In Barfoot's translation-first order this block sits upper-right; rotation-first puts it lower-left,
+which is what `col[i]` holds. The block for each $\rho_i$ is independent of the others.
+
+### 5.4 Inverses
+
+$J_r^{-1}(\tau)$ and $J_l^{-1}(\tau)$ are **not separate formulas**: they are the dual-matrix inverse
+(§2.2) of §5.3 with $A^{-1}$ from §3.5's closed form:
+$J_r^{-1}(\tau) = J_r^{-1}(\varphi) - \epsilon\,J_r^{-1}(\varphi)\,Q(-\rho_i, -\varphi)\,J_r^{-1}(\varphi)$.
+The dense Gauss–Jordan inverse of $J_r(\tau)$ is the reference twin (§14).
+
+### 5.5 Action (N = 1)
+
+$X p = Rp + t$, with §2.4's Jacobians.
+
+## 6. SO(2) and SE(2)
+
+SO(2) is a unit complex $(c, s)$: $\mathrm{Exp}\,\theta = (\cos\theta, \sin\theta)$,
+$\mathrm{Log} = \mathrm{atan2}(s, c)$, $J_r = J_l = 1$, $\mathrm{Ad} = 1$.
+
+SE(2), tangent $[\theta; \rho]$: $\mathrm{Exp} = (R(\theta),\ V(\theta)\rho)$ with
+$V(\theta) = \begin{bmatrix} \alpha & -\beta \\ \beta & \alpha \end{bmatrix}$,
+$\alpha = \sin\theta/\theta$, $\beta = (1 - \cos\theta)/\theta = 2\sin^2(\theta/2)/\theta$ (both 0/0
+only: series from the generator, switch generated). $\mathrm{Log}$: $\theta = \mathrm{atan2}(s, c)$,
+$\rho = V(\theta)^{-1} t$. $J_r$, $J_l$ and their inverses: Solà et al. 2018, Appendix (SE(2)),
+**permuted to rotation-first** in the Phase 3 PR that implements them, and verified by `Dual` and
+the corpus; that PR adds the permuted matrices to this section.
+
+## 7. Integrated exponentials
+
+$\Gamma_m(\varphi) = \sum_{n \ge 0} W^n/(n+m)!$. $\Gamma_0 = \mathrm{Exp}$; $\Gamma_1 = J_l$;
+$\Gamma_2 = \tfrac12 I + b\,W + d\,W^2$. With piecewise-constant body-frame $\omega$ and $a$ over
+$\Delta t$: $\Delta R = \mathrm{Exp}(\omega\Delta t)$,
+$\Delta v = \Gamma_1(\omega\Delta t)\,a\,\Delta t$, $\Delta p = \Gamma_2(\omega\Delta t)\,a\,\Delta t^2$
+(Barrau & Bonnabel 2020; Brossard et al. 2022). Preintegration itself is not `helicoid`'s
+([`0009`](./decisions/0009-what-helicoid-does-not-own.md)).
+
+**Directional Jacobians** $\partial(\Gamma_m(\varphi)\,v)/\partial\varphi$ are computed by
+evaluating $\Gamma_m$ on `Dual<S, 3>` through `coeffs` — exact to rounding, Taylor branches
+included. A closed form replaces this only if a bench shows the `Dual` path is a consumer
+bottleneck (`PROJECT.md` §5.1).
+
+## 8. S²
+
+Storage: unit $n \in \mathbb{R}^3$. The chart at $n$ is frozen at construction:
+
+- **Basis.** $\nu = n + \mathrm{sgn}(n_z)\,e_z$ with $\mathrm{sgn}(0) = +1$;
+  $H = I - 2\,\nu\nu^\top/(\nu^\top\nu)$; $b_1 = H e_x$, $b_2 = H e_y$. $H e_z = -\mathrm{sgn}(n_z)\,n$,
+  so $b_1, b_2 \perp n$; $\nu^\top\nu = 2(1 + |n_z|) \ge 2$ never cancels.
+- **Retract.** $n \oplus \delta = \mathrm{Exp}(B\delta)\,n$, $B = [b_1\ b_2]$.
+- **Local.** $\delta = B^\top\,(\alpha\,\hat m)$ with $\hat m = (n \times m)/\|n \times m\|$,
+  $\alpha = \mathrm{atan2}(\|n \times m\|, n \cdot m)$; the ratio $\alpha/\|n \times m\|$ is §4's $r$
+  kernel (with $w = n\cdot m$, $n^2 = \|n\times m\|^2$).
+- **The basis is discontinuous at $n_z = 0$**, and by the hairy ball theorem every global basis is
+  discontinuous somewhere. The chart is therefore computed once per linearization and reused; it is
+  never recomputed inside $\oplus$ ([`0012`](./decisions/0012-a-retraction-is-a-chart.md)).
+
+## 9. Sim(3) — owed
+
+Storage $(q, t, \sigma)$ with scale $s = e^\sigma$ (so the inverse negates $\sigma$ exactly).
+$X = \begin{bmatrix} sR & t \\ 0 & 1\end{bmatrix}$; $XY = (R_X R_Y,\ s_X R_X t_Y + t_X,\ \sigma_X + \sigma_Y)$.
+Tangent $[\varphi; \rho; \sigma]$, hat $\begin{bmatrix} \varphi^\wedge + \sigma I & \rho \\ 0 & 0\end{bmatrix}$.
+$\mathrm{Ad}_X[\varphi; \rho; \sigma] = [R\varphi;\ sR\rho + [t]_\times R\varphi - \sigma t;\ \sigma]$.
+
+**Owed before `PHASE5.md` §3 starts**, as an edit to this section plus a record: $\mathrm{Exp}$'s
+$W(\varphi, \sigma)$ block, $\mathrm{Log}$, $J_r$, their coefficients as functions of $(\sigma, \theta)$,
+and the two-dimensional series at the joint limit $\sigma^2 + \theta^2 \to 0$ (Eade 2014; Strasdat
+2012). Jacobians are dense $7 \times 7$ ([`0005`](./decisions/0005-the-jacobian-is-a-dual-matrix.md)).
+
+## 10. Geodesics
+
+$X(t) = X_0\,\mathrm{Exp}(t\,d)$ with $d = X_1 \ominus_R X_0$ and $\Delta = X_0^{-1}X_1$:
+
+- **Definition = reference twin.** For SE(3) this is ScLERP; the unit-dual-quaternion power is the
+  fast twin (`PHASE4.md` §1). For `Product<SO3, R3>` it is slerp + lerp, i.e. `tf2`'s semantics.
+- **Invariance.** The SE(3) geodesic is left- and right-invariant:
+  $X_0 H\,\mathrm{Exp}(t\,\mathrm{Ad}_{H^{-1}} d) = X_0\,\mathrm{Exp}(t\,d)\,H$. `Product<SO3, R3>` is
+  left-invariant only; its right-invariance test is **supposed to fail** (`tf_tree` D5).
+- **Jacobians (right).** $\partial X(t)/\partial X_1 = t\,J_r(t d)\,J_r^{-1}(d)$;
+  $\partial X(t)/\partial X_0 = \mathrm{Ad}_{\mathrm{Exp}(-td)} - t\,J_r(td)\,J_r^{-1}(d)\,\mathrm{Ad}_{\Delta^{-1}}$;
+  $\partial X(t)/\partial t = d$ (right, body frame).
+- **Velocity.** Body velocity $d/\Delta t$, constant along the geodesic.
+- **Domain.** $\theta(d) < \pi$ for a unique geodesic; at $\pi$ the problem is ill-posed and the
+  result is §3.2's function of the quaternion sign.
+
+## 11. Error metrics and conditioning
+
+- **Forward error** $\|\hat y - y\| / \max(\|y\|, \|y\|_{\text{floor}})$ in units of $u$, norm-wise
+  (vectors: 2-norm; matrices: Frobenius; quaternions: after aligning the sign of $\hat y$ with $y$).
+  $\|y\|_{\text{floor}}$ is the function's scale (1 for rotations and Jacobians, $\|\rho\|$-scale for
+  translations) so an exact zero is not divided by.
+- **Backward error** for `Log`: $\|\mathrm{Exp}(\widehat{\mathrm{Log}}\,X) \ominus_R X\|$ in $u$. Primary
+  for the near-π strata.
+- **Quaternion inputs make `Log`'s forward error well-defined** everywhere except $w = +0$ exactly,
+  where the metric is sign-invariant: $\min(\|\hat\varphi - \varphi\|, \|\hat\varphi + \varphi\|)$.
+  Matrix inputs (`from_matrix`) are ill-conditioned near $\pi$ in the axis; their strata report
+  backward error only.
+- **Per stratum:** max and p99; never a mean. Non-finite outputs are counted separately and any
+  non-zero count fails.
+- **Bars** ([`0006`](./decisions/0006-the-instrument-comes-first.md)): domination over the best
+  oracle's max; no-regress against the committed baseline, **exact** (D16).
+
+## 12. Domains and singularities
+
+| Routine | Domain | Outside (release) |
+|---|---|---|
+| `SO3::log` | all unit $q$; at $w = +0$ a function of $q$'s sign (§3.2) | — |
+| `jr_inv`, `jl_inv` (SO(3), SE_N(3)) | $\theta < 2\pi$ | unspecified finite value |
+| `from_wxyz_unchecked` | $\lvert\|q\|^2 - 1\rvert \le 2^{-40}$ (`f64`), $2^{-16}$ (`f32`) | garbage in, garbage out |
+| `S2Chart::local` | $m \ne -n$ | unspecified finite value |
+| `geodesic` | $\theta(d) < \pi$ | §10 |
+| `Sim3` | $\sigma$ finite | — |
+| `chol` | positive definite | `(L, mask = false)` |
+| Strided writes | in bounds | **panic** (the one documented class, D11) |
+
+## 13. References
+
+- T. D. Barfoot, *State Estimation for Robotics*, 2017; T. D. Barfoot, P. T. Furgale,
+  "Associating Uncertainty With Three-Dimensional Poses for Use in Estimation Problems", T-RO 2014.
+- J. Solà, J. Deray, D. Atchuthan, "A micro Lie theory for state estimation in robotics", 2018.
+- H. Sommer et al., "Why and How to Avoid the Flipped Quaternion Multiplication", 2018.
+- A. Barrau, S. Bonnabel, "A Mathematical Framework for IMU Error Propagation with Applications to
+  Preintegration", ICRA 2020; M. Brossard, A. Barrau, P. Chauchat, S. Bonnabel, "Associating
+  Uncertainty to Extended Poses for on Lie Group IMU Preintegration With Rotating Earth", T-RO 2022.
+- E. Eade, "Lie Groups for Computer Vision", 2014; H. Strasdat, *Local Accuracy and Global
+  Consistency for Efficient Visual SLAM*, PhD thesis, 2012.
+- S. W. Shepperd, "Quaternion from rotation matrix", J. Guidance and Control, 1978.
+- A. McAdams et al., "Computing the Singular Value Decomposition of 3×3 matrices with minimal
+  branching and elementary floating point operations", 2011; J. Kopp, "Efficient numerical
+  diagonalization of hermitian 3×3 matrices", 2008.
+- H. Sommer, J. Forbes, R. Siegwart, P. Furgale, "Continuous-Time Estimation of attitude using
+  B-splines on Lie groups", 2016; C. Sommer, V. Usenko, D. Schubert, N. Demmel, D. Cremers,
+  "Efficient Derivative Computation for Cumulative B-Splines on Lie Groups", CVPR 2020 (Phase 7).
+
+## 14. Reference twins
+
+Primitives (`Exp`, `Log`, coefficients, `act`) are checked against the corpus. Composites keep a
+twin in `helicoid::reference` and a proptest `<name>_matches_reference`; `cargo xtask lint` checks
+this table against the code.
+
+| Fast | Reference twin | Phase |
+|---|---|---|
+| `SEn3::jr_inv` (dual-matrix inverse) | dense Gauss–Jordan inverse of `jr` | 3 |
+| `LieGroup::jl` (`jr(-τ)`) | $\mathrm{Ad}_{\mathrm{Exp}(\tau)}\,J_r(\tau)$, dense | 3 |
+| `*_jacobians` (§2.3 closed forms) | chains of primitive Jacobians, dense | 3 |
+| `SO3::act_many` | per-point `act` | 3 |
+| `SEn3Jac::mul`, `inverse` | dense product / Gauss–Jordan | 3 |
+| `SE3::geodesic` (dual-quaternion power) | $X_0\,\mathrm{Exp}(t\,\mathrm{Log}(X_0^{-1}X_1))$ | 4 |
+| `geodesic_jacobians` | `Dual` through the reference geodesic | 4 |
+| `Gaussian::to_left` / `to_right` | dense $\mathrm{Ad}\,\Sigma\,\mathrm{Ad}^\top$ | 5 |
+| `gamma_apply_jacobian` | `Dual` through `reference` $\Gamma_m$ series (dense sum) | 5 |
+| `S2Chart::local` | $\mathrm{Log}$ of the minimal rotation taking $n$ to $m$, projected on $B$ | 5 |
