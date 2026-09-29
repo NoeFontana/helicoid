@@ -27,8 +27,8 @@
 //!   can read under 1.
 //! - **Overflow.** An `F` that does not fit in binary64 (a gross error against a zero or tiny
 //!   reference) is [`Score::NonFinite`]: a finite output that wrong fails the run like a NaN.
-//! - **`f32`** is refused: the corpus inputs are binary64 and `docs/PHASE1.md` §4.4 does not say
-//!   whether an `f32` subject receives them rounded.
+//! - **`f32`** is refused until it is scored (`docs/decisions/0016` item 2): its inputs are the
+//!   `@f32` strata's, exactly binary32.
 
 use helicoid_linalg::Precision;
 use num_bigint::{BigInt, BigUint, Sign};
@@ -139,6 +139,7 @@ const TABLE: &[(&str, Rule)] = &[
     ("coeff_c", Forward(COEFF)),
     ("coeff_d", Forward(COEFF)),
     ("coeff_e", Forward(COEFF)),
+    ("coeff_cos_half", Forward(COEFF)),
     ("coeff_r", Forward(COEFF)),
     ("so3_exp", Forward(SO3_EXP)),
     ("so3_log", Forward(SO3_LOG)),
@@ -644,7 +645,14 @@ mod tests {
             }
         };
         let coeffs = [
-            "coeff_k", "coeff_a", "coeff_b", "coeff_c", "coeff_d", "coeff_e", "coeff_r",
+            "coeff_k",
+            "coeff_a",
+            "coeff_b",
+            "coeff_c",
+            "coeff_d",
+            "coeff_e",
+            "coeff_cos_half",
+            "coeff_r",
         ];
         add(&coeffs, "value", Want::Tiny, false);
         add(&coeffs, "d_branch", Want::Tiny, false);

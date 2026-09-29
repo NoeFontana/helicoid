@@ -21,6 +21,8 @@
 //! - **A record's score** is the largest error over its output fields; a `--fn` run writes
 //!   `<subject>--<fn>.csv` so it never replaces a full result.
 //! - **`git_rev`** is `HEAD`, plus `-dirty` when the tree has uncommitted changes.
+//! - **`@f32` strata** (`docs/decisions/0016`) are `f32`'s and no other precision's; `f32` is
+//!   refused until it is scored, so no run scores them yet.
 //! - **Not implemented**: backward error (`Log` near π, `from_matrix`), `f32`, oracle runners, the
 //!   envelope, the `helicoid` subject, and the `Dual` comparison of the planted `Q` defect.
 
@@ -126,7 +128,8 @@ fn evaluate_by(
                 continue;
             }
             let mut aggregate = Aggregate::default();
-            for record in &records {
+            let f32 = precision == Precision::F32;
+            for record in records.iter().filter(|r| r.is_f32_stratum() == f32) {
                 let output = s.subject.eval(fn_id, record, precision);
                 let score = rule.score(record, &output, precision).map_err(|e| {
                     format!("{} on {fn_id} record {}: {e}", s.subject.name(), record.id)

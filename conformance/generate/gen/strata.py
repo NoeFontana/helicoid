@@ -5,11 +5,11 @@ bounds are evaluated when it is drawn, never at import.
 """
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from mpmath import mp, mpf
 
-from .precision import DPS, to_f64
+from .precision import DPS, to_f32, to_f64
 from .rng import SEED, SplitMix64, log_uniform, stream, unit_quaternion_s3, unit_vector_s2
 
 N_RANDOM = 64  # samples per random stratum
@@ -26,10 +26,21 @@ class Stratum:
     carries_axes: bool = True  # PHASE1 section 4.4 lists an axis; `exact0` has none
     draw_quats: Callable[[SplitMix64], list[tuple]] | None = None  # a quaternion stratum's samples
     rho_exp: int | None = None  # a `rho:*` SE_N(3) stratum's translation scale is 10^rho_exp
+    f32: bool = False  # an `@f32` stratum: its binary64 draw rounded to nearest-even binary32
+    source: "Stratum | None" = None  # the binary64 stratum an `@f32` one rounds; None: own draw
+
+    def binary64(self) -> "Stratum":
+        """The stratum whose binary64 draw an `@f32` stratum rounds (0016 item 1)."""
+        return self.source or replace(self, f32=False)
 
     def thetas(self, seed: int = SEED) -> list[float]:
-        with mp.workdps(DPS):
-            return self.draw(stream(seed, self.name, "theta"))
+        """Binary64 thetas; for an `@f32` stratum also exactly binary32 ones."""
+        if self.source is not None:
+            thetas = self.source.thetas(seed)
+        else:
+            with mp.workdps(DPS):
+                thetas = self.draw(stream(seed, self.name, "theta"))
+        return [to_f32(t) for t in thetas] if self.f32 else thetas
 
     def axes(self, n: int = N_AXES, seed: int = SEED) -> list[tuple[float, float, float]]:
         if not self.carries_axes:
@@ -90,12 +101,34 @@ SCALAR_THETA_STRATA = (
     Stratum("theta:dense", DENSE_DECADES * DENSE_PER_DECADE + 1, _dense),
 )
 
+# 0016 item 1: beside each stratum S of a scalar-theta id, `S@f32`, the same draw rounded to
+# nearest-even binary32 (exactly representable in both precisions). `theta:subnormal` is the one
+# whose rounding is not the reading: its decade [1e-310, 1e-309) is 0 in binary32, so its analogue
+# is a binary32-subnormal decade, drawn from its own stream. In both, theta^2 underflows and 1 /
+# theta overflows (binary32's smallest normal is 2^-126 ~ 1.2e-38, its largest 2^128 ~ 3.4e38).
+F32_SUFFIX = "@f32"
+F32_SUBNORMAL_DECADE = -40
+
+
+def f32_twin(s: Stratum) -> Stratum:
+    if s.name == "theta:subnormal":
+        name = s.name + F32_SUFFIX
+        return replace(_log_uniform(name, _decade(F32_SUBNORMAL_DECADE)), f32=True)
+    return replace(s, name=s.name + F32_SUFFIX, f32=True, source=s)
+
+
+SCALAR_F32_STRATA = tuple(f32_twin(s) for s in SCALAR_THETA_STRATA)
+# The strata of `coeff_k`, `coeff_a`...`coeff_e` and `coeff_cos_half`: every `S`, then every
+# `S@f32` in the same order, so no existing record moves.
+COEFF_STRATA = (*SCALAR_THETA_STRATA, *SCALAR_F32_STRATA)
+
 # `r` also sees a quaternion with w = +0 exactly (PHASE1 section 4.4): an angle of exactly pi, which
 # no binary64 theta is, so `coeff.r_inputs` builds its records itself, one per norm n = |v|. At
 # w = 0, r = pi / n and d_branch = -pi / (2 n^3): n != 1 exercises the 1 / n and n^-3 scalings.
 Q_W0_NORMS = (1.0, 1e-3, 1e3)
 Q_W0 = Stratum("q:w0", len(Q_W0_NORMS), lambda rng: [], carries_axes=False)
 R_STRATA = (*SCALAR_THETA_STRATA, Q_W0)
+COEFF_R_STRATA = (*R_STRATA, *SCALAR_F32_STRATA, f32_twin(Q_W0))
 
 
 # The quaternion ids (`so3_log`, `so3_act`, `so3_from_matrix`) see the theta strata as the unit

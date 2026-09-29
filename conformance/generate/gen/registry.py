@@ -5,8 +5,9 @@ from dataclasses import dataclass
 
 from . import check, check_se2, check_sen3, coeff, se2, sen3, so2, so3
 from .strata import (
+    COEFF_R_STRATA,
+    COEFF_STRATA,
     QUAT_STRATA,
-    R_STRATA,
     SCALAR_THETA_STRATA,
     SE2_STRATA,
     SEN3_QUAT_STRATA,
@@ -30,14 +31,14 @@ FUNCTIONS: dict[str, FunctionSpec] = {
         *(
             FunctionSpec(
                 f"coeff_{c}",
-                SCALAR_THETA_STRATA,
+                COEFF_STRATA,
                 coeff.theta_inputs,
                 coeff.evaluator(c),
                 check.coefficient(c),
             )
-            for c in "kabcde"
+            for c in ("k", "a", "b", "c", "d", "e", "cos_half")
         ),
-        FunctionSpec("coeff_r", R_STRATA, coeff.r_inputs, coeff.r, check.coefficient("r")),
+        FunctionSpec("coeff_r", COEFF_R_STRATA, coeff.r_inputs, coeff.r, check.coefficient("r")),
         FunctionSpec("so3_exp", SCALAR_THETA_STRATA, so3.phi_inputs, so3.exp, check.so3_exp),
         FunctionSpec("so3_log", QUAT_STRATA, so3.log_inputs, so3.log, check.so3_log),
         FunctionSpec("so3_act", QUAT_STRATA, so3.act_inputs, so3.act, check.so3_act),

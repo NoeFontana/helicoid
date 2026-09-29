@@ -60,6 +60,32 @@ class BuildTest(unittest.TestCase):
             b'"value":"5.00000000000000000000000000000e-1"},"stratum":"theta:exact0"}\n',
         )
 
+    def test_golden_records_of_the_f32_strata(self):
+        """Each `@f32` record is the function at a binary32 input; `q:w0@f32` rounds n = 1e-3."""
+        data, n, _ = corpus.build(FUNCTIONS["coeff_cos_half"], only={"theta:exact0@f32"})
+        self.assertEqual(
+            data,
+            b'{"id":0,"in":{"theta":"0x0.0p+0"},"out":{"d_branch":"-1.25000000000000000000000000000e-1",'
+            b'"value":"1.00000000000000000000000000000e0"},"stratum":"theta:exact0@f32"}\n',
+        )
+        data, n, _ = corpus.build(FUNCTIONS["coeff_r"], only={"q:w0@f32"})
+        second = json.loads(data.decode().splitlines()[1])
+        self.assertEqual((n, second["in"]["n"]), (3, "0x1.0624de0000000p-10"))  # f32(1e-3)
+        with mp.workdps(60):  # r = pi / n at the rounded n, not at 1e-3
+            n32, r = mpf(float.fromhex(second["in"]["n"])), mpf(second["out"]["value"])
+            self.assertLess(abs(r - mp.pi / n32), mpf(10) ** -28 * mp.pi / n32)
+            self.assertGreater(abs(r - mp.pi / mpf("1e-3")), mpf(10) ** -4)
+
+    def test_an_f32_stratum_with_a_non_binary32_input_fails_generation(self):
+        stratum = Stratum("s@f32", 1, lambda rng: [0.1], f32=True)
+        one = lambda inp: {"v": mpf(1)}
+        for x in (0.1, [0.5, 1e-310]):
+            spec = FunctionSpec("t", (stratum,), lambda st, x=x: [{"x": x}], one)
+            with self.assertRaises(corpus.BinaryError, msg=x):
+                corpus.build(spec)
+        exact = FunctionSpec("t", (stratum,), lambda st: [{"x": [0.5, 2.0**-149]}], one)
+        self.assertEqual(corpus.build(exact)[1], 1)
+
     def test_golden_records_of_r_at_w_zero(self):
         data, n, _ = corpus.build(FUNCTIONS["coeff_r"], only={"q:w0"})
         self.assertEqual(n, 3)
@@ -130,6 +156,19 @@ class BuildTest(unittest.TestCase):
         with self.assertRaises(corpus.RecheckError):
             corpus.build(noisy_spec("1e-35"))
 
+    def test_the_f32_strata_come_after_every_binary64_one_in_the_same_order(self):
+        for name in ("coeff_k", "coeff_a", "coeff_b", "coeff_c", "coeff_d", "coeff_e"):
+            strata = [s.name for s in FUNCTIONS[name].strata]
+            half = len(strata) // 2
+            self.assertEqual(strata[half:], [f"{s}@f32" for s in strata[:half]], name)
+            self.assertEqual(strata[:half], [s.name for s in SCALAR_THETA_STRATA], name)
+        strata = [s.name for s in FUNCTIONS["coeff_r"].strata]
+        self.assertEqual(strata[:29], [*(s.name for s in SCALAR_THETA_STRATA), "q:w0"])
+        self.assertEqual(strata[29:], [*(f"{s.name}@f32" for s in SCALAR_THETA_STRATA), "q:w0@f32"])
+        other = [n for n in FUNCTIONS if not n.startswith("coeff_")]
+        for name in other:  # no other id has an @f32 stratum until a record asks for one
+            self.assertFalse(any(s.f32 for s in FUNCTIONS[name].strata), name)
+
     def test_ids_are_sequential_and_strata_in_canonical_order(self):
         data, n, _ = corpus.build(FUNCTIONS["coeff_k"], only={"theta:1e-3", "theta:exact0"})
         records = [json.loads(line) for line in data.decode().splitlines()]
@@ -138,7 +177,7 @@ class BuildTest(unittest.TestCase):
 
 
 # The full corpus is regenerated and compared by `just corpus-check`; the tests regenerate these.
-SUBSET = {"theta:exact0", "theta:1e-6", "q:w0"}
+SUBSET = {"theta:exact0", "theta:1e-6", "q:w0", "theta:exact0@f32", "theta:1e-6@f32", "q:w0@f32"}
 
 
 def subset_registry() -> dict:

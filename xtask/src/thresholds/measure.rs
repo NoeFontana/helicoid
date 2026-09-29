@@ -44,7 +44,8 @@ pub(super) struct Measured {
     pub(super) records: Vec<(String, u64)>,
 }
 
-/// One sample per `theta:*` record of `coeff_<c>` (every record of it, today).
+/// One sample per `theta:*` record of `coeff_<c>` (every one, today, but the `@f32` strata: the
+/// binary64 sweep's).
 pub(super) fn samples(dir: &Path, series: &Series<D1>, c: Coeff) -> Result<Measured, String> {
     let fn_id = format!("coeff_{}", c.name());
     let entry = corpus::manifest(dir)?
@@ -53,7 +54,7 @@ pub(super) fn samples(dir: &Path, series: &Series<D1>, c: Coeff) -> Result<Measu
         .ok_or_else(|| format!("no corpus file for `{fn_id}`"))?;
     let (mut out, mut records) = (Vec::new(), Vec::new());
     for rec in corpus::read(dir, &entry)? {
-        if !rec.stratum.starts_with("theta:") {
+        if !rec.stratum.starts_with("theta:") || rec.is_f32_stratum() {
             continue;
         }
         let theta = rec.input("theta").and_then(<[f64]>::first);
@@ -113,7 +114,10 @@ mod tests {
             .ok_or("no entry")?;
         let rule = rule(&fn_id).ok_or("no rule")?;
         let mut worst = 0.0f64;
-        for rec in corpus::read(&dir, &entry)? {
+        for rec in corpus::read(&dir, &entry)?
+            .into_iter()
+            .filter(|r| !r.is_f32_stratum())
+        {
             let out = subject.eval(&fn_id, &rec, Precision::F64);
             match rule.score(&rec, &out, Precision::F64)? {
                 Score::Finite(u) => worst = worst.max(u),

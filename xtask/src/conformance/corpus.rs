@@ -38,6 +38,11 @@ impl Record {
     pub(crate) fn input(&self, key: &str) -> Option<&[f64]> {
         self.inputs.get(key).map(|t| t.data.as_slice())
     }
+
+    /// An `@f32` stratum (`docs/decisions/0016`): exact binary32 inputs, scored at `f32` only.
+    pub(crate) fn is_f32_stratum(&self) -> bool {
+        self.stratum.ends_with("@f32")
+    }
 }
 
 /// A JSON object that refuses a repeated key (`BTreeMap`'s own `Deserialize` keeps the last).
@@ -209,6 +214,8 @@ pub(crate) fn read(dir: &Path, entry: &Entry) -> Result<Vec<Record>, String> {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeSet;
+
     use super::*;
     use crate::conformance::testkit::Scratch;
 
@@ -274,6 +281,49 @@ mod tests {
         let records = read(&dir, small)?;
         assert_eq!(records.len(), 3419);
         assert_eq!(records[0].stratum, "theta:1e-12");
+        Ok(())
+    }
+
+    /// `docs/decisions/0016`: an `@f32` stratum holds its binary64 twin's inputs rounded to
+    /// binary32 (Rust's cast rounds to nearest even), so an `f32` subject receives them by a
+    /// lossless cast. `theta:subnormal@f32` has a decade of its own, below the smallest normal.
+    #[test]
+    fn the_f32_strata_are_the_binary64_ones_rounded_to_binary32() -> Result<(), String> {
+        let round = |x: f64| f64::from(x as f32).to_bits();
+        let dir = super::super::corpus_dir()?;
+        let mut twins = 0;
+        for e in manifest(&dir)?
+            .iter()
+            .filter(|e| e.fn_id.starts_with("coeff_"))
+        {
+            let records = read(&dir, e)?;
+            let of = |name: &str| -> Vec<&Record> {
+                records.iter().filter(|r| r.stratum == name).collect()
+            };
+            let names: BTreeSet<&str> = records.iter().map(|r| r.stratum.as_str()).collect();
+            for name in names.iter().filter_map(|s| s.strip_suffix("@f32")) {
+                let twin = format!("{name}@f32");
+                assert_eq!(of(name).len(), of(&twin).len(), "{} {name}", e.fn_id);
+                for (w, n) in of(name).into_iter().zip(of(&twin)) {
+                    for (key, t) in &n.inputs {
+                        for (a, b) in w.inputs[key].data.iter().zip(&t.data) {
+                            assert_eq!(round(*b), b.to_bits(), "{} {twin} {key}", e.fn_id);
+                            match (name == "theta:subnormal", key.as_str()) {
+                                (false, _) => assert_eq!(round(*a), b.to_bits(), "{twin}"),
+                                (true, "w") => assert_eq!(b.to_bits(), 1f64.to_bits()),
+                                (true, _) => assert!(*b < f64::from(f32::MIN_POSITIVE), "{twin}"),
+                            }
+                        }
+                    }
+                }
+                twins += 1;
+            }
+        }
+        assert_eq!(
+            twins,
+            8 * 28 + 1,
+            "28 theta strata in each of 8 ids, and `q:w0@f32`"
+        );
         Ok(())
     }
 

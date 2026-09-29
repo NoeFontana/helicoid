@@ -9,12 +9,16 @@ from mpmath import mp, mpf
 from . import fmt, manifest, series
 from .fmt import Mat
 from .manifest import Built
-from .precision import RECHECK_DIGITS, RECHECK_DPS, setup
+from .precision import RECHECK_DIGITS, RECHECK_DPS, is_binary32, setup
 from .registry import FUNCTIONS, FunctionSpec
 from .strata import Stratum
 
 
 class RecheckError(Exception):
+    pass
+
+
+class BinaryError(Exception):
     pass
 
 
@@ -67,10 +71,22 @@ def _encode(values: dict, one) -> dict:
     return out
 
 
+def require_binary32(spec: FunctionSpec, stratum: Stratum, inputs: list[dict]) -> None:
+    """Every input of an `@f32` stratum is exactly a binary32, so a binary32 subject receives it
+    by a lossless cast and the reference is the function at what it evaluates (0016)."""
+    for inp in inputs:
+        for key, value in inp.items():
+            for x in _flat(value):
+                if not is_binary32(x):
+                    raise BinaryError(f"{spec.name} {stratum.name}: {key} = {x.hex()}")
+
+
 def _build_stratum(spec: FunctionSpec, stratum: Stratum) -> tuple[list[dict], int]:
     """The records of one stratum (without their ids) and how many were rechecked."""
     setup()
     inputs = spec.inputs(stratum)
+    if stratum.f32:
+        require_binary32(spec, stratum, inputs)
     outs = [spec.evaluate(inp) for inp in inputs]
     rechecked = recheck_stratum(spec, inputs, outs)
     if spec.check is not None:

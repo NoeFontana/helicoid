@@ -5,11 +5,11 @@
 //!
 //! Readings where §3.1, §3.2 and §4 are silent, each the smallest:
 //!
-//! - **`cos(θ/2)`** has no committed series (`coeff_series.jsonl` holds none) and no cancellation
-//!   (`docs/maths/coefficients.md` CO.10), so `Exp` evaluates it at every `z` by the exact arm, on
-//!   its own `sin_cos` and outside `k`'s branch: two transcendentals in the exact arm where §3.1
-//!   says one, and `k` alone where §4's group rule says `(k, cos θ/2)` in one `branch`. That is
-//!   0014 (draft) question 19. `θ = sqrt(z)` is finite at `z = 0` and its `Dual` derivative there
+//! - **`cos(θ/2)`** has a committed series (`coeff_series.jsonl`) this subject does not read, and
+//!   no cancellation (`docs/maths/coefficients.md` CO.10), so `Exp` evaluates it at every `z` by
+//!   the exact arm, on its own `sin_cos` and outside `k`'s branch: two transcendentals in the
+//!   exact arm where §3.1 says one, and `k` alone where §4's group rule says `(k, cos θ/2)` in
+//!   one `branch`. That is 0014 (draft) question 19. `θ = sqrt(z)` is finite at `z = 0` and its `Dual` derivative there
 //!   is not, so `Exp` is a value subject: the harness scores no derivative of it.
 //! - **`r`** has no swept switch (`docs/PHASE1.md` §0.0: its branch variable and `w ≤ 0` domain are
 //!   open), and no constant is typed for it (0014 (draft) question 20). Its series arm is taken

@@ -22,6 +22,12 @@ defined by the status tables in `docs/`; they win over this file.
   no code change.
 - Tests pinning today's `Dual` derivative at a zero `sqrt` argument: `Vector<Dual>::norm` of the
   zero vector, and `chol` on a zero or a negative pivot.
+- Corpus: `@f32` strata for `coeff_k`, `coeff_a`…`coeff_e` and `coeff_r` (`0016` item 1: the binary64
+  inputs rounded to nearest-even binary32, the reference recomputed at the rounded inputs), and the
+  id `coeff_cos_half` (cos θ/2) with its series as the eighth row of `coeff_series`; `0016` item 1
+  now names `coeff_cos_half` and `coeff_r` (`PHASE1.md` §4.3, §4.4 follow). Existing records are
+  byte-identical; the harness skips `@f32` strata and the binary64 sweep excludes them until `0016`
+  items 2 and 3.
 - Decision records `0016` (`f32`-exact `@f32` strata for the scalar coefficient ids) and `0017`
   (`Real::cbrt`, mask-valued `solve_cubic` roots), both `ready`: docs only, no code change.
 - Workspace skeleton: `helicoid-linalg` and `helicoid` (empty, `no_std`, `forbid(unsafe_code)`),
