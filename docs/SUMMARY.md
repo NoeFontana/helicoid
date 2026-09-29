@@ -44,6 +44,8 @@
 - [0013: SIMD lanes owe a measurement (draft)](decisions/0013-simd-lanes-owe-a-measurement.md)
 - [0014: The conformance metric's open readings (draft)](decisions/0014-the-conformance-metrics-open-readings.md)
 - [0015: Specification gaps found while building the instrument (draft)](decisions/0015-specification-gaps-found-while-building-the-instrument.md)
+- [0016: f32-exact strata for the scalar coefficient ids](decisions/0016-f32-exact-strata-for-the-scalar-coefficient-ids.md)
+- [0017: `Real::cbrt` and mask-valued roots for `solve_cubic`](decisions/0017-cbrt-and-mask-valued-roots.md)
 - [0018: libm arch is bit-identical for exact operations](decisions/0018-libm-arch-is-bit-identical-for-exact-operations.md)
 - [0019: A Cholesky solve without the transpose](decisions/0019-a-cholesky-solve-without-the-transpose.md)
 - [0020: `Dual::sqrt` at zero keeps its derivative](decisions/0020-dual-sqrt-at-zero-keeps-its-derivative.md)

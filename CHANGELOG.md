@@ -22,6 +22,8 @@ defined by the status tables in `docs/`; they win over this file.
   no code change.
 - Tests pinning today's `Dual` derivative at a zero `sqrt` argument: `Vector<Dual>::norm` of the
   zero vector, and `chol` on a zero or a negative pivot.
+- Decision records `0016` (`f32`-exact `@f32` strata for the scalar coefficient ids) and `0017`
+  (`Real::cbrt`, mask-valued `solve_cubic` roots), both `ready`: docs only, no code change.
 - Workspace skeleton: `helicoid-linalg` and `helicoid` (empty, `no_std`, `forbid(unsafe_code)`),
   `xtask` stub, lints, `justfile`, CI, `deny.toml`. No group code (`docs/PHASE1.md`).
 - `docs/maths/`: non-normative derivations. Notation, labelling and verification convention, and the
