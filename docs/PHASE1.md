@@ -14,7 +14,7 @@ defects and `tf_tree_math`, which becomes oracle #1 ([`0010`](./decisions/0010-s
 | Area | Status |
 |---|---|
 | Workspace, lints, `justfile`, CI matrix (§3) | Partial: workspace, lints, `justfile` and CI for `build`/`test`/`lint`/`audit`/`msrv`/`no-std`/`wasm`/`doc`/`corpus-check`; `cargo xtask lint` Partial: line citations, draft-record citations (only `0.0`/`0.` status tables, Rust comments under `crates/` and `xtask/`, amendment banners; not prose, not `PROJECT.md` §5.1), `@generated` header and registry (registry empty, regeneration comparison arrives with each generator); normal-dependency closure of `helicoid-linalg` and `helicoid` against the `0007` set (from `cargo metadata`, all features; `mint` only as an optional direct dependency, never a default; by package name; any other workspace member must register a budget), `__sweep` (no member but `xtask` requests, forwards or defaults it), each with a planted-dependency test; `deny.toml` bans the `0007` list, checked by `just audit` for every crate but `xtask`; owed: twin table; `determinism`, `oracles`, `bench-check` jobs not started |
-| Reference generator and committed corpus v1 (§4) | Partial: generator skeleton (per-stratum splitmix64 streams, schema, `MANIFEST.json`, 150-digit recheck, `just corpus`/`corpus-check`) and the scalar-θ strata; ids implemented: `coeff_k` (1710 records; readings in `conformance/generate/README.md`). Missing: `coeff_a`…`coeff_e`, `coeff_r`, `so3_*`, `sen3_*`, `so2_*`, `se2_*`; the `q:*` and `rho:*` strata; matrix encoding; macOS aarch64 byte-identity unchecked (§11) |
+| Reference generator and committed corpus v1 (§4) | Partial: generator skeleton (per-stratum splitmix64 streams, schema, `MANIFEST.json`, 150-digit recheck, `just corpus`/`corpus-check`, parallel by stratum) and the scalar-θ strata; ids implemented: `coeff_k`, `coeff_a`…`coeff_e` (1710 records each) and `coeff_r` (1713: the θ strata as unit quaternions, plus `q:w0` at norms 1, 1e-3, 1e3), each record cross-checked at generation, and `coeff_series` (16-term exact rational Taylor series of the seven §4 coefficients; manifest `kind: "series"`, §4.3); and `so3_exp`, `so3_jr`, `so3_jl`, `so3_jr_inv`, `so3_jl_inv` (2466 records each: the θ strata with an axis per sample), `so3_log` (5124: every quaternion and its negative), `so3_act` and `so3_from_matrix` (2594 each: plus the vector `q:w0` and `q:nonunit`), matrices column-major with a sibling `shape`, each record checked to 100 digits by `mp.expm`, a sandwich product, polar-factor uniqueness or a Jacobian identity; and `sen3_{exp,log,ad,jr,jl,jr_inv,jl_inv}_n{1,2,3}` (312 records per file; `ad` 324 and `log` 642, which also see `q:w0` and `q:nonunit`: the `theta:*` strata at unit translation scale except `theta:dense`, and the 25 `rho:*` × θ cells, 6 records each, not 64 (§4.4); dense matrices column-major, rotation-first), each record checked to 100 digits by `mp.expm`, the conjugation identity, J_l = Ad_Exp(τ) J_r or J J⁻¹ = I, and the dual-matrix structure asserted on the data; and `so2_{exp,log}` (3419 records each: the θ strata, each θ in both signs) and `se2_{exp,log,ad,jr,jl,jr_inv,jl_inv}` (416 records per file: SE_N(3)'s 52 strata, 8 records each, the sign of θ alternating; 3×3 matrices column-major, rotation-first), each record checked to 100 digits of the size of its terms by `mp.expm`, the complex series, the conjugation identity, J_l = Ad_Exp(τ) J_r or J J⁻¹ = I, and the first-row and rotation-block structure asserted on the data; corpus 32 MB of the 50 MB budget, `just corpus` 17 CPU-minutes; readings in `conformance/generate/README.md`. Missing: the coefficient ids and series of SE(2)'s α, β and of cos θ/2; `so2_log` at z = (−1, +0), θ = π, unsampled, and at z = (−1, −0), where `atan2` and (−π, π] disagree, undecided; a non-unit or `c = 0` z for `so2_log`, `se2_log`, `se2_ad`, which need a stratum family and so a record (§4.4); macOS aarch64 byte-identity unchecked (§11) |
 | Conformance harness and result schema (§5) | Not started |
 | Threshold sweep and generated-file format (§6) | Not started |
 | Oracle runners: `tf_tree_math`, sophus-rs (excluded crates); Sophus, manif, GTSAM (containers) (§7) | Not started |
@@ -68,12 +68,16 @@ helicoid/
 1. **Exact inputs.** Every corpus input is a binary64 value serialized with Python's `float.hex()`;
    the reference is computed at that exact value (`corpus-check`).
 2. **Definitions, not formulas** (§4.3). The generator computes `Exp` as a matrix exponential or a
-   quaternion power series, `Log` as a matrix logarithm, Jacobians as their defining series,
-   inverses by high-precision linear algebra, coefficients from their definitions.
+   quaternion power series, `Log` as the inverse of that definition (Newton's method on it;
+   `mp.logm` returns complex results near $\pi$, so it only cross-checks), Jacobians as their
+   defining series, inverses by high-precision linear algebra, coefficients from their definitions.
 3. **Precision budget.** `mp.dps = 120`. The worst catalogued cancellation (`e`, `NUMERICS.md` §4)
    loses about $4\log_{10}(1/\theta) + 3$ digits: 51 at $\theta = 10^{-12}$, leaving 69 against the
-   17 a binary64 reference needs. A 1% sample is recomputed at `dps = 150` and must agree to 40
-   digits, or generation fails.
+   17 a binary64 reference needs. Below $10^{-12}$ the budget is exceeded (`theta:subnormal`: every
+   raw definition of $a, \dots, e$ evaluates to 0 at 120 digits), so 120 is the precision of the
+   *output*: a cancelling definition is evaluated at guard digits, doubled until two evaluations
+   agree (`coeff.stable`). A 1% sample is recomputed at `dps = 150` and must agree to 40 digits, or
+   generation fails.
 4. **Byte-identical regeneration.** Pinned Python and mpmath (`uv.lock`), a seeded splitmix64
    implemented in the generator (not `random`, whose algorithm is a CPython detail), sorted keys,
    fixed float formatting. `just corpus-check` regenerates into a temporary directory and `cmp`s.
@@ -126,7 +130,9 @@ One JSONL file per function id; one record per line (values below are illustrati
 Inputs are hex floats; outputs are decimal strings with 30 significant digits. Matrices are
 column-major flat arrays with a sibling `"shape"`. `MANIFEST.json` records the generator identity (a
 SHA-256 over its sources: a git revision changes with every commit and cannot appear in the commit
-it names), Python and mpmath versions, `dps`, seed, and per-file SHA-256 and record count.
+it names), Python and mpmath versions, `dps`, seed, and per file SHA-256, record count and `kind`:
+`corpus` (the records above; `rechecked` counts those recomputed at 150 digits) or `series`
+(`coeff_series`, §4.3; `verified` counts its series equal to exact algebra).
 
 ### 4.3 Definitions (v1 function ids)
 
@@ -134,22 +140,34 @@ it names), Python and mpmath versions, `dps`, seed, and per-file SHA-256 and rec
 |---|---|---|
 | `coeff_k`, `coeff_a`, `coeff_b`, `coeff_c`, `coeff_d`, `coeff_e` | $\theta$ | the definition at 120 digits; derivative by `mp.diff` |
 | `coeff_r` | $(n, w)$ | $2\,\mathrm{atan2}(n, w)/n$ at 120 digits |
+| `coeff_series` | — | the exact series of [`0004`](./decisions/0004-switch-points-are-generated-not-typed.md): `mp.taylor` of each definition at 120 digits, rationalized, equal term by term to an independent exact derivation |
 | `so3_exp` | $\varphi$ | quaternion power series $\sum p^n/n!$, $p = (0, \varphi/2)$ |
-| `so3_log` | $q$ | `mp.logm` of $R(q/\|q\|)$; stratum `q:w0` uses the sign rule of `NUMERICS.md` §3.2 |
+| `so3_log` | $q$ | the $\varphi$ with $\|\varphi\| \le \pi$ and $\mathrm{Exp}(\varphi) = q/\|q\|$ ($w \ge 0$ after the flip), by Newton's method on the `so3_exp` series; `mp.logm` of $R(q/\|q\|)$ is a test cross-check only, since it returns complex results near $\pi$; stratum `q:w0` uses the sign rule of `NUMERICS.md` §3.2 |
 | `so3_act` | $(q, p)$ | $R(q/\|q\|)\,p$ |
-| `so3_from_matrix` | $R$ | `mp.logm`-consistent quaternion; backward error only (`NUMERICS.md` §11) |
+| `so3_from_matrix` | $R$ | the quaternion of the rotation nearest to $R$ in Frobenius norm (the polar factor): a rounded or scaled $R$ is not a rotation, so its `mp.logm` is not skew; backward error only (`NUMERICS.md` §11) |
 | `so3_jr`, `so3_jl` | $\varphi$ | $\sum (\mp W)^n/(n+1)!$ |
 | `so3_jr_inv`, `so3_jl_inv` | $\varphi$ | `mp.inverse` of the above |
-| `sen3_exp_n{1,2,3}` | $\tau$ | `mp.expm` of the $(3+N)$-square hat matrix |
-| `sen3_log_n{1,2,3}` | $X$ | `mp.logm` |
+| `sen3_exp_n{1,2,3}` | $\tau$ | `mp.expm` of the $(3+N)$-square hat matrix; the rotation as `so3_exp`'s quaternion series, asserted equal to the matrix's block |
+| `sen3_log_n{1,2,3}` | $X$ | the $\tau$ with $\|\varphi\| \le \pi$ and $\mathrm{Exp}(\tau) = X$: `so3_log`'s $\varphi$, then $\rho_i$ solving $J_l(\varphi)\rho_i = x_i$ with $J_l$ the series of the same exponential's translation block; `mp.logm` of the $(3+N)$-square matrix is a test cross-check only, since it is wrong near $\pi$ |
 | `sen3_ad_n{1,2,3}` | $X$ | images of the basis under $\sigma \mapsto (X\sigma^\wedge X^{-1})^\vee$ |
-| `sen3_jr_n{1,2,3}`, `sen3_jl_n{1,2,3}` | $\tau$ | $\sum (\mp\,\mathrm{ad}_\tau)^n/(n+1)!$ |
-| `sen3_jr_inv_n{1,2,3}`, `sen3_jl_inv_n{1,2,3}` | $\tau$ | `mp.inverse` of the above |
-| `so2_*`, `se2_*` | analogous | analogous |
+| `sen3_jr_n{1,2,3}`, `sen3_jl_n{1,2,3}` | $\tau$ | $\sum (\mp\,\mathrm{ad}_\tau)^n/(n+1)!$, as dense $(3+3N)$-square matrices |
+| `sen3_jr_inv_n{1,2,3}`, `sen3_jl_inv_n{1,2,3}` | $\tau$ | `mp.inverse` of the above, the blocks off the diagonal and the first block column set to exactly 0 (the LU leaves rounding residue there; a dual matrix has no entry in them, `NUMERICS.md` §2.2), every other entry the LU's |
+| `so2_exp` | $\theta$ | `mp.expm` of $\begin{bmatrix}0 & -\theta\\ \theta & 0\end{bmatrix}$, as the unit complex $(c, s)$ |
+| `so2_log` | $z$ | the $\theta$ with $\lvert\theta\rvert \le \pi$ and $\mathrm{Exp}(\theta) = z/\lVert z\rVert$, by Newton's method on the complex exponential series ($z = (-1, \pm 0)$ is not sampled) |
+| `se2_exp` | $\tau = [\theta; \rho]$ | `mp.expm` of the $3\times3$ hat matrix |
+| `se2_log` | $X = (z, t)$ | `so2_log`'s $\theta$, then $\rho$ solving $V\rho = t$, $V$ the series of the same exponential's translation block |
+| `se2_ad` | $X$ | images of the basis under $\sigma \mapsto (X\sigma^\wedge X^{-1})^\vee$ |
+| `se2_jr`, `se2_jl` | $\tau$ | $\sum (\mp\,\mathrm{ad}_\tau)^n/(n+1)!$, as dense $3\times3$ matrices |
+| `se2_jr_inv`, `se2_jl_inv` | $\tau$ | `mp.inverse` of the above |
 
-A `coeff_*` record's outputs are `value` and `d_branch`: the derivative with respect to the branch
-variable of `NUMERICS.md` §4, by `mp.diff` at the exact real branch value of the exact binary64
-input (θ², not `fl(θ·θ)`).
+A `coeff_k`…`coeff_e` or `coeff_r` record's outputs are `value` and `d_branch`: the derivative with
+respect to the branch variable of `NUMERICS.md` §4, by `mp.diff` at the exact real branch value of
+the exact binary64 input (θ², not `fl(θ·θ)`).
+
+`coeff_series` is the one file that does not follow §4.2: one record per coefficient,
+`{"id","coeff","branch","prefactor","series"}` with sixteen `"num/den"` terms in the branch
+variable, and no `stratum`, `in` or `out`. Its manifest `kind` is `series`; the conformance
+harness, the envelope and the oracle runners read `kind: "corpus"` files only.
 
 Series are summed until the term's norm is below $10^{-110}$ relative. Phase 2 adds `eig3`
 (`mp.eigsy`), `svd3` (`mp.svd_r`), `solve_cubic` (`mp.polyroots`); Phases 4–5 add their ids by the
@@ -166,6 +184,17 @@ spec that needs them.
 - `theta:dense`: 200 points per decade over $[10^{-4}, 1]$ — switch-point continuity.
 - `rho:1e-6`, `rho:1e-3`, `rho:1e0`, `rho:1e3`, `rho:1e4` (translation scale) crossed with
   $\theta \in \{10^{-8}, 10^{-4}, 10^{-1}, 1, \pi - 10^{-6}\}$ for SE_N(3), $N \in \{1, 2, 3\}$.
+  Each cell is a stratum, `rho:1e4/theta=pi-1e-6`. The SE_N(3) ids also see the `theta:*` strata at
+  unit translation scale, all but `theta:dense`; `sen3_log` and `sen3_ad`, which take a quaternion,
+  also see `q:w0` and `q:nonunit`. Each SE_N(3) stratum is 6 records, not 64: five dense matrices
+  per record at 64 would be 190 MB. 6 is a budget trade-off (the family is 18 of the 50 MB; the
+  rest is left for the later phases' ids), not the largest count that fits.
+- `so2_*` see the $\theta$ strata above, each $\theta$ in both signs. `se2_*` see the SE_N(3) strata
+  (`theta:dense` excluded), 8 records each, the sign of $\theta$ alternating, $\rho$ a random
+  direction on $S^1$ at the scale. They have no `q:w0` or `q:nonunit` analogue (a non-unit $z$, or
+  $c = 0$): a new stratum family starts as a decision record, so `so2_log`, `se2_log` and
+  `se2_ad` see $z$ only as the rounded $(\cos\theta, \sin\theta)$, $\lvert\lVert z\rVert^2 - 1\rvert \le
+  1.4\cdot10^{-16}$, and their renormalisation $z/\lVert z\rVert$ is exercised at that level only.
 - `q:nonunit`: quaternions at $\|q\|^2 - 1 = \pm 2^{-45}$ (`Log`'s scale invariance, `from_*` normalization).
 
 Corpus v1 stays under 50 MB uncompressed; a family that would exceed it reduces its sample count

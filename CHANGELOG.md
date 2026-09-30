@@ -113,6 +113,44 @@ defined by the status tables in `docs/`; they win over this file.
   splitmix64, per-stratum streams, `MANIFEST.json`, 150-digit recheck) and the first corpus file,
   `coeff_k`, all scalar-θ strata. New recipes `just corpus`, `corpus-check`, `corpus-test` and a
   `corpus-check` CI job. No library code changes; breaks nothing.
+- Corpus files `coeff_a`…`coeff_e` and `coeff_r` (the θ strata, plus `q:w0` at three norms for `r`)
+  and `coeff_series`, the exact 16-term rational Taylor series of every `NUMERICS.md` §4
+  coefficient (manifest `kind: "series"`, `verified` in place of `rechecked`; `PHASE1.md` §4.3).
+  Every record is cross-checked at generation against the series and a second formulation;
+  cancelling definitions carry guard digits, so `theta:subnormal` is evaluated correctly. Manifest
+  entries gain `kind`; `coeff_k` is unchanged. No library code changes; breaks nothing.
+- Corpus files for SO(3): `so3_exp`, `so3_log`, `so3_act`, `so3_from_matrix`, `so3_jr`, `so3_jl`,
+  `so3_jr_inv`, `so3_jl_inv` (22 642 records, 8.9 MB), computed from the definitions (quaternion and
+  hat-matrix series, Newton's method on the exp series for `Log`, the polar factor for
+  `from_matrix`) and each record checked to 100 digits by an independent property (`mp.expm`, the
+  sandwich, polar uniqueness, Jacobian identities). Vector ids give each θ an axis; new strata `q:w0` and `q:nonunit`
+  for the quaternion ids; every `so3_log` stratum but `q:w0` holds each quaternion and its
+  negative. Matrices are column-major with a sibling `shape`. Generation is parallel by stratum
+  (`--jobs`), byte-identical to a serial run. `docs/PHASE1.md` §2 and §4.3 state the `Log` and
+  `from_matrix` references. No library code changes; breaks nothing.
+- Corpus files for SE_N(3), N = 1, 2, 3: `sen3_exp`, `sen3_log`, `sen3_ad`, `sen3_jr`, `sen3_jl`,
+  `sen3_jr_inv`, `sen3_jl_inv` (21 files, 7 578 records, 18 MB): `mp.expm` of the hat matrix,
+  the inverse of it on θ ∈ [0, π], the conjugation definition of `Ad`, the defining series of
+  `ad_τ` as dense rotation-first matrices, and `mp.inverse` of those (the dual matrix's zero
+  blocks exactly 0, every other entry the LU's), each record checked to 100 digits (`mp.expm`,
+  `J_l = Ad_Exp(τ) J_r`, `J J⁻¹ = I`) with the dual-matrix structure asserted on the data; no
+  block form of `NUMERICS.md` §5 is evaluated. New strata: the 25 cells `rho:<scale>/theta=<θ>`
+  and the `theta:*` strata at unit translation scale, 6 records each, and `q:w0` and `q:nonunit`
+  for `sen3_log` and `sen3_ad`. `docs/PHASE1.md` §4.3 and §4.4 state the `sen3_log` reference
+  (`mp.logm` is wrong near π), the inverse rule and the sample count. `just corpus` is 16
+  CPU-minutes (3 minutes on eight cores); the `corpus-check` CI job gets a 60-minute timeout. No
+  library code changes; breaks nothing.
+- Corpus files for SO(2) and SE(2): `so2_exp`, `so2_log` (3 419 records each) and `se2_exp`,
+  `se2_log`, `se2_ad`, `se2_jr`, `se2_jl`, `se2_jr_inv`, `se2_jl_inv` (416 each; 2.3 MB): `mp.expm`
+  of the hat matrix, its inverse on θ ∈ (−π, π] by Newton's method on the series, the conjugation
+  definition of `Ad`, the defining series of `ad_τ` as dense 3×3 rotation-first matrices and
+  `mp.inverse` of those, each record checked to 100 digits of the size of its terms (`mp.expm`,
+  the complex series, `J_l = Ad_Exp(τ) J_r`, `J J⁻¹ = I`) with the first row (1, 0, 0) and the
+  rotation block asserted on the data. No closed form of `NUMERICS.md` §6 is evaluated. The `so2_*`
+  ids see the θ strata with each θ in both signs, the `se2_*` ids SE_N(3)'s strata (no
+  `theta:dense`) at 8 records each with the sign of θ alternating; z = (−1, ±0), θ = π, and a
+  non-unit z are not sampled. `docs/PHASE1.md` §4.3 and §4.4 state the readings. `just corpus` is
+  17 CPU-minutes. No library code changes; breaks nothing.
 
 ### Changed
 

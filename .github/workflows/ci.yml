@@ -112,9 +112,11 @@ jobs:
       - run: just book
 
   # The committed corpus must regenerate byte-identically from the pinned generator.
+  # About 17 CPU-minutes of generation plus the generator's tests; the timeout stops a runaway.
   corpus-check:
     name: corpus-check
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v10.2.0
