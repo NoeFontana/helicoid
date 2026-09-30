@@ -119,6 +119,15 @@ defined by the status tables in `docs/`; they win over this file.
   Every record is cross-checked at generation against the series and a second formulation;
   cancelling definitions carry guard digits, so `theta:subnormal` is evaluated correctly. Manifest
   entries gain `kind`; `coeff_k` is unchanged. No library code changes; breaks nothing.
+- Corpus files for SO(3): `so3_exp`, `so3_log`, `so3_act`, `so3_from_matrix`, `so3_jr`, `so3_jl`,
+  `so3_jr_inv`, `so3_jl_inv` (22 642 records, 8.9 MB), computed from the definitions (quaternion and
+  hat-matrix series, Newton's method on the exp series for `Log`, the polar factor for
+  `from_matrix`) and each record checked to 100 digits by an independent property (`mp.expm`, the
+  sandwich, polar uniqueness, Jacobian identities). Vector ids give each θ an axis; new strata `q:w0` and `q:nonunit`
+  for the quaternion ids; every `so3_log` stratum but `q:w0` holds each quaternion and its
+  negative. Matrices are column-major with a sibling `shape`. Generation is parallel by stratum
+  (`--jobs`), byte-identical to a serial run. `docs/PHASE1.md` §2 and §4.3 state the `Log` and
+  `from_matrix` references. No library code changes; breaks nothing.
 
 ### Changed
 

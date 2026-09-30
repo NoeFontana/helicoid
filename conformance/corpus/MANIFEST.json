@@ -48,9 +48,57 @@
       "records": 7,
       "sha256": "bbcad103ed55b545f61fa24c7b01a66b562d3bd71d40019f9aee6bb6a552b9e1",
       "verified": 7
+    },
+    "so3_act.jsonl": {
+      "kind": "corpus",
+      "rechecked": 38,
+      "records": 2594,
+      "sha256": "d39cb7a08ac4d41b059cc083e104d36f00eaedf8ec05ae4a881ee4454c7f9f06"
+    },
+    "so3_exp.jsonl": {
+      "kind": "corpus",
+      "rechecked": 36,
+      "records": 2466,
+      "sha256": "2c71568361c310b8585f89a703ad00bc695bd1e9133c987ef5ff6d5d4c3a8bef"
+    },
+    "so3_from_matrix.jsonl": {
+      "kind": "corpus",
+      "rechecked": 38,
+      "records": 2594,
+      "sha256": "089405df4ac313a89707a588bcd3efa44410679444cbc3bf4d11d3eced2353e5"
+    },
+    "so3_jl.jsonl": {
+      "kind": "corpus",
+      "rechecked": 36,
+      "records": 2466,
+      "sha256": "6ce93560566b91136020619b91adab55d0d5f607676c71a97eef0fa8e48c91a9"
+    },
+    "so3_jl_inv.jsonl": {
+      "kind": "corpus",
+      "rechecked": 36,
+      "records": 2466,
+      "sha256": "44df7ef94e102402d6b6c56d913eb0bd9654070a6a2d78a3ccecd03c2036ae2c"
+    },
+    "so3_jr.jsonl": {
+      "kind": "corpus",
+      "rechecked": 36,
+      "records": 2466,
+      "sha256": "93878da6721be13fac7b724103a92392d83486d6e6946cbe640551eccfb93dd2"
+    },
+    "so3_jr_inv.jsonl": {
+      "kind": "corpus",
+      "rechecked": 36,
+      "records": 2466,
+      "sha256": "20713dd7336bcbf8402c7ede1e49706b4590a241daa99968c930d0c642c673f4"
+    },
+    "so3_log.jsonl": {
+      "kind": "corpus",
+      "rechecked": 73,
+      "records": 5124,
+      "sha256": "577f40aa3db75180b8168b459e383bc53182a24856995d267c000b498d8ac5c1"
     }
   },
-  "generator": "sha256:a6313966742cb68ea74eebbf671f44ada1547b5bcd804ed3f5818e5a3f23c8bc",
+  "generator": "sha256:b82e88794b4582cb07ad9bf0c23133940dda348c6b7e6c323936fbebf23be9f6",
   "mpmath": "1.4.1",
   "python": "3.12",
   "recheck": {

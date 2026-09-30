@@ -14,7 +14,7 @@ defects and `tf_tree_math`, which becomes oracle #1 ([`0010`](./decisions/0010-s
 | Area | Status |
 |---|---|
 | Workspace, lints, `justfile`, CI matrix (§3) | Partial: workspace, lints, `justfile` and CI for `build`/`test`/`lint`/`audit`/`msrv`/`no-std`/`wasm`/`doc`/`corpus-check`; `cargo xtask lint` Partial: line citations, draft-record citations (only `0.0`/`0.` status tables, Rust comments under `crates/` and `xtask/`, amendment banners; not prose, not `PROJECT.md` §5.1), `@generated` header and registry (registry empty, regeneration comparison arrives with each generator); normal-dependency closure of `helicoid-linalg` and `helicoid` against the `0007` set (from `cargo metadata`, all features; `mint` only as an optional direct dependency, never a default; by package name; any other workspace member must register a budget), `__sweep` (no member but `xtask` requests, forwards or defaults it), each with a planted-dependency test; `deny.toml` bans the `0007` list, checked by `just audit` for every crate but `xtask`; owed: twin table; `determinism`, `oracles`, `bench-check` jobs not started |
-| Reference generator and committed corpus v1 (§4) | Partial: generator skeleton (per-stratum splitmix64 streams, schema, `MANIFEST.json`, 150-digit recheck, `just corpus`/`corpus-check`) and the scalar-θ strata; ids implemented: `coeff_k`, `coeff_a`…`coeff_e` (1710 records each) and `coeff_r` (1713: the θ strata as unit quaternions, plus `q:w0` at norms 1, 1e-3, 1e3), each record cross-checked at generation, and `coeff_series` (16-term exact rational Taylor series of the seven §4 coefficients; manifest `kind: "series"`, §4.3); readings in `conformance/generate/README.md`. Missing: `so3_*`, `sen3_*`, `so2_*`, `se2_*` (SE(2)'s α, β and the cos θ/2 series with them); the vector `q:w0`, `q:nonunit` and `rho:*` strata; matrix encoding; macOS aarch64 byte-identity unchecked (§11) |
+| Reference generator and committed corpus v1 (§4) | Partial: generator skeleton (per-stratum splitmix64 streams, schema, `MANIFEST.json`, 150-digit recheck, `just corpus`/`corpus-check`, parallel by stratum) and the scalar-θ strata; ids implemented: `coeff_k`, `coeff_a`…`coeff_e` (1710 records each) and `coeff_r` (1713: the θ strata as unit quaternions, plus `q:w0` at norms 1, 1e-3, 1e3), each record cross-checked at generation, and `coeff_series` (16-term exact rational Taylor series of the seven §4 coefficients; manifest `kind: "series"`, §4.3); and `so3_exp`, `so3_jr`, `so3_jl`, `so3_jr_inv`, `so3_jl_inv` (2466 records each: the θ strata with an axis per sample), `so3_log` (5124: every quaternion and its negative), `so3_act` and `so3_from_matrix` (2594 each: plus the vector `q:w0` and `q:nonunit`), matrices column-major with a sibling `shape`, each record checked to 100 digits by `mp.expm`, a sandwich product, polar-factor uniqueness or a Jacobian identity; corpus 11 MB of the 50 MB budget; readings in `conformance/generate/README.md`. Missing: `sen3_*`, `so2_*`, `se2_*` (SE(2)'s α, β and the cos θ/2 series with them); the `rho:*` strata; macOS aarch64 byte-identity unchecked (§11) |
 | Conformance harness and result schema (§5) | Not started |
 | Threshold sweep and generated-file format (§6) | Not started |
 | Oracle runners: `tf_tree_math`, sophus-rs (excluded crates); Sophus, manif, GTSAM (containers) (§7) | Not started |
@@ -68,8 +68,9 @@ helicoid/
 1. **Exact inputs.** Every corpus input is a binary64 value serialized with Python's `float.hex()`;
    the reference is computed at that exact value (`corpus-check`).
 2. **Definitions, not formulas** (§4.3). The generator computes `Exp` as a matrix exponential or a
-   quaternion power series, `Log` as a matrix logarithm, Jacobians as their defining series,
-   inverses by high-precision linear algebra, coefficients from their definitions.
+   quaternion power series, `Log` as the inverse of that definition (Newton's method on it;
+   `mp.logm` returns complex results near $\pi$, so it only cross-checks), Jacobians as their
+   defining series, inverses by high-precision linear algebra, coefficients from their definitions.
 3. **Precision budget.** `mp.dps = 120`. The worst catalogued cancellation (`e`, `NUMERICS.md` §4)
    loses about $4\log_{10}(1/\theta) + 3$ digits: 51 at $\theta = 10^{-12}$, leaving 69 against the
    17 a binary64 reference needs. Below $10^{-12}$ the budget is exceeded (`theta:subnormal`: every
@@ -141,9 +142,9 @@ it names), Python and mpmath versions, `dps`, seed, and per file SHA-256, record
 | `coeff_r` | $(n, w)$ | $2\,\mathrm{atan2}(n, w)/n$ at 120 digits |
 | `coeff_series` | — | the exact series of [`0004`](./decisions/0004-switch-points-are-generated-not-typed.md): `mp.taylor` of each definition at 120 digits, rationalized, equal term by term to an independent exact derivation |
 | `so3_exp` | $\varphi$ | quaternion power series $\sum p^n/n!$, $p = (0, \varphi/2)$ |
-| `so3_log` | $q$ | `mp.logm` of $R(q/\|q\|)$; stratum `q:w0` uses the sign rule of `NUMERICS.md` §3.2 |
+| `so3_log` | $q$ | the $\varphi$ with $\|\varphi\| \le \pi$ and $\mathrm{Exp}(\varphi) = q/\|q\|$ ($w \ge 0$ after the flip), by Newton's method on the `so3_exp` series; `mp.logm` of $R(q/\|q\|)$ is a test cross-check only, since it returns complex results near $\pi$; stratum `q:w0` uses the sign rule of `NUMERICS.md` §3.2 |
 | `so3_act` | $(q, p)$ | $R(q/\|q\|)\,p$ |
-| `so3_from_matrix` | $R$ | `mp.logm`-consistent quaternion; backward error only (`NUMERICS.md` §11) |
+| `so3_from_matrix` | $R$ | the quaternion of the rotation nearest to $R$ in Frobenius norm (the polar factor): a rounded or scaled $R$ is not a rotation, so its `mp.logm` is not skew; backward error only (`NUMERICS.md` §11) |
 | `so3_jr`, `so3_jl` | $\varphi$ | $\sum (\mp W)^n/(n+1)!$ |
 | `so3_jr_inv`, `so3_jl_inv` | $\varphi$ | `mp.inverse` of the above |
 | `sen3_exp_n{1,2,3}` | $\tau$ | `mp.expm` of the $(3+N)$-square hat matrix |

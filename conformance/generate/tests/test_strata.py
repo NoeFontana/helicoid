@@ -1,14 +1,16 @@
+import math
 import unittest
 
 from mpmath import mp, mpf
 
 from gen import precision
-from gen.strata import R_STRATA
+from gen.rng import stream, unit_quaternion_s3
+from gen.strata import QUAT_STRATA, R_STRATA
 from gen.strata import SCALAR_THETA_STRATA as STRATA
 
 precision.setup()
 BY_NAME = {s.name: s for s in STRATA}
-NO_AXES = {"theta:exact0", "theta:dense"}
+NO_AXES = {"theta:exact0"}
 
 
 class StrataTest(unittest.TestCase):
@@ -76,6 +78,58 @@ class StrataTest(unittest.TestCase):
                 ("0x1.32d0845ed5e0dp-3", "-0x1.d72ea40874e01p-1", "-0x1.721fadb80e448p-2"),
             ],
         )
+
+    def test_samples_pair_a_theta_with_an_axis_for_the_vector_ids(self):
+        for s in STRATA:
+            samples = s.samples()
+            self.assertEqual(len(samples), {"theta:exact0": 1, "theta:dense": 801}.get(s.name, 64))
+            if s.name == "theta:exact0":
+                self.assertEqual(samples, [(0.0, (1.0, 0.0, 0.0))])
+                continue
+            self.assertEqual([a for _, a in samples], s.axes(len(samples)), s.name)
+            self.assertEqual(len({a for _, a in samples}), len(samples), s.name)
+            if s.count == 1:  # a fixed theta takes 64 axes
+                self.assertEqual({t for t, _ in samples}, set(s.thetas()))
+            else:  # a random or dense theta has its own
+                self.assertEqual([t for t, _ in samples], s.thetas())
+
+    def test_axes_are_uniform_on_s2(self):
+        axes = BY_NAME["theta:dense"].samples()
+        for k in range(3):
+            xs = [a[k] for _, a in axes]
+            self.assertLess(abs(sum(xs) / len(xs)), 0.09)  # sigma 0.020
+            self.assertLess(abs(sum(x * x for x in xs) / len(xs) - 1 / 3), 0.053)  # sigma 0.0105
+        self.assertTrue(all(abs(sum(c * c for c in a) - 1) < 4e-16 for _, a in axes))
+
+    def test_theta_is_log_uniform_in_its_decade(self):
+        positions = sorted(
+            (mpf(t) / mpf(10) ** e).__float__()
+            for e in range(-12, 0)
+            for t in BY_NAME[f"theta:1e{e}"].thetas()
+        )
+        logs = [math.log10(x) for x in positions]  # position in the decade, uniform on [0, 1)
+        n = len(logs)
+        ks = max(max(x - i / n, (i + 1) / n - x) for i, x in enumerate(logs))
+        self.assertLess(ks, 1.63 / math.sqrt(n))  # Kolmogorov-Smirnov, 1% level
+
+    def test_the_quaternion_strata(self):
+        self.assertEqual(
+            [s.name for s in QUAT_STRATA], [*(s.name for s in STRATA), "q:w0", "q:nonunit"]
+        )
+        w0, nonunit = QUAT_STRATA[-2:]
+        self.assertEqual((len(w0.quaternions()), len(nonunit.quaternions())), (64, 64))
+        self.assertEqual(w0.quaternions(), w0.quaternions())
+        self.assertNotEqual(w0.quaternions(), nonunit.quaternions())
+        self.assertEqual(len(set(w0.points(64) + w0.points(64))), 64)
+
+    def test_haar_quaternions_are_uniform_on_s3(self):
+        rng = stream(1, "s3")
+        qs = [unit_quaternion_s3(rng) for _ in range(2000)]
+        self.assertTrue(all(abs(sum(c * c for c in q) - 1) < mpf(10) ** -100 for q in qs))
+        for k in range(4):
+            xs = [float(q[k]) for q in qs]
+            self.assertLess(abs(sum(xs) / len(xs)), 0.03)  # sigma 0.011
+            self.assertLess(abs(sum(x * x for x in xs) / len(xs) - 0.25), 0.02)  # sigma 0.0056
 
     def test_draws_do_not_depend_on_the_ambient_precision(self):
         for name in ("theta:1e-8", "theta:1e0", "theta:pi-1e-5", "theta:dense"):
