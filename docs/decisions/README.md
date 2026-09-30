@@ -37,6 +37,7 @@ grep -m1 -H '^\*\*Status:' docs/decisions/0*.md
 | [`0020`](./0020-dual-sqrt-at-zero-keeps-its-derivative.md) | `Dual::sqrt` at 0 keeps `d / (2 sqrt v)`: the NaN is the report, the §10 row needs it; a zero-safe norm is a later, additive record. |
 | [`0021`](./0021-the-cholesky-finite-guard-stays.md) | the `chol` per-entry finite guard stays: four bit-identical variants measured, none worth a rewrite; the 15% bar and the finiteness of `L` are stated. |
 | [`0022`](./0022-solve-cubic-acos-and-inherited-limits.md) | `solve_cubic`'s `acos` and `pi` through `atan2`, and the limits it inherits from omnisac; nothing decided. |
+| [`0023`](./0023-eig3-departs-from-omnisac-and-its-limits.md) | what `eig3` does that omnisac's `eigendecomp_sym3_signed` does not (no `Option`, non-finite eigenvalues, the frame construction) and the limits it inherits; nothing decided. |
 
 ## Lifecycle
 

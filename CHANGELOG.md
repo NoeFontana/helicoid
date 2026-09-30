@@ -307,6 +307,22 @@ defined by the status tables in `docs/`; they win over this file.
   where `p` and `q` cancel; a cubic with one real root can read as three where `p^3` and `q^2`
   underflow. `docs/API.md` R6 names `solve_cubic` beside `chol` as the functions that assert
   nothing. New item: breaks nothing; omnisac's call sites need an adapter (`docs/PHASE2.md` §9).
+- `helicoid-linalg`: `eig3` (`docs/PHASE2.md` §6, step 3 of `0017`): the eigenvalues, ascending, and
+  an orthonormal basis of eigenvectors with `det = +1` of a symmetric `Mat3<S>`, as `(Vec3<S>,
+  Mat3<S>)`; the lower triangle is read. omnisac's `eigendecomp_sym3_signed` (d3be7b7), generic over
+  `S: Real` (Smith's eigenvalues, cross-product eigenvectors; `f64`, `f32`, lanes, `Dual`). What
+  differs from omnisac is proposed in the draft record `0023`: no `Option` and no tolerance, so the
+  eigenvalues are not finite for a non-finite entry and where `p^3` over- or underflows, and a frame
+  built from cross products of unit vectors, orthonormal to a few `u` for every input. **Not done:
+  Kopp's hybrid is owed** (§6). Where the two largest eigenvalues are within about `2 sqrt(u)|A|`
+  (equal ones included) no column is reliable, the isolated smallest eigenvalue's included (residual
+  of the order of `|A|`); omnisac's vectors are as wrong there, or `None` where a cross product
+  vanishes, and anchoring the frame on the isolated end may fix it (`0023` (draft)). At a double
+  root the eigenvalues lose half their digits (`0.6 sqrt(u)|A|` on a rank-1 matrix), which only the
+  hybrid fixes. §6 names no constant for its bars, so none is claimed; the measurements (a scratch
+  harness, not committed) are in `eig3_tests` and the §0.0 row. `docs/API.md` R6 names `eig3` beside
+  `chol` and `solve_cubic`. New item: breaks nothing; omnisac's call sites need an adapter
+  (`docs/PHASE2.md` §9).
 
 ### Changed
 
