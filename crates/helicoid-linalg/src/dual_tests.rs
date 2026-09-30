@@ -3,7 +3,7 @@
 //! stencil of the plain function); nesting supplies second derivatives.
 
 use crate::tests::{L2, M2};
-use crate::{Dual, Mask, Precision, Real};
+use crate::{chol, Dual, Mask, Matrix, Precision, Real, Vector};
 use core::f64::consts::{FRAC_1_SQRT_2, FRAC_PI_2, PI};
 
 type D1 = Dual<f64, 1>;
@@ -427,6 +427,56 @@ fn dual_sqrt_at_zero_has_an_infinite_derivative_and_the_plain_value() {
     let t2 = D1::variable(0.0, 0) * D1::variable(0.0, 0);
     let safe = D1::select(t2.lt(D1::lit(0.25)), D1::one(), t2);
     assert!(safe.sqrt().d[0].is_finite());
+}
+
+/// `d(n^2) = 2 v . dv = 0` in every lane at the zero vector, so the `sqrt` rule is `0 / 0`, and
+/// a `sqrt` shared with a selected arm poisons every derivative built on it.
+#[test]
+fn dual_norm_of_the_zero_vector_is_nan_in_every_lane() {
+    type D3 = Dual<f64, 3>;
+    let z = Vector([
+        D3::variable(0.0, 0),
+        D3::variable(0.0, 1),
+        D3::variable(0.0, 2),
+    ]);
+    let n = z.norm();
+    assert_eq!(n.v.to_bits(), 0.0_f64.to_bits());
+    assert!(n.d.iter().all(|d| d.is_nan()));
+    let (s, c) = (n * D3::lit(0.5)).sin_cos();
+    assert!(s.d.iter().chain(&c.d).all(|d| d.is_nan()));
+}
+
+/// `chol` of `diag(p, 1, 1)` and `diag(1, 1, p)` with every diagonal entry a variable: a failed
+/// pivot reaches `sqrt` as the constant 1, so no value or derivative lane is non-finite.
+fn chol_of_a_variable_diagonal_is_finite(p: usize, value: f64) {
+    type D3 = Dual<f64, 3>;
+    let o = D3::constant(0.0);
+    let x: [D3; 3] = core::array::from_fn(|i| D3::variable(if i == p { value } else { 1.0 }, i));
+    let (l, pd) = chol(&Matrix::from_cols([
+        Vector([x[0], o, o]),
+        Vector([o, x[1], o]),
+        Vector([o, o, x[2]]),
+    ]));
+    assert!(!pd);
+    for r in 0..3 {
+        for k in 0..3 {
+            let e = l.get(r, k);
+            assert!(
+                e.v.is_finite() && e.d.iter().all(|d| d.is_finite()),
+                "L_{r}{k}"
+            );
+        }
+    }
+}
+
+#[test]
+fn a_zero_cholesky_pivot_leaves_every_dual_derivative_lane_finite() {
+    chol_of_a_variable_diagonal_is_finite(0, 0.0);
+}
+
+#[test]
+fn a_negative_cholesky_pivot_leaves_every_dual_derivative_lane_finite() {
+    chol_of_a_variable_diagonal_is_finite(2, -1.0);
 }
 
 #[test]
