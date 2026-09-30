@@ -11,6 +11,9 @@ defined by the status tables in `docs/`; they win over this file.
 
 - `docs/decisions/0020`: `Dual::sqrt` at zero keeps `d / (2 sqrt v)` (the NaN is the report and the
   `PHASE1.md` §10 row needs it); the guarded norm is a doctest, a zero-safe norm is a later record.
+- `docs/decisions/0021`: the per-entry finite guard of `chol` stays; four bit-identical variants were
+  measured, none clears the stated 15% bar, and `L` stays finite for every input. Documentation only;
+  no code change.
 - Tests pinning today's `Dual` derivative at a zero `sqrt` argument: `Vector<Dual>::norm` of the
   zero vector, and `chol` on a zero or a negative pivot.
 - Workspace skeleton: `helicoid-linalg` and `helicoid` (empty, `no_std`, `forbid(unsafe_code)`),

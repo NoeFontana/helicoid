@@ -40,3 +40,5 @@ None until the open questions are resolved.
    result.
 4. **Determinism:** lane results must be bit-identical to scalar ones (D16) — do the candidate
    mechanisms guarantee lane-wise `libm` semantics?
+5. **`chol`.** [`0021`](./0021-the-cholesky-finite-guard-stays.md) owes a re-measurement of its
+   guard when a lane type exists.
