@@ -1,7 +1,8 @@
-//! Tests of `chol`, `solve_lower`, `solve_upper`. Small cases are exact (integers whose factor is
-//! an integer); the algebra runs under proptest for `f64`, `f32` and `Dual<f64, 2>` on the pool of
-//! [`crate::linalg_tests`], with its shadow method: an identity holds entrywise, per lane, to
-//! `bound(lane) * scale`, `scale` being the same computation on the absolute values.
+//! Tests of `chol`, `solve_lower`, `solve_upper`, `chol_solve`. Small cases are exact (integers
+//! whose factor is an integer); the algebra runs under proptest for `f64`, `f32` and
+//! `Dual<f64, 2>` on the pool of [`crate::linalg_tests`], with its shadow method: an identity holds
+//! entrywise, per lane, to `bound(lane) * scale`, `scale` being the same computation on the
+//! absolute values.
 //!
 //! The rounding bounds are Higham's (*Accuracy and Stability of Numerical Algorithms*): Thm 10.3
 //! (`L L^T = A + E`, `|E| <= gamma_{N+1} |L||L^T|`), Thm 8.5 (a triangular solve is `(T + E) x =
@@ -14,9 +15,10 @@
 //! PROPTEST_CASES=1000000 PROPTEST_RNG_SEED=1 cargo nextest run --release -p helicoid-linalg chol_tests
 //! ```
 
+use crate::chol::solve_lower_transposed;
 use crate::linalg_tests::{cfg, extra, flat, gamma, pool, ratio, shadow_m, shadow_v, unit, within};
 use crate::linalg_tests::{Lane, Pool, D};
-use crate::{chol, solve_lower, solve_upper, Mask, Mat3, Matrix, Vector};
+use crate::{chol, chol_solve, solve_lower, solve_upper, Mask, Mat3, Matrix, Vector};
 use core::array;
 use proptest::prelude::*;
 
@@ -225,7 +227,7 @@ fn solve_spd<S: Lane, const N: usize>(pl: &[[f64; 3]]) -> Result<(), TestCaseErr
     let (l, pd) = chol(&a);
     prop_assert!(pd.all());
     let rhs = a * p.vec::<S, N>();
-    let x = solve_upper(&l.transpose(), solve_lower(&l, rhs));
+    let x = chol_solve(&l, rhs);
     let bound = |k| gamma::<S>(4 * N + 2 + extra(k, 6 * N));
     let scale = llt_scale(&l) * shadow_v(x);
     within(
@@ -247,6 +249,101 @@ fn bits<S: Lane>(x: &[S]) -> std::vec::Vec<u64> {
     x.iter().map(|s| s.lane(0).to_bits()).collect()
 }
 
+/// Every lane's bits, not the value lane's only, with every NaN as one value: the sign and payload
+/// of a NaN from arithmetic are unspecified in Rust and a release build may commute operands
+/// (`NaN * -NaN`), as in `dual_value_is_plain_value` (`docs/PHASE2.md` §3). `+-0` and `+-inf` stay
+/// distinct.
+fn all_bits<S: Lane>(x: &[S]) -> std::vec::Vec<u64> {
+    x.iter()
+        .flat_map(|s| {
+            (0..S::LANES).map(move |k| {
+                let v = s.lane(k);
+                if v.is_nan() {
+                    f64::NAN.to_bits()
+                } else {
+                    v.to_bits()
+                }
+            })
+        })
+        .collect()
+}
+
+/// A raw cell: a selector per lane and a plain value. Selectors below 9 pick a special (`+-0`,
+/// `+-inf`, `+-NaN`, the extremes of the range, a subnormal); the rest keep the plain value, so
+/// every rounding, overflow and NaN path is reachable.
+type Cell = ([u8; 3], f64);
+
+fn special(sel: u8, v: f64) -> f64 {
+    match sel {
+        0 => 0.0,
+        1 => -0.0,
+        2 => f64::INFINITY,
+        3 => f64::NEG_INFINITY,
+        4 => f64::NAN,
+        5 => -f64::NAN,
+        6 => f64::MAX,
+        7 => f64::MIN_POSITIVE,
+        8 => f64::from_bits(1),
+        _ => v,
+    }
+}
+
+fn cell<S: Lane>((sel, v): Cell) -> S {
+    S::make(
+        special(sel[0], v),
+        [special(sel[1], 2.0 * v), special(sel[2], -3.0 * v)],
+    )
+}
+
+/// `n` cells whose selectors are drawn from `sel`: `0..24` for a wild mix, `9..24` for plain
+/// values only.
+fn cells(n: usize, sel: core::ops::Range<u8>) -> impl Strategy<Value = std::vec::Vec<Cell>> {
+    prop::collection::vec((prop::array::uniform3(sel), -1e3f64..1e3), n)
+}
+
+/// A nonzero, non-NaN diagonal entry: the domain of the solves. A cell outside it becomes `2`.
+fn diagonal<S: Lane>(c: Cell) -> S {
+    let x = cell::<S>(c);
+    if x.abs().value_f64() > 0.0 {
+        x
+    } else {
+        S::make(2.0, [c.1, 0.0])
+    }
+}
+
+/// `chol_solve` and the transposed solve against `solve_upper(&l.transpose(), ..)`, all lanes,
+/// bit for bit (a NaN is one value, see `all_bits`). The lower triangle and `b` take every
+/// special; the diagonal is in the domain; the strictly upper triangle is junk (never read).
+fn solve_bits<S: Lane, const N: usize>(cells: &[Cell], b: &[Cell]) -> Result<(), TestCaseError> {
+    let l = Matrix::<S, N, N>::from_cols(array::from_fn(|c| {
+        Vector(array::from_fn(|r| match r.cmp(&c) {
+            core::cmp::Ordering::Equal => diagonal(cells[r * N + c]),
+            _ => cell(cells[r * N + c]),
+        }))
+    }));
+    let b = Vector::<S, N>(array::from_fn(|i| cell(b[i])));
+    let u = l.transpose();
+    let y = solve_lower(&l, b);
+    prop_assert_eq!(
+        all_bits(&solve_lower_transposed(&l, y).0),
+        all_bits(&solve_upper(&u, y).0)
+    );
+    prop_assert_eq!(
+        all_bits(&chol_solve(&l, b).0),
+        all_bits(&solve_upper(&u, solve_lower(&l, b)).0)
+    );
+    Ok(())
+}
+
+fn solve_bits_all<S: Lane>(cells: &[Cell], b: &[Cell]) -> Result<(), TestCaseError> {
+    solve_bits::<S, 1>(cells, b)?;
+    solve_bits::<S, 2>(cells, b)?;
+    solve_bits::<S, 3>(cells, b)?;
+    solve_bits::<S, 4>(cells, b)?;
+    solve_bits::<S, 5>(cells, b)?;
+    solve_bits::<S, 6>(cells, b)
+}
+
 fn known_factor<S: Lane>() {
     // The classic integer example: `L = [[2, 0, 0], [6, 1, 0], [-8, 5, 3]]`, `x = (1, 2, 3)`.
     let a = mat::<S, 3>([
@@ -264,6 +361,7 @@ fn known_factor<S: Lane>() {
     assert_eq!(bits(&y.0), bits(&(l.transpose() * x).0));
     assert_eq!(bits(&solve_upper(&l.transpose(), y).0), bits(&x.0));
     assert_eq!(bits(&solve_lower(&l, l * x).0), bits(&x.0));
+    assert_eq!(bits(&chol_solve(&l, rhs).0), bits(&x.0));
 }
 
 #[test]
@@ -535,6 +633,37 @@ fn the_solves_sum_left_to_right() {
     assert_eq!(bits(&x.0), bits(&[4.0, big, 1.0, 1.0]));
 }
 
+/// `l^T x = b` reads column `i` of `l` below its diagonal in increasing `k`, the transpose of
+/// `the_solves_sum_left_to_right`'s upper case: `l_10 x_1 = 1e16` and two unit terms leave `x_0 = 4`.
+#[test]
+fn the_transposed_solve_sums_left_to_right() {
+    let big = 1e8;
+    let l = mat::<f64, 4>([
+        [1.0, 0.0, 0.0, 0.0],
+        [big, 1.0, 0.0, 0.0],
+        [1.0, 0.0, 1.0, 0.0],
+        [1.0, 0.0, 0.0, 1.0],
+    ]);
+    let b = vecn([1e16 + 4.0, big, 1.0, 1.0]);
+    let x = solve_lower_transposed(&l, b);
+    assert_eq!(bits(&x.0), bits(&[4.0, big, 1.0, 1.0]));
+    assert_eq!(bits(&x.0), bits(&solve_upper(&l.transpose(), b).0));
+}
+
+/// The upper triangle of `l` is not read by `chol_solve`, and `N = 0` is the empty vector.
+#[test]
+fn chol_solve_reads_only_the_lower_triangle() {
+    let l = mat::<f64, 3>([[2.0, 0.0, 0.0], [6.0, 1.0, 0.0], [-8.0, 5.0, 3.0]]);
+    let mut junk = l;
+    junk.set(0, 1, f64::NAN);
+    junk.set(0, 2, f64::INFINITY);
+    junk.set(1, 2, -0.0);
+    let b = vecn([4.0, 12.0, -16.0]);
+    assert_eq!(bits(&chol_solve(&l, b).0), bits(&chol_solve(&junk, b).0));
+    let e = Matrix::<f64, 0, 0>::identity();
+    assert!(chol_solve(&e, Vector([])).0.is_empty());
+}
+
 #[test]
 fn edge_sizes_and_scales() {
     let (l, pd) = chol(&Matrix::<f64, 0, 0>::identity());
@@ -586,6 +715,19 @@ fn a_zero_diagonal_does_not_panic_in_release() {
     core::hint::black_box((lo, up));
 }
 
+/// Zero and NaN diagonals give the reference's bits in release, where nothing is asserted.
+#[cfg(not(debug_assertions))]
+#[test]
+fn chol_solve_matches_the_reference_out_of_domain_in_release() {
+    let n = f64::NAN;
+    for d in [0.0, -0.0, n, -n] {
+        let l = mat::<f64, 3>([[2.0, 0.0, 0.0], [6.0, d, 0.0], [-8.0, 5.0, 3.0]]);
+        let b = vecn([4.0, 12.0, -16.0]);
+        let want = solve_upper(&l.transpose(), solve_lower(&l, b));
+        assert_eq!(all_bits(&chol_solve(&l, b).0), all_bits(&want.0));
+    }
+}
+
 #[cfg(debug_assertions)]
 mod out_of_domain {
     use super::*;
@@ -602,6 +744,28 @@ mod out_of_domain {
     fn solve_upper_asserts_a_nonzero_diagonal() {
         let z = mat::<f64, 2>([[0.0, 1.0], [0.0, 1.0]]);
         core::hint::black_box(solve_upper(&z, vecn([1.0, 1.0])));
+    }
+
+    /// The forward solve runs first and sees the same diagonal, so it is the one that fires.
+    #[test]
+    #[should_panic(expected = "solve_lower: zero diagonal")]
+    fn chol_solve_asserts_a_nonzero_diagonal() {
+        let z = mat::<f64, 2>([[1.0, 0.0], [1.0, 0.0]]);
+        core::hint::black_box(chol_solve(&z, vecn([1.0, 1.0])));
+    }
+
+    #[test]
+    #[should_panic(expected = "solve_lower_transposed: zero diagonal")]
+    fn the_transposed_solve_asserts_a_nonzero_diagonal() {
+        let z = mat::<f64, 2>([[1.0, 0.0], [1.0, 0.0]]);
+        core::hint::black_box(solve_lower_transposed(&z, vecn([1.0, 1.0])));
+    }
+
+    #[test]
+    #[should_panic(expected = "solve_lower_transposed: zero diagonal")]
+    fn the_transposed_solve_asserts_a_non_nan_diagonal() {
+        let z = mat::<f64, 2>([[1.0, 0.0], [1.0, f64::NAN]]);
+        core::hint::black_box(solve_lower_transposed(&z, vecn([1.0, 1.0])));
     }
 
     #[test]
@@ -668,6 +832,24 @@ proptest! {
         triangular_all::<f64>(&pl)?;
         triangular_all::<f32>(&pl)?;
         triangular_all::<D>(&pl)?;
+    }
+
+    /// The reference twin (`NUMERICS.md` §14): `chol_solve` is bit-identical to the transposed-copy
+    /// composition (NaN sign and payload aside), over every special value and all lanes.
+    #[test]
+    fn chol_solve_matches_reference(l in cells(36, 0..24), b in cells(6, 0..24)) {
+        solve_bits_all::<f64>(&l, &b)?;
+        solve_bits_all::<f32>(&l, &b)?;
+        solve_bits_all::<D>(&l, &b)?;
+    }
+
+    /// The same on plain values, where the rounding of every product and sum is exercised
+    /// instead of the NaN and `inf` paths.
+    #[test]
+    fn chol_solve_matches_reference_on_plain_values(l in cells(36, 9..24), b in cells(6, 9..24)) {
+        solve_bits_all::<f64>(&l, &b)?;
+        solve_bits_all::<f32>(&l, &b)?;
+        solve_bits_all::<D>(&l, &b)?;
     }
 
     #[test]

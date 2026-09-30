@@ -312,7 +312,7 @@ $X(t) = X_0\,\mathrm{Exp}(t\,d)$ with $d = X_1 \ominus_R X_0$ and $\Delta = X_0^
 | `Dual::atan2` derivative | $x_v^2 + y_v^2$ normal (larger argument in $\approx 10^{\pm154}$ `f64`, $10^{\pm19}$ `f32`) | $\pm\infty$, NaN at the origin, or $0$; value unaffected |
 | `Dual` quotient derivative | $q = a_v/b_v$ finite | NaN (value $\pm\infty$) |
 | `chol` | positive definite | `(L, mask = false)`; `L` finite for every input, nothing asserted (§15.3) |
-| `solve_lower`, `solve_upper` | every diagonal entry nonzero and not NaN (`debug_assert!`) | $\pm\infty$ or NaN (§15.3) |
+| `solve_lower`, `solve_upper`, `chol_solve` | every diagonal entry nonzero and not NaN (`debug_assert!`) | $\pm\infty$ or NaN (§15.3) |
 | Strided `get`, `set`, `block` | in bounds | **panic** (the one documented class, D11) |
 
 ## 13. References
@@ -338,7 +338,10 @@ $X(t) = X_0\,\mathrm{Exp}(t\,d)$ with $d = X_1 \ominus_R X_0$ and $\Delta = X_0^
 
 Primitives (`Exp`, `Log`, coefficients, `act`) are checked against the corpus. Composites keep a
 twin in `helicoid::reference` and a proptest `<name>_matches_reference`; `cargo xtask lint` checks
-this table against the code.
+this table against the code. One exception: `helicoid-linalg` has no `reference` module, so a
+composite there whose twin is a composition of its public functions has no `reference` item; the
+row spells the composition and the proptest writes it inline
+([`0019`](./decisions/0019-a-cholesky-solve-without-the-transpose.md)).
 
 | Fast | Reference twin | Phase |
 |---|---|---|
@@ -352,6 +355,7 @@ this table against the code.
 | `Gaussian::to_left` / `to_right` | dense $\mathrm{Ad}\,\Sigma\,\mathrm{Ad}^\top$ | 5 |
 | `gamma_apply_jacobian` | `Dual` through `reference` $\Gamma_m$ series (dense sum) | 5 |
 | `S2Chart::local` | $\mathrm{Log}$ of the minimal rotation taking $n$ to $m$, projected on $B$ | 5 |
+| `chol_solve` (`helicoid-linalg`) | composition of public fns, no `reference` item: `solve_upper(&l.transpose(), solve_lower(&l, b))` | 2 |
 
 ## 15. Cholesky and the triangular solves
 
@@ -372,8 +376,8 @@ Every sum runs in increasing $k$ from its first term, and the pivot is $a_{jj}$ 
 *finished* sum, not a running subtraction: the operation sequence is fixed (D16) and pinned to the
 bit by `the_factor_sums_left_to_right_and_subtracts_the_finished_sum`. The solves are
 $x_i = (b_i - \sum_{k<i} l_{ik} x_k)/l_{ii}$ (forward, $i$ ascending) and
-$x_i = (b_i - \sum_{k>i} u_{ik} x_k)/u_{ii}$ (backward, $i$ descending, $k$ ascending); for
-$A x = b$ pass $L^\top$ as $u$.
+$x_i = (b_i - \sum_{k>i} u_{ik} x_k)/u_{ii}$ (backward, $i$ descending, $k$ ascending); $A x = b$
+from the factor is §15.6.
 
 ### 15.2 The mask and the failure convention
 
@@ -398,8 +402,8 @@ $A$ is therefore not a domain of `chol`.
 ### 15.3 Domains
 
 `chol` accepts every input, so it asserts nothing (`API.md` R4, R6: the mask is the report); its
-domain is "positive definite", on which $L$ is the Cholesky factor. `solve_lower` and
-`solve_upper` need every diagonal entry nonzero and not NaN, `debug_assert!`ed; a release build
+domain is "positive definite", on which $L$ is the Cholesky factor. `solve_lower`, `solve_upper`
+and `chol_solve` need every diagonal entry nonzero and not NaN, `debug_assert!`ed; a release build
 divides and returns $\pm\infty$ or NaN.
 
 ### 15.4 Error bounds (Higham, *Accuracy and Stability of Numerical Algorithms*, 2nd ed.)
@@ -428,3 +432,27 @@ the diagonal halved (checked by hand at $A = \left[\begin{smallmatrix}4&2\\2&5\e
 in `the_dual_derivative_matches_a_hand_derivation`). Derivative lanes of a failed arm are those of
 the constants $1$ and $0$; outside the domain of `Dual::sqrt` and the quotient (§12) they follow
 those rows.
+
+### 15.6 Solving $A x = b$ from the factor
+
+$A x = b$ is $L y = b$ (forward solve, §15.1) then $L^\top x = y$. With $u = L^\top$, $u_{ik} =
+l_{ki}$, the second is the backward solve of §15.1 read from $L$ directly:
+
+$$
+x_i = \frac{y_i - \sum_{k>i} l_{ki}\, x_k}{l_{ii}}, \qquad i = N-1, \dots, 0,
+$$
+
+$k$ ascending from $i+1$, the sum accumulated from its first term and $+0$ when empty. $l_{ki}$ for
+$k > i$ is column $i$ below its diagonal, so `chol_solve` reads $L$ in storage order and forms no
+$L^\top$. It is defined as, and tested against (`chol_solve_matches_reference`), the composition
+`solve_upper(&l.transpose(), solve_lower(&l, b))`, its reference twin (§14).
+
+**Bit identity.** `transpose` moves entries and computes nothing, so $u_{ik}$ and $l_{ki}$ are the
+same bits. Both routines then run the same sequence of `S` operations on the same operands: the
+products $l_{ki} \cdot x_k$ in that operand order, the left fold of `sum`, the subtraction from
+$y_i$, the division by $l_{ii}$, and the same `debug_assert!` on the same diagonal. The output is
+therefore equal to the bit in every lane of every `S` (`f64`, `f32`, `Dual`), $\pm 0$ and
+$\pm\infty$ included, and so is the release behaviour at a zero or NaN diagonal. The one exception
+is the sign and payload of a NaN produced by arithmetic, which Rust leaves unspecified and a
+release build may swap by commuting operands (`PHASE2.md` §3): a NaN is a NaN in both. The error
+bound is that of the composition (Thm 10.4, §15.4).
