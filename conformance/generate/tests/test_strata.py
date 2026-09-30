@@ -3,6 +3,7 @@ import unittest
 from mpmath import mp, mpf
 
 from gen import precision
+from gen.strata import R_STRATA
 from gen.strata import SCALAR_THETA_STRATA as STRATA
 
 precision.setup()
@@ -23,6 +24,10 @@ class StrataTest(unittest.TestCase):
         self.assertEqual(sum(s.count for s in STRATA), 1710)
         for s in STRATA:
             self.assertEqual(len(s.thetas()), s.count, s.name)
+
+    def test_r_sees_the_theta_strata_and_then_q_w0(self):
+        self.assertEqual([s.name for s in R_STRATA], [*(s.name for s in STRATA), "q:w0"])
+        self.assertEqual(sum(s.count for s in R_STRATA), 1713)
 
     def test_decades(self):
         for e in range(-12, 0):

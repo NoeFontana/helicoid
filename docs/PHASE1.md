@@ -14,7 +14,7 @@ defects and `tf_tree_math`, which becomes oracle #1 ([`0010`](./decisions/0010-s
 | Area | Status |
 |---|---|
 | Workspace, lints, `justfile`, CI matrix (§3) | Partial: workspace, lints, `justfile` and CI for `build`/`test`/`lint`/`audit`/`msrv`/`no-std`/`wasm`/`doc`/`corpus-check`; `cargo xtask lint` Partial: line citations, draft-record citations (only `0.0`/`0.` status tables, Rust comments under `crates/` and `xtask/`, amendment banners; not prose, not `PROJECT.md` §5.1), `@generated` header and registry (registry empty, regeneration comparison arrives with each generator); normal-dependency closure of `helicoid-linalg` and `helicoid` against the `0007` set (from `cargo metadata`, all features; `mint` only as an optional direct dependency, never a default; by package name; any other workspace member must register a budget), `__sweep` (no member but `xtask` requests, forwards or defaults it), each with a planted-dependency test; `deny.toml` bans the `0007` list, checked by `just audit` for every crate but `xtask`; owed: twin table; `determinism`, `oracles`, `bench-check` jobs not started |
-| Reference generator and committed corpus v1 (§4) | Partial: generator skeleton (per-stratum splitmix64 streams, schema, `MANIFEST.json`, 150-digit recheck, `just corpus`/`corpus-check`) and the scalar-θ strata; ids implemented: `coeff_k` (1710 records; readings in `conformance/generate/README.md`). Missing: `coeff_a`…`coeff_e`, `coeff_r`, `so3_*`, `sen3_*`, `so2_*`, `se2_*`; the `q:*` and `rho:*` strata; matrix encoding; macOS aarch64 byte-identity unchecked (§11) |
+| Reference generator and committed corpus v1 (§4) | Partial: generator skeleton (per-stratum splitmix64 streams, schema, `MANIFEST.json`, 150-digit recheck, `just corpus`/`corpus-check`) and the scalar-θ strata; ids implemented: `coeff_k`, `coeff_a`…`coeff_e` (1710 records each) and `coeff_r` (1713: the θ strata as unit quaternions, plus `q:w0` at norms 1, 1e-3, 1e3), each record cross-checked at generation, and `coeff_series` (16-term exact rational Taylor series of the seven §4 coefficients; manifest `kind: "series"`, §4.3); readings in `conformance/generate/README.md`. Missing: `so3_*`, `sen3_*`, `so2_*`, `se2_*` (SE(2)'s α, β and the cos θ/2 series with them); the vector `q:w0`, `q:nonunit` and `rho:*` strata; matrix encoding; macOS aarch64 byte-identity unchecked (§11) |
 | Conformance harness and result schema (§5) | Not started |
 | Threshold sweep and generated-file format (§6) | Not started |
 | Oracle runners: `tf_tree_math`, sophus-rs (excluded crates); Sophus, manif, GTSAM (containers) (§7) | Not started |
@@ -72,8 +72,11 @@ helicoid/
    inverses by high-precision linear algebra, coefficients from their definitions.
 3. **Precision budget.** `mp.dps = 120`. The worst catalogued cancellation (`e`, `NUMERICS.md` §4)
    loses about $4\log_{10}(1/\theta) + 3$ digits: 51 at $\theta = 10^{-12}$, leaving 69 against the
-   17 a binary64 reference needs. A 1% sample is recomputed at `dps = 150` and must agree to 40
-   digits, or generation fails.
+   17 a binary64 reference needs. Below $10^{-12}$ the budget is exceeded (`theta:subnormal`: every
+   raw definition of $a, \dots, e$ evaluates to 0 at 120 digits), so 120 is the precision of the
+   *output*: a cancelling definition is evaluated at guard digits, doubled until two evaluations
+   agree (`coeff.stable`). A 1% sample is recomputed at `dps = 150` and must agree to 40 digits, or
+   generation fails.
 4. **Byte-identical regeneration.** Pinned Python and mpmath (`uv.lock`), a seeded splitmix64
    implemented in the generator (not `random`, whose algorithm is a CPython detail), sorted keys,
    fixed float formatting. `just corpus-check` regenerates into a temporary directory and `cmp`s.
@@ -126,7 +129,9 @@ One JSONL file per function id; one record per line (values below are illustrati
 Inputs are hex floats; outputs are decimal strings with 30 significant digits. Matrices are
 column-major flat arrays with a sibling `"shape"`. `MANIFEST.json` records the generator identity (a
 SHA-256 over its sources: a git revision changes with every commit and cannot appear in the commit
-it names), Python and mpmath versions, `dps`, seed, and per-file SHA-256 and record count.
+it names), Python and mpmath versions, `dps`, seed, and per file SHA-256, record count and `kind`:
+`corpus` (the records above; `rechecked` counts those recomputed at 150 digits) or `series`
+(`coeff_series`, §4.3; `verified` counts its series equal to exact algebra).
 
 ### 4.3 Definitions (v1 function ids)
 
@@ -134,6 +139,7 @@ it names), Python and mpmath versions, `dps`, seed, and per-file SHA-256 and rec
 |---|---|---|
 | `coeff_k`, `coeff_a`, `coeff_b`, `coeff_c`, `coeff_d`, `coeff_e` | $\theta$ | the definition at 120 digits; derivative by `mp.diff` |
 | `coeff_r` | $(n, w)$ | $2\,\mathrm{atan2}(n, w)/n$ at 120 digits |
+| `coeff_series` | — | the exact series of [`0004`](./decisions/0004-switch-points-are-generated-not-typed.md): `mp.taylor` of each definition at 120 digits, rationalized, equal term by term to an independent exact derivation |
 | `so3_exp` | $\varphi$ | quaternion power series $\sum p^n/n!$, $p = (0, \varphi/2)$ |
 | `so3_log` | $q$ | `mp.logm` of $R(q/\|q\|)$; stratum `q:w0` uses the sign rule of `NUMERICS.md` §3.2 |
 | `so3_act` | $(q, p)$ | $R(q/\|q\|)\,p$ |
@@ -147,9 +153,14 @@ it names), Python and mpmath versions, `dps`, seed, and per-file SHA-256 and rec
 | `sen3_jr_inv_n{1,2,3}`, `sen3_jl_inv_n{1,2,3}` | $\tau$ | `mp.inverse` of the above |
 | `so2_*`, `se2_*` | analogous | analogous |
 
-A `coeff_*` record's outputs are `value` and `d_branch`: the derivative with respect to the branch
-variable of `NUMERICS.md` §4, by `mp.diff` at the exact real branch value of the exact binary64
-input (θ², not `fl(θ·θ)`).
+A `coeff_k`…`coeff_e` or `coeff_r` record's outputs are `value` and `d_branch`: the derivative with
+respect to the branch variable of `NUMERICS.md` §4, by `mp.diff` at the exact real branch value of
+the exact binary64 input (θ², not `fl(θ·θ)`).
+
+`coeff_series` is the one file that does not follow §4.2: one record per coefficient,
+`{"id","coeff","branch","prefactor","series"}` with sixteen `"num/den"` terms in the branch
+variable, and no `stratum`, `in` or `out`. Its manifest `kind` is `series`; the conformance
+harness, the envelope and the oracle runners read `kind: "corpus"` files only.
 
 Series are summed until the term's norm is below $10^{-110}$ relative. Phase 2 adds `eig3`
 (`mp.eigsy`), `svd3` (`mp.svd_r`), `solve_cubic` (`mp.polyroots`); Phases 4–5 add their ids by the

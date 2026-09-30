@@ -4,7 +4,8 @@ from pathlib import Path
 
 from mpmath import mp, mpf
 
-from . import fmt, manifest
+from . import fmt, manifest, series
+from .manifest import Built
 from .precision import RECHECK_DIGITS, RECHECK_DPS, setup
 from .registry import FUNCTIONS, FunctionSpec
 
@@ -63,6 +64,9 @@ def build(spec: FunctionSpec, only: set[str] | None = None) -> tuple[bytes, int,
         inputs = spec.inputs(stratum)
         outs = [spec.evaluate(inp) for inp in inputs]
         rechecked += recheck_stratum(spec, inputs, outs)
+        if spec.check is not None:
+            for inp, out in zip(inputs, outs, strict=True):
+                spec.check(inp, out)
         for inp, out in zip(inputs, outs, strict=True):
             record = {
                 "id": len(lines),
@@ -74,14 +78,15 @@ def build(spec: FunctionSpec, only: set[str] | None = None) -> tuple[bytes, int,
     return "".join(lines).encode(), len(lines), rechecked
 
 
-def write(out_dir: Path) -> dict[str, tuple[bytes, int, int]]:
+def write(out_dir: Path) -> dict[str, Built]:
     """Write every file and the manifest; a `*.jsonl` no function id owns any more is removed."""
     out_dir.mkdir(parents=True, exist_ok=True)
-    files = {f"{name}.jsonl": build(spec) for name, spec in FUNCTIONS.items()}
+    files = {f"{name}.jsonl": Built(*build(spec)) for name, spec in FUNCTIONS.items()}
+    files["coeff_series.jsonl"] = Built(*series.build(), kind="series")
     for stale in out_dir.glob("*.jsonl"):
         if stale.name not in files:
             stale.unlink()
-    for name, (data, _, _) in files.items():
-        (out_dir / name).write_bytes(data)
+    for name, built in files.items():
+        (out_dir / name).write_bytes(built.data)
     (out_dir / "MANIFEST.json").write_bytes(manifest.render(files))
     return files

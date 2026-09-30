@@ -4,6 +4,7 @@ import hashlib
 import json
 import sys
 from pathlib import Path
+from typing import NamedTuple
 
 import mpmath
 
@@ -11,6 +12,16 @@ from .precision import DPS, RECHECK_DIGITS, RECHECK_DPS
 from .rng import SEED
 
 ROOT = Path(__file__).resolve().parent.parent
+# What `Built.checked` counts, per file kind: "corpus" files hold (id, stratum, in, out) records,
+# recomputed at 150 digits; "series" (`coeff_series`) holds series, each equal to exact algebra.
+CHECKED = {"corpus": "rechecked", "series": "verified"}
+
+
+class Built(NamedTuple):
+    data: bytes
+    records: int
+    checked: int
+    kind: str = "corpus"
 
 
 def generator_identity(root: Path = ROOT) -> str:
@@ -28,13 +39,18 @@ def generator_identity(root: Path = ROOT) -> str:
     return "sha256:" + h.hexdigest()
 
 
-def render(files: dict[str, tuple[bytes, int, int]], root: Path = ROOT) -> bytes:
-    """`files` maps a file name to (bytes, record count, rechecked count)."""
+def render(files: dict[str, Built], root: Path = ROOT) -> bytes:
+    """`files` maps a file name to what was built; each entry says its `kind` and `CHECKED[kind]`."""
     manifest = {
         "dps": DPS,
         "files": {
-            name: {"records": n, "rechecked": r, "sha256": hashlib.sha256(data).hexdigest()}
-            for name, (data, n, r) in sorted(files.items())
+            name: {
+                "kind": b.kind,
+                CHECKED[b.kind]: b.checked,
+                "records": b.records,
+                "sha256": hashlib.sha256(b.data).hexdigest(),
+            }
+            for name, b in sorted(files.items())
         },
         "generator": generator_identity(root),
         "mpmath": mpmath.__version__,
