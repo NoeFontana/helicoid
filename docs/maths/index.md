@@ -37,14 +37,16 @@ $\begin{bmatrix}R & [t]_\times R\\ 0 & R\end{bmatrix}$ in Solà et al.
 | $\mathrm D^s F$ | derivative of $F$ in the convention of side $s \in \{R, L\}$ (Definition LG.11); the $\partial/\partial$ of `NUMERICS.md` §2.3 |
 | $A + \epsilon B$ | dual-block matrix (`NUMERICS.md` §2.2): diagonal blocks $A$, first block column $B_i$ |
 | $\Gamma_m(\varphi)$ | $\sum_{k \ge 0} W^k/(k+m)!$ (`NUMERICS.md` §7); $\Gamma_1 = J_l(\varphi)$ |
-| $u$ | unit roundoff (`NUMERICS.md` §2.1), except on `so3.md`, where $u$ is the quaternion's vector part (`NUMERICS.md` §1), $n = \lVert u\rVert$ (not the tangent dimension of the first row) and the roundoff is written $\mathsf u$ |
+| $u$ | unit roundoff (`NUMERICS.md` §2.1), except on `so3.md`, where $u$ is the quaternion's vector part (`NUMERICS.md` §1), $n = \lVert u\rVert$ (not the tangent dimension of the first row) and the roundoff is written $\mathsf u$; `coefficients.md` keeps $u$ for the roundoff and writes the vector part $q_{\mathrm v}$ |
+| $\sigma_m$, $\tau_m$, $\rho_m$, $E_x$, $E_s$, $E_\times$, $s_j$ | on `coefficients.md` only, not the tangents, translation tangent or $\mathrm{Exp}$ above: the series families (CO.1), a relative truncation size, the errors of the exact arm, of the series arm and at the crossing, and the coefficient of $z^j$; its symbol note lists the rest |
 | $O(\lVert\delta\rVert^2)$ | remainder bounded by $C\lVert\delta\rVert^2$ as $\delta \to 0$, $C$ locally uniform in the base point |
 
 ## Labels and the `Checked:` line
 
 - A statement is labelled `<page>.<n>` (`LG` for [`lie-groups.md`](./lie-groups.md), `SO` for
-  [`so3.md`](./so3.md)), numbered in order of appearance. Labels are stable: later results are
-  appended, never renumbered, so other pages and PR descriptions can cite them.
+  [`so3.md`](./so3.md), `CO` for [`coefficients.md`](./coefficients.md)), numbered in order of
+  appearance. Labels are stable: later results are appended, never renumbered, so other pages and PR
+  descriptions can cite them.
 - Each result states its domain and carries a proof, or says which step is only outlined.
 - Each proposition ends with one **Checked:** line: what was run, at which precision, over which
   sample, and whether the script is committed; then **Permanent:** the corpus function id
@@ -57,9 +59,10 @@ $\begin{bmatrix}R & [t]_\times R\\ 0 & R\end{bmatrix}$ in Solà et al.
 - The scripts are **not committed**. A figure records one scratch run at the stated
   precision and sampling: it is not a gate and cannot be rerun from the repository. Only a
   `Permanent:` item is a check. Where a sampled figure is not a proved bound, the line says so.
-- The mpmath version is that of the run, stated in the `Checked:` line: `lie-groups.md` ran at 1.4.1
-  and `so3.md` at 1.3.0. It is not a pin, and no claim on these pages depends on it; the one
-  claim about mpmath's own behaviour (`mp.logm`, below) was checked on both.
+- The mpmath version is that of the run, stated in the `Checked:` line: `lie-groups.md` ran at 1.4.1,
+  `so3.md` and `coefficients.md` at 1.3.0 (the latter with sympy 1.14.0 for the exact rational
+  series). It is not a pin, and no claim on these pages depends on it; the one claim about mpmath's
+  own behaviour (`mp.logm`, below) was checked on both.
 - A wrong variant is characterised by its exact gap to the right formula (`lie-groups.md` §6),
   never by a sampled minimum: every wrong variant tends to the right one as the tangent tends to
   $0$, so a sampled minimum measures the sampler.
@@ -70,12 +73,15 @@ $\begin{bmatrix}R & [t]_\times R\\ 0 & R\end{bmatrix}$ in Solà et al.
 |---|---|---|
 | [`lie-groups.md`](./lie-groups.md) | §1, §2.2, §2.3, §5.1, §5.2, §5.4 (the algebra, given §5.3), §12 (`jr_inv` domain), §14 (`jl`, `*_jacobians`) | `LieGroup::{exp, log, adjoint, ad, jr, jr_inv, jl, jl_inv, rplus, lplus, rminus, lminus, *_jacobians, compose_jacobians, inverse_jacobian}`, `Side`, `SEn3Jac` |
 | [`so3.md`](./so3.md) | §1 (quaternion), §2.4, §3.1–§3.6, §4 (definitions of $k, a, b, c, r$; the $c$ series), §11 (`Log` conditioning, matrix input), §12 (`jr_inv`, `from_wxyz_unchecked`), §14 (`act_many`) | `SO3::{exp, log, act, act_many, to_matrix, from_matrix, renormalize, adjoint, ad, jr, jr_inv, jl, jl_inv, act_jacobians}`, `Quat::{from_wxyz_unchecked, from_wxyz_normalized}` |
+| [`coefficients.md`](./coefficients.md) | §4 (all seven coefficients and the $\cos\frac\theta2$ of §3.1: series, cancellation, switch-point magnitudes, derivatives), §2.1, §7 ($\Gamma_2$'s coefficients), §12 (the $\theta = 0$, $\pi$, $2\pi$ behaviour); `PHASE1.md` §2 item 3, §4.3, §6 | `coeffs::{exp_coeffs, jr_coeffs, jr_inv_coeff, q_coeffs, gamma2_coeffs, log_ratio, se2_coeffs}` (`pub(crate)`, `PHASE3.md` §3), `coeffs::generated`, `xtask thresholds` |
 
-Not derived yet, so `NUMERICS.md` alone states them: every section outside the Map rows, notably §4
-beyond the definitions, the $c$ series and the amplification factors of $a, b, c$ (the series of
-$k, a, b, d, e, r$, the switch points and the rewrites of $d$ and $e$), §5.3 (the $Q$ block;
-`lie-groups.md` uses only $J = g(\mathrm{ad})$) and §6–§11 (the conditioning of the exact $J$ and
-$\mathrm{Ad}$ is LG.16; the metrics of §11 are used, not derived).
+Not derived yet, so `NUMERICS.md` alone states them: every section outside the Map rows, notably §5.3
+(the $Q$ block: `lie-groups.md` uses only $J = g(\mathrm{ad})$ and `coefficients.md` derives its
+coefficients $b, d, e$, not the block) and §6–§11 (the SE(2) matrices, of which only the pair
+$\alpha, \beta$ is placed in the coefficient family; the conditioning of the exact $J$ and $\mathrm{Ad}$
+is LG.16; the metrics of §11 are used, not derived). The switch points and series lengths of §4 are
+generated (0004), not derived: `coefficients.md` derives the magnitudes to check them against
+(CO.10).
 
 ## Open items for the normative documents
 
@@ -106,6 +112,54 @@ $\mathrm{Ad}$ is LG.16; the metrics of §11 are used, not derived).
 - `PHASE2.md` §6 says `svd3` is signed with $\det U = \det V = +1$ and "only $\sigma_3$ may be negative",
   but not that $\lvert\sigma_3\rvert \le \min(\sigma_1, \sigma_2)$. `nearest_rotation` $= UV^\top$ needs it
   (SO.13(c)): with $\Sigma = \mathrm{diag}(1, 1, -5)$ it is at squared distance $36$ against $20$.
+- `NUMERICS.md` §4 "Naive cancellation" ($\sim2u/\theta^2$, $6u/\theta^2$, $12u/\theta^2$,
+  $24u/\theta^4$ and $24u/\theta^2$, $360u/\theta^4$): the exponents are right, the constants are
+  not bounds, and the column is not built by one rule ($a$, $b$, $c$, $d$ count the dominant rounded
+  operand once, $e$'s 360 counts all its operands, which would give 48 for $d$). Sampled maxima
+  (6e4 samples, `f64`): $a$ 1.0, $b$ 6.0, $c$ 48 (spec 12), $d$ naive 36 and rewritten 45 (24), $e$
+  367 (360) (CO.6); `so3.md` SO.8 quotes the $12/\theta^2$ of $c$ as an amplification, with a
+  pointer here. Separately, the column is about values: through
+  `Dual` every coefficient, $k$, $a$ and $r$ included, loses $\theta^{-(p+2)}$ (CO.14), which the
+  spec does not state and which sets the switch of $k$, $a$, $r$ and the objective of 0004 item 1.
+- `PHASE1.md` §6 spans the switch grid over "$\theta \in [10^{-8}, 1]$", but the predicted and
+  measured optimum of $k$, $b$, $d$, $e$ (`f64`, $m = 8$; $e$: $\theta_s \approx 1.4$) and, in `f32`,
+  of all six lies above $1$ (CO.10); a switch capped at $1$ costs $e$ a factor $6$ (value) and $7.5$
+  (derivative) in `f64`, and up to $8\times10^3$ (derivative of $e$) in `f32`. `PHASE1.md` §6 also
+  fixes $m \le 8$; with it, the derivative of $e$ cannot fall below $\sim2\times10^3u$ (`f64`).
+- `NUMERICS.md` §4 (Continuity) says $\lvert\text{series} - \text{exact}\rvert$ at a switch is at
+  most the recorded max error; the two arms can each err by that much in opposite directions, so it
+  is at most twice, and $1.4$–$1.7\times$ was measured at the crossing (CO.12):
+  `branch_continuity_*` needs the sum.
+- `PHASE1.md` §4.3 computes `coeff_*` "from the definition at 120 digits", and §4.4 has
+  `theta:exact0` ($0/0$) and `theta:subnormal` ($\theta \sim10^{-310}$: $4L + 3 \approx 1243$ digits
+  lost). §2 item 3's check (1% at 150 digits agreeing to 40 digits) fails for $e$'s definition from
+  $\theta \approx 10^{-19}$ (39.2 digits at $10^{-20}$) and for its `mp.diff` derivative in $\theta$ from
+  $\theta \approx 3\times10^{-18}$ ($37.0$ digits at $10^{-18}$) (CO.17): below, the reference must be
+  the defining series.
+- `PHASE1.md` §4.3 ("derivative by `mp.diff`" of `coeff_*`, input $\theta$), §6 (`Dual<S, 1>`) and
+  `NUMERICS.md` §4 (branch variable $\theta^2$, $n^2$ for $r$) do not say in which variable the
+  derivative is taken; $\mathrm d/\mathrm d\theta = 2\theta\,\mathrm d/\mathrm dz$ (CO.13), and the digits
+  `mp.diff` keeps differ with it ($67$ in $\theta$, $79$ in $z$ at $10^{-12}$, CO.17).
+- `NUMERICS.md` §4 names $n^2$ as the branch variable of $r$ and evaluates only the exact arm at the
+  safe argument, but the series is in $s = n^2/w^2$ and valid for $w > 0$ only; its division by
+  $w^2$ is non-finite at $w = 0$ (0003 item 3: "no arm is ever non-finite"), and §8's
+  `S2Chart::local` has $w = n\cdot m$ of either sign, where the series returns $-2$ for $2\pi/n$
+  ($n^2 = 10^{-6}$, $w = -1$) (CO.16). §8's "$\alpha/\lVert n \times m\rVert$ is §4's $r$" is $r/2$.
+- `NUMERICS.md` §12 has no row for the domain of `Exp` (and the other coefficient users), while
+  `PHASE2.md` §2 promises a finite result for finite in-domain input: $\theta^2$ overflows for
+  $\lVert\varphi\rVert > 1.3\times10^{154}$ (`f64`), $1.8\times10^{19}$ (`f32`) and the exact arm
+  returns `NaN` (CO.15).
+- `NUMERICS.md` §4 and `PHASE3.md` §3 make each call site "one `S::branch` over a tuple" while
+  `generated.rs` holds "a `Switch` per coefficient": a group with one mask shares one $\theta_s$, which
+  costs the worst member up to $\sim3\times$ ($m = 8$) or $\sim10\times$ ($m = 4$) over its own optimum
+  (CO.18). Separately, §3.1 leaves the series of $\cos\frac\theta2$ to the generator: it is
+  $\sigma_0(z/4)$ with $\rho_m$ $2m+1$ times $k$'s (CO.2, CO.8), and it, not $k$, limits the
+  derivative switch of `exp_coeffs` ($1.1$ against $1.5$ at $m = 8$, CO.10).
+- `PHASE1.md` §10's seeded defect "`b` by its definition" fits $\theta^{-p}$, $p \in [1.8, 2.2]$,
+  over `theta:1e-8`…`theta:1e-2`, but $b$ is $0$ (relative error exactly $1$) below
+  $\sqrt{6u} = 2.6\times10^{-8}$, inside `theta:1e-8`: simulated fits give $p = 1.91$–$1.94$ ($2.00$
+  without that stratum), inside the window by $0.1$ (CO.6, *Checked*). The window should start above
+  $2.6\times10^{-8}$, or the fit skip saturated strata.
 
 ## References
 
@@ -123,6 +177,8 @@ $\mathrm{Ad}$ is LG.16; the metrics of §11 are used, not derived).
   J. Opt. Soc. Am. A 4(4), 1987. **[Bar-Itzhack]** I. Y. Bar-Itzhack, "New method for extracting the
   quaternion from a rotation matrix", J. Guidance, Control, and Dynamics 23(6), 2000.
 - **[Higham]** N. J. Higham, *Accuracy and Stability of Numerical Algorithms*, 2nd ed., SIAM, 2002
-  (ch. 3: the $\gamma_n$ bound for inner products).
+  (ch. 2: Sterbenz's lemma; ch. 3: the $\gamma_n$ bound for inner products; §5.1: Horner's method).
+- **[DLMF]** *NIST Digital Library of Mathematical Functions*, https://dlmf.nist.gov, §4.19 and §4.22
+  (the series and the partial fractions of $\cot$), §24.2 (Bernoulli numbers).
 - **[mpmath]** F. Johansson et al., *mpmath: a Python library for arbitrary-precision
   floating-point arithmetic* (the checking tool; version stated in each `Checked:` line).
