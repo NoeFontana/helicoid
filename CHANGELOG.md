@@ -22,6 +22,34 @@ defined by the status tables in `docs/`; they win over this file.
   no code change.
 - Tests pinning today's `Dual` derivative at a zero `sqrt` argument: `Vector<Dual>::norm` of the
   zero vector, and `chol` on a zero or a negative pivot.
+- The coefficient kernel (`docs/PHASE3.md` §3, `0004`): `helicoid::coeffs`, `pub(crate)`, with the
+  groups `exp_coeffs`, `jr_coeffs`, `jr_inv_coeff`, `q_coeffs` and `log_ratio`, each one `S::branch`
+  on "every member is on its series arm", off which the group's exact arms run once, at the safe
+  argument, and each member selects by its own mask; the exact arms in the operand order of the
+  seeded kernels, the series by Horner, the constants chosen by `S::PRECISION`. `cargo xtask
+  thresholds helicoid` sweeps the shipped arms through the hidden feature `__sweep` (`exact_*`,
+  `series_*`; only `xtask` enables it) and writes `crates/helicoid/src/coeffs/generated.rs` (a
+  `Switch` per coefficient per precision, beside the eight swept series they take their terms from;
+  registered with `cargo xtask lint`) and `conformance/sweeps/thresholds.csv`, a fixed point: a
+  second run writes the same bytes, and `just thresholds-check` covers both this target and the
+  seeded one (`cargo xtask thresholds [--check] [seeded|helicoid]`). At `f64`: `k` 8 terms below `θ²
+  = 1`, `a` 8 below `0.72`, `b` 8 below `0.96`, `c` 8 below `0.56`, `d` 8 below `1`, `e` 7 below
+  `0.96`, `cos θ/2` 2 below `5.6e-15`, `r` 8 below `n²/w² = 1.1e-2`; at `f32`: `k, a, b` 5 terms and
+  `c, d, e` 4, all below `θ² = 1`, `cos θ/2` 2 below `2.6e-6`, `r` 8 below `0.143`. They are the
+  seeded sweep's rows, and the shipped arms are the seeded arms bit for bit on every record where
+  the series arm is defined (`w > 0` for `r`). Each objective is a maximum over the corpus's
+  records, not over the domain, and eight of the sixteen switches (`k`, `d` at `f64`; `k`, `a`…`e`
+  at `f32`) are `θ² = 1`, the top of the sweep's grid, not a measured optimum. The sweep CSVs gain
+  four columns, each arm's error at the two records that bracket the switch, whose sum
+  `branch_continuity_*` compares the jump between the arms with (`docs/maths/coefficients.md` CO.12;
+  a sample at two records, not a bound over the interval; not `NUMERICS.md` §4's wording); the
+  seeded CSV and the digest line of `xtask/src/seeded/generated.rs` change with them, its constants
+  do not. Groups take their members' switches each (0015 (draft) NU.5): no exact arm runs below a
+  group's smallest switch, which for `Exp` is `cos θ/2`'s (`θ² < 5.6e-15` at `f64`), so `Exp` is on
+  its exact arm from `θ = 7.5e-8` at one `sqrt` and one `sin_cos` (`NUMERICS.md` §3.1); unmeasured.
+  `r` is on its provisional reading (0014 (draft) question 29); `se2_coeffs` and `gamma2_coeffs` are
+  not here. The kernel is built for the tests and `__sweep` only until SO(3) uses it, so `just
+  no-std` and `just wasm` build it with `--features __sweep`. No public API; nothing breaks.
 - Threshold sweep per precision (`0016` item 3): `cargo xtask thresholds` now sweeps `k, a, b, c, d, e`,
   `cos θ/2` and `r` at `f64` on the plain strata and at `f32` on the `@f32` strata, with one objective,
   grid (each point correctly rounded at the precision it is swept at) and tie-break. At `f32` each of

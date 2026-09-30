@@ -127,8 +127,9 @@ jobs:
           tool: just
       - run: just conformance --self-test
 
-  # The seeded kernels' sweep must equal the committed conformance/sweeps/thresholds-seeded.csv and
-  # xtask/src/seeded/generated.rs, which a hand edit fails.
+  # A fresh sweep of each target must equal its committed files, which a hand edit fails: the seeded
+  # kernels' (conformance/sweeps/thresholds-seeded.csv, xtask/src/seeded/generated.rs) and the arms
+  # `helicoid` ships (conformance/sweeps/thresholds.csv, crates/helicoid/src/coeffs/generated.rs).
   thresholds:
     name: thresholds-check
     runs-on: ubuntu-latest

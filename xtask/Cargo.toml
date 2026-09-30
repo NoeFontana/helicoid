@@ -31,3 +31,6 @@ sha2 = "0.10"
 libm.workspace = true
 # `Precision` is the harness's precision vocabulary (`docs/PHASE1.md` §5).
 helicoid-linalg.workspace = true
+# The threshold sweep measures `helicoid::coeffs` through its hidden `__sweep` feature, so the code
+# measured is the code shipped (`0004` item 4). Only `xtask` may enable it (`cargo xtask lint`).
+helicoid = { workspace = true, features = ["__sweep"] }

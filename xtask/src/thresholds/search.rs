@@ -97,6 +97,43 @@ pub(super) fn score(samples: &[Sample], terms: usize, switch: f64) -> Score {
     score
 }
 
+/// The exact arm's and the series arm's errors at the two records that bracket `switch`, the last
+/// below it and the first at or above it (every record at either `z`), each the larger of the two:
+/// the errors a jump between the arms at the switch is made of, whose sum
+/// (`docs/maths/coefficients.md` CO.12) the jump is compared with. A sample at two records, not a
+/// bound over the interval between them: the exact arm's error is taken to fall and the series arm's
+/// to rise through the switch, so the far record is where each is largest, which oscillation can
+/// break. A maximum over the records on the arm's own side is smaller (`a`, `f64`, the series arm's
+/// derivative: 29.1 `u` at the first record above the switch, where the sweep does not select it,
+/// against the row's objective of 25.8 `u`).
+pub(super) fn at_switch(samples: &[Sample], terms: usize, switch: f64) -> (Errors, Errors) {
+    let zs = || samples.iter().map(|s| s.z);
+    let lo = zs().filter(|&z| z < switch).max_by(f64::total_cmp);
+    let hi = zs().filter(|&z| z >= switch).min_by(f64::total_cmp);
+    let (mut exact, mut series) = (
+        Errors {
+            value: 0.0,
+            deriv: 0.0,
+        },
+        Errors {
+            value: 0.0,
+            deriv: 0.0,
+        },
+    );
+    let brackets = |s: &&Sample| {
+        [lo, hi]
+            .iter()
+            .any(|&b| b.is_some_and(|b| s.z.total_cmp(&b).is_eq()))
+    };
+    for s in samples.iter().filter(brackets) {
+        for (arm, e) in [(&mut exact, s.exact), (&mut series, s.series[terms - 1])] {
+            arm.value = arm.value.max(e.value);
+            arm.deriv = arm.deriv.max(e.deriv);
+        }
+    }
+    (exact, series)
+}
+
 /// Lowest objective first; ties to fewer terms, then to the larger switch (`docs/PHASE1.md` §6).
 fn preference(a: &Score, b: &Score) -> Ordering {
     let by = a.objective().total_cmp(&b.objective());

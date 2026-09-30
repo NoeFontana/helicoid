@@ -1,12 +1,17 @@
-//! `xtask/src/seeded/generated.rs` (`docs/PHASE1.md` §6, `0004` item 3, `0016` item 3): the seeded
-//! twin of Phase 3's `coeffs/generated.rs`, a function of the sweep CSV and `coeff_series.jsonl`
-//! and of nothing else, so `thresholds --check` compares it byte for byte. One `Switch<S, terms>`
-//! per coefficient and precision in the CSV's order, `K_F64` to `R_F64`, then `K_F32` to `R_F32`,
-//! defined in `seeded::switch`.
+//! The generated files of `docs/PHASE1.md` §6 (`0004` item 3, `0016` item 3): the seeded kernels'
+//! `xtask/src/seeded/generated.rs` and `helicoid::coeffs`'
+//! `crates/helicoid/src/coeffs/generated.rs`, each a function of its sweep CSV and
+//! `coeff_series.jsonl` and of nothing else, so `thresholds --check` compares them byte for byte.
+//! One `Switch` per coefficient and precision in the CSV's order, `K_F64` to `R_F64`, then `K_F32` to
+//! `R_F32`. The seeded file's hold their series (`seeded::switch`); `helicoid`'s take theirs from
+//! the swept series that follow them in the same file, `SWEPT_K_F64` to `SWEPT_R_F32`, the first
+//! `TERMS` terms of each row (`coeffs::Switch::first`), which is what the sweep of that target
+//! measures, so the file is a fixed point (`render_helicoid`).
 //!
-//! The file is compiled into this tool (`seeded:correct` runs it), so a hand edit that no longer
-//! compiles stops `cargo xtask` from building, and neither `thresholds` nor `thresholds --check`
-//! can name it: `git restore` the file first. One that compiles is named, file and line.
+//! Each file is compiled into this tool (`seeded:correct` runs the first, the sweep measures the
+//! second's swept series), so a hand edit that no longer compiles stops `cargo xtask` from building,
+//! and neither `thresholds` nor `thresholds --check` can name it: `git restore` the file first. One
+//! that compiles is named, file and line.
 //!
 //! Readings where §6 is silent, each the smallest (the first two are 0014 (draft) questions 12 and 13):
 //!
@@ -34,11 +39,14 @@ use std::fmt::LowerExp;
 use helicoid_linalg::Precision;
 use sha2::{Digest, Sha256};
 
-use super::{precision_name, shown, CSV, HEADER};
+use super::search::TERMS;
+use super::{precision_name, shown, CSV_HELICOID, CSV_SEEDED, HEADER};
 use crate::seeded::{Series, Swept, SERIES_FILE};
 
-/// The generated file, relative to the repository root.
-pub(super) const PATH: &str = "xtask/src/seeded/generated.rs";
+/// The seeded kernels' generated file, relative to the repository root.
+pub(super) const PATH_SEEDED: &str = "xtask/src/seeded/generated.rs";
+/// `helicoid::coeffs`' generated file, relative to the repository root.
+pub(super) const PATH_HELICOID: &str = "crates/helicoid/src/coeffs/generated.rs";
 
 /// rustfmt's default `array_width`: the widest array literal, brackets excluded, on one line.
 const ARRAY_WIDTH: usize = 60;
@@ -78,12 +86,21 @@ fn grouped(bits: u64, hex: usize) -> String {
     format!("0x{}", words.join("_"))
 }
 
-/// The series of `terms` literals, at `indent` spaces, as rustfmt lays an array out.
-fn series_literal<T: LowerExp>(terms: &[T], indent: usize) -> String {
+/// The array `head` `terms` `tail` (`series: [` ... `],`, `const X: [f64; 8] = [` ... `];`) at
+/// `indent` spaces, as rustfmt lays an array out.
+fn array_literal<T: LowerExp>(head: &str, terms: &[T], indent: usize, tail: &str) -> String {
     let items: Vec<String> = terms.iter().map(|x| format!("{x:e}")).collect();
     let contents = items.join(", ");
+    let one_line = indent + head.chars().count() + contents.len() + tail.len();
     if contents.len() <= ARRAY_WIDTH {
-        return format!("series: [{contents}],");
+        if one_line <= MAX_WIDTH {
+            return format!("{head}{contents}{tail}");
+        }
+        // A constant whose head is too long for one line: rustfmt breaks after the `=`.
+        if let Some(lhs) = head.strip_suffix('[') {
+            let pad = " ".repeat(indent + 4);
+            return format!("{}\n{pad}[{contents}{}", lhs.trim_end(), tail);
+        }
     }
     let pad = " ".repeat(indent + 4);
     let lines = if items.iter().all(|x| x.len() <= SHORT_ELEMENT) {
@@ -106,16 +123,33 @@ fn series_literal<T: LowerExp>(terms: &[T], indent: usize) -> String {
         items
     };
     let body: String = lines.iter().map(|line| format!("{pad}{line},\n")).collect();
-    format!("series: [\n{body}{}],", " ".repeat(indent))
+    format!("{head}\n{body}{}{tail}", " ".repeat(indent))
 }
 
-/// The constant of `id` at `precision` from its CSV `row`.
-fn constant(
+/// The series of `terms` literals in a `Switch`, at `indent` spaces.
+fn series_literal<T: LowerExp>(terms: &[T], indent: usize) -> String {
+    array_literal("series: [", terms, indent, "],")
+}
+
+/// What a CSV row chose for a coefficient at a precision, checked against the row's own columns.
+struct Chosen<'a> {
+    terms: usize,
+    /// The bit pattern, with the `hex` digits of the precision.
+    bits: u64,
+    hex: usize,
+    /// The switch's decimal at its precision, as the comment prints it.
+    decimal: String,
+    value: &'a str,
+    deriv: &'a str,
+}
+
+/// The choice in `row`, the `precision` row of `id`, of at most `max_terms` terms.
+fn chosen<'a>(
     id: Swept,
     precision: Precision,
-    row: &str,
-    (wide, narrow): (&Series<f64>, &Series<f32>),
-) -> Result<String, String> {
+    row: &'a str,
+    max_terms: usize,
+) -> Result<Chosen<'a>, String> {
     let (name, p) = (id.name(), precision_name(precision));
     if cell(row, "coeff")? != name || cell(row, "precision")? != p {
         return Err(format!("`{row}` is not the {p} row of `{name}`"));
@@ -123,10 +157,9 @@ fn constant(
     let terms: usize = cell(row, "terms")?
         .parse()
         .map_err(|e| format!("{name}: terms: {e}"))?;
-    if !(1..=wide.terms()).contains(&terms) {
+    if !(1..=max_terms).contains(&terms) {
         return Err(format!(
-            "{name}: {terms} terms of a {}-term series",
-            wide.terms()
+            "{name}: {terms} terms of a {max_terms}-term series"
         ));
     }
     let hex = match precision {
@@ -138,15 +171,9 @@ fn constant(
         .filter(|h| h.len() == hex)
         .and_then(|h| u64::from_str_radix(h, 16).ok())
         .ok_or_else(|| format!("{name}: switch_bits is not 0x and {hex} hex digits"))?;
-    let (switch, literals) = match precision {
-        Precision::F64 => (
-            f64::from_bits(bits),
-            series_literal(&wide.swept(id)[..terms], 4),
-        ),
-        Precision::F32 => (
-            f64::from(f32::from_bits(bits as u32)),
-            series_literal(&narrow.swept(id)[..terms], 4),
-        ),
+    let switch = match precision {
+        Precision::F64 => f64::from_bits(bits),
+        Precision::F32 => f64::from(f32::from_bits(bits as u32)),
     };
     // The comment is the bits' own decimal: a CSV whose columns disagree is refused, not emitted.
     let decimal = shown(precision, switch);
@@ -155,56 +182,167 @@ fn constant(
             "{name}: switch_bits and switch_z disagree or are not a z >= 0"
         ));
     }
-    let (value, deriv) = (number(row, "value_max_u")?, number(row, "deriv_max_u")?);
-    let variable = if id == Swept::R { "n²/w²" } else { "θ²" };
+    Ok(Chosen {
+        terms,
+        bits,
+        hex,
+        decimal,
+        value: number(row, "value_max_u")?,
+        deriv: number(row, "deriv_max_u")?,
+    })
+}
+
+/// The name of the constant of `id` at `precision`, `K_F64`.
+fn const_name(id: Swept, precision: Precision) -> String {
+    let p = precision_name(precision);
+    format!("{}_{}", id.name().to_uppercase(), p.to_uppercase())
+}
+
+/// The variable a switch is in.
+fn variable(id: Swept) -> &'static str {
+    if id == Swept::R {
+        "n²/w²"
+    } else {
+        "θ²"
+    }
+}
+
+/// The seeded constant of `id` at `precision` from its CSV `row`.
+fn constant(
+    id: Swept,
+    precision: Precision,
+    row: &str,
+    (wide, narrow): (&Series<f64>, &Series<f32>),
+) -> Result<String, String> {
+    let c = chosen(id, precision, row, wide.terms())?;
+    let literals = match precision {
+        Precision::F64 => series_literal(&wide.swept(id)[..c.terms], 4),
+        Precision::F32 => series_literal(&narrow.swept(id)[..c.terms], 4),
+    };
+    let p = precision_name(precision);
     Ok(format!(
-        "// Objective (max u): value {value}, derivative {deriv}.\n\
-         pub(crate) const {upper}_{}: Switch<{p}, {terms}> = Switch {{\n    \
-         below: {p}::from_bits({}), // {variable} < {decimal}\n    \
+        "// Objective (max u): value {}, derivative {}.\n\
+         pub(crate) const {}: Switch<{p}, {}> = Switch {{\n    \
+         below: {p}::from_bits({}), // {} < {}\n    \
          {literals}\n}};\n",
-        p.to_uppercase(),
-        grouped(bits, hex),
-        upper = name.to_uppercase(),
+        c.value,
+        c.deriv,
+        const_name(id, precision),
+        c.terms,
+        grouped(c.bits, c.hex),
+        variable(id),
+        c.decimal,
     ))
 }
 
-/// The generated file for the sweep `csv`, with the series of the corpus at both precisions:
-/// `series_file` is the bytes of `coeff_series.jsonl`, of which the series are the readings.
+/// The first three lines of a generated file: the marker and the two digests it is a function of.
+fn header(csv_path: &str, csv: &str, series_file: &[u8]) -> String {
+    format!(
+        "// @generated by `cargo xtask thresholds` from {csv_path} — do not edit.\n\
+         // Source sweep rev: sha256 {}.\n\
+         // Source series: conformance/corpus/{SERIES_FILE}, sha256 {}.\n",
+        sha256_hex(csv.as_bytes()),
+        sha256_hex(series_file)
+    )
+}
+
+/// The data rows of `csv`, the sweep at `csv_path`: its header is the documented one and it has a
+/// row per coefficient and precision.
+fn rows<'a>(csv_path: &str, csv: &'a str) -> Result<Vec<&'a str>, String> {
+    let mut lines = csv.lines();
+    if lines.next() != Some(HEADER) {
+        return Err(format!(
+            "{csv_path} does not start with its documented header"
+        ));
+    }
+    let rows: Vec<&str> = lines.collect();
+    let of = Swept::ALL.len();
+    if rows.len() != 2 * of {
+        return Err(format!(
+            "{csv_path} has {} rows; expected one per coefficient and precision, {}",
+            rows.len(),
+            2 * of
+        ));
+    }
+    Ok(rows)
+}
+
+/// The precision and coefficient of row `i` of the CSV.
+fn row_of(i: usize) -> (Precision, Swept) {
+    let of = Swept::ALL.len();
+    ([Precision::F64, Precision::F32][i / of], Swept::ALL[i % of])
+}
+
+/// The seeded generated file for the sweep `csv` (at [`CSV_SEEDED`]), with the series of the
+/// corpus at both precisions: `series_file` is the bytes of `coeff_series.jsonl`, of which the
+/// series are the readings.
 pub(super) fn render(
     csv: &str,
     series_file: &[u8],
     wide: &Series<f64>,
     narrow: &Series<f32>,
 ) -> Result<String, String> {
-    let mut lines = csv.lines();
-    if lines.next() != Some(HEADER) {
-        return Err(format!("{CSV} does not start with its documented header"));
+    let rows = rows(CSV_SEEDED, csv)?;
+    let mut out = header(CSV_SEEDED, csv, series_file);
+    out.push_str("\nuse super::switch::Switch;\n");
+    for (i, row) in rows.into_iter().enumerate() {
+        let (precision, id) = row_of(i);
+        out.push('\n');
+        out.push_str(&constant(id, precision, row, (wide, narrow))?);
     }
-    let rows: Vec<&str> = lines.collect();
-    let of = Swept::ALL.len();
-    if rows.len() != 2 * of {
-        return Err(format!(
-            "{CSV} has {} rows; expected one per coefficient and precision, {}",
-            rows.len(),
-            2 * of
+    Ok(out)
+}
+
+/// The generated file of `helicoid::coeffs` for the sweep `csv` (at [`CSV_HELICOID`]): a `Switch`
+/// per coefficient and precision, then the swept series they take their terms from. `placeholder`
+/// marks a file whose switches are not a sweep's (`bootstrap`), written when the compiled-in swept
+/// series are not the corpus's.
+pub(super) fn render_helicoid(
+    csv: &str,
+    series_file: &[u8],
+    (wide, narrow): (&Series<f64>, &Series<f32>),
+    placeholder: bool,
+) -> Result<String, String> {
+    let rows = rows(CSV_HELICOID, csv)?;
+    let mut out = header(CSV_HELICOID, csv, series_file);
+    if placeholder {
+        out.push_str(
+            "// Placeholder switches: the series changed; run `cargo xtask thresholds` again.\n",
+        );
+    }
+    out.push_str("\nuse super::Switch;\n");
+    for (i, row) in rows.into_iter().enumerate() {
+        let (precision, id) = row_of(i);
+        let c = chosen(id, precision, row, TERMS)?;
+        let p = precision_name(precision);
+        out.push_str(&format!(
+            "\n// Objective (max u): value {}, derivative {}.\n\
+             pub(crate) const {name}: Switch<{p}, {}> = Switch::first(\n    \
+             {p}::from_bits({}), // {} < {}\n    \
+             &SWEPT_{name},\n);\n",
+            c.value,
+            c.deriv,
+            c.terms,
+            grouped(c.bits, c.hex),
+            variable(id),
+            c.decimal,
+            name = const_name(id, precision),
         ));
     }
-    let mut out = format!(
-        "// @generated by `cargo xtask thresholds` from {CSV} — do not edit.\n\
-         // Source sweep rev: sha256 {}.\n\
-         // Source series: conformance/corpus/{SERIES_FILE}, sha256 {}.\n\nuse super::switch::Switch;\n",
-        sha256_hex(csv.as_bytes()),
-        sha256_hex(series_file)
-    );
-    for (i, row) in rows.into_iter().enumerate() {
-        let precision = [Precision::F64, Precision::F32][i / of];
-        out.push('\n');
-        out.push_str(&constant(
-            Swept::ALL[i % of],
-            precision,
-            row,
-            (wide, narrow),
-        )?);
+    out.push_str(&format!(
+        "\n// The series `helicoid::__sweep` measures: the first {TERMS} terms of each row, the exact\n\
+         // rational rounded once at its precision. A function of the corpus alone.\n"
+    ));
+    for i in 0..2 * Swept::ALL.len() {
+        let (precision, id) = row_of(i);
+        let p = precision_name(precision);
+        let name = const_name(id, precision);
+        let head = format!("pub(crate) const SWEPT_{name}: [{p}; {TERMS}] = [");
+        let literal = match precision {
+            Precision::F64 => array_literal(&head, &wide.swept(id)[..TERMS], 0, "];"),
+            Precision::F32 => array_literal(&head, &narrow.swept(id)[..TERMS], 0, "];"),
+        };
+        out.push_str(&format!("{}{literal}\n", if i == 0 { "" } else { "\n" }));
     }
     Ok(out)
 }
@@ -219,7 +357,7 @@ mod tests {
     use num_bigint::BigUint;
 
     fn committed_csv() -> Result<String, String> {
-        let path = root()?.join(CSV);
+        let path = root()?.join(CSV_SEEDED);
         std::fs::read_to_string(&path).map_err(|e| format!("{}: {e}", path.display()))
     }
 
@@ -454,11 +592,30 @@ mod tests {
         BigUint::from(d.mant) << (d.exp + 1074) as usize
     }
 
+    /// `literal` is the binary32 nearest to the exact rational `term` (`"num/den"`). Not through
+    /// `ratio_to_f32`: `num/den` lies between the midpoints from the literal to its two binary32
+    /// neighbours, in integers (`2 num 2^1074` against `den (a + b)`, `a`, `b` the values times
+    /// `2^1074`), so no rounding of a binary64 value could pass.
+    fn is_the_nearest_binary32(literal: &str, term: &serde_json::Value) -> Result<bool, String> {
+        let term = term.as_str().and_then(|t| t.split_once('/'));
+        let big = |t: &str| BigUint::parse_bytes(t.trim_start_matches('-').as_bytes(), 10);
+        let (num, den) = term
+            .and_then(|(n, d)| Some((big(n)?, big(d)?)))
+            .ok_or("bad term")?;
+        let x = literal
+            .parse::<f32>()
+            .map_err(|e| format!("{literal}: {e}"))?
+            .abs();
+        let (lo, hi) = (
+            scaled(f64::from(x.next_down())),
+            scaled(f64::from(x.next_up())),
+        );
+        let (here, twice) = (scaled(f64::from(x)), (num << 1075usize));
+        Ok(&den * (&lo + &here) <= twice && twice <= &den * (&here + &hi))
+    }
+
     #[test]
     fn every_f32_literal_is_the_nearest_binary32_to_its_exact_rational() -> Result<(), String> {
-        // Not through `ratio_to_f32`: `num/den` lies between the midpoints from the literal to
-        // its two binary32 neighbours, in integers (`2 num 2^1074` against `den (a + b)`, `a`, `b`
-        // the values times `2^1074`), so no rounding of a binary64 value could pass.
         let (csv, file) = (committed_csv()?, series_file()?);
         let text = render(&csv, &file, &series()?.0, &series()?.1)?;
         let file = String::from_utf8(file).map_err(|e| e.to_string())?;
@@ -473,24 +630,7 @@ mod tests {
                 .iter()
                 .zip(literals)
             {
-                let term = term.as_str().and_then(|t| t.split_once('/'));
-                let big = |t: &str| BigUint::parse_bytes(t.trim_start_matches('-').as_bytes(), 10);
-                let (num, den) = term
-                    .and_then(|(n, d)| Some((big(n)?, big(d)?)))
-                    .ok_or("bad term")?;
-                let x = literal
-                    .parse::<f32>()
-                    .map_err(|e| format!("{literal}: {e}"))?
-                    .abs();
-                let (lo, hi) = (
-                    scaled(f64::from(x.next_down())),
-                    scaled(f64::from(x.next_up())),
-                );
-                let (here, twice) = (scaled(f64::from(x)), (num << 1075usize));
-                assert!(
-                    &den * (&lo + &here) <= twice && twice <= &den * (&here + &hi),
-                    "{name}: {literal}"
-                );
+                assert!(is_the_nearest_binary32(literal, term)?, "{name}: {literal}");
                 checked += 1;
             }
         }
@@ -501,6 +641,130 @@ mod tests {
                 .map_err(|e| e.to_string())?;
         }
         assert_eq!(checked, f32_terms);
+        Ok(())
+    }
+
+    /// The literals of the swept series `SWEPT_<name>` in a `helicoid` file.
+    fn swept_of<'a>(text: &'a str, name: &str) -> Result<Vec<&'a str>, String> {
+        let body = text
+            .split(&format!("pub(crate) const SWEPT_{name}: ["))
+            .nth(1);
+        let list = body
+            .and_then(|b| b.split("= [").nth(1))
+            .ok_or("no series")?;
+        let list = list.split("];").next().unwrap_or_default();
+        Ok(list
+            .split(',')
+            .map(str::trim)
+            .filter(|x| !x.is_empty())
+            .collect())
+    }
+
+    #[test]
+    fn a_helicoid_file_has_the_switches_and_the_series_they_take_their_terms_from(
+    ) -> Result<(), String> {
+        let (wide, narrow) = series()?;
+        let jsonl = series_file()?;
+        let csv = synthetic([8, 8, 3, 1, 8, 7, 8, 5]);
+        let text = render_helicoid(&csv, &jsonl, (&wide, &narrow), false)?;
+        let mut lines = text.lines();
+        let marker = "// @generated by `cargo xtask thresholds` from conformance/sweeps/thresholds.csv — do not edit.";
+        assert_eq!(lines.next(), Some(marker));
+        assert!(lines
+            .next()
+            .is_some_and(|l| l.starts_with("// Source sweep rev: sha256 ")));
+        assert!(lines
+            .next()
+            .is_some_and(|l| l.starts_with("// Source series: ")));
+        assert_eq!(lines.next(), Some(""));
+        assert_eq!(lines.next(), Some("use super::Switch;"));
+        // `b`: three terms of the swept eight, its switch's words in order, at both precisions.
+        let want = format!(
+            "// Objective (max u): value 1.5e0, derivative 2.5e1.\n\
+             pub(crate) const B_F64: Switch<f64, 3> = Switch::first(\n    \
+             f64::from_bits(0x3fc0_1234_5678_9abc), // θ² < {:e}\n    \
+             &SWEPT_B_F64,\n);\n",
+            f64::from_bits(B_SWITCH_BITS)
+        );
+        assert!(text.contains(&format!("\n{want}\n")), "{text}");
+        assert!(text.contains(&format!(
+            "f32::from_bits(0x3c01_2345), // θ² < {}\n    &SWEPT_B_F32,\n);\n",
+            lit32(f32::from_bits(B_SWITCH_BITS32))
+        )));
+        // `r`'s is in `n²/w²`, and every constant is there once: 16 switches, then 16 series.
+        assert!(text.contains(", // n²/w² < 3.90625e-3\n"), "{text}");
+        assert_eq!(text.matches("pub(crate) const").count(), 32);
+        assert_eq!(text.matches("Switch::first(").count(), 16);
+        let switches = text
+            .find("pub(crate) const SWEPT_K_F64")
+            .ok_or("no series")?;
+        assert!(text[..switches].contains("_F32: Switch<f32,") && text.ends_with("];\n"));
+        // A file that is not a sweep's says so, and a series longer than the eight swept is refused.
+        assert!(!text.contains("Placeholder"));
+        let holder = render_helicoid(&csv, &jsonl, (&wide, &narrow), true)?;
+        assert!(holder
+            .lines()
+            .nth(3)
+            .is_some_and(|l| l.starts_with("// Placeholder switches")));
+        let e = render_helicoid(&synthetic([9; 8]), &jsonl, (&wide, &narrow), false).err();
+        assert!(e.is_some_and(|e| e.contains("9 terms of a 8-term series")));
+        Ok(())
+    }
+
+    #[test]
+    fn every_swept_literal_reads_back_as_the_series_term_rounded_once_at_its_precision(
+    ) -> Result<(), String> {
+        let (wide, narrow) = series()?;
+        let file = String::from_utf8(series_file()?).map_err(|e| e.to_string())?;
+        let text = render_helicoid(&committed_csv()?, file.as_bytes(), (&wide, &narrow), false)?;
+        let mut checked = 0;
+        for line in file.lines() {
+            let row: serde_json::Value = serde_json::from_str(line).map_err(|e| e.to_string())?;
+            let name = row["coeff"].as_str().ok_or("no coeff")?;
+            let id = Swept::ALL
+                .into_iter()
+                .find(|s| s.name() == name)
+                .ok_or("unknown coeff")?;
+            let (w, n) = (
+                swept_of(&text, &format!("{}_F64", name.to_uppercase()))?,
+                swept_of(&text, &format!("{}_F32", name.to_uppercase()))?,
+            );
+            assert_eq!((w.len(), n.len()), (TERMS, TERMS), "{name}");
+            for j in 0..TERMS {
+                let got = (w[j].parse::<f64>(), n[j].parse::<f32>());
+                let got = (
+                    got.0.map_err(|e| e.to_string())?,
+                    got.1.map_err(|e| e.to_string())?,
+                );
+                assert_eq!(got.0.to_bits(), wide.swept(id)[j].to_bits(), "{name}[{j}]");
+                assert_eq!(
+                    got.1.to_bits(),
+                    narrow.swept(id)[j].to_bits(),
+                    "{name}[{j}]"
+                );
+                assert!(
+                    is_the_nearest_binary32(n[j], &row["series"][j])?,
+                    "{name}[{j}]"
+                );
+                checked += 1;
+            }
+        }
+        assert_eq!(checked, 8 * TERMS);
+        Ok(())
+    }
+
+    #[test]
+    fn the_helicoid_file_is_laid_out_as_rustfmt_leaves_it() -> Result<(), String> {
+        let (wide, narrow) = series()?;
+        let jsonl = series_file()?;
+        for placeholder in [false, true] {
+            let csv = match placeholder {
+                true => synthetic([8; 8]),
+                false => committed_csv()?,
+            };
+            let text = render_helicoid(&csv, &jsonl, (&wide, &narrow), placeholder)?;
+            assert_eq!(rustfmt_diff(&text)?, None, "placeholder {placeholder}");
+        }
         Ok(())
     }
 
@@ -628,7 +892,14 @@ mod tests {
         let mut text = String::new();
         for mix in &all {
             let terms: Result<Vec<f64>, String> = mix.iter().map(|&w| literal(w)).collect();
-            text.push_str(&around(&terms?));
+            let terms = terms?;
+            text.push_str(&around(&terms));
+            // The same series as a constant, whose head is short or so long that a one-line array
+            // within `array_width` still overflows `max_width`.
+            for name in ["X", "SWEPT_COS_HALF_F64"] {
+                let head = format!("pub(crate) const {name}: [f64; {}] = [", terms.len());
+                text.push_str(&format!("{}\n", array_literal(&head, &terms, 0, "];")));
+            }
         }
         assert_eq!(rustfmt_diff(&text)?, None);
         // The check can fail: a series that is one per line where rustfmt packs it.

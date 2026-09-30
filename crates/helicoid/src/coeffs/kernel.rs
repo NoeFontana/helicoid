@@ -1,0 +1,311 @@
+//! The exact arms, the series arms and the call-site groups (`super`).
+//!
+//! An exact arm is the "Exact arm computes" column of `NUMERICS.md` §4 at `z > 0`, in the operand
+//! order `docs/maths/coefficients.md` CO.6 measured: `θ²` inside a cancelling sum is `fl(θ̂·θ̂)`,
+//! not `z`, which raises the constants. A group evaluates it at the safe argument (`0003` item 3).
+//! `z = θ² >= 0` is the domain of every function here, `debug_assert!`ed; `θ²` overflowing is
+//! CO.15(c), open. A lane evaluates the series arm it does not select at the raw `z`, so that arm is
+//! not finite once its Horner form overflows, far beyond any rotation.
+
+use helicoid_linalg::{Mask, Precision, Real};
+
+use super::generated::{
+    A_F32, A_F64, B_F32, B_F64, COS_HALF_F32, COS_HALF_F64, C_F32, C_F64, D_F32, D_F64, E_F32,
+    E_F64, K_F32, K_F64, R_F32, R_F64,
+};
+#[cfg(any(test, feature = "__sweep"))]
+use super::generated::{
+    SWEPT_A_F32, SWEPT_A_F64, SWEPT_B_F32, SWEPT_B_F64, SWEPT_COS_HALF_F32, SWEPT_COS_HALF_F64,
+    SWEPT_C_F32, SWEPT_C_F64, SWEPT_D_F32, SWEPT_D_F64, SWEPT_E_F32, SWEPT_E_F64, SWEPT_K_F32,
+    SWEPT_K_F64, SWEPT_R_F32, SWEPT_R_F64,
+};
+use super::Switch;
+
+/// A series at the width of its table; both widths are exact in the binary64 `Real::lit` takes.
+#[derive(Clone, Copy)]
+enum Terms<'a> {
+    F64(&'a [f64]),
+    F32(&'a [f32]),
+}
+
+/// One coefficient's `Switch` at one precision, its length erased.
+#[derive(Clone, Copy)]
+struct Arm<'a> {
+    below: f64,
+    terms: Terms<'a>,
+}
+
+impl<const M: usize> Switch<f64, M> {
+    fn arm(&self) -> Arm<'_> {
+        Arm {
+            below: self.below,
+            terms: Terms::F64(&self.series),
+        }
+    }
+}
+
+impl<const M: usize> Switch<f32, M> {
+    fn arm(&self) -> Arm<'_> {
+        Arm {
+            below: f64::from(self.below),
+            terms: Terms::F32(&self.series),
+        }
+    }
+}
+
+impl Arm<'_> {
+    fn below<S: Real>(&self) -> S {
+        S::lit(self.below)
+    }
+
+    fn horner<S: Real>(&self, z: S) -> S {
+        match self.terms {
+            Terms::F64(t) => horner(t, z),
+            Terms::F32(t) => horner(t, z),
+        }
+    }
+}
+
+/// `Σ terms[j] zʲ` as `p_j = t_j + z p_{j+1}` from the last term (CO.9); no `mul_add`. Under `Dual`
+/// it is exactly the derivative of the polynomial.
+fn horner<S: Real, T: Copy + Into<f64>>(terms: &[T], z: S) -> S {
+    terms
+        .iter()
+        .rev()
+        .fold(S::zero(), |p, &t| S::lit(t.into()) + z * p)
+}
+
+/// The table of `S`'s precision, chosen at monomorphization.
+fn table<S: Real, T>(wide: T, narrow: T) -> T {
+    match S::PRECISION {
+        Precision::F64 => wide,
+        Precision::F32 => narrow,
+    }
+}
+
+fn nonnegative<S: Real>(z: S) {
+    debug_assert!(
+        S::zero().le(z).all(),
+        "coeffs: the branch variable is not >= 0"
+    );
+}
+
+/// One group: every member on its series arm below its own switch, else on its exact arm. The one
+/// branch is on "every member is on its series arm", where no exact arm runs. Off it `exact` runs
+/// once for the group, so what its members share (`θ`, a `sin_cos`) is formed once, at
+/// `select(all, 1, z)`: `z` is then at or above the group's smallest switch, which is positive, so
+/// a member on its series arm is finite there too. Each member then selects by its own mask; a
+/// scalar mask runs the Horner of the members that are small and no other.
+fn grouped<S: Real, const G: usize>(
+    arms: [Arm<'_>; G],
+    exact: impl FnOnce(S) -> [S; G],
+    z: S,
+) -> [S; G] {
+    nonnegative(z);
+    let small = arms.map(|a| z.lt(a.below()));
+    let all = small.iter().fold(S::zero().le(S::zero()), |m, &s| m.and(s));
+    S::branch(
+        all,
+        || arms.map(|a| a.horner(z)),
+        || {
+            let x = exact(S::select(all, S::one(), z));
+            core::array::from_fn(|i| S::branch(small[i], || arms[i].horner(z), || x[i]))
+        },
+    )
+}
+
+/// `(k, cos(θ/2))` at `θ² = z`: `Exp`'s quaternion is `(cos(θ/2), k φ)` (`NUMERICS.md` §3.1).
+pub(crate) fn exp_coeffs<S: Real>(z: S) -> (S, S) {
+    let arms = table::<S, _>(
+        [K_F64.arm(), COS_HALF_F64.arm()],
+        [K_F32.arm(), COS_HALF_F32.arm()],
+    );
+    let [k, cos_half] = grouped(arms, exact_k_cos_half, z);
+    (k, cos_half)
+}
+
+/// `(a, b)` at `θ² = z`: `J = I ∓ aW + bW²` (`NUMERICS.md` §3.5).
+pub(crate) fn jr_coeffs<S: Real>(z: S) -> (S, S) {
+    let arms = table::<S, _>([A_F64.arm(), B_F64.arm()], [A_F32.arm(), B_F32.arm()]);
+    let [a, b] = grouped(arms, |x| [exact_a(x), exact_b(x)], z);
+    (a, b)
+}
+
+/// `c` at `θ² = z`: `J⁻¹ = I ± W/2 + cW²` (`NUMERICS.md` §3.5).
+pub(crate) fn jr_inv_coeff<S: Real>(z: S) -> S {
+    nonnegative(z);
+    let c = table::<S, _>(C_F64.arm(), C_F32.arm());
+    let small = z.lt(c.below());
+    S::branch(
+        small,
+        || c.horner(z),
+        || exact_c(S::select(small, S::one(), z)),
+    )
+}
+
+/// `(b, d, e)` at `θ² = z`: Barfoot's `Q` block (`NUMERICS.md` §5.3).
+pub(crate) fn q_coeffs<S: Real>(z: S) -> (S, S, S) {
+    let arms = table::<S, _>(
+        [B_F64.arm(), D_F64.arm(), E_F64.arm()],
+        [B_F32.arm(), D_F32.arm(), E_F32.arm()],
+    );
+    let [b, d, e] = grouped(arms, exact_b_d_e, z);
+    (b, d, e)
+}
+
+/// `r = 2 atan2(n, w)/n` at `n² = n2` (`NUMERICS.md` §3.2). The series arm is taken iff `w > 0` and
+/// `s = n²/w² < switch`: the reading in `super`. Each arm is at its safe argument, the series arm's
+/// `w` (`CO.16(d)`) too, and the mask forms `s` from `w² = 1` where `w` is not positive, so no
+/// operation is non-finite there. Where `w > 0` and `s` overflows, `super` says what a lane sees.
+pub(crate) fn log_ratio<S: Real>(n2: S, w: S) -> S {
+    nonnegative(n2);
+    let r = table::<S, _>(R_F64.arm(), R_F32.arm());
+    let positive = S::zero().lt(w);
+    let s = n2 / S::select(positive, w * w, S::one());
+    let small = positive.and(s.lt(r.below()));
+    S::branch(
+        small,
+        || {
+            let w = S::select(small, w, S::one());
+            S::lit(2.0) / w * r.horner(n2 / (w * w))
+        },
+        || exact_r(S::select(small, S::one(), n2), w),
+    )
+}
+
+/// `sin(θ/2)` and `cos(θ/2)` from one `sin_cos`.
+fn half_angle<S: Real>(th: S) -> (S, S) {
+    (S::lit(0.5) * th).sin_cos()
+}
+
+pub(super) fn exact_k<S: Real>(z: S) -> S {
+    let th = z.sqrt();
+    half_angle(th).0 / th
+}
+
+/// `(k, cos(θ/2))` from the one `sin_cos` of `θ/2` that `NUMERICS.md` §3.1 states.
+fn exact_k_cos_half<S: Real>(z: S) -> [S; 2] {
+    let th = z.sqrt();
+    let (s, c) = half_angle(th);
+    [s / th, c]
+}
+
+/// `2k²`, exact where `(1 - cos θ)/θ²` is not (`NUMERICS.md` §4).
+pub(super) fn exact_a<S: Real>(z: S) -> S {
+    let k = exact_k(z);
+    S::lit(2.0) * k * k
+}
+
+pub(super) fn exact_b<S: Real>(z: S) -> S {
+    let th = z.sqrt();
+    b_from(th, th.sin_cos().0)
+}
+
+/// `(θ - sin θ)/θ³` from `θ` and `s = sin θ`.
+fn b_from<S: Real>(th: S, s: S) -> S {
+    let t2 = th * th;
+    (th - s) / (t2 * th)
+}
+
+/// `1/θ² - cot(θ/2)/(2θ)`, regular at `π`.
+pub(super) fn exact_c<S: Real>(z: S) -> S {
+    let th = z.sqrt();
+    let t2 = th * th;
+    let (s, co) = half_angle(th);
+    S::one() / t2 - co / (S::lit(2.0) * th * s)
+}
+
+/// `(θ² - 4 sin²(θ/2))/(2θ⁴)` from `θ`.
+fn d_from<S: Real>(th: S) -> S {
+    let t2 = th * th;
+    let s = half_angle(th).0;
+    (t2 - S::lit(4.0) * s * s) / (S::lit(2.0) * t2 * t2)
+}
+
+/// `(2θ - 3 sin θ + θ cos θ)/(2θ⁵)` from `θ`, `s = sin θ` and `co = cos θ`.
+fn e_from<S: Real>(th: S, s: S, co: S) -> S {
+    let t2 = th * th;
+    ((S::lit(2.0) * th - S::lit(3.0) * s) + th * co) / (S::lit(2.0) * th * (t2 * t2))
+}
+
+/// `(b, d, e)`, `sin θ` and `cos θ` formed once for `b` and `e`.
+fn exact_b_d_e<S: Real>(z: S) -> [S; 3] {
+    let th = z.sqrt();
+    let (s, co) = th.sin_cos();
+    [b_from(th, s), d_from(th), e_from(th, s, co)]
+}
+
+#[cfg(any(test, feature = "__sweep"))]
+pub(super) fn exact_d<S: Real>(z: S) -> S {
+    d_from(z.sqrt())
+}
+
+#[cfg(any(test, feature = "__sweep"))]
+pub(super) fn exact_e<S: Real>(z: S) -> S {
+    let th = z.sqrt();
+    let (s, co) = th.sin_cos();
+    e_from(th, s, co)
+}
+
+/// `cos(θ/2)`, the quaternion's scalar part.
+#[cfg(any(test, feature = "__sweep"))]
+pub(super) fn exact_cos_half<S: Real>(z: S) -> S {
+    half_angle(z.sqrt()).1
+}
+
+/// `2 atan2(n, w)/n` at `n² = n2 > 0`.
+pub(super) fn exact_r<S: Real>(n2: S, w: S) -> S {
+    let n = n2.sqrt();
+    S::lit(2.0) * n.atan2(w) / n
+}
+
+/// The first `terms` of a swept series: how many the sweep asks for is its own, at most all.
+#[cfg(any(test, feature = "__sweep"))]
+fn swept<S: Real>(wide: &[f64], narrow: &[f32], z: S, terms: usize) -> S {
+    debug_assert!((1..=wide.len()).contains(&terms), "coeffs: 1..=8 terms");
+    match S::PRECISION {
+        Precision::F64 => horner(wide.get(..terms).unwrap_or(wide), z),
+        Precision::F32 => horner(narrow.get(..terms).unwrap_or(narrow), z),
+    }
+}
+
+#[cfg(any(test, feature = "__sweep"))]
+pub(super) fn series_k<S: Real>(z: S, terms: usize) -> S {
+    swept(&SWEPT_K_F64, &SWEPT_K_F32, z, terms)
+}
+
+#[cfg(any(test, feature = "__sweep"))]
+pub(super) fn series_a<S: Real>(z: S, terms: usize) -> S {
+    swept(&SWEPT_A_F64, &SWEPT_A_F32, z, terms)
+}
+
+#[cfg(any(test, feature = "__sweep"))]
+pub(super) fn series_b<S: Real>(z: S, terms: usize) -> S {
+    swept(&SWEPT_B_F64, &SWEPT_B_F32, z, terms)
+}
+
+#[cfg(any(test, feature = "__sweep"))]
+pub(super) fn series_c<S: Real>(z: S, terms: usize) -> S {
+    swept(&SWEPT_C_F64, &SWEPT_C_F32, z, terms)
+}
+
+#[cfg(any(test, feature = "__sweep"))]
+pub(super) fn series_d<S: Real>(z: S, terms: usize) -> S {
+    swept(&SWEPT_D_F64, &SWEPT_D_F32, z, terms)
+}
+
+#[cfg(any(test, feature = "__sweep"))]
+pub(super) fn series_e<S: Real>(z: S, terms: usize) -> S {
+    swept(&SWEPT_E_F64, &SWEPT_E_F32, z, terms)
+}
+
+#[cfg(any(test, feature = "__sweep"))]
+pub(super) fn series_cos_half<S: Real>(z: S, terms: usize) -> S {
+    swept(&SWEPT_COS_HALF_F64, &SWEPT_COS_HALF_F32, z, terms)
+}
+
+/// `2/w` times the series in `s = n²/w²`, at `w > 0`.
+#[cfg(any(test, feature = "__sweep"))]
+pub(super) fn series_r<S: Real>(n2: S, w: S, terms: usize) -> S {
+    S::lit(2.0) / w * swept(&SWEPT_R_F64, &SWEPT_R_F32, n2 / (w * w), terms)
+}
