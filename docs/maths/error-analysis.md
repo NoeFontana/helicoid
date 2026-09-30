@@ -83,7 +83,8 @@ construction. $\square$
 **Checked (EA.2):** (b) $3\times10^5$ random $\varphi$ (components log-uniform in magnitude over six
 decades, mpmath 40 digits): max error of $\mathrm{fl}(\varphi\cdot\varphi)$ $2.81u$ (bound $3u$), of
 $\hat\theta$ $2.21u$ (bound $2.5u$); (d) `libm` 0.2.16 (the crate of `Cargo.lock`, built with
-`default-features = false` as the workspace sets it) for x86_64,
+`default-features = false`, the workspace setting then; `arch` does not change `sin`, `cos` or `atan2`,
+[`0018`](../decisions/0018-libm-arch-is-bit-identical-for-exact-operations.md)) for x86_64,
 $2\times10^5$ inputs (splitmix64 seed $12345$; `sin`, `cos`, `sincos`, `sqrt` at $x$ log-uniform on
 $[10^{-8}, \pi]$; `atan2(y, x)` with $y \in [0,1)$, $x \in [0,1)$ and, on every second draw,
 $x \in [0, 10^{-6})$) against mpmath 1.3.0 at 40 digits, glibc 2.39 on the same inputs; the
@@ -440,8 +441,10 @@ $\max_{\mathrm{helicoid}} \le \max_{\mathrm{baseline}}$, compared exactly.
   neither fuses nor reassociates without an explicit intrinsic (`mul_add` is banned); a `libm`
   function is a program over these and integer operations; so every output is a function of the
   input bits alone (NaN payloads apart; a NaN is a failure, EA.11(e)), identical on x86_64, aarch64
-  and wasm32, **with `libm`'s default features off** as `Cargo.toml` sets them (its optional `arch`
-  fast paths would break bit identity). Measured, with them off: $2\times10^5$ inputs through
+  and wasm32, **with `libm`'s `arch` feature on** as `Cargo.toml` sets it (it routes only the exactly
+  rounded `sqrt`, `fma` and `rint` to the target's instruction, and NaN sign and payload are outside the
+  claim; [`0018`](../decisions/0018-libm-arch-is-bit-identical-for-exact-operations.md)). Measured, with
+  `arch` off (the setting when this was measured): $2\times10^5$ inputs through
   `libm::{sin, cos, sincos, atan2, sqrt}` (six outputs each) built for x86_64 and for
   `wasm32-wasip1` (run under wasmtime): $0$ of $1.2\times10^6$ outputs differ, digests equal
   (aarch64 was not available: it is `just determinism`'s). The same inputs through `f64::sin`,

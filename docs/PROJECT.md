@@ -160,8 +160,9 @@ Status per phase: the §0.0 table heading each spec is authoritative.
   `helicoid` must dominate it on every paired stratum before `tf_tree` migrates.
 - **D16 — Determinism by construction.** Every transcendental goes through the `libm` crate on
   every target; no `mul_add`, no `target-cpu`, no fast-math. Outputs are bit-identical across
-  x86_64, aarch64 and wasm32; `just determinism` checks it. This is what makes D8's no-regress bar
-  exact.
+  x86_64, aarch64 and wasm32 (NaN sign and payload apart); `just determinism` checks it. This is what
+  makes D8's no-regress bar exact. `libm`'s `arch` feature is on: it routes only exactly rounded
+  operations to the target's instruction ([`0018`](./decisions/0018-libm-arch-is-bit-identical-for-exact-operations.md)).
 - **D17 — MSRV never exceeds a consumer's.** Today **1.87** (`tf_tree`). Raising it is a record
   that names every consumer's MSRV.
 - **D18 — Apache-2.0 / MIT dual license**, matching `tf_tree` D20.

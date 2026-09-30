@@ -98,7 +98,19 @@ defined by the status tables in `docs/`; they win over this file.
   has no 4-D point) and `Matrix<S, N, N>` (`N` = 2..=4, `mint::ColumnMatrixN`), for `f32` and
   `f64` (`docs/PHASE2.md` §7). Scalars are moved, never computed on. `just lint` and `just test` cover the feature; `just msrv`, `just no-std`
   and `just wasm` build it. Bitwise round trips pin `-0`, infinities, subnormals and NaN payloads. New public API, nothing breaks.
-- `docs/decisions/0018` (ready): `libm`'s `arch` feature is bit-identical for exactly-rounded operations
+- `docs/decisions/0018` (implemented): `libm`'s `arch` feature is bit-identical for exactly-rounded operations
   (dispatch table read for x86_64, aarch64, wasm32, thumbv7em; 95 digests over the `libm` entry points
   equal on x86_64, wasm32 (node WASI) and aarch64 (`qemu-user`); NaN sign and payload stay the target's,
   outside D16).
+
+### Changed
+
+- `libm` is built with its `arch` feature (`0018`): `sqrt`, `sqrtf` (x86_64, aarch64), `fma`, `fmaf`
+  and `rint`, `rintf` (aarch64; `fma` by `cpuid` on x86_64) run the target's instruction. All are exactly
+  rounded, so every output that is not NaN is unchanged on every target; the sign and payload of a NaN
+  from `sqrt` and `fma` are now the target's, as those of `+ - * /` always were (so `copysign` of the
+  NaN of `sqrt(-1)` takes the target's sign; that input is outside `Real::sqrt`'s domain).
+  `Real::sqrt` is about 4x faster on x86_64 (measured; `docs/decisions/0018`, Consequences). wasm32 and
+  thumbv7em are unchanged: `libm` routes nothing there on stable. New test: `Real::sqrt` for `f64` and
+  `f32` against an integer square root, bit for bit, over `2 x 10^6` cases with a pinned digest; checked
+  by hand on x86_64, aarch64 (`qemu-user`) and wasm32 (node WASI), run by CI on x86_64 and aarch64.

@@ -1,8 +1,8 @@
 # 0018: `libm`'s `arch` feature is bit-identical for exactly-rounded operations
 
-**Status:** ready
+**Status:** implemented
 **Owner:** @NoeFontana
-**Implementation:** —
+**Implementation:** #32 (ratification), #33 (enable).
 
 ## Context
 
@@ -144,18 +144,54 @@ record is the review D10 asks for.
 
 ## Consequences
 
-- `sqrt` is a few nanoseconds on x86_64 and aarch64, a larger gain than any algorithmic change in
-  `helicoid-linalg`. The implementing PR records the measured effect on `Vector::norm`, `chol::<6>`
-  and `Dual::sqrt`.
+- `sqrt` is a few nanoseconds on x86_64 and aarch64. Measured on x86_64 (AMD EPYC Milan, rustc 1.98.1,
+  `libm` 0.2.16), ns per operation, before (`arch` off, the ratification commit) and after (the
+  stacked PR); `thr` on independent inputs, `lat` with each result feeding the next:
+
+  | | `f64` before | `f64` after | `f32` before | `f32` after |
+  |---|---|---|---|---|
+  | `Real::sqrt` thr | 8.6 | 2.1 | 7.0 | 1.3 |
+  | `Real::sqrt` lat | 22.8 | 6.4 | 18.8 | 4.7 |
+  | `Dual<_, 2>::sqrt` thr | 8.5 | 3.2 | 7.0 | 2.0 |
+  | `Dual<_, 2>::sqrt` lat | 22.8 | 6.4 | 18.8 | 4.7 |
+  | `Vector<_, 3>::norm` thr, by reference | 8.2 | 2.1 | 28.4 | 16.7 |
+  | `Vector<_, 3>::norm` thr, by value (`black_box` copy) | 9.6 | 12.9 | 28.6 | 16.7 |
+  | `Vector<_, 3>::norm` lat | 24.3 | 7.8 | 28.9 | 15.7 |
+  | `chol::<_, 6>` thr | 150.0 | 60.2 | 120.9 | 50.7 |
+  | `chol::<_, 6>` lat | 179.9 | 94.2 | 150.6 | 79.7 |
+
+  Protocol: a scratch crate (not committed) over `helicoid-linalg` at each commit, release,
+  `opt-level = 3`, one core (`taskset`), 41 repeats of `2 x 10^6` operations (`4 x 10^4` for `chol`),
+  the minimum repeat of a run, the minimum over 15 runs interleaved between the two builds (7 for the
+  by-reference `norm` row); inputs from a 1024-entry ring, checksums kept live. This differs from the
+  plan's "7 repeats, median of three runs": the machine is shared (load average 4 to 10 from other
+  users), so a minimum is the estimate least moved by it. On the 15 runs the max/min spread of a row
+  is at most 1.6x. The `f64` `norm` by-value row is the one that gets slower, reproducibly (median
+  13.1 against 9.6; spread 1.63 before, 1.06 after): it passes each vector through `black_box(*v)`, a copy
+  through memory, and a dot product alone costs 7.2 ns there. The by-reference row runs the same
+  `norm` on the same inputs without the copy and is 3.9x faster; the copy is the harness, and the
+  by-value row is not evidence of a `norm` regression, but this record did not isolate why the copy
+  and `sqrtsd` interact. The `f32` `norm` rows are far above `f32` `sqrt` in both builds and gain
+  1.7x; the cause was not investigated. `chol::<6>` is about 2.5x faster in throughput and 1.9x in
+  latency; the bare `sqrt` and `Dual::sqrt` rows are 3.6x to 5.6x.
 - **No change at all on wasm32 (stable) and thumbv7em-none-eabihf**, and none on
   `aarch64-unknown-none-softfloat`: nothing is routed there (Context). The cross-target digest
   stays trivially equal, and no speed-up should be expected on those targets.
 - `Real::sqrt` of a negative argument returns a NaN whose sign is the target's in release builds
   (`Real::sqrt` already documents "NaN"). The permanent test compares NaN by `is_nan`, so its
   digest is target-independent.
+  `copysign` of that NaN takes the target's sign (Decision 2); a release-mode test pins that the
+  result is `+-|x|` and nothing else.
+- The pinned digests (`f64` `0xaa0443e9153deb6d`, `f32` `0x14c6bc716b7e3361`) were computed with
+  `arch` off and hold with it on, on x86_64 (debug and release), on `wasm32-wasip1` (debug and release,
+  node 24 WASI host) and on `aarch64-unknown-linux-gnu` (debug and release, `qemu-user` 11.0.3, whose
+  test binary has 185 `fsqrt`). A one-bit defect planted in `Real::sqrt` is caught in both types.
+  `wasmtime` and native aarch64 silicon were not available in the session; CI's `ubuntu-24.04-arm`
+  `test` job runs the test natively, and no CI job runs it on wasm32 (`just wasm` builds only).
 - The comment in the workspace `Cargo.toml` states the exact-rounding argument and cites this
   record; `docs/maths/error-analysis.md` EA.11(c) and its `Checked` line stop saying that `arch`
-  would break bit identity. Records `0007` and D16 need a citation, not a new rule.
+  would break bit identity. Records `0007` and D16 carry a citation and the NaN caveat: `0007`, a `ready` record,
+  gains one sentence in its Decision item 1; no rule changes.
 - `i586` (x86 without SSE2) is unaffected by this record: its x87 paths are on with or without
   `arch`, and the x87 `exp` family is documented by `libm` as up to 1 ulp hardware-dependent. It is
   outside D17's target set and would need its own record.

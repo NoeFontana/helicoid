@@ -16,7 +16,8 @@ faer-free, `forbid(unsafe_code)`), fuse-geometry on wasm32. `tf_tree` 0016 is th
 
 1. **Dependencies.** `helicoid-linalg` = `libm`. `helicoid` = `helicoid-linalg` + `libm`.
    Optional feature `mint` on both. Nothing else: no `nalgebra`, `faer`, `num-traits`, `bytemuck`,
-   `serde`, SIMD crate, or logging.
+   `serde`, SIMD crate, or logging. `libm` is built with its `arch` feature (`0018`): a feature adds
+   no crate.
 2. **`no_std`, no `alloc`**, `#![forbid(unsafe_code)]` on every library root.
 3. **`libm` for every transcendental on every target** (D16); no `mul_add`; no `target-cpu` in any
    config or CI job.
