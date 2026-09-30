@@ -6,7 +6,8 @@
 //! [`Point`] and column-major [`Matrix`] with [`hat`]/[`vee`], [`Mat3::inverse_adj`] and the
 //! Cholesky factorization [`chol`] with [`solve_lower`]/[`solve_upper`]/[`chol_solve`] (§4), the
 //! strided views [`Strided`]/[`StridedMut`] over caller memory (§5), and (§6) the real roots of a
-//! cubic, [`solve_cubic`], and the eigendecomposition of a symmetric 3x3 matrix, [`eig3`].
+//! cubic, [`solve_cubic`], the eigendecomposition of a symmetric 3x3 matrix, [`eig3`], and its
+//! singular value decomposition, [`svd3`].
 //!
 //! The optional feature `mint` (off by default) adds `From`/`Into` between [`Vector`]/[`Point`]/
 //! [`Matrix`] and the `mint` types, for `f32` and `f64` (§7); it is the only interop, so
@@ -43,6 +44,7 @@ mod point;
 mod real;
 mod skew;
 mod strided;
+mod svd3;
 mod vector;
 
 pub use chol::{chol, chol_solve, solve_lower, solve_upper};
@@ -54,6 +56,7 @@ pub use point::{Point, Point2, Point3};
 pub use real::{Blend, Mask, Precision, Real};
 pub use skew::{hat, vee};
 pub use strided::{Strided, StridedMut};
+pub use svd3::svd3;
 pub use vector::{Vec2, Vec3, Vector};
 
 // `proptest` and the `format!` in its macros need `std`; the library itself stays `no_std`.
@@ -74,5 +77,7 @@ mod linalg_tests;
 mod mint_tests;
 #[cfg(test)]
 mod sqrt_tests;
+#[cfg(test)]
+mod svd3_tests;
 #[cfg(test)]
 mod tests;

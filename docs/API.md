@@ -54,9 +54,11 @@ covariance. Ambient Jacobians (Phase 6) follow the same rule.
 **NORMATIVE.** Every function with a restricted domain carries a `# Domain` rustdoc section naming
 it (`NUMERICS.md` §12) and a `debug_assert!` enforcing it. Release builds never check; out-of-domain
 release behaviour is an unspecified value, never a panic (bar out-of-bounds strided access, D11),
-never UB. The functions that assert nothing are `chol`, `solve_cubic` and `eig3`: each accepts every
+never UB. The functions that assert nothing are `chol`, `solve_cubic`, `eig3` and `svd3`: each accepts every
 input; the first two report through a mask (R4), `eig3` reads one triangle and reports by non-finite
-eigenvalues (`0023` (draft)).
+eigenvalues (`0023` (draft)), and `svd3` reports by non-finite singular values while its two frames
+stay finite and ordered for every input
+([`0024`](./decisions/0024-svd3-is-one-sided-hestenes.md)).
 Unit-norm inputs are checked by `*_unchecked` constructors in debug only; `*_normalized`
 constructors normalize.
 
@@ -74,7 +76,7 @@ constructors normalize.
 | `Mat3::inverse_adj` | fn | `(adjugate/det, det)`; the caller decides what `det` means. |
 | `chol<S, N>`, `solve_lower`, `solve_upper`, `chol_solve` | fns | Fixed-size Cholesky; `(L, S::Mask)`. Triangular solves reading one triangle each; `chol_solve(&L, b)` solves `A x = b` from the factor without a transpose ([`0019`](./decisions/0019-a-cholesky-solve-without-the-transpose.md)); `NUMERICS.md` §15. |
 | `Strided<'a, S>`, `StridedMut<'a, S>` | structs | `col_major`, `row_major`, `block`; bounds-checked (`# Panics`). |
-| `eig3`, `svd3`, `solve_cubic` | fns | `NUMERICS.md` §13 references; signatures in `PHASE2.md` §6. |
+| `eig3`, `svd3`, `solve_cubic` | fns | `NUMERICS.md` §13 references; signatures in `PHASE2.md` §6. `svd3` is one-sided Hestenes, not McAdams ([`0024`](./decisions/0024-svd3-is-one-sided-hestenes.md)), and is signed so that `u * v.transpose()` is the nearest rotation. |
 | `mint` | feature | `From`/`Into` for `Vector`, `Matrix` at sizes 2–4 and `Point` at 2–3 (`mint` has no 4-D point). |
 
 ## 3. `helicoid` — groups and geometry

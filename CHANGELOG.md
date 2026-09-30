@@ -9,6 +9,27 @@ defined by the status tables in `docs/`; they win over this file.
 
 ### Added
 
+- `svd3`: the singular value decomposition of a 3x3 matrix, a four-sweep cyclic one-sided Hestenes
+  Jacobi generic over `S: Real`. `U` and `V` are finite with normalized, ordered columns for every
+  input, `det U = det V = +1`, and only `sigma_3` is negative, carrying the sign of `det A`, so
+  `u * v.transpose()` is the nearest rotation with no repair. `A^T A` is never formed. The sweep
+  count and every error bound are measured by committed tests against an 82-row `mp.svd_r` fixture.
+  Outside the documented magnitude range only finiteness and the ordering hold.
+- `docs/decisions/0024`: `svd3` is one-sided Hestenes, not McAdams, and `docs/PHASE2.md` §6 is
+  amended accordingly — forming `A^T A` costs the right singular vectors of a small close pair a
+  factor `sigma_1 / sigma_2` (measured `1.5e-3` rad against `1.8e-9` at `sigma_1 / sigma_2 = 1e6`),
+  and the paper's approximate Givens quaternion and hardware `rsqrt` buy branchlessness that
+  `S::select` already gives and that D16 forbids. The record also states the ordering
+  `sigma_1 >= sigma_2 >= |sigma_3|` that `nearest_rotation = U V^T` needs, answering `0015` PH.2's
+  `svd3` row.
+
+### Changed
+
+- `docs/PHASE2.md` §6 specifies `svd3` as one-sided Hestenes with the rotation, its pairing, the
+  sweep count and the ordering written out (`0024`); `docs/API.md` R6 lists `svd3` among the
+  functions that assert nothing.
+- `eig3`'s frame helpers (`unit_or`, `any_orthogonal`) are `pub(crate)` and shared with `svd3`.
+
 - `docs/decisions/0020`: `Dual::sqrt` at zero keeps `d / (2 sqrt v)` (the NaN is the report and the
   `PHASE1.md` §10 row needs it); the guarded norm is a doctest, a zero-safe norm is a later record.
 - `docs/decisions/0021`: the per-entry finite guard of `chol` stays; four bit-identical variants were

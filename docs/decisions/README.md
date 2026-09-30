@@ -38,6 +38,7 @@ grep -m1 -H '^\*\*Status:' docs/decisions/0*.md
 | [`0021`](./0021-the-cholesky-finite-guard-stays.md) | the `chol` per-entry finite guard stays: four bit-identical variants measured, none worth a rewrite; the 15% bar and the finiteness of `L` are stated. |
 | [`0022`](./0022-solve-cubic-acos-and-inherited-limits.md) | `solve_cubic`'s `acos` and `pi` through `atan2`, and the limits it inherits from omnisac; nothing decided. |
 | [`0023`](./0023-eig3-departs-from-omnisac-and-its-limits.md) | what `eig3` does that omnisac's `eigendecomp_sym3_signed` does not (no `Option`, non-finite eigenvalues, the frame construction) and the limits it inherits; nothing decided. |
+| [`0024`](./0024-svd3-is-one-sided-hestenes.md) | `svd3` is a four-sweep cyclic one-sided Hestenes Jacobi, amending `PHASE2.md` §6 away from McAdams: `A^T A` is never formed, the ordering `sigma_1 >= sigma_2 >= |sigma_3|` is stated, and the gauge is constructed rather than repaired. |
 
 ## Lifecycle
 

@@ -52,3 +52,4 @@
 - [0021: The Cholesky finite guard stays](decisions/0021-the-cholesky-finite-guard-stays.md)
 - [0022: `solve_cubic`'s `acos` and the limits it inherits (draft)](decisions/0022-solve-cubic-acos-and-inherited-limits.md)
 - [0023: `eig3` departs from omnisac, and the limits it inherits (draft)](decisions/0023-eig3-departs-from-omnisac-and-its-limits.md)
+- [0024: `svd3` is one-sided Hestenes, not McAdams](decisions/0024-svd3-is-one-sided-hestenes.md)

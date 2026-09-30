@@ -329,9 +329,16 @@ $X(t) = X_0\,\mathrm{Exp}(t\,d)$ with $d = X_1 \ominus_R X_0$ and $\Delta = X_0^
 - E. Eade, "Lie Groups for Computer Vision", 2014; H. Strasdat, *Local Accuracy and Global
   Consistency for Efficient Visual SLAM*, PhD thesis, 2012.
 - S. W. Shepperd, "Quaternion from rotation matrix", J. Guidance and Control, 1978.
+- M. R. Hestenes, "Inversion of matrices by biorthogonalization and related results", J. SIAM
+  1958; H. Rutishauser, "The Jacobi method for real symmetric matrices", Numer. Math. 1966 (the
+  Givens coefficients); J. Demmel, K. Veselić, "Jacobi's method is more accurate than QR", SIAM J.
+  Matrix Anal. Appl. 1992 (why the one-sided form is relatively accurate on a column-graded
+  matrix). `svd3` is this one-sided form, per
+  [`0024`](./decisions/0024-svd3-is-one-sided-hestenes.md); `PHASE2.md` §6 has the formulas.
 - A. McAdams et al., "Computing the Singular Value Decomposition of 3×3 matrices with minimal
-  branching and elementary floating point operations", 2011; J. Kopp, "Efficient numerical
-  diagonalization of hermitian 3×3 matrices", 2008.
+  branching and elementary floating point operations", 2011 — an **alternative** `svd3` was
+  specified against and no longer follows (`0024`: it forms $A^\top A$); J. Kopp, "Efficient
+  numerical diagonalization of hermitian 3×3 matrices", 2008 (still owed by `eig3`).
 - H. Sommer, J. Forbes, R. Siegwart, P. Furgale, "Continuous-Time Estimation of attitude using
   B-splines on Lie groups", 2016; C. Sommer, V. Usenko, D. Schubert, N. Demmel, D. Cremers,
   "Efficient Derivative Computation for Cumulative B-Splines on Lie Groups", CVPR 2020 (Phase 7).
