@@ -66,20 +66,20 @@ pub(crate) fn record(
 
 /// The harness's oracle: the reference correctly rounded at the precision asked, then moved `ulps`
 /// places up there.
-pub(super) struct Perfect {
+pub(crate) struct Perfect {
     name: &'static str,
     ulps: u32,
 }
 
 impl Perfect {
-    pub(super) fn exact() -> Self {
+    pub(crate) fn exact() -> Self {
         Self {
             name: "perfect",
             ulps: 0,
         }
     }
 
-    pub(super) fn next_up() -> Self {
+    pub(crate) fn next_up() -> Self {
         Self {
             name: "next-up",
             ulps: 1,

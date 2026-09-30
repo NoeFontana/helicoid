@@ -142,6 +142,33 @@ jobs:
           tool: just
       - run: just thresholds-check
 
+  # The bars of `docs/PHASE1.md` §8: the oracles' rows, then `just envelope --check` (domination,
+  # exact no-regress, coverage, and a baseline and ENVELOPE.md that a bless would not change). The
+  # candidate `helicoid` is not an in-process subject before Phase 3: until then the oracles' rows
+  # are produced and not read, and only coverage is checked. Once `helicoid` is registered the job
+  # fails when it writes no rows, so it becomes the required gate (§3) with the subject.
+  envelope:
+    name: envelope
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            .
+            runners/tf_tree_math
+            runners/sophus_rs
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: just,cargo-nextest,cargo-deny
+      - run: just oracle-tf-tree-math
+      - run: just oracle-sophus-rs
+      - run: just envelope --check
+
   # The committed corpus must regenerate byte-identically from the pinned generator.
   # About 17 CPU-minutes of generation plus the generator's tests; the timeout stops a runaway.
   corpus-check:

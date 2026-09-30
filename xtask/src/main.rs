@@ -4,6 +4,7 @@
 #![allow(clippy::print_stderr)]
 
 mod conformance;
+mod envelope;
 mod lint;
 mod seeded;
 mod shipped;
@@ -12,11 +13,17 @@ mod thresholds;
 use std::process::ExitCode;
 
 /// Every implemented task; the usage line and the unknown-task error read this list.
-const TASKS: &[&str] = &["lint", "conformance", "thresholds"];
+const TASKS: &[&str] = &["lint", "conformance", "thresholds", "envelope"];
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
-    if dispatch(&args, lint::run, conformance::run, thresholds::run) {
+    if dispatch(
+        &args,
+        lint::run,
+        conformance::run,
+        thresholds::run,
+        envelope::run,
+    ) {
         ExitCode::SUCCESS
     } else {
         ExitCode::FAILURE
@@ -31,6 +38,7 @@ fn dispatch(
     lint: impl FnOnce() -> Result<Vec<lint::Violation>, String>,
     conformance: impl FnOnce(&[String]) -> Result<(), String>,
     thresholds: impl FnOnce(&[String]) -> Result<(), String>,
+    envelope: impl FnOnce(&[String]) -> Result<(), String>,
 ) -> bool {
     match args.first().map(String::as_str) {
         Some("lint") => match lint() {
@@ -61,6 +69,13 @@ fn dispatch(
                 false
             }
         },
+        Some("envelope") => match envelope(&args[1..]) {
+            Ok(()) => true,
+            Err(e) => {
+                eprintln!("xtask envelope: {e}");
+                false
+            }
+        },
         Some(task) => {
             eprintln!("xtask: `{task}` is not implemented (docs/PHASE1.md §0.0); have: {TASKS:?}");
             false
@@ -83,7 +98,13 @@ mod tests {
                    lint: Result<Vec<lint::Violation>, String>,
                    conf: Result<(), String>| {
             let args: Vec<String> = args.iter().map(ToString::to_string).collect();
-            dispatch(&args, || lint, |_| conf, |_| Err("unused".into()))
+            dispatch(
+                &args,
+                || lint,
+                |_| conf,
+                |_| Err("unused".into()),
+                |_| Err("unused".into()),
+            )
         };
         assert!(run(&["lint"], Ok(vec![]), Ok(())));
         assert!(!run(&["lint"], Ok(vec![violation()]), Ok(())));
@@ -103,9 +124,32 @@ mod tests {
                 true => Ok(()),
                 false => Err("usage".to_string()),
             };
-            dispatch(&args, || Ok(vec![]), |_| Ok(()), check)
+            dispatch(
+                &args,
+                || Ok(vec![]),
+                |_| Ok(()),
+                check,
+                |_| Err("unused".into()),
+            )
         };
         assert!(thr(&["thresholds", "--check"]) && !thr(&["thresholds"]));
+        // `envelope` gets the arguments after its name, and its `Err` fails the run.
+        let env = |args: &[&str], out: Result<(), String>| {
+            let args: Vec<String> = args.iter().map(ToString::to_string).collect();
+            let unused = |_: &[String]| Err("unused".to_string());
+            dispatch(
+                &args,
+                || Ok(vec![]),
+                unused,
+                unused,
+                |rest| {
+                    assert_eq!(rest, ["--check"]);
+                    out
+                },
+            )
+        };
+        assert!(env(&["envelope", "--check"], Ok(())));
+        assert!(!env(&["envelope", "--check"], Err("1 failure(s)".into())));
     }
 
     #[test]
@@ -121,6 +165,7 @@ mod tests {
                 seen.borrow_mut().extend(rest.iter().cloned());
                 Ok(())
             },
+            |_| Err("unused".into()),
             |_| Err("unused".into()),
         );
         assert!(ok && *seen.borrow() == ["--fn", "so2_exp"]);

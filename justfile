@@ -114,6 +114,19 @@ oracle-sophus-rs:
     cargo nextest run --manifest-path runners/sophus_rs/Cargo.toml --locked
     cargo xtask conformance --oracle sophus_rs
 
+# The bars of `docs/PHASE1.md` §8 over conformance/results: domination over the best oracle and exact
+# no-regress against conformance/baseline, per (fn, stratum, precision) on the max, then coverage of
+# the corpus. It first reruns the in-process subjects, so the candidate's rows are current; the
+# oracles' rows are what `oracle-tf-tree-math`, `oracle-sophus-rs` last wrote. `--check` also fails on
+# a baseline or docs/evidence/ENVELOPE.md (its oracle columns aside) that `--bless` would write
+# differently (an improved max is blessed in its own PR); `--bless` writes both, and nothing while
+# domination, coverage or a dropped stratum fails (`--dry-run`: says what it would write). While the
+# `helicoid` subject is not registered (Phase 3) it has no rows to judge: the run says so and checks
+# coverage only; once it is, no rows fails. `--candidate seeded:correct` reads the seeded kernel as
+# a stand-in, read-only in practice.
+envelope *args: conformance
+    cargo xtask envelope {{args}}
+
 # The threshold sweep of the seeded kernels over the corpus (`docs/PHASE1.md` §6): writes
 # conformance/sweeps/thresholds.csv and xtask/src/seeded/generated.rs. `coeffs/generated.rs`
 # joins them with Phase 3. The second is compiled into xtask: a hand edit that no longer compiles

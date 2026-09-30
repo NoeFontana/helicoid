@@ -9,15 +9,17 @@
 `NUMERICS.md` §11 defines the forward error and is silent on several things a harness must decide
 before it can score a record. `xtask/src/conformance/metric.rs` (`TABLE` and its module docs) took
 the smallest reading of each so that the harness core runs (`PHASE1.md` §5). The readings fix the
-bar every envelope baseline is blessed against (`0006`); none is blessed yet (`PHASE1.md` §8 is not
-started), so each is still free to change. `xtask/src/thresholds` (`PHASE1.md` §6) did the same for
+bar every envelope baseline is blessed against (`0006`); none is blessed yet (`xtask envelope` exists and
+has no `helicoid` rows to bless), so each is still free to change. `xtask/src/thresholds` (`PHASE1.md` §6) did the same for
 the threshold sweep (questions 8 to 11) and for the file it writes, `xtask/src/seeded/generated.rs`
 (12, 13); the self-test (`PHASE1.md` §10) did for the planted `c` (14, 15) and for the seeded SO(3)
 subject and its `Log` defects (16 to 20), and for the seeded SE_N(3) subject and its defects (21
 to 25); `f32` scoring and the self-test's `f32` half did for the curve, its kernel and its floor
 (26 to 28); the `f32` sweep did for `r`'s branch variable, mask, domain and prior (29); the oracle runner did
 for the file protocol and for what a runner owes (31, 32), and for
-sophus-rs (33 to 35).
+sophus-rs (33 to 35); the envelope did for a bad oracle
+row, the candidate before Phase 3, the baseline's shape, coverage and the page's oracle columns
+(36 to 40).
 
 ## Decision
 
@@ -30,8 +32,8 @@ that survives is a `NUMERICS.md` §11 edit.
 
 ## Consequences
 
-Until `ready`: the readings are provisional, `just envelope --bless` does not exist, and no baseline
-is committed. A changed reading changes every `max_u` under it.
+Until `ready`: the readings are provisional, `just envelope --bless` is not run (it writes a baseline
+for `helicoid` only, which has no rows yet), and no baseline is committed. A changed reading changes every `max_u` under it.
 
 ## Implementation plan
 
@@ -246,3 +248,41 @@ None until the open questions are resolved.
     `so3_log` aligns the sign at `w = +0`, so its row does not show it, while `sen3_log_n1`
     (`SignRule::Fixed`) scores 1.78e16 `u` in `q:w0`, since `ρ = J_l⁻¹(φ) x` follows the branch of
     `φ`. Align `sen3_log` there too (to which `ρ`?), or keep recording it as an error?
+36. **A bad oracle row's maximum** (§7: "a stratum where every oracle is bad does not lower the bar";
+    §8: `min(oracle.max_u)`). A row with a non-finite record keeps the finite records' maximum in
+    `max_u`; a row with nothing scored has `NaN`. The envelope gives such an oracle row no maximum,
+    so it is never the best and a stratum where every oracle is bad is unpaired. Or does the finite
+    maximum of an oracle that answered `NaN` somewhere stay a bar?
+37. **What the bars judge before `helicoid` exists.** `xtask envelope` reads the subject `helicoid`.
+    While it is not a registered in-process subject, no rows passes with a message (coverage and the
+    page are checked) and a baseline no row answers fails; once it is registered, no rows fails, so
+    the gate needs no code change. `--candidate seeded:correct` reads the seeded kernel as a
+    stand-in (a name that is neither registered nor `helicoid` is refused): an oracle beats it on 75
+    of its 214 strata paired with an oracle (`sen3_exp_n1` 36, `sen3_jl_n1` 15, `sen3_jr_n1` 15,
+    `so3_log` 8, `so3_exp` 1), where `PHASE3.md` §10 wants `helicoid` to dominate every paired
+    stratum; that kernel is the per-coefficient one of question 24, not the grouped kernel
+    `helicoid` will run. Pass with nothing to judge until it is registered, or fail until Phase 3 (a
+    red CI job)?
+38. **The baseline's shape** (§8: "committed per-stratum maxima"). One file per candidate, its scored
+    result rows with `git_rev` blank, so a bless is a diff of the numbers and `p99_u`, `n` and
+    `argmax_id` ride along; `n` is compared too, since a maximum over fewer records can only fall
+    (a stratum is never narrowed: `PROJECT.md` D7). A bless reports, not fails on, what only moves
+    the baseline (a worse max, a stratum it lacks, more records), and writes nothing while another
+    failure stands (domination, coverage, a dropped stratum or fewer records: `PHASE3.md` §10
+    blesses a dominated envelope). Keep, or a file of key and maximum only?
+39. **The ids coverage names** (§8: "every function id named in `NUMERICS.md` or `API.md` §3"). Those
+    documents name routines, not ids. Required are §4.3's 45 (a test equates them with the table);
+    owed, until the §0.0 row of their phase that owns them says `Done`, the 16 the later phases name
+    (`eig3`, `svd3`, `solve_cubic`, `real_*` on the `Dual<S, N>` row whose text names them,
+    `so3_geodesic`, `se3_geodesic`, `s2_*`, `sim3_*`, `so3_gamma2`, the plus Jacobians). A row, not
+    the whole table, since the tables carry migrations in other repositories and the 1.0 criteria,
+    which no corpus file waits for. No spec gives an id to `act` of SO(2), SE(2) and SE(3), to SE(2)'s
+    `α`, `β` or to `cos θ/2`, so none is checked, and Phase 3 cannot be called done while that is
+    open. Is that the list, and which ids do those routines get?
+40. **The oracle columns of the page.** The oracle runners run on their platform's `libm`, which D16
+    does not cover (`error-analysis.md` EA.13(d)), so the best oracle and the fifth digit of its
+    maximum are not a function of the source. `--check` compares the page without a row's last three
+    columns (best oracle, its version, its maximum) and the baseline exactly; `--bless` writes them
+    all. An oracle CSV's provenance (`git_rev`, beyond the version in each row) is not compared, so a
+    stale oracle file is read as written. Keep, or record the oracle environment and reject a file
+    that differs?

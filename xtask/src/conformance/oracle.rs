@@ -67,6 +67,10 @@ const RUNNERS: &[Runner] = &[
     },
 ];
 
+pub(super) fn names() -> Vec<&'static str> {
+    RUNNERS.iter().map(|r| r.name).collect()
+}
+
 /// A runner's answers, read back from its files.
 pub(crate) struct FileSubject {
     name: String,

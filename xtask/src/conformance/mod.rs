@@ -34,15 +34,16 @@
 //! - **`helicoid`** (`crate::shipped`) is a plain subject over the eight `coeff_*` ids at both
 //!   precisions; a plain run of any of them prints its rows beside `seeded:correct`'s.
 //! - **Not implemented**: backward error (`Log` near π, `from_matrix`), the container oracle
-//!   runners, the envelope, `helicoid` on any other id, and the `Dual` comparison of the
-//!   planted `Q` defect.
+//!   runners, `helicoid` on any other id, and the `Dual` comparison of the planted `Q` defect. The
+//!   envelope reads the CSVs this module writes (`crate::envelope`).
 
 pub(crate) mod corpus;
 pub(crate) mod metric;
 pub(crate) mod number;
 mod oracle;
-mod report;
+pub(crate) mod report;
 mod selftest;
+mod selftest_envelope;
 mod selftest_se3;
 mod selftest_so3;
 pub(crate) mod subject;
@@ -121,6 +122,11 @@ fn parse_args(args: &[String]) -> Result<Options, String> {
     Ok(options)
 }
 
+/// The names of the oracle runners, the subjects the envelope's domination bar is over.
+pub(crate) fn oracle_names() -> Vec<&'static str> {
+    oracle::names()
+}
+
 pub(crate) fn root() -> Result<PathBuf, String> {
     let manifest = Path::new(env!("CARGO_MANIFEST_DIR"));
     manifest
@@ -137,7 +143,7 @@ pub(crate) fn corpus_dir() -> Result<PathBuf, String> {
 /// file is read (and so validated) once, whether or not a subject supports it. At `f32` only the
 /// `@f32` strata are scored, and a supporting subject is an error on an entry that has none, and
 /// where it has no `f32` kernel.
-fn evaluate(
+pub(crate) fn evaluate(
     dir: &Path,
     entries: &[corpus::Entry],
     subjects: &[Registered],
@@ -236,7 +242,7 @@ fn git_rev(root: &Path) -> String {
 
 /// `<subject>.csv`, with a `--fn` run apart, `<subject>--<fn>.csv`, and an `f32` run apart again,
 /// `<subject>[--<fn>]--f32.csv`.
-fn results_path(
+pub(crate) fn results_path(
     results: &Path,
     subject: &str,
     fn_id: Option<&str>,

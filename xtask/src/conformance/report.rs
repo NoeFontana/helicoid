@@ -129,11 +129,11 @@ pub(crate) fn precision_name(p: Precision) -> &'static str {
 
 /// The shortest decimal that reads back as the same binary64: identical bytes on every machine,
 /// and no loss for the exact no-regress bar.
-fn float(x: f64) -> String {
+pub(crate) fn float(x: f64) -> String {
     format!("{x:e}")
 }
 
-fn quoted(s: &str) -> String {
+pub(crate) fn quoted(s: &str) -> String {
     if s.contains([',', '"', '\n']) {
         format!("\"{}\"", s.replace('"', "\"\""))
     } else {

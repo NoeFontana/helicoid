@@ -466,6 +466,24 @@ defined by the status tables in `docs/`; they win over this file.
   `q:w0`, the other branch of `Log` at `θ = π`. The per-stratum rows are only in the untracked
   `conformance/results/sophus_rs.csv`. The pin, the right Jacobians and that branch are 0014 (draft)
   questions 28 to 30. No library code changes; breaks nothing.
+- `cargo xtask envelope` (`just envelope`, a CI job; `docs/PHASE1.md` §8, `0006`): merges
+  `conformance/results/<subject>.csv` of the candidate (`helicoid`) and the oracle runners and judges
+  per `(fn, stratum, precision)` on the max: domination over the smallest oracle max (ties pass; a
+  non-finite or unscored oracle row is no bar), no-regress against `conformance/baseline/`, compared
+  exactly, and any non-finite or unexpectedly unscored output; then coverage of the corpus (the 45 ids
+  of §4.3 required, each with a file that exists; the 16 that later phases name owed until the §0.0
+  row that owns them is `Done`). `--bless` writes the baseline and the `@generated`
+  `docs/evidence/ENVELOPE.md` (registered with `cargo xtask lint`) and writes nothing while a
+  failure stands that a new baseline would not move (domination, coverage, a dropped or narrowed
+  stratum); `--check` fails on a hand edit or an improvement not blessed, the page compared without
+  its oracle columns (the runners' `libm` is not D16's); `--dry-run` writes nothing. `helicoid` is
+  not an in-process subject before Phase 3, so today the run checks coverage and the page only, and
+  no baseline is committed (blessing is `PHASE3.md` §10's, and 0014 (draft) says none before it is
+  `ready`); once it is registered, no rows fails the run: the CI job becomes the gate with the
+  subject. `--self-test` now also runs §10's envelope half: the planted `c` loses to the correct
+  seeded kernel on 9 strata of `coeff_c`. Measured on the stand-in `seeded:correct`, not a bar: 214
+  strata paired with an oracle, an oracle beats it on 75. The readings are 0014 (draft) questions 31
+  to 35. No library code changes; breaks nothing.
 - `helicoid-linalg`: `Real::cbrt` (`docs/PHASE2.md` §2 and §3, `docs/API.md` §2, `docs/NUMERICS.md`
   §12; step 1 of `0017`, which `solve_cubic` needs): the real cube root, total and odd, through
   `libm::cbrt`/`cbrtf`. `Dual` differentiates it as `d / (3 c^2)`, `c = cbrt v`: infinite at 0
