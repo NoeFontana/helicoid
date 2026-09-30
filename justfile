@@ -61,8 +61,8 @@ no-std:
     cargo build --target thumbv7em-none-eabihf -p helicoid --features __sweep --locked
     cargo build --target thumbv7em-none-eabihf -p helicoid-linalg --features mint --locked
 
-# Library crates on wasm32, the coefficient kernel included as under `no-std`. Runs under wasmtime
-# once the conformance subject exists.
+# Library crates on wasm32, the coefficient kernel included as under `no-std`. Build only: the
+# in-process conformance subject exists, its run under wasmtime is owed (PHASE1 §3, Phase 6).
 wasm:
     cargo build --target wasm32-wasip1 -p helicoid-linalg -p helicoid --locked
     cargo build --target wasm32-wasip1 -p helicoid --features __sweep --locked

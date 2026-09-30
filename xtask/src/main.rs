@@ -6,6 +6,7 @@
 mod conformance;
 mod lint;
 mod seeded;
+mod shipped;
 mod thresholds;
 
 use std::process::ExitCode;

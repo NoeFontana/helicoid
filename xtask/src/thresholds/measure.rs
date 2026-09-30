@@ -154,6 +154,7 @@ mod tests {
     use crate::conformance::metric::rule;
     use crate::conformance::subject::Subject;
     use crate::seeded::{d12, Coeff, Defect, Seeded, D1};
+    use crate::shipped::shipped;
     use crate::thresholds::grid::grid;
     use crate::thresholds::search::score;
     use crate::thresholds::{CSV_HELICOID, CSV_SEEDED};
@@ -488,21 +489,6 @@ mod tests {
         Ok(())
     }
 
-    /// The group of `id` at `x`, as the shipped kernel evaluates it.
-    fn shipped<S: Real>(id: Swept, x: Input<Dual<S, 1>>) -> Dual<S, 1> {
-        use helicoid::__sweep as k;
-        match id {
-            Swept::Coeff(Coeff::K) => k::exp_coeffs(x.z).0,
-            Swept::CosHalf => k::exp_coeffs(x.z).1,
-            Swept::Coeff(Coeff::A) => k::jr_coeffs(x.z).0,
-            Swept::Coeff(Coeff::B) => k::jr_coeffs(x.z).1,
-            Swept::Coeff(Coeff::C) => k::jr_inv_coeff(x.z),
-            Swept::Coeff(Coeff::D) => k::q_coeffs(x.z).1,
-            Swept::Coeff(Coeff::E) => k::q_coeffs(x.z).2,
-            Swept::R => k::log_ratio(x.z, x.w),
-        }
-    }
-
     /// The shipped groups over the corpus: every record of every stratum finite in value and
     /// derivative (the safe argument at `θ = 0`, subnormal, `π`, `w = +0`), and over the `theta:*`
     /// strata the objective the sweep recorded for the switch it chose, to the bit.
@@ -550,23 +536,32 @@ mod tests {
         the_shipped_groups_score_the_objective_the_sweep_chose::<f32>()
     }
 
-    #[test]
-    fn b_is_the_same_in_both_groups_that_hold_it() -> Result<(), String> {
+    fn b_is_the_same_in_both_groups<S: Real + Into<f64>>() -> Result<(), String> {
         use helicoid::__sweep as k;
         let dir = corpus_dir()?;
-        for rec in records_at::<f64>(&dir, Swept::Coeff(Coeff::B))? {
-            let z = input::<f64>(Swept::Coeff(Coeff::B), &rec)
-                .ok_or("no input")?
-                .seed()
-                .z;
+        let id = Swept::Coeff(Coeff::B);
+        let records = records_at::<S>(&dir, id)?;
+        assert!(!records.is_empty());
+        for rec in records {
+            let z = input::<S>(id, &rec).ok_or("no input")?.seed().z;
             let (jr, q) = (k::jr_coeffs(z).1, k::q_coeffs(z).0);
             assert!(
-                same(jr.v, q.v) && same(jr.d[0], q.d[0]),
+                same(jr.v.into(), q.v.into()) && same(jr.d[0].into(), q.d[0].into()),
                 "{} {}",
                 rec.stratum,
                 rec.id
             );
         }
         Ok(())
+    }
+
+    #[test]
+    fn b_is_the_same_in_both_groups_that_hold_it() -> Result<(), String> {
+        b_is_the_same_in_both_groups::<f64>()
+    }
+
+    #[test]
+    fn b_is_the_same_in_both_groups_that_hold_it_at_f32() -> Result<(), String> {
+        b_is_the_same_in_both_groups::<f32>()
     }
 }

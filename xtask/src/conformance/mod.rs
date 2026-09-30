@@ -29,8 +29,10 @@
 //!   such strata and names the others that a selected subject supports (left out, not asked); with
 //!   `--fn` it runs the id named or fails. Its result file is `<subject>[--<fn>]--f32.csv`, the
 //!   `precision` column `f32`.
+//! - **`helicoid`** (`crate::shipped`) is a plain subject over the eight `coeff_*` ids at both
+//!   precisions; a plain run of any of them prints its rows beside `seeded:correct`'s.
 //! - **Not implemented**: backward error (`Log` near π, `from_matrix`), oracle runners, the
-//!   envelope, the `helicoid` subject, and the `Dual` comparison of the planted `Q` defect.
+//!   envelope, `helicoid` on any other id, and the `Dual` comparison of the planted `Q` defect.
 
 pub(crate) mod corpus;
 pub(crate) mod metric;
