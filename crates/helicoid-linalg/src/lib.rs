@@ -4,8 +4,8 @@
 //! and [`Precision`], with `f64` and `f32` as `Real` (mask `bool`, every transcendental through
 //! `libm`), forward-mode [`Dual`] numbers (§3), also a `Real`, and the fixed-size [`Vector`],
 //! [`Point`] and column-major [`Matrix`] with [`hat`]/[`vee`], [`Mat3::inverse_adj`] and the
-//! Cholesky factorization [`chol`] with [`solve_lower`]/[`solve_upper`] (§4), and the strided
-//! views [`Strided`]/[`StridedMut`] over caller memory (§5).
+//! Cholesky factorization [`chol`] with [`solve_lower`]/[`solve_upper`]/[`chol_solve`] (§4), and
+//! the strided views [`Strided`]/[`StridedMut`] over caller memory (§5).
 //!
 //! The optional feature `mint` (off by default) adds `From`/`Into` between [`Vector`]/[`Point`]/
 //! [`Matrix`] and the `mint` types, for `f32` and `f64` (§7); it is the only interop, so
@@ -42,7 +42,7 @@ mod skew;
 mod strided;
 mod vector;
 
-pub use chol::{chol, solve_lower, solve_upper};
+pub use chol::{chol, chol_solve, solve_lower, solve_upper};
 pub use dual::Dual;
 pub use matrix::{Mat2, Mat3, Matrix};
 pub use point::{Point, Point2, Point3};

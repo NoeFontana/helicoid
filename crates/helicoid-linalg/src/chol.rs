@@ -104,8 +104,8 @@ pub fn solve_lower<S: Real, const N: usize>(l: &Matrix<S, N, N>, b: Vector<S, N>
     Vector(x)
 }
 
-/// Solves `u x = b` by back substitution, reading only the upper triangle of `u`; for the
-/// Cholesky factor pass `l.transpose()`.
+/// Solves `u x = b` by back substitution, reading only the upper triangle of `u`. For `A x = b`
+/// from a Cholesky factor use [`chol_solve`], which does not build `l.transpose()`.
 ///
 /// `x_i = (b_i - sum_{k>i} u_ik x_k) / u_ii`, the sum in increasing `k`, `i` from `N - 1` down.
 /// Backward stable like [`solve_lower`].
@@ -122,4 +122,61 @@ pub fn solve_upper<S: Real, const N: usize>(u: &Matrix<S, N, N>, b: Vector<S, N>
         x[i] = (b.0[i] - sum((i + 1..N).map(|k| u.get(i, k) * x[k]))) / uii;
     }
     Vector(x)
+}
+
+/// Solves `l^T x = b` by back substitution, reading only the lower triangle of `l`, by column.
+///
+/// The operations of `solve_upper(&l.transpose(), b)` on the same operands, so the result is
+/// bit-identical to it for every input, the sign and payload of a NaN from arithmetic aside
+/// (`NUMERICS.md` §15.6, `PHASE2.md` §3): `x_i = (b_i - sum_{k>i} l_ki x_k) / l_ii`, the sum in
+/// increasing `k`, `i` from `N - 1` down; `l_ki` for `k > i` is column `i` below its diagonal.
+/// Domain and release behaviour as for [`solve_lower`].
+#[inline]
+pub(crate) fn solve_lower_transposed<S: Real, const N: usize>(
+    l: &Matrix<S, N, N>,
+    b: Vector<S, N>,
+) -> Vector<S, N> {
+    let mut x = [S::zero(); N];
+    for i in (0..N).rev() {
+        let lii = l.get(i, i);
+        debug_assert!(
+            lii.abs().value_f64() > 0.0,
+            "solve_lower_transposed: zero diagonal"
+        );
+        x[i] = (b.0[i] - sum((i + 1..N).map(|k| l.get(k, i) * x[k]))) / lii;
+    }
+    Vector(x)
+}
+
+/// Solves `A x = b` from the Cholesky factor `l` of `A` (`L L^T x = b`): forward substitution
+/// with [`solve_lower`], then back substitution against `l^T` read by column, with no
+/// transposed copy.
+///
+/// Bit-identical to `solve_upper(&l.transpose(), solve_lower(&l, b))` for every input and every
+/// `S`, the sign and payload of a NaN from arithmetic aside (`NUMERICS.md` §15.6, `PHASE2.md` §3);
+/// that composition is the reference twin. Backward stable when the
+/// factorization ran to completion: `(A + E) x = b`, `|E| <= gamma_{3N+1} |l| |l|^T` (Higham,
+/// Thm 10.4).
+///
+/// # Domain
+///
+/// Every `l_ii` is nonzero and not NaN, checked by `debug_assert!` (as in [`solve_lower`], which
+/// runs first). A release build never panics: a zero diagonal gives `inf` or NaN. The upper
+/// triangle of `l` is not read. The factor of a `chol` whose mask was clear is a legal input, and
+/// the result solves nothing.
+///
+/// # Example
+///
+/// ```
+/// use helicoid_linalg::{chol, chol_solve, Mat2, Vector};
+///
+/// let a = Mat2::from_cols([Vector([4.0_f64, 2.0]), Vector([2.0, 5.0])]);
+/// let (l, pd) = chol(&a);
+/// // `a * (1, 2) = (8, 12)`.
+/// let x = chol_solve(&l, Vector([8.0, 12.0]));
+/// assert!(pd && x.0 == [1.0, 2.0]);
+/// ```
+#[inline]
+pub fn chol_solve<S: Real, const N: usize>(l: &Matrix<S, N, N>, b: Vector<S, N>) -> Vector<S, N> {
+    solve_lower_transposed(l, solve_lower(l, b))
 }

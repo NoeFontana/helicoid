@@ -43,3 +43,4 @@
 - [0012: A retraction is a chart](decisions/0012-a-retraction-is-a-chart.md)
 - [0013: SIMD lanes owe a measurement (draft)](decisions/0013-simd-lanes-owe-a-measurement.md)
 - [0018: libm arch is bit-identical for exact operations](decisions/0018-libm-arch-is-bit-identical-for-exact-operations.md)
+- [0019: A Cholesky solve without the transpose](decisions/0019-a-cholesky-solve-without-the-transpose.md)

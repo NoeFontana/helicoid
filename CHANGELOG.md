@@ -114,3 +114,7 @@ defined by the status tables in `docs/`; they win over this file.
   thumbv7em are unchanged: `libm` routes nothing there on stable. New test: `Real::sqrt` for `f64` and
   `f32` against an integer square root, bit for bit, over `2 x 10^6` cases with a pinned digest; checked
   by hand on x86_64, aarch64 (`qemu-user`) and wasm32 (node WASI), run by CI on x86_64 and aarch64.
+- `helicoid-linalg`: `chol_solve(&l, b)`, `A x = b` from a Cholesky factor: `solve_lower`, then a
+  back substitution against `l^T` read by column, with no transposed copy. Bit-identical to
+  `solve_upper(&l.transpose(), solve_lower(&l, b))` (NaN sign and payload aside), same domain and
+  release behaviour; `docs/decisions/0019`, `docs/NUMERICS.md` §15.6. New public API, nothing breaks.

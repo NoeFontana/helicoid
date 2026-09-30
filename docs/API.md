@@ -69,7 +69,7 @@ checked by `*_unchecked` constructors in debug only; `*_normalized` constructors
 | `Vector<S, N>`, `Matrix<S, R, C>`, `Point<S, N>` | structs | `repr(C)`; `Matrix` column-major `[[S; R]; C]`; aliases `Vec2`, `Vec3`, `Mat2`, `Mat3`, `Point2`, `Point3`. |
 | `hat`, `vee` | fns | `Vec3 ↔ Mat3` skew. |
 | `Mat3::inverse_adj` | fn | `(adjugate/det, det)`; the caller decides what `det` means. |
-| `chol<S, N>`, `solve_lower`, `solve_upper` | fns | Fixed-size Cholesky; `(L, S::Mask)`. Triangular solves reading one triangle each; `NUMERICS.md` §15. |
+| `chol<S, N>`, `solve_lower`, `solve_upper`, `chol_solve` | fns | Fixed-size Cholesky; `(L, S::Mask)`. Triangular solves reading one triangle each; `chol_solve(&L, b)` solves `A x = b` from the factor without a transpose ([`0019`](./decisions/0019-a-cholesky-solve-without-the-transpose.md)); `NUMERICS.md` §15. |
 | `Strided<'a, S>`, `StridedMut<'a, S>` | structs | `col_major`, `row_major`, `block`; bounds-checked (`# Panics`). |
 | `eig3`, `svd3`, `solve_cubic` | fns | `NUMERICS.md` §13 references; signatures in `PHASE2.md` §6. |
 | `mint` | feature | `From`/`Into` for `Vector`, `Matrix` at sizes 2–4 and `Point` at 2–3 (`mint` has no 4-D point). |
