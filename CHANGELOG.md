@@ -93,3 +93,8 @@ defined by the status tables in `docs/`; they win over this file.
   `block`, `get`, `set`. An out-of-bounds access panics in release, the index never wraps, and a
   write never leaves its view (D11's one panic class, widened from writes to `get`, `set` and
   `block` in `PROJECT.md` D11 and `NUMERICS.md` §12). New public API, nothing breaks.
+- `helicoid-linalg`: optional feature `mint` (off by default; `mint` >= 0.5.7 joins the closure
+  only with it): `From`/`Into` between `Vector<S, N>` (`N` = 2..=4), `Point<S, N>` (`N` = 2, 3; `mint`
+  has no 4-D point) and `Matrix<S, N, N>` (`N` = 2..=4, `mint::ColumnMatrixN`), for `f32` and
+  `f64` (`docs/PHASE2.md` §7). Scalars are moved, never computed on. `just lint` and `just test` cover the feature; `just msrv`, `just no-std`
+  and `just wasm` build it. Bitwise round trips pin `-0`, infinities, subnormals and NaN payloads. New public API, nothing breaks.

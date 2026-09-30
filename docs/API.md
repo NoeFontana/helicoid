@@ -72,7 +72,7 @@ checked by `*_unchecked` constructors in debug only; `*_normalized` constructors
 | `chol<S, N>`, `solve_lower`, `solve_upper` | fns | Fixed-size Cholesky; `(L, S::Mask)`. Triangular solves reading one triangle each; `NUMERICS.md` §15. |
 | `Strided<'a, S>`, `StridedMut<'a, S>` | structs | `col_major`, `row_major`, `block`; bounds-checked (`# Panics`). |
 | `eig3`, `svd3`, `solve_cubic` | fns | `NUMERICS.md` §13 references; signatures in `PHASE2.md` §6. |
-| `mint` | feature | `From`/`Into` for `Vector`, `Matrix`, `Point` at sizes 2–4. |
+| `mint` | feature | `From`/`Into` for `Vector`, `Matrix` at sizes 2–4 and `Point` at 2–3 (`mint` has no 4-D point). |
 
 ## 3. `helicoid` — groups and geometry
 
