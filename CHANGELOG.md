@@ -278,6 +278,13 @@ defined by the status tables in `docs/`; they win over this file.
   code, no formula change, no normative document changed. Four open items for the normative documents are added
   in the maths index (`PHASE5.md` §1.3's first-order claim is false for `WorldTranslation` unless `R = I`; `sgn(-0)`;
   `mp.logm` as the `s2_local` reference; the unit-norm domain of `S2`) and two extended.
+- `docs/maths/gamma-gaussian.md`: `NUMERICS.md` §7 and `PHASE5.md` §4–§5 (the integrated exponentials `Γ_m` with their closed forms, recursion and integral form, derived, and what
+  the exact arms cost `Γ_1` and `Γ_2`; the piecewise-constant IMU increments `ΔR`, `Δv`, `Δp` derived from the ODE under stated assumptions, with the `5×5` exponential and the composition
+  rule; the directional Jacobians of `Γ_m v` in closed form (`m = 1` is `Q − [J_l ρ]× J_l`; `m = 2` needs a coefficient outside §4) and what the `Dual<S, 3>` path returns, exactly and
+  measured, Taylor branches included; `Gaussian` as a mean, covariance and side, the change of side `Σ_L = Ad Σ_R Adᵀ` proved **exact**, the order of first-order propagation and
+  composition, the Mahalanobis distance; what `chol`'s mask certifies and the rounding of `d²`, both set by the correlation matrix's smallest eigenvalue; `Ad` of SE(3) at a large
+  translation (its conditioning by the unit-free correlation matrix, the round-trip loss), and seven misread covariances quantified). Documentation only; no code, no formula change, no normative document changed. Four open items for the normative
+  documents are added in the maths index and one extended.
 - `cargo xtask lint`, run by `just lint`: no line citations in markdown or comments, no draft
   decision record cited as settled (status-table rows, Rust comments, amendment banners; not
   prose elsewhere), and `@generated` files registered with their owning task and header. Owed:
