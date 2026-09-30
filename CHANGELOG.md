@@ -65,3 +65,7 @@ defined by the status tables in `docs/`; they win over this file.
   offender; no crate but `xtask` may enable `__sweep`. `xtask` gains `serde` and `serde_json`;
   `deny.toml` allows `Unicode-3.0` for `unicode-ident` and bans the `0007` list, which
   `just audit` checks for every crate but `xtask`.
+- `helicoid-linalg`: the scalar model (`docs/PHASE2.md` §2): `Mask`, `Real`, `Blend`, `Precision`;
+  `f64`/`f32` as `Real` with every transcendental through `libm`; `Blend` for scalars, tuples up
+  to arity 8 and arrays. `Real` has no `PartialOrd`/`PartialEq` (`compile_fail` doctests). New
+  public API, nothing breaks.
