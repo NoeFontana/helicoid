@@ -2,7 +2,8 @@
 
 > Non-normative companion to [`NUMERICS.md`](../NUMERICS.md) §1, §2.2, §2.3, §5.1–§5.2 and the
 > algebra of §5.4. Notation, the `Checked:` convention and the open items are in the
-> [maths index](./index.md).
+> [maths index](./index.md). The SE(2) case, where the same algebra gives the Jacobians, is
+> [`so2-se2.md`](./so2-se2.md).
 
 Throughout, $N \ge 0$, $n = 3 + 3N$, $G = \mathrm{SE}_N(3)$, rotation-first. A domain "$\theta < 2\pi$"
 is on the tangent's $\theta = \lVert\varphi\rVert$; "$\theta(X) < \pi$" is on the rotation angle of $X$

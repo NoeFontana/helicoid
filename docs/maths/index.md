@@ -39,6 +39,7 @@ $\begin{bmatrix}R & [t]_\times R\\ 0 & R\end{bmatrix}$ in Solà et al.
 | $\Gamma_m(\varphi)$ | $\sum_{k \ge 0} W^k/(k+m)!$ (`NUMERICS.md` §7); $\Gamma_1 = J_l(\varphi)$ |
 | $u$ | unit roundoff (`NUMERICS.md` §2.1), except on `so3.md`, where $u$ is the quaternion's vector part (`NUMERICS.md` §1), $n = \lVert u\rVert$ (not the tangent dimension of the first row) and the roundoff is written $\mathsf u$; `coefficients.md` keeps $u$ for the roundoff and writes the vector part $q_{\mathrm v}$ |
 | $\Xi$, $\Pi$, $T_M$ | on `se3.md` only: $[\rho]_\times$ for one translation block (so the $P$ above is $\Pi$ there), the block permutation $\Pi_N$ (SE.14; $\Pi_1 = P$), and CO.1's $\tau_M$ (renamed because $\tau$ is the tangent); it uses $\sigma_m$ as in CO.1, $n$ for a power (the tangent dimension is written $3 + 3N$), $\mu$ for $\varphi\times\rho$ (SE.7) and $s(\theta) = 2\sin(\theta/2)/\theta$ (SE.16, LG.16) |
+| $K$, $\gamma$, $\Pi$, $\nu$ | on `so2-se2.md` only: the quarter turn $\begin{bmatrix}0&-1\\1&0\end{bmatrix}$ (not `so3.md`'s $K(M)$), $\gamma = \frac\theta2\cot\frac\theta2$, the $3\times3$ shift $\tau_{\mathrm{tf}} = \Pi\tau$ (not `se3.md`'s $\Pi_N$) and $\nu = \lVert\rho\rVert/2$; $\theta$ and $\theta(X) = \mathrm{atan2}(R_{10}, R_{00})\in[-\pi,\pi]$ are signed there: the $\theta(X)$ row above (branch $[0,\pi]$) and `NUMERICS.md` §1, §12 ("$\theta<2\pi$", "$\theta(X)<\pi$") are read as $\lvert\theta\rvert$, $\lvert\theta(X)\rvert$, $\alpha$, $\beta$ are `NUMERICS.md` §6's (not an angle or a relative rounding) and $a, b, c$ are §4's; label prefix `PL` |
 | $\sigma_m$, $\tau_m$, $\rho_m$, $E_x$, $E_s$, $E_\times$, $s_j$ | on `coefficients.md` (and $\sigma_m$ on `se3.md`, as in the row above), not the tangents, translation tangent or $\mathrm{Exp}$ above: the series families (CO.1), a relative truncation size, the errors of the exact arm, of the series arm and at the crossing, and the coefficient of $z^j$; its symbol note lists the rest |
 | $O(\lVert\delta\rVert^2)$ | remainder bounded by $C\lVert\delta\rVert^2$ as $\delta \to 0$, $C$ locally uniform in the base point |
 
@@ -46,8 +47,9 @@ $\begin{bmatrix}R & [t]_\times R\\ 0 & R\end{bmatrix}$ in Solà et al.
 
 - A statement is labelled `<page>.<n>` (`LG` for [`lie-groups.md`](./lie-groups.md), `SO` for
   [`so3.md`](./so3.md), `CO` for [`coefficients.md`](./coefficients.md), `SE` for
-  [`se3.md`](./se3.md)), numbered in order of appearance. Labels are stable: later results are
-  appended, never renumbered, so other pages and PR descriptions can cite them.
+  [`se3.md`](./se3.md), `PL` (planar) for [`so2-se2.md`](./so2-se2.md)), numbered in order of
+  appearance. Labels are stable: later results are appended, never renumbered, so other pages and PR
+  descriptions can cite them.
 - Each result states its domain and carries a proof, or says which step is only outlined.
 - Each proposition ends with one **Checked:** line: what was run, at which precision, over which
   sample, and whether the script is committed; then **Permanent:** the corpus function id
@@ -62,9 +64,10 @@ $\begin{bmatrix}R & [t]_\times R\\ 0 & R\end{bmatrix}$ in Solà et al.
   `Permanent:` item is a check. Where a sampled figure is not a proved bound, the line says so.
 - The mpmath version is that of the run, stated in the `Checked:` line: `lie-groups.md` ran at 1.4.1,
   `so3.md` and `coefficients.md` at 1.3.0 (the latter with sympy 1.14.0 for the exact rational
-  series), `se3.md` at 1.4.1 (sympy 1.14.0, run with mpmath 1.3.0, for its exact identities). It is not
-  a pin, and no claim on these pages depends on it; the claims about mpmath's own behaviour (`mp.logm`
-  of an $\mathrm{SO}(3)$ and of an $\mathrm{SE}_N(3)$ matrix, below) were checked on both.
+  series), `se3.md` at 1.4.1 (sympy 1.14.0, run with mpmath 1.3.0, for its exact identities),
+  `so2-se2.md` at 1.3.0 (sympy 1.14.0). It is not a pin, and no claim on these pages depends on it; the
+  claims about mpmath's own behaviour (`mp.logm` of an $\mathrm{SO}(3)$, an $\mathrm{SE}_N(3)$ and an
+  $\mathrm{SE}(2)$ matrix, below) were checked on both 1.3.0 and 1.4.1.
 - A wrong variant is characterised by its exact gap to the right formula (`lie-groups.md` §6),
   never by a sampled minimum: every wrong variant tends to the right one as the tangent tends to
   $0$, so a sampled minimum measures the sampler.
@@ -77,12 +80,13 @@ $\begin{bmatrix}R & [t]_\times R\\ 0 & R\end{bmatrix}$ in Solà et al.
 | [`so3.md`](./so3.md) | §1 (quaternion), §2.4, §3.1–§3.6, §4 (definitions of $k, a, b, c, r$; the $c$ series), §11 (`Log` conditioning, matrix input), §12 (`jr_inv`, `from_wxyz_unchecked`), §14 (`act_many`) | `SO3::{exp, log, act, act_many, to_matrix, from_matrix, renormalize, adjoint, ad, jr, jr_inv, jl, jl_inv, act_jacobians}`, `Quat::{from_wxyz_unchecked, from_wxyz_normalized}` |
 | [`coefficients.md`](./coefficients.md) | §4 (all seven coefficients and the $\cos\frac\theta2$ of §3.1: series, cancellation, switch-point magnitudes, derivatives), §2.1, §7 ($\Gamma_2$'s coefficients), §12 (the $\theta = 0$, $\pi$, $2\pi$ behaviour); `PHASE1.md` §2 item 3, §4.3, §6 | `coeffs::{exp_coeffs, jr_coeffs, jr_inv_coeff, q_coeffs, gamma2_coeffs, log_ratio, se2_coeffs}` (`pub(crate)`, `PHASE3.md` §3), `coeffs::generated`, `xtask thresholds` |
 | [`se3.md`](./se3.md) | §1 (SE_N(3), rotation-first tangents), §2.2 (the dual-matrix algebra), §2.4 (SE(3) action Jacobians), §5.1–§5.5 ($\mathrm{Exp}$, $\mathrm{Log}$, $\mathrm{Ad}$, $\mathrm{ad}$, the $Q$ block, $J^{-1}$), §14 (`SEn3Jac`, `jr_inv`, `jl`); the order conversion of `0002` | `SEn3::{exp, log, adjoint, ad, jr, jl, jr_inv, jl_inv}`, `SEn3Jac::{mul, inverse, apply, apply_transpose, write_dense}`, `SE3::act_jacobians`, `Twist::{from_translation_first, to_translation_first}`, `coeffs::q_coeffs` |
+| [`so2-se2.md`](./so2-se2.md) | §1 (SE(2) tangent), §2.3 (its rows, instantiated), §2.4 (SO(2), SE(2) action rows: proposed), §4 ($a, b, c$ and $\alpha, \beta$: series, singularities), §6, §12, §14 (missing SE(2) rows) | `SO2::{exp, log, adjoint, ad, jr, jl, jr_inv, jl_inv, act_jacobians}`, `SE2::{exp, log, adjoint, ad, jr, jl, jr_inv, jl_inv, act_jacobians}`, `coeffs::se2_coeffs` |
 
 Not derived yet, so `NUMERICS.md` alone states them: every section outside the Map rows, notably
-§6–§11 (the SE(2) matrices, of which only the pair $\alpha, \beta$ is placed in the coefficient family;
-the conditioning of the exact $J$ and $\mathrm{Ad}$ is LG.16; the metrics of §11 are used, not derived). The switch points and series lengths of §4 are
-generated (0004), not derived: `coefficients.md` derives the magnitudes to check them against
-(CO.10).
+§7–§10 (of these only $\Gamma_m$'s coefficients are placed, CO.4(d)) and §11 (the conditioning of the
+exact $J$ and $\mathrm{Ad}$ is LG.16; the metrics of §11 are used, not derived). The switch points and
+series lengths of §4 are generated (0004), not derived: `coefficients.md` derives the magnitudes to check
+them against (CO.10).
 
 ## Open items for the normative documents
 
@@ -173,6 +177,21 @@ generated (0004), not derived: `coefficients.md` derives the magnitudes to check
   switch of $b$ and $e$ than `coeff_b`, `coeff_e`, so a switch that minimizes the coefficient is
   conservative for those values; whether the objective should be the consumer's is a `0004` question. The
   derivative through `Dual` was not examined.
+- `NUMERICS.md` §6 cites Solà et al. 2018, Appendix (SE(2)), for "$J_r$, $J_l$ and their inverses". Appendix C
+  of arXiv:1812.01537v9 prints $\mathrm{Ad}$, $J_r$, $J_l$ and the action Jacobian, translation-first, and **no
+  inverse**; the printed matrices equal PL.6, PL.7, PL.10 through $\Pi$ (PL.9(d)), while the rotation-first
+  $J^{-1}$ of PL.8 is derived, not permuted from a source.
+- `PHASE3.md` §3 has `se2_coeffs(θ²) -> (α, β)`, but $\beta = \theta a$ is odd in $\theta$ (PL.1): a function of
+  $\theta^2$ cannot return it (the kernel needs $\theta$, or returns $a$). The SE(2) Jacobians also need
+  $a, b$ (`jr_coeffs`) and $c$ (`jr_inv_coeff`) besides $\alpha$ (PL.7–PL.8), and no listed call-site group
+  carries them; nor is there a $\gamma$, though $1 - \theta^2c$ has no relative accuracy near $\lvert\theta\rvert = \pi$ (PL.11(b): does `jr_inv_coeff` return
+  $\gamma$ from the cot arm of $c$?). `PHASE1.md` §6 sweeps $\alpha$, $\beta$ but §4.3 has no coefficient id for them.
+- `NUMERICS.md` §12 has no row for `SE2::log`, `SE2::jr_inv`, `SE2::jl_inv` (PL.11(d)); §14 has no twin row for a
+  closed-form `SE2::jr_inv` (PL.8: the dense inverse of `SE2::jr`); §2.4 has no SO(2), SE(2) action rows, though
+  `API.md` §3 lists `act_jacobians` for both (PL.10); §6 and `PHASE3.md` §6 specify no SO(2) normalization,
+  as §3.6 does for quaternions (PL.3(e)).
+- `PHASE1.md` §4.3 defines `so2_*`, `se2_*` as "analogous"; `se2_log` by `mp.logm` fails as `so3_log` does: the
+  result is complex and non-principal from an onset in $(3.02, 3.03]$ (PL.5, `Checked:`).
 
 ## References
 

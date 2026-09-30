@@ -15,6 +15,7 @@
 - [SO(3): quaternion, Exp, Log, Jacobians, from_matrix](maths/so3.md)
 - [The coefficient catalogue: series, cancellation, switch points](maths/coefficients.md)
 - [SE_N(3): Exp, Log, adjoints, the Q block, the dual-matrix algebra](maths/se3.md)
+- [SO(2) and SE(2): Exp, Log, adjoints, the rotation-first Jacobians](maths/so2-se2.md)
 
 # Specifications
 - [Phase 1: skeleton and the instrument](PHASE1.md)
