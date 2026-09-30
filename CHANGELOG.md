@@ -88,3 +88,8 @@ defined by the status tables in `docs/`; they win over this file.
   safe argument, a failed pivot gives `L_jj = 1` and a zero column, an overflowing entry is stored
   as `+0` and clears the mask, so `L` is finite for every input. The solves `debug_assert!` a
   nonzero diagonal. New public API, nothing breaks.
+- `helicoid-linalg`: `Strided` and `StridedMut`, read-only and writable strided views over caller
+  memory (`docs/PHASE2.md` §5): `col_major`, `row_major`, `with_strides` (faer and Ceres layouts),
+  `block`, `get`, `set`. An out-of-bounds access panics in release, the index never wraps, and a
+  write never leaves its view (D11's one panic class, widened from writes to `get`, `set` and
+  `block` in `PROJECT.md` D11 and `NUMERICS.md` §12). New public API, nothing breaks.

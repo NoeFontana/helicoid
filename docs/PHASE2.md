@@ -16,7 +16,7 @@ signatures in code blocks are normative.
 | `Mask`, `Real`, `Blend`, `Precision`; `f64`/`f32` impls (§2) | Partial: all four traits and both scalar impls done, `compile_fail` doctests for `<` and `==` in place; `Dual` is a `Real` and a `Blend<S>` (§3); `Blend` for `Vector`/`Matrix`/`Point` done (§4); the `Blend` impls for `helicoid` value types land with their types |
 | `Dual<S, N>` (§3) | Partial: type, `constant`/`variable`, `Real` with every §3 rule, `Blend<S>`, `dual_value_is_plain_value` over every `Real` method (`f64`, `f32`, nested, poisoned derivatives; bitwise up to NaN sign and payload of arithmetic outputs), second order through nesting on `sin_cos` and `atan2`, `sqrt` at 0 tested; `copysign` takes `sgn(s)` from the sign bit; the `atan2`, `sqrt` and quotient derivative domains are documented and pinned; `dual_matches_mpmath_derivative` runs on an inline mpmath fixture (`sqrt`, `sin_cos`, `atan2`, quotient, product), not yet on the corpus ids `real_*` (§8, needs the Phase 1 generator) |
 | `Vector`, `Matrix`, `Point`, `hat`/`vee`, `Mat3::inverse_adj`, `chol` (§4) | Partial: `Vector`, `Point`, `Matrix`, the aliases, every listed operation, `Blend`, `hat`/`vee`, `Mat3::inverse_adj` done; algebra proptests under `f64`, `f32`, `Dual<f64, 2>` with derived and measured bounds (10^6 cases, seeded recipe in the test header); summation order and `-0` pinned to the bit; no `PartialEq` and no `Point + Point` pinned by `compile_fail` doctests; the magnitude range of `norm` and `inverse_adj` documented and pinned; `chol`, `solve_lower`, `solve_upper` done (Cholesky-Crout, `NUMERICS.md` §15; mask `0 < pivot` and every entry finite; a failed pivot gives `L_jj = 1` and a zero column, an overflowing entry is stored as `+0`, so `L` is finite for every input; summation order pinned to the bit; proptests at `N = 1..=6` under `f64`, `f32`, `Dual<f64, 2>` against Higham's Thm 8.5, 10.3, 10.4 bounds, rank-deficient, near-singular and wide-dynamic-range inputs, the mask at a zero pivot, the solves' `debug_assert!` under `should_panic`; no corpus stratum or reference twin yet, §8); `Mat2` adjugate not started |
-| `Strided`, `StridedMut` (§5) | Not started |
+| `Strided`, `StridedMut` (§5) | Done: `col_major`, `row_major`, `with_strides`, `block`, `get`, `rows`, `cols`, `set`; out-of-bounds access panics in release (saturating index, never wraps); the constructors `debug_assert!` the fit; tested against the index formula, faer/Ceres layouts and an exact `u128` model over both view types; `write_dense` (Phase 3) is the first consumer |
 | `eig3`, `svd3`, `solve_cubic` + corpus ids (§6) | Not started |
 | `mint` feature (§7) | Not started |
 | omnisac migration (§9) | Not started |
@@ -177,8 +177,10 @@ impl<'a, S: Copy> StridedMut<'a, S> {
 }
 ```
 
-`Strided<'a, S>` is the read-only twin. Bounds are checked by safe slice indexing; out-of-bounds
-panics and is documented under `# Panics` (D11's one class). Solvers hand `helicoid` a block of
+`Strided<'a, S>` is the read-only twin. Bounds are checked by safe slice indexing, in release too, on
+`get`, `set` and `block`: an out-of-bounds access panics and is documented under `# Panics` (D11's
+one class). A view that does not fit its slice is a `debug_assert!` at construction and a panic on
+the first access that reaches past the slice. Strides are non-negative `usize`. Solvers hand `helicoid` a block of
 their Jacobian through these (faer `MatMut` and Ceres row-major buffers both map onto
 `with_strides`).
 

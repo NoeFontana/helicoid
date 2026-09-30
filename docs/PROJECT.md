@@ -144,7 +144,7 @@ Status per phase: the §0.0 table heading each spec is authoritative.
   normal dependency of a library crate.
 - **D11 — No panic on valid input.** A routine's domain is a `# Domain` rustdoc section and a
   `debug_assert!`; release builds never check it. Out-of-domain release behaviour is unspecified
-  but never a panic and never UB. The one documented panic class is out-of-bounds strided writes.
+  but never a panic and never UB. The one documented panic class is out-of-bounds strided access (`get`, `set`, `block`).
 - **D12 — A retraction is a chart** ([`0012`](./decisions/0012-a-retraction-is-a-chart.md)).
   SE(3) has three named charts (`Screw`, `Decoupled`, `WorldTranslation`); S² charts are frozen
   per linearization. *Do not* write a retraction inline in a consumer.
