@@ -2,8 +2,9 @@
 //!
 //! Implemented so far: the scalar model (`docs/PHASE2.md` §2), i.e. [`Mask`], [`Real`], [`Blend`]
 //! and [`Precision`], with `f64` and `f32` as `Real` (mask `bool`, every transcendental through
-//! `libm`). Numeric code is written once, generic over `S: Real`; a comparison yields `S::Mask`
-//! and control flow goes through [`Real::branch`] and [`Real::select`].
+//! `libm`), and forward-mode [`Dual`] numbers (§3), also a `Real`. Numeric code is written once,
+//! generic over `S: Real`; a comparison yields `S::Mask` and control flow goes through
+//! [`Real::branch`] and [`Real::select`].
 //!
 //! ```
 //! use helicoid_linalg::Real;
@@ -20,10 +21,14 @@
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
 
+mod dual;
 mod float;
 mod real;
 
+pub use dual::Dual;
 pub use real::{Blend, Mask, Precision, Real};
 
+#[cfg(test)]
+mod dual_tests;
 #[cfg(test)]
 mod tests;

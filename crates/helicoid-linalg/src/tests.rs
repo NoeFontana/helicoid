@@ -364,7 +364,7 @@ fn generic_code_runs_at_both_precisions() {
 /// Two lanes: a test-only `Mask` and `Real` that evaluate both arms and blend, so the lane path
 /// of `Real::branch` (never taken by `bool`) is exercised.
 #[derive(Clone, Copy)]
-struct M2([bool; 2]);
+pub(crate) struct M2(pub(crate) [bool; 2]);
 
 impl Mask for M2 {
     fn and(self, o: Self) -> Self {
@@ -393,7 +393,7 @@ impl Mask for M2 {
 }
 
 #[derive(Clone, Copy)]
-struct L2([f64; 2]);
+pub(crate) struct L2(pub(crate) [f64; 2]);
 
 impl L2 {
     fn map(self, g: impl Fn(f64) -> f64) -> Self {

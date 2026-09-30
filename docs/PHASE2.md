@@ -13,8 +13,8 @@ signatures in code blocks are normative.
 
 | Area | Status |
 |---|---|
-| `Mask`, `Real`, `Blend`, `Precision`; `f64`/`f32` impls (§2) | Partial: all four traits and both scalar impls done, `compile_fail` doctests for `<` and `==` in place; `Blend` for `Vector`/`Matrix`/`Point` and the `Dual` impl of `Real` land with §3–§4 |
-| `Dual<S, N>` (§3) | Not started |
+| `Mask`, `Real`, `Blend`, `Precision`; `f64`/`f32` impls (§2) | Partial: all four traits and both scalar impls done, `compile_fail` doctests for `<` and `==` in place; `Dual` is a `Real` and a `Blend<S>` (§3); `Blend` for `Vector`/`Matrix`/`Point` lands with §4 |
+| `Dual<S, N>` (§3) | Partial: type, `constant`/`variable`, `Real` with every §3 rule, `Blend<S>`, `dual_value_is_plain_value` over every `Real` method (`f64`, `f32`, nested, poisoned derivatives; bitwise up to NaN sign and payload of arithmetic outputs), second order through nesting on `sin_cos` and `atan2`, `sqrt` at 0 tested; `copysign` takes `sgn(s)` from the sign bit; the `atan2`, `sqrt` and quotient derivative domains are documented and pinned; `dual_matches_mpmath_derivative` runs on an inline mpmath fixture (`sqrt`, `sin_cos`, `atan2`, quotient, product), not yet on the corpus ids `real_*` (§8, needs the Phase 1 generator) |
 | `Vector`, `Matrix`, `Point`, `hat`/`vee`, `Mat3::inverse_adj`, `chol` (§4) | Not started |
 | `Strided`, `StridedMut` (§5) | Not started |
 | `eig3`, `svd3`, `solve_cubic` + corpus ids (§6) | Not started |
@@ -113,14 +113,28 @@ impl<S: Real, const N: usize> Real for Dual<S, N> { type Mask = S::Mask; /* … 
 ```
 
 - `PRECISION = S::PRECISION`; comparisons and masks act on the value part only.
-- Rules: `sqrt` → $d/(2\sqrt v)$; `sin_cos` → $(d\cos v, -d\sin v)$; `atan2(y, x)` →
+- Rules: `a / b` → $(a_d - q\,b_d)/b_v$ with $q = a_v/b_v$ (the quotient rule with no $b_v^2$ to
+  overflow); `sqrt` → $d/(2\sqrt v)$; `sin_cos` → $(d\cos v, -d\sin v)$; `atan2(y, x)` →
   $(x_v y_d - y_v x_d)/(x_v^2 + y_v^2)$; `abs` → $\mathrm{sgn}(v)\,d$ with $\mathrm{sgn}(\pm 0) = +1$;
-  `copysign(x, s)` → $\mathrm{sgn}(x_v)\,\mathrm{sgn}(s_v)\,x_d$.
+  `copysign(x, s)` → $\mathrm{sgn}(x_v)\,\mathrm{sgn}(s_v)\,x_d$, with $\mathrm{sgn}(\pm 0) = +1$
+  for $x_v$ and $\mathrm{sgn}(s_v) = -1$ iff the **sign bit** of $s_v$ is set, so
+  $\mathrm{copysign}(x, -0.0) = -\lvert x\rvert$ and differentiates as such: the derivative of
+  the value returned.
 - **The value path of `Dual<S, N>` is bitwise identical to the plain `S` evaluation** of the same
-  generic code (`dual_value_is_plain_value`). This is what makes "the derivative of the shipped
-  code" true.
-- `sqrt` at 0 has an infinite derivative by the rule above; the safe-argument pattern keeps it out
-  of any selected arm, and Phase 1's seeded defect proves the harness notices when it does not.
+  generic code (`dual_value_is_plain_value`), except the sign and payload of a NaN produced by
+  arithmetic or a `libm` call: Rust leaves them unspecified and a release build may commute
+  operands. Sign-bit operations and `select` are compared exactly, NaN included. This is what
+  makes "the derivative of the shipped code" true.
+- `sqrt` at 0 has an infinite derivative by the rule above (NaN, $0/0$, in a component whose $d$
+  is zero, untouched components included); the safe-argument pattern keeps it out of any selected
+  arm, and Phase 1's seeded defect proves the harness notices when it does not.
+- **Derivative domains** (`# Domain` on each method, `NUMERICS.md` §12), none asserted: a check
+  would panic on inputs the plain value path accepts. `atan2` divides by $x_v^2 + y_v^2$ and is
+  accurate only while that sum is normal (the larger argument in about $10^{\pm154}$ for `f64`,
+  $10^{\pm19}$ for `f32`), and `a / b` is NaN once $q$ overflows and loses relative accuracy while
+  $q$ is subnormal; the value is unaffected in every case. Two tests pin them
+  (`dual_atan2_derivative_is_accurate_to_the_edge_of_its_domain_and_only_there`,
+  `dual_quotient_derivative_is_nan_once_the_quotient_overflows`).
 - Nesting (`Dual<Dual<f64, M>, N>`) is supported and tested to second order on `sin_cos`, `atan2`.
 
 ## 4. Fixed-size types
