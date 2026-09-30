@@ -15,3 +15,8 @@ defined by the status tables in `docs/`; they win over this file.
   Lie-group foundations (`Ad`, `ad`, the Jacobians of `Exp`, every row of `NUMERICS.md` §2.3, a sign
   audit with exact gaps, the conditioning of `J` and `Ad`). Documentation only; no code, no formula
   change.
+- `docs/maths/so3.md`: SO(3) derivations (quaternion action and double cover, `Exp`, `Log` and the
+  conditioning of the `acos` form it avoids, `J` and `J⁻¹` solved in the algebra of `{I, W, W²}`,
+  `Ad`/`ad`, the action Jacobians, Shepperd's `from_matrix` and the nearest rotation, the Newton
+  renormalization and its bounds). Documentation only; no code, no formula change. Five open items
+  for the normative documents are recorded in the maths index.
