@@ -1,0 +1,18 @@
+{
+  "dps": 120,
+  "files": {
+    "coeff_k.jsonl": {
+      "rechecked": 36,
+      "records": 1710,
+      "sha256": "73ea03fc2f2701e67fba44c00952766f0af97515101561d586467a09ee670fda"
+    }
+  },
+  "generator": "sha256:b95c89fcb0871c036bdb146731b1bfd5a2bbfbafd97b7a5bf877edb0aac95cc9",
+  "mpmath": "1.4.1",
+  "python": "3.12",
+  "recheck": {
+    "digits": 40,
+    "dps": 150
+  },
+  "seed": "0x68656c69636f6964"
+}

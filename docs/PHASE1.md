@@ -13,8 +13,8 @@ defects and `tf_tree_math`, which becomes oracle #1 ([`0010`](./decisions/0010-s
 
 | Area | Status |
 |---|---|
-| Workspace, lints, `justfile`, CI matrix (§3) | Partial: workspace, lints, `justfile` and CI for `build`/`test`/`lint`/`audit`/`msrv`/`no-std`/`wasm`/`doc`; `cargo xtask lint` Partial: line citations, draft-record citations (only `0.0`/`0.` status tables, Rust comments under `crates/` and `xtask/`, amendment banners; not prose, not `PROJECT.md` §5.1), `@generated` header and registry (registry empty, regeneration comparison arrives with each generator); normal-dependency closure of `helicoid-linalg` and `helicoid` against the `0007` set (from `cargo metadata`, all features; `mint` only as an optional direct dependency, never a default; by package name; any other workspace member must register a budget), `__sweep` (no member but `xtask` requests, forwards or defaults it), each with a planted-dependency test; `deny.toml` bans the `0007` list, checked by `just audit` for every crate but `xtask`; owed: twin table; `determinism`, `oracles`, `bench-check` jobs not started |
-| Reference generator and committed corpus v1 (§4) | Not started |
+| Workspace, lints, `justfile`, CI matrix (§3) | Partial: workspace, lints, `justfile` and CI for `build`/`test`/`lint`/`audit`/`msrv`/`no-std`/`wasm`/`doc`/`corpus-check`; `cargo xtask lint` Partial: line citations, draft-record citations (only `0.0`/`0.` status tables, Rust comments under `crates/` and `xtask/`, amendment banners; not prose, not `PROJECT.md` §5.1), `@generated` header and registry (registry empty, regeneration comparison arrives with each generator); normal-dependency closure of `helicoid-linalg` and `helicoid` against the `0007` set (from `cargo metadata`, all features; `mint` only as an optional direct dependency, never a default; by package name; any other workspace member must register a budget), `__sweep` (no member but `xtask` requests, forwards or defaults it), each with a planted-dependency test; `deny.toml` bans the `0007` list, checked by `just audit` for every crate but `xtask`; owed: twin table; `determinism`, `oracles`, `bench-check` jobs not started |
+| Reference generator and committed corpus v1 (§4) | Partial: generator skeleton (per-stratum splitmix64 streams, schema, `MANIFEST.json`, 150-digit recheck, `just corpus`/`corpus-check`) and the scalar-θ strata; ids implemented: `coeff_k` (1710 records; readings in `conformance/generate/README.md`). Missing: `coeff_a`…`coeff_e`, `coeff_r`, `so3_*`, `sen3_*`, `so2_*`, `se2_*`; the `q:*` and `rho:*` strata; matrix encoding; macOS aarch64 byte-identity unchecked (§11) |
 | Conformance harness and result schema (§5) | Not started |
 | Threshold sweep and generated-file format (§6) | Not started |
 | Oracle runners: `tf_tree_math`, sophus-rs (excluded crates); Sophus, manif, GTSAM (containers) (§7) | Not started |
@@ -124,8 +124,9 @@ One JSONL file per function id; one record per line (values below are illustrati
 ```
 
 Inputs are hex floats; outputs are decimal strings with 30 significant digits. Matrices are
-column-major flat arrays with a sibling `"shape"`. `MANIFEST.json` records generator git revision,
-Python and mpmath versions, `dps`, seed, and per-file SHA-256 and record count.
+column-major flat arrays with a sibling `"shape"`. `MANIFEST.json` records the generator identity (a
+SHA-256 over its sources: a git revision changes with every commit and cannot appear in the commit
+it names), Python and mpmath versions, `dps`, seed, and per-file SHA-256 and record count.
 
 ### 4.3 Definitions (v1 function ids)
 
@@ -145,6 +146,10 @@ Python and mpmath versions, `dps`, seed, and per-file SHA-256 and record count.
 | `sen3_jr_n{1,2,3}`, `sen3_jl_n{1,2,3}` | $\tau$ | $\sum (\mp\,\mathrm{ad}_\tau)^n/(n+1)!$ |
 | `sen3_jr_inv_n{1,2,3}`, `sen3_jl_inv_n{1,2,3}` | $\tau$ | `mp.inverse` of the above |
 | `so2_*`, `se2_*` | analogous | analogous |
+
+A `coeff_*` record's outputs are `value` and `d_branch`: the derivative with respect to the branch
+variable of `NUMERICS.md` §4, by `mp.diff` at the exact real branch value of the exact binary64
+input (θ², not `fl(θ·θ)`).
 
 Series are summed until the term's norm is below $10^{-110}$ relative. Phase 2 adds `eig3`
 (`mp.eigsy`), `svd3` (`mp.svd_r`), `solve_cubic` (`mp.polyroots`); Phases 4–5 add their ids by the

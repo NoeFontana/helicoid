@@ -1,0 +1,10 @@
+[project]
+name = "helicoid-gen"
+version = "0.0.0"
+description = "mpmath reference generator for the helicoid conformance corpus (docs/PHASE1.md section 4)"
+requires-python = "==3.12.*"
+dependencies = ["mpmath==1.4.1"]
+
+# A script directory, not an installable package: `python -m gen` runs from this directory.
+[tool.uv]
+package = false

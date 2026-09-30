@@ -109,6 +109,10 @@ defined by the status tables in `docs/`; they win over this file.
   (dispatch table read for x86_64, aarch64, wasm32, thumbv7em; 95 digests over the `libm` entry points
   equal on x86_64, wasm32 (node WASI) and aarch64 (`qemu-user`); NaN sign and payload stay the target's,
   outside D16).
+- Reference generator skeleton in `conformance/generate/` (uv, pinned CPython 3.12 and mpmath;
+  splitmix64, per-stratum streams, `MANIFEST.json`, 150-digit recheck) and the first corpus file,
+  `coeff_k`, all scalar-θ strata. New recipes `just corpus`, `corpus-check`, `corpus-test` and a
+  `corpus-check` CI job. No library code changes; breaks nothing.
 
 ### Changed
 

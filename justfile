@@ -57,3 +57,21 @@ no-std:
 wasm:
     cargo build --target wasm32-wasip1 -p helicoid-linalg -p helicoid --locked
     cargo build --target wasm32-wasip1 -p helicoid-linalg --features mint --locked
+
+# Regenerate the mpmath corpus into conformance/corpus (`docs/PHASE1.md` §4; needs `uv`).
+corpus:
+    cd conformance/generate && uv run --frozen python -m gen all --out ../corpus
+
+# The generator's unit tests (stdlib unittest).
+corpus-test:
+    cd conformance/generate && uv run --frozen python -m unittest discover -s tests
+
+# Regenerate into a temporary directory and compare with the committed corpus byte for byte:
+# any differing, extra or missing file fails. Then the generator's own tests.
+corpus-check: && corpus-test
+    #!/usr/bin/env bash
+    set -euo pipefail
+    tmp=$(mktemp -d)
+    trap 'rm -rf "$tmp"' EXIT
+    (cd conformance/generate && uv run --frozen python -m gen all --out "$tmp")
+    diff -rq "$tmp" conformance/corpus

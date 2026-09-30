@@ -1,0 +1,3 @@
+# The corpus is generated (`just corpus`); LF endings keep its bytes identical on every checkout.
+conformance/corpus/** linguist-generated=true text eol=lf
+conformance/generate/** text eol=lf
