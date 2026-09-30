@@ -42,3 +42,4 @@
 - [0011: Continuous time waits for a consumer](decisions/0011-continuous-time-waits-for-a-consumer.md)
 - [0012: A retraction is a chart](decisions/0012-a-retraction-is-a-chart.md)
 - [0013: SIMD lanes owe a measurement (draft)](decisions/0013-simd-lanes-owe-a-measurement.md)
+- [0018: libm arch is bit-identical for exact operations (draft)](decisions/0018-libm-arch-is-bit-identical-for-exact-operations.md)

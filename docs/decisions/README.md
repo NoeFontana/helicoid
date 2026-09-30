@@ -28,6 +28,7 @@ grep -m1 -H '^\*\*Status:' docs/decisions/0*.md
 | [`0011`](./0011-continuous-time-waits-for-a-consumer.md) | `helicoid-spline` is gated on a consumer record; the core owes only `Ad`, `ad`, `Jr`, `Jr⁻¹`. |
 | [`0012`](./0012-a-retraction-is-a-chart.md) | retractions are chart types; SE(3) has `Screw`, `Decoupled`, `WorldTranslation`; S² charts are frozen. |
 | [`0013`](./0013-simd-lanes-owe-a-measurement.md) | SIMD `Real` lanes: the question and the bar; nothing decided. |
+| [`0018`](./0018-libm-arch-is-bit-identical-for-exact-operations.md) | `libm` `arch`: hardware `sqrt` is bit-identical; ~10x on the hot path; draft. |
 
 ## Lifecycle
 
