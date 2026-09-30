@@ -20,10 +20,11 @@ lint:
     cargo clippy --workspace --all-targets -- -D warnings
     cargo xtask lint
 
-# cargo-deny: advisories, licenses, sources for the whole workspace; the `0007` bans for everything but `xtask`.
+# cargo-deny: advisories, licenses, sources for the whole workspace; the `0007` bans for the normal
+# dependencies of everything but `xtask` (dev-dependencies such as `proptest` are out of scope).
 audit:
     cargo deny check advisories licenses sources
-    cargo deny --exclude xtask check bans
+    cargo deny --exclude-dev --exclude xtask check bans
 
 # rustdoc with warnings denied.
 doc:

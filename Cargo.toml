@@ -42,3 +42,5 @@ helicoid-linalg = { path = "crates/helicoid-linalg", version = "0.0.0" }
 # `0007`: the whole third-party budget of the library crates. `default-features = false`
 # keeps `libm`'s optional `arch` fast paths off, which would break bit identity (D16).
 libm = { version = "0.2", default-features = false }
+# Dev only: the algebra proptests of `helicoid-linalg`. Never in a library crate's normal closure.
+proptest = { version = "1", default-features = false, features = ["std"] }

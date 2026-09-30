@@ -20,3 +20,6 @@ rustdoc-args = ["--cfg", "docsrs"]
 
 [dependencies]
 libm.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true
