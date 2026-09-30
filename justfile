@@ -20,9 +20,10 @@ lint:
     cargo clippy --workspace --all-targets -- -D warnings
     cargo xtask lint
 
-# cargo-deny: advisories, licenses, sources. Library-crate bans (`0007`) are owed to `cargo xtask lint`.
+# cargo-deny: advisories, licenses, sources for the whole workspace; the `0007` bans for everything but `xtask`.
 audit:
-    cargo deny check
+    cargo deny check advisories licenses sources
+    cargo deny --exclude xtask check bans
 
 # rustdoc with warnings denied.
 doc:

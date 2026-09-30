@@ -9,16 +9,30 @@ ignore = []
 
 [licenses]
 version = 2
-allow = ["MIT", "Apache-2.0"]  # extend when a dependency needs it, with the reason
+# Extend when a dependency needs it, with the reason.
+allow = [
+    "MIT",
+    "Apache-2.0",
+    # `unicode-ident` is `(MIT OR Apache-2.0) AND Unicode-3.0`: the identifier tables under
+    # `syn`, under `serde_derive`, in `xtask` only (`0007`: never a library dependency).
+    "Unicode-3.0",
+]
 confidence-threshold = 0.93
 
-# `0007`'s bans (`nalgebra`, `faer`, `num-traits`, `bytemuck`, `serde`) bind the library crates
-# only, and cargo-deny cannot scope a ban to a crate: `xtask` will need `serde`. The
-# normal-dependency closure lint in `cargo xtask lint` will enforce them (owed, `docs/PHASE1.md` §3).
+# `0007`'s bans bind the library crates only, and `xtask` needs `serde`: `just audit` runs
+# `cargo deny --exclude xtask check bans`, so the list is a second gate behind the closure lint
+# in `cargo xtask lint` (`docs/PHASE1.md` §3).
 [bans]
 multiple-versions = "warn"
 wildcards = "deny"
 allow-wildcard-paths = true
+deny = [
+    { crate = "nalgebra" },
+    { crate = "faer" },
+    { crate = "num-traits" },
+    { crate = "bytemuck" },
+    { crate = "serde" },
+]
 
 [sources]
 unknown-registry = "deny"
