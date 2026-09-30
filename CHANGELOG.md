@@ -9,8 +9,6 @@ defined by the status tables in `docs/`; they win over this file.
 
 ### Added
 
-- `docs/decisions/0018` (draft): `libm`'s `arch` feature is bit-identical for exactly-rounded operations;
-  measured ~10x `sqrt` throughput. Authorises nothing.
 - Workspace skeleton: `helicoid-linalg` and `helicoid` (empty, `no_std`, `forbid(unsafe_code)`),
   `xtask` stub, lints, `justfile`, CI, `deny.toml`. No group code (`docs/PHASE1.md`).
 - `docs/maths/`: non-normative derivations. Notation, labelling and verification convention, and the
@@ -100,3 +98,7 @@ defined by the status tables in `docs/`; they win over this file.
   has no 4-D point) and `Matrix<S, N, N>` (`N` = 2..=4, `mint::ColumnMatrixN`), for `f32` and
   `f64` (`docs/PHASE2.md` §7). Scalars are moved, never computed on. `just lint` and `just test` cover the feature; `just msrv`, `just no-std`
   and `just wasm` build it. Bitwise round trips pin `-0`, infinities, subnormals and NaN payloads. New public API, nothing breaks.
+- `docs/decisions/0018` (ready): `libm`'s `arch` feature is bit-identical for exactly-rounded operations
+  (dispatch table read for x86_64, aarch64, wasm32, thumbv7em; 95 digests over the `libm` entry points
+  equal on x86_64, wasm32 (node WASI) and aarch64 (`qemu-user`); NaN sign and payload stay the target's,
+  outside D16).
