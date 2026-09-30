@@ -127,7 +127,8 @@ impl<S: Real, const N: usize> Real for Dual<S, N> { type Mask = S::Mask; /* … 
   makes "the derivative of the shipped code" true.
 - `sqrt` at 0 has an infinite derivative by the rule above (NaN, $0/0$, in a component whose $d$
   is zero, untouched components included); the safe-argument pattern keeps it out of any selected
-  arm, and Phase 1's seeded defect proves the harness notices when it does not.
+  arm, and Phase 1's seeded defect proves the harness notices when it does not
+  ([`0020`](./decisions/0020-dual-sqrt-at-zero-keeps-its-derivative.md)).
 - **Derivative domains** (`# Domain` on each method, `NUMERICS.md` §12), none asserted: a check
   would panic on inputs the plain value path accepts. `atan2` divides by $x_v^2 + y_v^2$ and is
   accurate only while that sum is normal (the larger argument in about $10^{\pm154}$ for `f64`,

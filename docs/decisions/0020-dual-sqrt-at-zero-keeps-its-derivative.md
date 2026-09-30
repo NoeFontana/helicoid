@@ -1,17 +1,16 @@
 # 0020: `Dual::sqrt` at zero keeps its derivative
 
-**Status:** draft
+**Status:** ready
 **Owner:** @NoeFontana
-**Implementation:** #35 (draft, authorises nothing). Two tests in `dual_tests` state today's
-behaviour of `Vector<Dual>::norm` and `chol` and change none.
+**Implementation:** #35: three tests in `dual_tests` state today's behaviour of `Vector<Dual>::norm`
+and `chol` and change none; the citations and the guarded-norm doctest of the plan's step 1.
 
 ## Context
 
 `Dual::sqrt` applies `d / (2 sqrt v)` in every lane. At `v = 0` a lane with `d != 0` is `+-inf` and
 a lane with `d = 0` is NaN (`0 / 0`); the value is unaffected. `PHASE2.md` §3, `NUMERICS.md` §12,
 the `# Domain` of `Dual::sqrt` and `Vector::norm`, and `EA.18` (`docs/maths/error-analysis.md`) all
-read it that way. The question is whether that should change. This record recommends not, and
-makes the recommendation conditional on Q1 and Q3.
+read it that way. The question is whether that should change. This record decides it should not.
 
 **Who reaches `sqrt` at 0 on a `Dual`** (`crates/helicoid` is still empty, so the group rows are
 the spec, not code):
@@ -26,8 +25,27 @@ the spec, not code):
 
 The `eig3`, `svd3` and `solve_cubic` ports (`PHASE2.md` §6) are not written; each must pass the safe
 argument or say why not. So every routine written so far passes it, and the exposed surface is a
-**consumer's own** `Vector<Dual>::norm` at an exactly-zero vector (a residual norm at a converged
-point is the obvious case). Whether one exists is Q1.
+**consumer's own** `Vector<Dual>::norm` at an exactly-zero vector.
+
+**When an exactly-zero vector can reach such a `norm`.** A norm of a *difference* is exactly zero
+only when its operands are bit-equal, so noisy data almost never does it; the realistic sources
+are structural:
+
+1. *Identical operands.* The distance or geodesic length of a pose or point from itself (`‖Log(T⁻¹
+   T)‖`, a `tf_tree` self-lookup, a residual between a frame and its own copy).
+2. *State initialised at the constant it is compared with.* A translation initialised to zero
+   against an anchor at the world origin; a zero-initialised bias or velocity under a `‖b‖` prior
+   (the squared form `‖b‖²` is safe: `norm_sq` has no `sqrt`).
+3. *Noise-free simulation and unit tests*, where the initial guess is the ground truth and a range
+   or reprojection residual is exactly 0.
+4. *Normalising a vector that can be zero*: a bearing to a landmark at the camera centre, a
+   direction between coincident points. Here the *value* is `0/0` too, so the guarded norm alone
+   does not help; the caller guards the division.
+
+A Gauss-Newton iterate that reaches a bit-exact zero residual from noisy data is not a realistic
+source. In sources 1 to 3 the *value* is fine and only the Jacobian rows of that one residual are
+poisoned. `locus-*` and `tf_tree` were not inspected, and the decision below does not depend on what
+they do.
 
 **What the NaN is worth.** A `sqrt` hoisted out of a `branch` and shared with the selected arm, at
 `φ = 0`, gives `θ.d = [NaN; 3]` and NaN in `sin(θ/2).d` and `cos(θ/2).d` (`EA.18(b)`). Under a
@@ -36,29 +54,47 @@ factor `k(θ²)`, and for the non-differentiable `sin(θ/2)` alone a chosen subg
 `PHASE1.md` §10 row ("`sqrt` of θ² without the safe argument, under `Dual`", `nonfinite > 0` in
 `theta:exact0`) fires **only** in that hoisted shape. With the `sqrt` written inside the exact arm
 and no safe argument, a `bool` mask evaluates that arm alone at `φ ≠ 0` and `Dual::select` blends
-per lane, so the unselected NaN is dropped and every output is finite under any rule. The row does
-not state the shape, and `xtask/src/seeded/` does not exist yet, so the row is not evidence for or
-against a rule until Q3 is answered.
+per lane, so the unselected NaN is dropped and every output is finite under any rule.
+
+The row's detector is named: `nonfinite > 0`. It fires only for a planted kernel whose selected arm
+consumes the hoisted root: one `sqrt(z)` above the branch, the series arm at the rebuilt `θ·θ`
+(the row now says so). With the series arm at `z`, every output is finite under any rule. For
+that shape, with `φ` or `θ` the differentiated variable at `theta:exact0`, the current rule reports
+NaN and (b), (e) and (s) all return `d = 0`; with `z` itself the variable, (b) still reports NaN
+(`inf · 0`), and at `theta:subnormal` (b) keeps a NaN that (e) and (s) hide. At `theta:exact0`
+`d = 0` is the correct derivative of the analytic `k(θ²)`, so under a mask a comparison against
+mpmath has nothing to catch either: the defect would be undetectable there, not merely weaker.
 
 **A fact that shapes the options.** If the argument `z(x)` is `C¹`, non-negative in a neighbourhood
-and `z(x0) = 0`, then `x0` is an interior minimum and `∇z(x0) = 0`. So a lane with `d != 0` at
-`v = 0` exists only at a domain boundary, where `+inf` is the true one-sided slope (`sqrt(x)` at
-`x = 0`); the `d = 0` lanes are the `|x|`-like interior case, where no derivative exists and `0`
-is a member of the Clarke subdifferential (of the norm at 0: the unit ball, whose smallest element
-is 0). Underflow breaks the premise (`z = x²` rounds to 0 with `x = 1e-200` and `d = 2e-200`, true
-slope 1); that input is outside `norm`'s stated `# Domain` (`norm_sq` must be normal).
+and `z(x0) = 0`, then `x0` is an interior minimum and `∇z(x0) = 0`. So a lane with `d != 0` at `v =
+0` exists only at a domain boundary, where `+inf` is the true one-sided slope (`sqrt(x)` at `x =
+0`); a `d = 0` lane is either the `|x|`-like interior case, where no derivative exists and `0` is a
+member of the Clarke subdifferential (of the norm at 0: the unit ball, whose smallest element is 0),
+or an untouched lane at a boundary point, where `0` is exactly right and NaN is the cost of `0 ·
+inf` (ForwardDiff's case for (b)). Underflow breaks the premise (`z = x²` rounds to 0 with `x =
+1e-200` and `d = 2e-200`, true slope 1); that input is outside `norm`'s stated `# Domain` (`norm_sq`
+must be normal).
 
 ## Decision
 
-**Keep the rule**, provided Q1 is answered "no consumer" and Q3 does not make NaN the only
-detector. `Dual::sqrt` stays `d / (2 sqrt v)`; no `Real` method, no `Vector` method, no mask on
-`v == 0` or `d == 0`. The one-line policy: *the derivative of the shipped code is reported as
-computed, and a non-finite derivative at a non-differentiable point is the report.*
+**Keep the rule.** `Dual::sqrt` stays `d / (2 sqrt v)`; no `Real` method, no `Vector` method, no
+mask on `v == 0` or `d == 0`. The one-line policy: *the derivative of the shipped code is reported
+as computed, and a non-finite derivative at a non-differentiable point is the report.*
 
-The follow-up (step 1 below) is documentation only: cite this record from the `PHASE2.md` §3
-bullet once it is `ready`, and give `Vector::norm` a doctest of the guarded form
-(`select(n2 <= 0, 1, n2).sqrt()`, then `select(n2 <= 0, 0, ·)`), the one existing path
-(`API.md` §6 item 5).
+The decision does not wait on what a consumer does. (a) needs no code change and keeps the most
+information; a later move to (b) stays possible but turns NaN into finite values for consumers
+and blinds the §10 row at `theta:exact0`; (c), a zero-safe norm, is additive on top of any rule.
+And (a) is the rule under which the normative `PHASE1.md` §10 row fires at `theta:exact0` whichever
+variable is differentiated: (e) and (s) never, (b) only when `z` itself is the variable.
+
+A consumer that meets the hazard uses the guarded form (`select(n2 <= 0, 1, n2).sqrt()`, then
+`select(n2 <= 0, 0, ·)`), shown as a doctest on `Vector::norm`; `PHASE2.md` §3 and `NUMERICS.md`
+§12 cite this record.
+
+**Revisit trigger.** A named consumer gate that needs the guarded norm as a library item proposes
+(c) in its own record, with the `API.md` §6 answers and a subgradient choice (0, the smallest
+Clarke element and PyTorch's, versus a unit vector; `Dual::abs` picks `sgn(±0) = +1`, and that
+record states why).
 
 ## Rationale
 
@@ -77,10 +113,8 @@ Candidates, by what each does at `v = 0`:
 - **(b) breaks a `Dual` invariant.** Masks and `select` read the value part only (`dual.rs`
   header; `0003` item 5). (b) makes a derivative lane steer a select. It keeps the value path
   bitwise (`r` is untouched) but the derivative lanes of `-0` become `+0`.
-- **No candidate is chosen on the canary.** Hoisted, (b), (e) and (s) all blind the §10 row and (a)
-  keeps it; unhoisted, no rule fires it. Which shape the seeded defect has is Q3. If the row must
-  fire and the shape is the hoisted one, (a) is required; if the row does not need NaN, (b) is the
-  candidate to re-argue, not (e) or (s).
+- **The §10 row decides between (a) and the masks.** Its detector is `nonfinite > 0`, so a rule
+  that turns the NaN into a finite derivative blinds it at `theta:exact0` (Context); (a) keeps it.
 - **(c) is the right shape for the real hazard and is not owed yet.** It is bit-equal to `norm`
   for `n² > 0` and cheap (Evidence), but `API.md` §6 item 5 asks whether it duplicates an existing
   path: `norm_sq` behind the safe argument is that path, and `0009` says the consumer owns its own
@@ -104,18 +138,18 @@ Candidates, by what each does at `v = 0`:
 
 ## Consequences
 
-- `PHASE2.md` §3, `NUMERICS.md` §12, `EA.18` and the `PHASE1.md` §10 row stand as written, the
-  row with the Q3 caveat.
+- `PHASE2.md` §3, `NUMERICS.md` §12, `EA.18` and the `PHASE1.md` §10 row stand as written; the first
+  two cite this record.
 - A consumer's `Vector<Dual>::norm` at an exactly-zero vector returns NaN derivatives. Documented,
-  pinned, not fixed. A Gauss-Newton residual norm at an exactly converged point would poison a
-  whole Jacobian; that is why Q1 gates the decision.
+  pinned, not fixed. A Gauss-Newton residual norm at an exactly converged point would poison a whole
+  Jacobian; the guarded form and the revisit trigger are the mitigation.
 - The value path claim ("bitwise identical to plain `S`") is untouched by every candidate.
-- If Q1 is answered yes, a `Vector::norm_safe`-style surface needs its own record (or an amendment
-  of this one) and the `API.md` §6 answers.
+- A `Vector::norm_safe`-style surface needs its own record and the `API.md` §6 answers (revisit
+  trigger).
 
 ## Implementation plan
 
-1. Docs only, once `ready`: cite 0020 from the `PHASE2.md` §3 `sqrt`-at-0 bullet and from
+1. Docs only, in #35: cite 0020 from the `PHASE2.md` §3 `sqrt`-at-0 bullet and from
    `NUMERICS.md` §12's `Dual::sqrt` row; add the guarded-norm doctest to `Vector::norm` — verified
    by `just doc`, `just test`, `just lint`.
 
@@ -128,23 +162,17 @@ corpus stratum or reference twin (`NUMERICS.md` §14), a `# Domain`, and the §6
 
 ## Open questions
 
-1. **Is there a consumer whose `Vector<Dual>::norm` meets an exactly-zero vector?** `locus-*` and
-   `tf_tree` were not inspected. A yes moves (c) from "not now" to a proposal and puts (b) back on
-   the table. Must be answered "no" before this record goes `ready`.
-2. **Which subgradient, if (c) ships?** 0 (the smallest Clarke element; what PyTorch uses) versus a
-   unit vector. `Dual::abs` picks `sgn(+-0) = +1`, not 0; for a 1-vector the two conventions would
-   disagree. The reason `abs` chose `+1` is not recorded here.
-3. **What shape does the §10 seeded defect have, and is NaN its only detector?** The row does not
-   say (Context). A derivative-versus-mpmath comparison at `theta:exact0` would also catch it under
-   (b), (e), (s). Must be answered before the canary can count as evidence for either side.
+None. Which consumers meet an exactly-zero norm is not needed to decide (Decision); the subgradient
+belongs to the record that would propose (c); the shape of the §10 defect is fixed by the row's
+named detector (Context).
 
 ## Evidence
 
-Illustrative, not reproducible from the repository: the harness is a scratch crate (path
-dependency on `crates/helicoid-linalg`, `std`, release, `lto = "fat"`, `codegen-units = 1`,
-`libm` 0.2 with `default-features = false`, and once with `arch`) that is not committed, per the
-rule that benchmark harnesses stay out unless the docs prescribe one. What the repository does
-reproduce is the two pin tests and `dual_sqrt_at_zero_has_an_infinite_derivative_and_the_plain_value`.
+Illustrative, not reproducible from the repository: the harness is a scratch crate (path dependency
+on `crates/helicoid-linalg`, `std`, release, `lto = "fat"`, `codegen-units = 1`, `libm` 0.2 with
+`default-features = false`, and once with `arch`) that is not committed, per the rule that benchmark
+harnesses stay out unless the docs prescribe one. What the repository does reproduce is the three
+pin tests and `dual_sqrt_at_zero_has_an_infinite_derivative_and_the_plain_value`.
 
 Protocol: one pinned core of a shared 8-core host (load average 5 to 13 from sibling jobs). 1024
 `Dual<f64, N>` inputs, `v` uniform in `[0.1, 10.1]`, `d` uniform in `±0.5`; also with half of the
