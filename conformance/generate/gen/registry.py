@@ -3,11 +3,12 @@
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from . import check, check_sen3, coeff, sen3, so3
+from . import check, check_se2, check_sen3, coeff, se2, sen3, so2, so3
 from .strata import (
     QUAT_STRATA,
     R_STRATA,
     SCALAR_THETA_STRATA,
+    SE2_STRATA,
     SEN3_QUAT_STRATA,
     SEN3_STRATA,
     Stratum,
@@ -54,6 +55,21 @@ FUNCTIONS: dict[str, FunctionSpec] = {
                 so3.phi_inputs,
                 so3.jacobian(name),
                 check.so3_jacobian(name),
+            )
+            for name in ("jr", "jl", "jr_inv", "jl_inv")
+        ),
+        FunctionSpec("so2_exp", SCALAR_THETA_STRATA, so2.theta_inputs, so2.exp, check_se2.so2_exp),
+        FunctionSpec("so2_log", SCALAR_THETA_STRATA, so2.z_inputs, so2.log, check_se2.so2_log),
+        FunctionSpec("se2_exp", SE2_STRATA, se2.tau_inputs, se2.exp, check_se2.se2_exp),
+        FunctionSpec("se2_log", SE2_STRATA, se2.x_inputs, se2.log, check_se2.se2_log),
+        FunctionSpec("se2_ad", SE2_STRATA, se2.x_inputs, se2.ad_of, check_se2.se2_ad),
+        *(
+            FunctionSpec(
+                f"se2_{name}",
+                SE2_STRATA,
+                se2.tau_inputs,
+                se2.jacobian(name),
+                check_se2.jacobian(name),
             )
             for name in ("jr", "jl", "jr_inv", "jl_inv")
         ),

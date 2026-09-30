@@ -18,8 +18,8 @@ uv run --frozen python -m gen list
 | `pyproject.toml`, `uv.lock`, `.python-version` | CPython 3.12, `mpmath` pinned exactly; no numpy, no gmpy2 (`setup` refuses a non-Python backend) |
 | `gen/precision.py` | the only place `mp.dps` is set (120; rechecks at 150); `to_f64` |
 | `gen/rng.py` | splitmix64, per-stratum streams, log-uniform, uniform on S² |
-| `gen/strata.py` | the strata; `gen/registry.py` the function ids; `gen/coeff.py`, `gen/so3.py`, `gen/sen3.py` their definitions |
-| `gen/series.py`, `gen/check.py`, `gen/check_sen3.py` | the exact Taylor series (`coeff_series`); the per-record cross-checks |
+| `gen/strata.py` | the strata; `gen/registry.py` the function ids; `gen/coeff.py`, `gen/so3.py`, `gen/sen3.py`, `gen/so2.py`, `gen/se2.py` their definitions |
+| `gen/series.py`, `gen/check.py`, `gen/check_sen3.py`, `gen/check_se2.py` | the exact Taylor series (`coeff_series`); the per-record cross-checks |
 | `gen/fmt.py`, `gen/corpus.py`, `gen/manifest.py` | text formats and `Mat`, assembly (parallel by stratum) and recheck, `MANIFEST.json` |
 
 ## Record schema
@@ -126,8 +126,7 @@ e_j, m = 3 + 3N, `"shape":[m,m]`.
   642 (each `q` and its negative) with the two `q:*` strata. `PHASE1.md` §4.4's 64 would be 190
   MB, since each of `ad` and the four Jacobians is 5 dense matrices per record. 6 is a round
   budget trade-off, not the largest count that fits: the family is 18 of the 50 MB and about 12 of
-  the 16 CPU-minutes of generation, the rest is left for `so2_*`, `se2_*` and the later phases'
-  ids, and each further sample per stratum costs ~3 MB and ~2 CPU-minutes (one constant and a
+  the 17 CPU-minutes of generation, the rest is left for the later phases' ids, and each further sample per stratum costs ~3 MB and ~2 CPU-minutes (one constant and a
   regeneration).
 - **Dense inverses.** LU with pivoting leaves rounding residue in the blocks a dual matrix has no
   entry in, and the 150-digit recheck compares entrywise. `sen3.inverse` sets exactly those blocks
@@ -145,6 +144,58 @@ e_j, m = 3 + 3N, `"shape":[m,m]`.
 - **`mp.logm`** of the (3+N)-square matrix is right to 1e-117 up to θ ≈ 2 and wrong near π (an
   imaginary part of order 1e4, 7e3 to 1.5e4 across the records of θ = π − 10⁻⁶, ρ = 10⁴), so it is
   a test cross-check only, as for `so3_log`.
+
+## SO(2) and SE(2)
+
+Ids `so2_exp`, `so2_log`, `se2_<f>`. A rotation is the unit complex `z = [c, s]`, an SO(2) tangent
+the angle `theta`, an SE(2) tangent `tau = [theta; rho_x; rho_y]` (rotation first,
+`docs/NUMERICS.md` §1), an element `X = (z, t)`. A dense matrix is 3×3, column-major in the
+tangent's order, `"shape":[3,3]`.
+
+| Id | In | Out | Reference, from the definition |
+|---|---|---|---|
+| `so2_exp` | `theta` | `z` | `mp.expm` of [[0, -θ], [θ, 0]] |
+| `so2_log` | `z` | `theta` | the θ with \|θ\| ≤ π and Exp(θ) = z/\|z\|, by Newton's method on the complex series: θ += Im(conj(Exp θ) ẑ), so the error cubes |
+| `se2_exp` | `tau` | `z`, `t` | `mp.expm` of the hat matrix [[0, -θ, ρ_x], [θ, 0, ρ_y], [0, 0, 0]] |
+| `se2_log` | `z`, `t` | `tau` | θ as `so2_log`; ρ solves V(θ) ρ = t, V = Σ (θJ)ⁿ/(n+1)! the translation block of the same exponential (J the generator of rotations) |
+| `se2_ad` | `z`, `t` | `Ad` | the images of the basis under σ ↦ (X σ^ X⁻¹)^∨, X = [[R(ẑ), t], [0, 1]], X⁻¹ from `mp.inverse` of R |
+| `se2_jr`, `se2_jl` | `tau` | `J` | Σ (∓ad_τ)ⁿ/(n+1)!; ad_τ is the images of the basis under σ ↦ [τ^, σ^]^∨ |
+| `se2_jr_inv`, `se2_jl_inv` | `tau` | `J` | `mp.inverse` of the above |
+
+- **Strata.** `so2_*` see `SCALAR_THETA_STRATA`, each θ followed by its negative (0 has none): 3419
+  records a file. `so2_log` takes z = (cos θ, sin θ) rounded componentwise, so |z| ≠ 1 by ~1e-16
+  and the reference is that of z/|z|. `se2_*` see SE_N(3)'s 52 strata (`SE2_STRATA`, so
+  `theta:dense` stays out for the same reason), `SE2_SAMPLES` = 8 records each, 416 a file: record
+  i takes the i-th θ of the stratum's stream (a fixed θ repeats) with the sign (-1)ⁱ (`theta:exact0`
+  stays +0), and a random direction on S¹ at the stratum's scale from the stream `rho` (`t` for
+  `log` and `ad`). 8 is a budget trade-off (the nine ids are 2.3 MB), not the largest count that
+  fits.
+- **z = (-1, ±0), θ = π, is not sampled.** `NUMERICS.md` §6's `atan2(s, c)` gives π at s = +0 and
+  -π at s = -0, and (-π, π] gives π at both, so only (-1, -0) is undecided. `so2.angle` refuses
+  both: an `mpf` has no signed zero to tell them apart. No stratum reaches either (`theta:pi-1e-k`
+  rounds cos θ to -1 but sin θ stays ≥ 1e-12); sampling (-1, +0) is listed as missing in
+  `docs/PHASE1.md` §0.0.
+- **No non-unit z.** No `q:w0` or `q:nonunit` analogue: the spec names none, and a stratum family
+  is a record first. `so2_log`, `se2_log` and `se2_ad` renormalise z, but z is the rounded
+  (cos θ, sin θ): `| |z|² - 1 | ≤ 1.4e-16` over their inputs, so a subject that skips the
+  renormalisation errs by ~1 u and can pass.
+- **Newton stops** at 1e-110 of |θ|, not of |Im z| as `so3.log_newton` does of |vec q|: near π the
+  series of exp has an absolute error of 1e-120, which sin θ ≈ 1e-12 cannot bear.
+- **No closed form** of `NUMERICS.md` §6 (V, α, β, `atan2`) is evaluated; it has none for the
+  Jacobians yet. `tests/test_se2.py` compares Exp, Log and V⁻¹ to the closed forms and to
+  `mp.atan2`, and J_r, J_l to what they mean, the derivative of `mp.expm`:
+  Exp(τ + ε e_j)' = Exp(τ) (J_r e_j)^ = (J_l e_j)^ Exp(τ) (`NUMERICS.md` §1).
+- **Structure**, asserted on every Jacobian and `Ad` (`check_se2._structure`): the first row is
+  exactly (1, 0, 0) and the 2×2 block has the form p I + q J. `mp.inverse` leaves exactly 0 in the
+  first row of all 832 series inverses in the corpus, so the SE_N(3) zeroing rule is not needed.
+- **Cross-checks** (`check_se2.py`) to 1e-100 **of the size of the terms an entry sums**, not
+  absolutely: at `theta:subnormal` angle-dependent entries are 1e-311 beside entries of 1, and an
+  absolute 1e-100 would pass any of them. `so2_exp`: the complex series Σ (iθ)ⁿ/n! against
+  `mp.expm`, |z| = 1. `so2_log`: |θ| ≤ π, `mp.expm` returns z/|z|. `se2_exp`: z as `so2_exp`,
+  t = V ρ with V the series, Log(Exp τ) = τ. `se2_log`: `so2_log` on θ, `mp.expm` of the whole hat
+  matrix returns t. `se2_ad`: the block is R(ẑ), X Exp(u) X⁻¹ = Exp(Ad u) for one u. `jr`, `jl`:
+  J_l = Ad_Exp(τ) J_r, Exp by `mp.expm`, against the other series; the inverses: J J⁻¹ = I against
+  the series.
 
 ## Coefficients
 
@@ -244,11 +295,11 @@ algorithm that produced it (`check.py`):
   and with two workers and compare it with the committed records: the worker count cannot change a
   byte. The whole corpus is regenerated once, and compared to the committed one byte for byte,
   manifest included, by `just corpus-check`; a second full regeneration inside the tests would
-  only double its 16 CPU-minutes.
+  only double its 17 CPU-minutes.
 - **Parallel.** One task per (id, stratum), joined in catalogue order, so the bytes are those of a
-  serial run whatever `--jobs` (`build_all`; default every core). `just corpus` is 16 CPU-minutes
-  (`so3_log` and the SE_N(3) Jacobians the most, N = 3 at 80 CPU-seconds a file), 3 minutes of
-  wall time on eight cores; `just corpus-check` with its 113 unit tests takes as long.
+  serial run whatever `--jobs` (`build_all`; default every core). `just corpus` is 17 CPU-minutes
+  (`so3_log` and the SE_N(3) Jacobians the most, N = 3 at 80 CPU-seconds a file); the wall time
+  is that over the free cores, and `just corpus-check` adds the generator's unit tests.
 
 ## Adding a function id
 

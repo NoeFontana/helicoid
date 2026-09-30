@@ -49,6 +49,48 @@
       "sha256": "bbcad103ed55b545f61fa24c7b01a66b562d3bd71d40019f9aee6bb6a552b9e1",
       "verified": 7
     },
+    "se2_ad.jsonl": {
+      "kind": "corpus",
+      "rechecked": 52,
+      "records": 416,
+      "sha256": "d12d057f7925fc67a0313520d0cd9535ac895ca4e6c52dcfa3dbac9b79c8d59b"
+    },
+    "se2_exp.jsonl": {
+      "kind": "corpus",
+      "rechecked": 52,
+      "records": 416,
+      "sha256": "6ea58756bf745a616b0b7ee6bae010bb6c899f5047d02d4610a2c9b04312f5bb"
+    },
+    "se2_jl.jsonl": {
+      "kind": "corpus",
+      "rechecked": 52,
+      "records": 416,
+      "sha256": "12e038aef46dc25b7110763b50c399da5676ee400ed4da92065c5551d8a1bbfb"
+    },
+    "se2_jl_inv.jsonl": {
+      "kind": "corpus",
+      "rechecked": 52,
+      "records": 416,
+      "sha256": "3c47c047bd61d4e026fe010d7f4e17c048787e26536b1aa3075606704ac7a1d9"
+    },
+    "se2_jr.jsonl": {
+      "kind": "corpus",
+      "rechecked": 52,
+      "records": 416,
+      "sha256": "d22209d7b2353eba25ac62ce0d51657e3d93880a8c27216542143745836f8d39"
+    },
+    "se2_jr_inv.jsonl": {
+      "kind": "corpus",
+      "rechecked": 52,
+      "records": 416,
+      "sha256": "8fba2af85bf35bdcfb551b19358281c85ec364ffae529fcd0866f75790eca7d3"
+    },
+    "se2_log.jsonl": {
+      "kind": "corpus",
+      "rechecked": 52,
+      "records": 416,
+      "sha256": "98b7631fd8b42014293e0eb26232ddf5eefec696111b9f19ba9c26c3a8f6d902"
+    },
     "sen3_ad_n1.jsonl": {
       "kind": "corpus",
       "rechecked": 54,
@@ -175,6 +217,18 @@
       "records": 642,
       "sha256": "acbeed03edc43d97515e75a5f7c9ca32d4591735d074d639b95cee6c5f96d2f2"
     },
+    "so2_exp.jsonl": {
+      "kind": "corpus",
+      "rechecked": 58,
+      "records": 3419,
+      "sha256": "9f7d302bc9608ccbd834b318a463da40ab0b64273ad2292e9b0d387ffd2b6572"
+    },
+    "so2_log.jsonl": {
+      "kind": "corpus",
+      "rechecked": 58,
+      "records": 3419,
+      "sha256": "5ccbda90c6acd4d10fb99b78a852ea0376261cfa5948a7a5d5ad0bf1eaf88b44"
+    },
     "so3_act.jsonl": {
       "kind": "corpus",
       "rechecked": 38,
@@ -224,7 +278,7 @@
       "sha256": "577f40aa3db75180b8168b459e383bc53182a24856995d267c000b498d8ac5c1"
     }
   },
-  "generator": "sha256:a69e3f7b3bc098e554dca925abb145d77b4706ceee80e91dd5f6a48e6e255082",
+  "generator": "sha256:18d2e3916e44f965d96136f4ea67d95c8e0af8e9b494d8d4c1798fc545f684b6",
   "mpmath": "1.4.1",
   "python": "3.12",
   "recheck": {

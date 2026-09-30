@@ -140,6 +140,17 @@ defined by the status tables in `docs/`; they win over this file.
   (`mp.logm` is wrong near π), the inverse rule and the sample count. `just corpus` is 16
   CPU-minutes (3 minutes on eight cores); the `corpus-check` CI job gets a 60-minute timeout. No
   library code changes; breaks nothing.
+- Corpus files for SO(2) and SE(2): `so2_exp`, `so2_log` (3 419 records each) and `se2_exp`,
+  `se2_log`, `se2_ad`, `se2_jr`, `se2_jl`, `se2_jr_inv`, `se2_jl_inv` (416 each; 2.3 MB): `mp.expm`
+  of the hat matrix, its inverse on θ ∈ (−π, π] by Newton's method on the series, the conjugation
+  definition of `Ad`, the defining series of `ad_τ` as dense 3×3 rotation-first matrices and
+  `mp.inverse` of those, each record checked to 100 digits of the size of its terms (`mp.expm`,
+  the complex series, `J_l = Ad_Exp(τ) J_r`, `J J⁻¹ = I`) with the first row (1, 0, 0) and the
+  rotation block asserted on the data. No closed form of `NUMERICS.md` §6 is evaluated. The `so2_*`
+  ids see the θ strata with each θ in both signs, the `se2_*` ids SE_N(3)'s strata (no
+  `theta:dense`) at 8 records each with the sign of θ alternating; z = (−1, ±0), θ = π, and a
+  non-unit z are not sampled. `docs/PHASE1.md` §4.3 and §4.4 state the readings. `just corpus` is
+  17 CPU-minutes. No library code changes; breaks nothing.
 
 ### Changed
 

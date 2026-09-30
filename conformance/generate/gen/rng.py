@@ -40,6 +40,12 @@ def log_uniform(rng: SplitMix64, lo, hi) -> float:
     return theta
 
 
+def unit_vector_s1(rng: SplitMix64) -> tuple[float, float]:
+    """Uniform on S1 (the angle uniform) at working precision, then rounded to binary64."""
+    phi = 2 * mp.pi * rng.uniform()
+    return to_f64(mp.cos(phi)), to_f64(mp.sin(phi))
+
+
 def unit_vector_s2(rng: SplitMix64) -> tuple[float, float, float]:
     """Uniform on S2 (z uniform, phi uniform) at working precision, then rounded to binary64."""
     z = 2 * mpf(rng.uniform()) - 1
