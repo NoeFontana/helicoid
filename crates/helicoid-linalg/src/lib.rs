@@ -64,4 +64,6 @@ mod linalg_tests;
 #[cfg(all(test, feature = "mint"))]
 mod mint_tests;
 #[cfg(test)]
+mod sqrt_tests;
+#[cfg(test)]
 mod tests;

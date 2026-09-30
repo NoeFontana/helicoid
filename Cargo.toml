@@ -39,9 +39,9 @@ unused_must_use = "deny"
 
 [workspace.dependencies]
 helicoid-linalg = { path = "crates/helicoid-linalg", version = "0.0.0" }
-# `0007`: the whole third-party budget of the library crates. `default-features = false`
-# keeps `libm`'s optional `arch` fast paths off, which would break bit identity (D16).
-libm = { version = "0.2", default-features = false }
+# `0007`: the whole third-party budget of the library crates. `arch` routes only the exactly rounded
+# `sqrt`, `fma` and `rint` to the target's instruction: every non-NaN bit is unchanged (D16, `0018`).
+libm = { version = "0.2", default-features = false, features = ["arch"] }
 # Optional interop of `helicoid-linalg` (`0007`); `mint` has no default features, the flag says so.
 # 0.5.7 is the floor: the first with `From<mint::VectorN<T>> for [T; N]`, which the conversions use.
 mint = { version = "0.5.7", default-features = false }

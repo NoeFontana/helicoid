@@ -113,7 +113,7 @@ pub trait Real:
     fn atan2(self, x: Self) -> Self;
     /// Absolute value.
     fn abs(self) -> Self;
-    /// `self` with the sign bit of `sign`.
+    /// `self` with the sign bit of `sign`. The sign bit of a NaN `sign` is the target's (`0018`).
     fn copysign(self, sign: Self) -> Self;
     /// The value part as `f64`. Tests and `debug_assert!` only (`docs/API.md` R4).
     fn value_f64(self) -> f64;

@@ -64,7 +64,8 @@ parts; no `mint` type for tangents (their order is `helicoid`'s, API R3).
 x86_64-linux, aarch64-linux and `wasm32-wasip1` (wasmtime), serializes outputs as hex floats in
 corpus order, and compares SHA-256 digests. **Any difference fails.** Required in CI from this phase
 (wired since Phase 1). A difference is a D16 violation: find the non-`libm` transcendental, the
-`mul_add`, or the target flag.
+`mul_add`, or the target flag. NaN sign and payload are not compared (`0018`); a NaN output already
+fails the corpus.
 
 ## 4. locus-calib
 
