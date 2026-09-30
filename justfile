@@ -14,12 +14,13 @@ test:
     cargo nextest run --workspace --no-tests=pass
     cargo test --doc --workspace
 
-# fmt, then clippy with warnings denied. `cargo xtask lint` joins when it exists.
+# fmt, clippy with warnings denied, then the repository checks of `cargo xtask lint`.
 lint:
     cargo fmt --all -- --check
     cargo clippy --workspace --all-targets -- -D warnings
+    cargo xtask lint
 
-# cargo-deny: advisories, licenses, sources. Library-crate bans live in `cargo xtask lint` (`0007`).
+# cargo-deny: advisories, licenses, sources. Library-crate bans (`0007`) are owed to `cargo xtask lint`.
 audit:
     cargo deny check
 
