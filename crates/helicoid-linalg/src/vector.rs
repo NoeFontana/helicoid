@@ -67,9 +67,28 @@ impl<S: Real, const N: usize> Vector<S, N> {
     ///
     /// `norm_sq` must be a normal finite number: it is not scaled, so a finite vector whose
     /// entries are beyond about `1e154` (`f64`) or `1e19` (`f32`) returns `inf`, and one whose
-    /// largest entry is below about `1e-154` or `1e-19` returns `0` or loses digits. Over `Dual` the derivative at the zero vector is NaN, the `sqrt` rule
-    /// at 0 (`Dual::sqrt`); a caller that can meet it uses `norm_sq` behind the safe-argument
-    /// pattern.
+    /// largest entry is below about `1e-154` or `1e-19` returns `0` or loses digits. Over `Dual`
+    /// the derivative at the zero vector is NaN, the `sqrt` rule at 0 (`Dual::sqrt`, decided in
+    /// `0020`); a caller that can meet it uses `norm_sq` behind the safe-argument pattern. The
+    /// guarded form is silent below the domain: for entries under about `1e-154` it returns
+    /// `d = 0` where the true derivative is a unit vector.
+    ///
+    /// ```
+    /// use helicoid_linalg::{Dual, Real, Vector};
+    ///
+    /// fn guarded_norm<S: Real, const N: usize>(v: Vector<S, N>) -> S {
+    ///     let n2 = v.norm_sq();
+    ///     let zero = n2.le(S::zero());
+    ///     S::select(zero, S::zero(), S::select(zero, S::one(), n2).sqrt())
+    /// }
+    /// let var = |x: [f64; 3]| {
+    ///     Vector::<Dual<f64, 3>, 3>(core::array::from_fn(|i| Dual::variable(x[i], i)))
+    /// };
+    /// assert!(var([0.0; 3]).norm().d[0].is_nan());
+    /// assert_eq!(guarded_norm(var([0.0; 3])).d, [0.0; 3]);
+    /// let n = guarded_norm(var([3.0, 4.0, 0.0]));
+    /// assert_eq!((n.v, n.d), (5.0, [0.6, 0.8, 0.0]));
+    /// ```
     #[inline]
     pub fn norm(self) -> S {
         self.norm_sq().sqrt()

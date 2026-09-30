@@ -308,7 +308,7 @@ $X(t) = X_0\,\mathrm{Exp}(t\,d)$ with $d = X_1 \ominus_R X_0$ and $\Delta = X_0^
 | `S2Chart::local` | $m \ne -n$ | unspecified finite value |
 | `geodesic` | $\theta(d) < \pi$ | §10 |
 | `Sim3` | $\sigma$ finite | — |
-| `Dual::sqrt` derivative | $v > 0$ | $\pm\infty$ ($d \ne 0$), NaN ($d = 0$); value unaffected |
+| `Dual::sqrt` derivative | $v > 0$ | $\pm\infty$ ($d \ne 0$), NaN ($d = 0$); value unaffected (0020) |
 | `Dual::atan2` derivative | $x_v^2 + y_v^2$ normal (larger argument in $\approx 10^{\pm154}$ `f64`, $10^{\pm19}$ `f32`) | $\pm\infty$, NaN at the origin, or $0$; value unaffected |
 | `Dual` quotient derivative | $q = a_v/b_v$ finite | NaN (value $\pm\infty$) |
 | `chol` | positive definite | `(L, mask = false)`; `L` finite for every input, nothing asserted (§15.3) |

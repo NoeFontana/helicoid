@@ -9,6 +9,10 @@ defined by the status tables in `docs/`; they win over this file.
 
 ### Added
 
+- `docs/decisions/0020`: `Dual::sqrt` at zero keeps `d / (2 sqrt v)` (the NaN is the report and the
+  `PHASE1.md` §10 row needs it); the guarded norm is a doctest, a zero-safe norm is a later record.
+- Tests pinning today's `Dual` derivative at a zero `sqrt` argument: `Vector<Dual>::norm` of the
+  zero vector, and `chol` on a zero or a negative pivot.
 - Workspace skeleton: `helicoid-linalg` and `helicoid` (empty, `no_std`, `forbid(unsafe_code)`),
   `xtask` stub, lints, `justfile`, CI, `deny.toml`. No group code (`docs/PHASE1.md`).
 - `docs/maths/`: non-normative derivations. Notation, labelling and verification convention, and the

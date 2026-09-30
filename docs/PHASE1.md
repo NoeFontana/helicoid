@@ -263,7 +263,7 @@ any is not detected** by its named mechanism.
 | `Log` via `acos` of the trace | `theta:1e-k` and `theta:pi-1e-k` max ≥ $10^7\,u$ |
 | SE(3) `Exp` reading the tangent translation-first | every `rho:*` stratum fails |
 | `Q` with $-\tfrac12\rho^\wedge$ | `sen3_jr*` fails; `Dual` comparison fails |
-| `sqrt` of $\theta^2$ without the safe argument, under `Dual` | `nonfinite > 0` in `theta:exact0` |
+| one `sqrt` of $\theta^2$ above the branch, no safe argument, the series arm at the rebuilt $\theta\cdot\theta$, under `Dual` ([`0020`](./decisions/0020-dual-sqrt-at-zero-keeps-its-derivative.md)) | `nonfinite > 0` in `theta:exact0` |
 | `Log` without the $w < 0$ flip | the negated-quaternion half of every `so3_log` stratum fails |
 
 ## 11. Definition of done
