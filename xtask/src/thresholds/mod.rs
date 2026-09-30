@@ -1,55 +1,67 @@
-//! `cargo xtask thresholds [--check]` (`docs/PHASE1.md` §6, `docs/decisions/0004`): for each of
-//! `k, a, b, c, d, e` at `f64`, the series terms and switch that minimise the maximum, over every
-//! `theta:*` record of `coeff_<c>`, of the larger of the value error and the `d/dz` error through
-//! `Dual<f64, 1>`, both exact and in units of `u` (`conformance::metric`, the `coeff_*` rule of one
-//! field each). Writes `conformance/sweeps/thresholds.csv` and, from it, `xtask/src/seeded/generated.rs`
-//! (`emit`); `--check` compares a fresh sweep with both, byte for byte, and writes nothing. The
-//! sweep measures the seeded kernel at a candidate it is handed, never at `generated.rs`, so that
-//! file is an output and not an input; the seeded correct kernel then runs it, which is why a hand
-//! edit that does not compile stops the tool building (`emit`). Phase 3 points the tool at
-//! `helicoid::coeffs` and its own `generated.rs`.
+//! `cargo xtask thresholds [--check]` (`docs/PHASE1.md` §6, `docs/decisions/0004`, `0016` item 3):
+//! for each of `k, a, b, c, d, e`, `cos θ/2` and `r` at `f64` and at `f32`, the series terms and
+//! switch that minimise the maximum, over every `theta:*` record of `coeff_<c>` (the `@f32`
+//! strata at `f32`), of the larger of the value error and the `d/dz` error through `Dual<S, 1>`,
+//! both exact and in units of `u` of the precision (`conformance::metric`, the `coeff_*` rule of
+//! one field each). Writes `conformance/sweeps/thresholds-seeded.csv` and, from it,
+//! `xtask/src/seeded/generated.rs` (`emit`); `--check` compares a fresh sweep with both, byte for
+//! byte, and writes nothing. The sweep measures the seeded kernel at a candidate it is handed,
+//! never at `generated.rs`, so that file is an output and not an input; the seeded correct kernel
+//! then runs it, which is why a hand edit that does not compile stops the tool building (`emit`).
+//! Phase 3 points the tool at `helicoid::coeffs`, whose own files are `conformance/sweeps/
+//! thresholds.csv` and `crates/helicoid/src/coeffs/generated.rs`.
 //!
 //! **Candidates.** `1..=8` terms times `grid`: 64 points per decade of the branch variable
-//! `z = θ²` from `1e-16` (`θ = 1e-8`) to `1` (`θ = 1`), ends included, 8200 candidates; the
-//! per-decade-of-`z` reading is 0014 (draft) question 8. A candidate uses the series arm where
-//! `z < switch` (`z = fl(θ·θ)`, as `Seeded::eval` forms it) and the exact arm elsewhere; each
-//! arm's error is formed once per record and a candidate only selects. Ties, on the exact `f64`
-//! objective, go to fewer terms, then to the larger switch. The prior, `tf_tree` D12 (four terms,
-//! `θ < 0.1`: `z < 0.01`, on the grid), is scored as a named candidate, for all six though
-//! `NUMERICS.md` §4 lists it for `a`, `b`, `c`. An error that is not finite is `inf`, so a
-//! candidate selecting it never wins.
+//! `z = θ²` from `1e-16` (`θ = 1e-8`) to `1` (`θ = 1`), ends included, 8200 candidates, at each
+//! precision the points correctly rounded there (`grid`); the per-decade-of-`z` reading is
+//! 0014 (draft) question 8. A candidate uses the series arm where `z < switch` (`z = fl(θ·θ)` at the
+//! precision, as `Seeded::eval` forms it) and the exact arm elsewhere; each arm's error is formed
+//! once per record and a candidate only selects. Ties, on the exact `f64` objective, go to fewer
+//! terms, then to the larger switch. The prior, `tf_tree` D12 (four terms, `θ < 0.1`: `z < 0.01`,
+//! on the grid at `f64`, rounded to binary32 at `f32`), is scored as a named candidate, for every
+//! id but `r` though `NUMERICS.md` §4 lists it for `a`, `b`, `c` only. `r` has no D12 value in its
+//! branch variable: its prior is the same (four terms, `0.01`) taken in `s`, which is `θ = 0.2`
+//! where D12's `θ < 0.1` is `s < 2.5e-3`, so its `prior_*` cells and the figure printed beside it
+//! are that candidate's, not D12's. An error that is not finite is `inf`, so a candidate selecting
+//! it never wins.
+//!
+//! **`r` is a reading, pending the maintainer, not a spec** (0014 (draft) question 29, which
+//! holds the reading and its differences from 0015 (draft) NU.6): the branch variable is
+//! `s = n²/w²`, formed by a division, the grid is over `s`, only a record with `w > 0` enters the
+//! objective, and a candidate takes the series arm iff `w > 0` and `s < switch` (`w = 0` selects
+//! the exact arm since `s` is infinite, and `w < 0`, which only S² charts produce, always does).
+//! The `Dual` is seeded on `n²` at fixed `w`, the derivative the corpus stores.
 //!
 //! **Where a row is not a measured optimum.** `terms` stops at §6's `m ≤ 8`. The grid stops at
 //! `θ = 1` and `z < switch` is strict, so the corpus record at `θ = 1` exactly is always on the
 //! exact arm and no switch above it is swept: a top of `nextUp(1)` gives `e` 8 terms and an
-//! objective 3.3 times lower (0014 (draft) question 9). `theta:dense` (200 points per decade of `θ`) meets the
-//! grid at every 16th index, where a record's arm is the last bit of `fl(θ·θ)` against the
-//! rounded grid point; `c`'s switch is one of them, so quote no switch beyond `below_objective`
-//! and `above_objective`.
+//! objective 3.3 times lower at `f64` (0014 (draft) question 9). `theta:dense` (200 points per
+//! decade of `θ`) meets the `f64` grid at every 16th index, where a record's arm is the last bit
+//! of `fl(θ·θ)` against the rounded grid point, so quote no switch beyond `below_objective` and
+//! `above_objective`.
 //!
-//! **Columns**, one row per coefficient, a function of the corpus and the kernel:
+//! **Columns**, one row per coefficient and precision (`f64` rows first), a function of the corpus
+//! and the kernel:
 //!
 //! | column | meaning |
 //! |---|---|
-//! | `coeff`, `precision` | `k, a, b, c, d, e`; `f64` |
+//! | `coeff`, `precision` | `k, a, b, c, d, e, cos_half, r`; `f64` or `f32` |
 //! | `terms` | series terms of the chosen candidate |
-//! | `switch_bits`, `switch_z`, `switch_theta` | its switch: the bit pattern `generated.rs` emits, its shortest decimal, and `sqrt(z)` |
+//! | `switch_bits`, `switch_z`, `switch_theta` | its switch: the bit pattern `generated.rs` emits (16 hex digits at `f64`, 8 at `f32`), its shortest decimal at the precision, and its square root (`n/w` for `r`) |
 //! | `grid_index` | its place in the grid, `0..=1024`; `1024` is the top, `θ = 1` |
 //! | `value_max_u`, `deriv_max_u` | its maxima over the records of the value error and of the `d/dz` error |
 //! | `objective` | their larger |
-//! | `argmax_field`, `argmax_stratum`, `argmax_id`, `argmax_z` | what attains `objective`: `value` or `deriv` (`value` on a tie), and the first such record's stratum, id and `z` |
+//! | `argmax_field`, `argmax_stratum`, `argmax_id`, `argmax_z` | what attains `objective`: `value` or `deriv` (`value` on a tie), and the first such record's stratum, id and branch variable |
 //! | `below_objective`, `above_objective` | the chosen terms one grid point below and above the chosen switch; empty at an end |
 //! | `top_objective` | the best objective among the candidates at the top of the grid |
-//! | `prior_objective` | the same for the D12 prior |
+//! | `prior_objective` | the same for the prior: D12, and for `r` the candidate above |
 //! | `prior_rank` | 1 + the grid candidates whose objective is smaller than the prior's |
 //! | `tied` | grid candidates with exactly the chosen objective, among which the tie-break chose |
 //! | `next_objective` | the smallest grid objective above the chosen one; empty when none |
 //!
-//! Numbers are shortest round-trip decimals (`{:e}`). Not swept: `r` (its branch variable
-//! `n²/w²` and `w ≤ 0` domain are open, `docs/maths/coefficients.md` CO.16), `f32` (its `@f32`
-//! strata exist and this sweep skips them: `docs/decisions/0016` item 3), SE(2)'s `α`, `β` (no
-//! corpus id) and `cos θ/2` (`coeff_cos_half` exists, no seeded kernel), a switch shared by a
-//! call-site group (CO.18), and `crates/helicoid/src/coeffs/generated.rs` (Phase 3).
+//! Numbers are shortest round-trip decimals (`{:e}`), those of an `f32` row's switch and branch
+//! variable at `f32`. Not swept: SE(2)'s `α`, `β` (no corpus id), a switch shared by a call-site
+//! group (CO.18), and `crates/helicoid/src/coeffs/generated.rs` (Phase 3).
 
 mod emit;
 mod grid;
@@ -58,50 +70,92 @@ mod search;
 
 use std::path::Path;
 
+use helicoid_linalg::{Dual, Precision, Real};
+
 use crate::conformance::root;
-use crate::seeded::{d12, Coeff, Series, D1, SERIES_FILE};
+use crate::seeded::{d12, Coeff, Series, Swept, D1, SERIES_FILE};
 use search::{Field, Sweep};
 
 const USAGE: &str = "usage: cargo xtask thresholds [--check]";
-/// The committed sweep, relative to the repository root.
-const CSV: &str = "conformance/sweeps/thresholds.csv";
+/// The committed sweep of the seeded kernels, relative to the repository root. The name leaves
+/// `conformance/sweeps/thresholds.csv` to `helicoid::coeffs` (Phase 3).
+const CSV: &str = "conformance/sweeps/thresholds-seeded.csv";
 const HEADER: &str = "coeff,precision,terms,switch_bits,switch_z,switch_theta,grid_index,\
 value_max_u,deriv_max_u,objective,argmax_field,argmax_stratum,argmax_id,argmax_z,below_objective,\
 above_objective,top_objective,prior_objective,prior_rank,tied,next_objective";
 
-/// One coefficient's sweep and the record that attains its objective.
+/// One coefficient's sweep at one precision and the record that attains its objective.
 struct Row {
-    coeff: Coeff,
+    id: Swept,
+    precision: Precision,
     sweep: Sweep,
     field: Field,
     stratum: String,
-    id: u64,
+    record: u64,
     z: f64,
 }
 
-/// The sweep of `coeffs` over the corpus in `dir`.
-fn sweep(dir: &Path, coeffs: &[Coeff]) -> Result<Vec<Row>, String> {
-    let series = Series::<D1>::load(dir)?;
+/// The sweep of `ids` over the corpus in `dir` at the precision of `S`.
+fn sweep_at<S: Real + Into<f64>>(dir: &Path, ids: &[Swept]) -> Result<Vec<Row>, String> {
+    let series = Series::<Dual<S, 1>>::load(dir)?;
     let prior = d12(&series)?;
-    let grid = grid::grid();
-    coeffs
-        .iter()
-        .map(|&coeff| {
-            let m = measure::samples(dir, &series, coeff)?;
-            let sweep = search::search(&m.samples, &grid, (prior.terms, prior.switch_z.v))?;
+    let grid = grid::grid(S::PRECISION);
+    // The grid is the precision's own. On this corpus a binary64 grid swept at `f32` selects the
+    // same arms, so only this refusal shows the wiring.
+    if let Some(g) = grid.iter().find(|&&g| !grid::holds(S::PRECISION, g)) {
+        let p = precision_name(S::PRECISION);
+        return Err(format!("grid point {g:e} is not a value {p} holds"));
+    }
+    ids.iter()
+        .map(|&id| {
+            let m = measure::samples(dir, &series, id)?;
+            let prior = (prior.terms, prior.switch_z.v.into());
+            let sweep = search::search(&m.samples, &grid, prior)?;
             let (field, at) = sweep.chosen.argmax();
-            let (stratum, id) = m.records[at].clone();
+            let (stratum, record) = m.records[at].clone();
             let z = m.samples[at].z;
             Ok(Row {
-                coeff,
+                id,
+                precision: S::PRECISION,
                 sweep,
                 field,
                 stratum,
-                id,
+                record,
                 z,
             })
         })
         .collect()
+}
+
+/// The sweep of `ids` at `f64`, then at `f32`.
+fn sweep(dir: &Path, ids: &[Swept]) -> Result<Vec<Row>, String> {
+    let mut rows = sweep_at::<f64>(dir, ids)?;
+    rows.extend(sweep_at::<f32>(dir, ids)?);
+    Ok(rows)
+}
+
+/// The name of `precision` in the CSV.
+fn precision_name(precision: Precision) -> &'static str {
+    match precision {
+        Precision::F64 => "f64",
+        Precision::F32 => "f32",
+    }
+}
+
+/// `x`, a value `precision` holds, as the shortest decimal that reads back at `precision`.
+fn shown(precision: Precision, x: f64) -> String {
+    match precision {
+        Precision::F64 => format!("{x:e}"),
+        Precision::F32 => format!("{:e}", x as f32),
+    }
+}
+
+/// The square root of `z` at `precision`.
+fn root_of(precision: Precision, z: f64) -> f64 {
+    match precision {
+        Precision::F64 => libm::sqrt(z),
+        Precision::F32 => f64::from(libm::sqrtf(z as f32)),
+    }
 }
 
 /// The CSV of `rows`.
@@ -109,22 +163,26 @@ fn render(rows: &[Row]) -> String {
     let mut out = format!("{HEADER}\n");
     let opt = |x: Option<f64>| x.map_or(String::new(), |x| format!("{x:e}"));
     for r in rows {
-        let (s, z) = (&r.sweep, r.sweep.chosen.switch);
+        let (s, z, p) = (&r.sweep, r.sweep.chosen.switch, r.precision);
+        let bits = match p {
+            Precision::F64 => format!("0x{:016x}", z.to_bits()),
+            Precision::F32 => format!("0x{:08x}", (z as f32).to_bits()),
+        };
         let cells = [
-            r.coeff.name().to_string(),
-            "f64".to_string(),
+            r.id.name().to_string(),
+            precision_name(p).to_string(),
             s.chosen.terms.to_string(),
-            format!("0x{:016x}", z.to_bits()),
-            format!("{z:e}"),
-            format!("{:e}", libm::sqrt(z)),
+            bits,
+            shown(p, z),
+            shown(p, root_of(p, z)),
             s.index.to_string(),
             format!("{:e}", s.chosen.value),
             format!("{:e}", s.chosen.deriv),
             format!("{:e}", s.chosen.objective()),
             r.field.name().to_string(),
             r.stratum.clone(),
-            r.id.to_string(),
-            format!("{:e}", r.z),
+            r.record.to_string(),
+            shown(p, r.z),
             opt(s.below),
             opt(s.above),
             format!("{:e}", s.top),
@@ -139,8 +197,8 @@ fn render(rows: &[Row]) -> String {
     out
 }
 
-/// The one coefficient's sweep, kept to rank a candidate against its choice: what `conformance
-/// --self-test` asks of the planted `c` (`docs/PHASE1.md` §10).
+/// The one coefficient's sweep at `f64`, kept to rank a candidate against its choice: what
+/// `conformance --self-test` asks of the planted `c` (`docs/PHASE1.md` §10).
 pub(crate) struct Ranker {
     samples: Vec<search::Sample>,
     grid: Vec<f64>,
@@ -162,8 +220,8 @@ impl Ranker {
     pub(crate) fn new(dir: &Path, c: Coeff) -> Result<Self, String> {
         let series = Series::<D1>::load(dir)?;
         let prior = d12(&series)?;
-        let grid = grid::grid();
-        let samples = measure::samples(dir, &series, c)?.samples;
+        let grid = grid::grid(Precision::F64);
+        let samples = measure::samples(dir, &series, Swept::Coeff(c))?.samples;
         let sweep = search::search(&samples, &grid, (prior.terms, prior.switch_z.v))?;
         Ok(Self {
             samples,
@@ -197,7 +255,8 @@ fn files(dir: &Path, rows: &[Row]) -> Result<Vec<(&'static str, String)>, String
     let csv = render(rows);
     let path = dir.join(SERIES_FILE);
     let series_file = std::fs::read(&path).map_err(|e| format!("{}: {e}", path.display()))?;
-    let generated = emit::render(&csv, &series_file, &Series::<f64>::load(dir)?)?;
+    let (wide, narrow) = (Series::<f64>::load(dir)?, Series::<f32>::load(dir)?);
+    let generated = emit::render(&csv, &series_file, &wide, &narrow)?;
     Ok(vec![(CSV, csv), (emit::PATH, generated)])
 }
 
@@ -254,16 +313,17 @@ fn run_at(root: &Path, corpus: &Path, args: &[String]) -> Result<(), String> {
         [flag] if flag == "--check" => true,
         _ => return Err(USAGE.to_string()),
     };
-    let rows = sweep(corpus, &Coeff::ALL)?;
+    let rows = sweep(corpus, &Swept::ALL)?;
     let files = files(corpus, &rows)?;
     finish_all(root, &files, check)?;
     if !check {
         for r in &rows {
             println!(
-                "{}: {} terms, switch theta {:e} (grid {}), objective {:e} u; D12 prior {:e} u",
-                r.coeff.name(),
+                "{} {}: {} terms, switch root {} (grid {}), objective {:e} u; prior {:e} u",
+                r.id.name(),
+                precision_name(r.precision),
                 r.sweep.chosen.terms,
-                libm::sqrt(r.sweep.chosen.switch),
+                shown(r.precision, root_of(r.precision, r.sweep.chosen.switch)),
                 r.sweep.index,
                 r.sweep.chosen.objective(),
                 r.sweep.prior.objective()
@@ -288,10 +348,10 @@ mod tests {
         std::fs::read_to_string(&path).map_err(|e| format!("{}: {e}", path.display()))
     }
 
-    /// The files of a fresh sweep of all six coefficients.
+    /// The files of a fresh sweep of every id at both precisions.
     fn fresh() -> Result<Vec<(&'static str, String)>, String> {
         let dir = corpus_dir()?;
-        files(&dir, &sweep(&dir, &Coeff::ALL)?)
+        files(&dir, &sweep(&dir, &Swept::ALL)?)
     }
 
     #[test]
@@ -316,7 +376,7 @@ mod tests {
         assert_eq!(
             paths,
             [
-                "conformance/sweeps/thresholds.csv",
+                "conformance/sweeps/thresholds-seeded.csv",
                 "xtask/src/seeded/generated.rs"
             ]
         );
@@ -325,10 +385,12 @@ mod tests {
 
     #[test]
     fn two_sweeps_write_the_same_bytes() -> Result<(), String> {
-        let run = || sweep(&corpus_dir()?, &[Coeff::B, Coeff::E]).map(|s| render(&s));
+        let two = [Swept::Coeff(Coeff::B), Swept::Coeff(Coeff::E)];
+        let run = || sweep(&corpus_dir()?, &two).map(|s| render(&s));
         let (first, second) = (run()?, run()?);
         assert_eq!(first, second);
-        assert_eq!(first.lines().count(), 3);
+        // The header, then `b`, `e` at `f64`, then at `f32`.
+        assert_eq!(first.lines().count(), 5);
         Ok(())
     }
 
@@ -369,9 +431,14 @@ mod tests {
             for n in ["below_objective", "above_objective"] {
                 assert!(cell(n)?.is_empty() || num(n)? >= objective, "{row}");
             }
-            names.push(cells[0]);
+            // The switch is 16 hex digits of bits at `f64` and 8 at `f32`, the row's own precision.
+            let width = if cell("precision")? == "f64" { 18 } else { 10 };
+            assert_eq!(cell("switch_bits")?.len(), width, "{row}");
+            names.push((cells[0], cells[1]));
         }
-        assert_eq!(names, ["k", "a", "b", "c", "d", "e"]);
+        let ids = ["k", "a", "b", "c", "d", "e", "cos_half", "r"];
+        let want = ["f64", "f32"].map(|p| ids.map(|c| (c, p)));
+        assert_eq!(names, want.concat());
         Ok(())
     }
 
@@ -501,7 +568,7 @@ mod tests {
         // above it, so the sweep ranks it far below the chosen candidate.
         let ranker = Ranker::new(&corpus_dir()?, Coeff::C)?;
         let (terms, switch) = C_PLANTED;
-        assert_eq!(switch.to_bits(), grid::grid()[0].to_bits());
+        assert_eq!(switch.to_bits(), grid::grid(Precision::F64)[0].to_bits());
         let r = ranker.rank(terms, switch)?;
         assert!(
             r.objective > 1e6 * r.chosen,
@@ -535,7 +602,7 @@ mod tests {
         let chosen = committed()?;
         let row = chosen
             .lines()
-            .find(|l| l.starts_with("a,"))
+            .find(|l| l.starts_with("a,f64,"))
             .ok_or("no row for a")?;
         let cells: Vec<&str> = row.split(',').collect();
         let bits = u64::from_str_radix(cells[3].trim_start_matches("0x"), 16)

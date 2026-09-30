@@ -141,7 +141,7 @@ below, are collected for decision, with a recommendation each, in the draft reco
   of all six lies above $1$ (CO.10); a switch capped at $1$ costs $e$ a factor $6$ (value) and $7.5$
   (derivative) in `f64`, and up to $8\times10^3$ (derivative of $e$) in `f32`. `PHASE1.md` §6 also
   fixes $m \le 8$; with it, the derivative of $e$ cannot fall below $\sim2\times10^3u$ (`f64`). The
-  committed sweep (`conformance/sweeps/thresholds.csv`, `f64`; $m = 8$, the cap, for every row but $e$)
+  committed sweep (`conformance/sweeps/thresholds-seeded.csv`, `f64`; $m = 8$, the cap, for every row but $e$)
   puts $k$ and $d$ at the top of the grid, $b$ one step below it (a unique optimum $1.3\%$ under the
   top, decided by two records), $a$ at $\theta = 0.85$ and $c$ at $0.75$; for $k$, $b$, $d$ its objective
   is the exact arm's error over the records with $\theta > 1$, which no switch on the grid changes.

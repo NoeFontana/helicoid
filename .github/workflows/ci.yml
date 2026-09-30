@@ -127,7 +127,7 @@ jobs:
           tool: just
       - run: just conformance --self-test
 
-  # The seeded kernels' sweep must equal the committed conformance/sweeps/thresholds.csv and
+  # The seeded kernels' sweep must equal the committed conformance/sweeps/thresholds-seeded.csv and
   # xtask/src/seeded/generated.rs, which a hand edit fails.
   thresholds:
     name: thresholds-check

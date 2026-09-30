@@ -28,7 +28,7 @@ grep -m1 -H '^\*\*Status:' docs/decisions/0*.md
 | [`0011`](./0011-continuous-time-waits-for-a-consumer.md) | `helicoid-spline` is gated on a consumer record; the core owes only `Ad`, `ad`, `Jr`, `Jr⁻¹`. |
 | [`0012`](./0012-a-retraction-is-a-chart.md) | retractions are chart types; SE(3) has `Screw`, `Decoupled`, `WorldTranslation`; S² charts are frozen. |
 | [`0013`](./0013-simd-lanes-owe-a-measurement.md) | SIMD `Real` lanes: the question and the bar; nothing decided. |
-| [`0014`](./0014-the-conformance-metrics-open-readings.md) | the readings the conformance metric takes where `NUMERICS.md` §11 is silent, the field of `PHASE1.md` §10's `b` curve, the threshold sweep's grid, top, prior and ties, and `f32` scoring's curve, kernel and floor; nothing decided. |
+| [`0014`](./0014-the-conformance-metrics-open-readings.md) | the readings the conformance metric takes where `NUMERICS.md` §11 is silent, the field of `PHASE1.md` §10's `b` curve, the threshold sweep's grid, top, prior and ties, `f32` scoring's curve, kernel and floor, and the sweep of `r`; nothing decided. |
 | [`0015`](./0015-specification-gaps-found-while-building-the-instrument.md) | the gaps the generator, `helicoid-linalg`, the lint and the derivation pages found in the specs: passage, evidence, options and a recommendation each; nothing decided. |
 | [`0016`](./0016-f32-exact-strata-for-the-scalar-coefficient-ids.md) | `f32` is swept and scored on `@f32` strata whose inputs are `f32`-exact and whose references are recomputed at those inputs. |
 | [`0017`](./0017-cbrt-and-mask-valued-roots.md) | `Real::cbrt`; `solve_cubic` returns roots with an `S::Mask` validity array; per-precision power-of-two tolerances. |

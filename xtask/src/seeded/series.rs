@@ -1,6 +1,7 @@
 //! The series constants: `conformance/corpus/coeff_series.jsonl` read at run time, each exact
 //! `"num/den"` rounded once, in integers, at the precision it is used at (0003 item 6: no
-//! `f64 -> f32` double rounding). Nothing is typed.
+//! `f64 -> f32` double rounding). Nothing is typed. `r`'s row is a series in `s = n²/w²` with the
+//! prefactor `2/w`, which the kernel applies (`kernel`).
 
 use std::path::Path;
 
@@ -8,7 +9,7 @@ use helicoid_linalg::{Precision, Real};
 use num_bigint::BigUint;
 use serde::Deserialize;
 
-use super::kernel::Coeff;
+use super::kernel::{Coeff, Swept};
 use crate::conformance::number::{ratio_to_f32, ratio_to_f64};
 
 /// The series file, in the corpus directory.
@@ -56,14 +57,10 @@ struct Line {
     series: Vec<String>,
 }
 
-/// The series of `k, a, b, c, d, e` in the branch variable `θ²`, rounded at `S`; one non-empty
-/// series per coefficient, all of one length.
+/// The series of [`Swept::ALL`] in their branch variables (`θ²`; `n²/w²` for `r`), rounded at `S`;
+/// one non-empty series per row, all of one length.
 #[derive(Clone, Debug)]
 pub(crate) struct Series<S>(Vec<Vec<S>>);
-
-/// The committed series file, compiled in: until the `f32` sweep generates its own constants
-/// (`docs/decisions/0016` item 3) the seeded kernels at `f32` read the exact rationals from it.
-const COMMITTED: &str = include_str!("../../../conformance/corpus/coeff_series.jsonl");
 
 impl<S: Real> Series<S> {
     pub(crate) fn load(corpus: &Path) -> Result<Self, String> {
@@ -73,45 +70,43 @@ impl<S: Real> Series<S> {
         Self::parse(&text, &path.display().to_string())
     }
 
-    /// The compiled-in series, rounded at `S`.
-    pub(crate) fn committed() -> Result<Self, String> {
-        Self::parse(COMMITTED, FILE)
-    }
-
     /// The series of `text`, a `coeff_series.jsonl` read from `origin`.
     fn parse(text: &str, origin: &str) -> Result<Self, String> {
-        let mut found: [Option<Vec<S>>; 6] = Default::default();
+        let mut found: [Option<Vec<S>>; 8] = Default::default();
         for (i, line) in text.lines().enumerate() {
             let at = |e: String| format!("{origin}:{}: {e}", i + 1);
             let l: Line = serde_json::from_str(line).map_err(|e| at(e.to_string()))?;
             if l.id != i as u64 {
                 return Err(at(format!("id {} on line {}", l.id, i + 1)));
             }
-            // `r` has its own branch variable and no seeded kernel.
-            let Some(c) = Coeff::of_name(&l.coeff) else {
+            let Some(id) = Swept::ALL.into_iter().find(|s| s.name() == l.coeff) else {
                 continue;
             };
-            if l.branch != "theta^2" || l.prefactor != "1" {
+            let (branch, prefactor) = match id {
+                Swept::R => ("n^2/w^2", "2/w"),
+                _ => ("theta^2", "1"),
+            };
+            if l.branch != branch || l.prefactor != prefactor {
                 return Err(at(format!(
-                    "`{}` is not a plain series in theta^2",
+                    "`{}` is not `{prefactor}` times a series in {branch}",
                     l.coeff
                 )));
             }
-            if found[c.index()].is_some() {
+            if found[id.index()].is_some() {
                 return Err(at(format!("`{}` appears twice", l.coeff)));
             }
             let terms = l.series.iter().map(|s| rational::<S>(s));
-            found[c.index()] = Some(terms.collect::<Result<_, _>>().map_err(at)?);
+            found[id.index()] = Some(terms.collect::<Result<_, _>>().map_err(at)?);
         }
         let mut all = Vec::new();
-        for c in Coeff::ALL {
-            let series = found[c.index()]
+        for id in Swept::ALL {
+            let series = found[id.index()]
                 .take()
-                .ok_or_else(|| format!("{origin}: no series for `{}`", c.name()))?;
+                .ok_or_else(|| format!("{origin}: no series for `{}`", id.name()))?;
             if series.is_empty() || series.len() != all.first().map_or(series.len(), Vec::len) {
                 return Err(format!(
                     "{origin}: `{}` has {} terms",
-                    c.name(),
+                    id.name(),
                     series.len()
                 ));
             }
@@ -122,7 +117,12 @@ impl<S: Real> Series<S> {
 
     /// The terms of `c`, lowest power first.
     pub(crate) fn of(&self, c: Coeff) -> &[S] {
-        &self.0[c.index()]
+        self.swept(Swept::Coeff(c))
+    }
+
+    /// The terms of `id`, lowest power first.
+    pub(crate) fn swept(&self, id: Swept) -> &[S] {
+        &self.0[id.index()]
     }
 
     /// The number of terms every series has.
@@ -239,10 +239,8 @@ mod tests {
 
     #[test]
     fn a_parse_error_names_its_origin_and_line() {
-        // The `f32` kernels read the compiled-in text: a broken one is reported as this, not lost.
         let e = Series::<f32>::parse("{}\n", FILE).err().unwrap_or_default();
         assert!(e.starts_with("coeff_series.jsonl:1: "), "{e}");
-        assert!(Series::<f32>::committed().is_ok());
     }
 
     #[test]
@@ -321,7 +319,10 @@ mod tests {
         let renamed = good.replace("\"coeff\":\"e\"", "\"coeff\":\"z\"");
         assert!(load(&renamed)?.contains("no series for `e`"));
         let plain = "\"prefactor\":\"1\"";
-        assert!(load(&good.replace(plain, "\"prefactor\":\"2\""))?.contains("plain series"));
+        assert!(load(&good.replace(plain, "\"prefactor\":\"2\""))?.contains("series in theta^2"));
+        // `r` is a series in `n²/w²` with the prefactor `2/w`, and the kernel applies both.
+        let r = good.replace("\"prefactor\":\"2/w\"", plain);
+        assert!(load(&r)?.contains("`2/w` times a series in n^2/w^2"));
         assert!(load(&good.replacen("\"id\":1", "\"id\":9", 1))?.contains("id 9 on line 2"));
         assert!(load("")?.contains("no series for `k`"));
         // One series longer than the rest, and six empty ones: no kernel could run on either.

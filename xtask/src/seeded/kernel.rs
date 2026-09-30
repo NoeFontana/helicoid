@@ -1,14 +1,23 @@
-//! The coefficient kernels `k, a, b, c, d, e` of `docs/NUMERICS.md` §4 as test subjects, generic
-//! over `S: Real` in the branch variable `z = θ²`, so `Dual<f64, 1>` seeded at `z` gives
-//! `d/dz` (`docs/maths/coefficients.md` CO.13). They are not the shipped kernel: nothing is typed
-//! that `helicoid::coeffs` will own. The series constants are read from `coeff_series.jsonl` and
-//! rounded at `S` (`series`); the switch is the caller's ([`Candidate`]), rounded at `S` too.
+//! The coefficient kernels `k, a, b, c, d, e` of `docs/NUMERICS.md` §4, `cos θ/2` (§3.1) and `r`
+//! (§3.2) as test subjects, generic over `S: Real` in the branch variable `z = θ²`, so
+//! `Dual<f64, 1>` seeded at `z` gives `d/dz` (`docs/maths/coefficients.md` CO.13). They are not the
+//! shipped kernel: nothing is typed that `helicoid::coeffs` will own. The series constants are read
+//! from `coeff_series.jsonl` and rounded at `S` (`series`); the switch is the caller's
+//! ([`Candidate`]), rounded at `S` too.
 //!
 //! The exact arm evaluates the "Exact arm computes" column at the safe argument, one `S::branch`
 //! per call. Its operand order is the one CO.6 measured, so `θ²` inside a cancelling sum is
 //! `fl(θ̂·θ̂)`, not `z` (CO.6: `z` there raises the constants); `NUMERICS.md` §4 fixes no order.
+//!
+//! **`r` is a reading, pending the maintainer, not a spec** (`NUMERICS.md` §4 names `n²` as its
+//! branch variable and its series is in `n²/w²`; 0014 (draft) question 29, and 0015 (draft) NU.6,
+//! which writes the mask division-free): the switch compares `s = n²/w²`, formed by a division,
+//! the series arm is taken iff `w > 0` and `s < switch`, and `w = 0` (`s` infinite)
+//! or `w < 0` (S² charts only) takes the exact arm. `Dual` is seeded on `n²` at fixed `w`, the
+//! derivative the corpus stores. Each arm is at its safe argument: `n²` in the exact arm, `w` in
+//! the series arm (CO.16(d)).
 
-use helicoid_linalg::{Dual, Precision, Real};
+use helicoid_linalg::{Dual, Mask, Precision, Real};
 
 use super::series::Series;
 
@@ -57,6 +66,85 @@ impl Coeff {
     }
 }
 
+/// What the sweep generates a switch for: [`Coeff`], `cos θ/2` (`Exp`'s quaternion, `NUMERICS.md`
+/// §3.1) and `r` (`Log`'s ratio, §3.2), the eight rows of `coeff_series.jsonl`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Swept {
+    Coeff(Coeff),
+    CosHalf,
+    R,
+}
+
+impl Swept {
+    pub(crate) const ALL: [Swept; 8] = [
+        Swept::Coeff(Coeff::K),
+        Swept::Coeff(Coeff::A),
+        Swept::Coeff(Coeff::B),
+        Swept::Coeff(Coeff::C),
+        Swept::Coeff(Coeff::D),
+        Swept::Coeff(Coeff::E),
+        Swept::CosHalf,
+        Swept::R,
+    ];
+
+    /// The name in `coeff_series.jsonl` and after `coeff_` in a corpus id.
+    pub(crate) fn name(self) -> &'static str {
+        match self {
+            Swept::Coeff(c) => c.name(),
+            Swept::CosHalf => "cos_half",
+            Swept::R => "r",
+        }
+    }
+
+    /// The position in [`Swept::ALL`], [`Coeff::index`] for the six.
+    pub(crate) fn index(self) -> usize {
+        match self {
+            Swept::Coeff(c) => c.index(),
+            Swept::CosHalf => 6,
+            Swept::R => 7,
+        }
+    }
+
+    pub(crate) fn of_fn(fn_id: &str) -> Option<Self> {
+        let name = fn_id.strip_prefix("coeff_")?;
+        Self::ALL.into_iter().find(|s| s.name() == name)
+    }
+}
+
+/// A record's arguments at `S`: `z = θ²` (`n²` for `r`) and, for `r` alone, `w`.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct Input<S> {
+    pub(crate) z: S,
+    pub(crate) w: S,
+}
+
+impl<S: Real> Input<S> {
+    /// The same at `Dual<S, 1>` seeded on `z` (`w` fixed).
+    pub(crate) fn seed(self) -> Input<Dual<S, 1>> {
+        Input {
+            z: Dual::variable(self.z, 0),
+            w: Dual::constant(self.w),
+        }
+    }
+}
+
+/// The variable a switch is compared with: `z`, and `s = n²/w²` for `r`.
+pub(crate) fn branch_variable<S: Real>(id: Swept, x: Input<S>) -> S {
+    match id {
+        Swept::R => x.z / (x.w * x.w),
+        _ => x.z,
+    }
+}
+
+/// The kernel of `id` at `x`.
+pub(crate) fn evaluate<S: Real>(id: Swept, x: Input<S>, cand: Candidate<S>, series: &[S]) -> S {
+    match id {
+        Swept::Coeff(c) => coefficient(c, x.z, cand, series),
+        Swept::CosHalf => cos_half(x.z, cand, series),
+        Swept::R => log_ratio(x, cand, series),
+    }
+}
+
 /// `terms` series terms below `switch_z` in the branch variable `θ²`, both at the scalar `S`. Build
 /// it with [`Candidate::new`].
 #[derive(Clone, Copy, Debug)]
@@ -90,8 +178,9 @@ impl<S: Real> Candidate<S> {
 
 /// `tf_tree` D12 (`θ < 0.1`, four terms), the named prior of `docs/PHASE1.md` §6, which
 /// `NUMERICS.md` §4 lists for `a`, `b`, `c` only. Here the evaluation candidate of all six: for
-/// `k`, `d`, `e` it is D12 applied to a coefficient it was not defined for. Not a generated
-/// switch (0004) and not a claim of optimality.
+/// `k`, `d`, `e` it is D12 applied to a coefficient it was not defined for. The sweep also takes
+/// it for `cos θ/2` and, in `s`, for `r`, where `(4, 0.01)` is `θ = 0.2` and not D12's
+/// (0014 (draft) question 29). Not a generated switch (0004) and not a claim of optimality.
 pub(crate) fn d12<S: Real>(series: &Series<S>) -> Result<Candidate<S>, String> {
     Candidate::new(series, 4, "0.01")
 }
@@ -139,6 +228,41 @@ pub(crate) fn coefficient<S: Real>(c: Coeff, z: S, cand: Candidate<S>, series: &
         small,
         || horner(series, cand.terms, z),
         || exact(c, S::select(small, S::one(), z)),
+    )
+}
+
+/// `cos(θ/2)`: the series below `cand.switch_z`, else the definition at the safe argument.
+fn cos_half<S: Real>(z: S, cand: Candidate<S>, series: &[S]) -> S {
+    let small = z.lt(cand.switch_z);
+    S::branch(
+        small,
+        || horner(series, cand.terms, z),
+        || {
+            (S::lit(0.5) * S::select(small, S::one(), z).sqrt())
+                .sin_cos()
+                .1
+        },
+    )
+}
+
+/// `r = 2 atan2(n, w)/n`, `n = sqrt(n²)`: the series in `s = n²/w²` iff `w > 0` and
+/// `s < cand.switch_z`, else the definition.
+fn log_ratio<S: Real>(x: Input<S>, cand: Candidate<S>, series: &[S]) -> S {
+    let Input { z: n2, w } = x;
+    let small = S::zero()
+        .lt(w)
+        .and(branch_variable(Swept::R, x).lt(cand.switch_z));
+    let two = S::lit(2.0);
+    S::branch(
+        small,
+        || {
+            let w = S::select(small, w, S::one());
+            two / w * horner(series, cand.terms, n2 / (w * w))
+        },
+        || {
+            let n = S::select(small, S::one(), n2).sqrt();
+            two * n.atan2(w) / n
+        },
     )
 }
 
@@ -528,6 +652,104 @@ pub(super) mod tests {
                 let d = coefficient(c, at(z), dual_cand, dual.of(c));
                 assert_eq!(p.to_bits(), d.v.to_bits(), "{c:?} at {z}");
             }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn cos_half_is_the_series_below_its_switch_and_the_definition_above() -> Result<(), String> {
+        let series = Series::<D1>::load(&corpus_dir()?)?;
+        let (s, cand) = (
+            series.swept(Swept::CosHalf),
+            Candidate::new(&series, 8, "0.5")?,
+        );
+        let x = |z| {
+            evaluate(
+                Swept::CosHalf,
+                Input {
+                    z: at(z),
+                    w: D1::one(),
+                },
+                cand,
+                s,
+            )
+        };
+        // At `z = 0` the definition is `0/0` in the derivative and the series answers: `1`, `-1/8`.
+        let zero = x(0.0);
+        assert_eq!(
+            (zero.v.to_bits(), zero.d[0].to_bits()),
+            (1f64.to_bits(), (-0.125f64).to_bits())
+        );
+        // Above the switch: `cos(θ/2)` and `d/dz = -sin(θ/2)/(4θ)`, `θ = sqrt(z)`.
+        for z in [0.5, 2.0, 6.0] {
+            let (theta, got) = (f64::sqrt(z), x(z));
+            let (sin, cos) = (theta / 2.0).sin_cos();
+            assert!(
+                near(got.v, cos, 1e-15) && near(got.d[0], -sin / (4.0 * theta), 1e-14),
+                "{z}"
+            );
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn r_takes_the_series_iff_w_is_positive_and_s_is_below_the_switch() -> Result<(), String> {
+        let series = Series::<D1>::load(&corpus_dir()?)?;
+        let (s, cand) = (series.swept(Swept::R), Candidate::new(&series, 8, "0.01")?);
+        let r = |n2: f64, w: f64| {
+            evaluate(
+                Swept::R,
+                Input {
+                    z: at(n2),
+                    w: D1::constant(w),
+                },
+                cand,
+                s,
+            )
+        };
+        // `2 atan2(n, w)/n` and its `d/dn²` at fixed `w`, `(w/(n² + w²) - r/2)/n²` (CO.13(a)).
+        let definition = |n2: f64, w: f64| {
+            let (n, v) = (n2.sqrt(), 2.0 * n2.sqrt().atan2(w) / n2.sqrt());
+            (v, (w / (n2 + w * w) - v / 2.0) / (n * n))
+        };
+        // The series arm (`s = 2.5e-5`): the series in `s` times `2/w`, no `atan2`.
+        let (got, (v, d)) = (r(1e-4, 2.0), definition(1e-4, 2.0));
+        assert!(near(got.v, v, 1e-15) && near(got.d[0], d, 1e-8));
+        let (two, w) = (D1::constant(2.0), D1::constant(2.0));
+        let plain = two / w * horner(s, 8, at(1e-4) / (w * w));
+        assert_eq!(got.v.to_bits(), plain.v.to_bits());
+        assert_eq!(got.d[0].to_bits(), plain.d[0].to_bits());
+        // `n² = 0` is `s = 0`: the series arm, `2/w` and `-2/(3w³)`, finite where `0/0` is not.
+        let zero = r(0.0, 2.0);
+        assert_eq!((zero.v, zero.d[0]), (1.0, -1.0 / 12.0));
+        // Above the switch, at `w = 0` (`s` infinite) and at `w < 0` with `s` below it (CO.16(c):
+        // the series would give -2.0000 for 6281.19) the exact arm answers: `π/n`, `-π/(2n³)`.
+        let (pi, exact) = (std::f64::consts::PI, r(1e-2, 0.0));
+        assert!(near(exact.v, pi / 0.1, 1e-15) && near(exact.d[0], -pi / 2e-3, 1e-14));
+        let negative = r(1e-6, -1.0);
+        assert!(
+            near(negative.v, 6281.19, 1e-6) && near(negative.v, definition(1e-6, -1.0).0, 1e-15)
+        );
+        // The mask is on `s = n²/w²` and not on `n²`: at `w = 10`, `n² = 0.5` is far above the
+        // switch and `s = 5e-3` below it, so the series arm answers; at `w = 0.05`, `n² = 1e-4` is
+        // far below it and `s = 0.04` above, so the exact arm does. Each is the arm's own
+        // operations bit for bit, and the two arms differ there.
+        let series_arm = |n2: f64, w: f64| {
+            let w = D1::constant(w);
+            D1::constant(2.0) / w * horner(s, 8, at(n2) / (w * w))
+        };
+        let exact_arm = |n2: f64, w: f64| {
+            let n = at(n2).sqrt();
+            D1::constant(2.0) * n.atan2(D1::constant(w)) / n
+        };
+        for (n2, w, series) in [(0.5, 10.0, true), (1e-4, 0.05, false)] {
+            let (got, want, other) = match series {
+                true => (r(n2, w), series_arm(n2, w), exact_arm(n2, w)),
+                false => (r(n2, w), exact_arm(n2, w), series_arm(n2, w)),
+            };
+            let bits = |x: D1| [x.v.to_bits(), x.d[0].to_bits()];
+            assert_eq!(bits(got), bits(want), "n² = {n2}, w = {w}");
+            assert_ne!(bits(got), bits(other), "n² = {n2}, w = {w}");
         }
         Ok(())
     }

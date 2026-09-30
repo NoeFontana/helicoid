@@ -22,16 +22,18 @@ the current corpus (`docs/maths/coefficients.md`, `docs/decisions/0015` gap on `
    representable in both precisions; `coeff_r`: `n` and `w` each) and the references (`value`,
    `d_branch`) are computed from their definitions **at those rounded inputs**, at 120 digits, like
    every other record. `coeff_cos_half` is cos(θ/2), the series arm of `Exp` that `NUMERICS.md`
-   §3.1 generates alongside `k`, a corpus id with a `coeff_series` row (`PHASE1.md` §4.3); the sweep
-   of `coeff_r` waits until it is specified.
+   §3.1 generates alongside `k`, a corpus id with a `coeff_series` row (`PHASE1.md` §4.3). No
+   ready record specifies the sweep of `coeff_r` (its branch variable, mask and `w ≤ 0` domain);
+   `cargo xtask thresholds` sweeps it on a provisional reading, pending the maintainer (0014
+   (draft) question 29), which this record does not decide.
 2. The harness scores `Precision::F64` on strata without the suffix and `Precision::F32` on the
    `@f32` strata only; `u = 2^-24` for `f32`. An `f32` subject receives the inputs converted to
    `f32` exactly (a lossless cast by construction). No other id has an `@f32` stratum until a
    record asks for one.
 3. `cargo xtask thresholds` sweeps each precision over its own strata with the same objective, grid
-   and tie-breaks (`PHASE1.md` §6). `generated.rs` holds one `Switch` per coefficient per
-   precision; the `f32` series literals are correctly rounded **from the exact rationals**, never
-   from the `f64` literals.
+   and tie-breaks (`PHASE1.md` §6; `coeff_r`'s grid is over its own branch variable, item 1).
+   `generated.rs` holds one `Switch` per coefficient per precision; the `f32` series literals are
+   correctly rounded **from the exact rationals**, never from the `f64` literals.
 4. The corpus size budget of `PHASE1.md` §4.4 applies to the sum; the `@f32` strata of the scalar
    ids add about the size of the existing scalar strata.
 

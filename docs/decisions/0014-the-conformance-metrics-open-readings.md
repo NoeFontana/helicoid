@@ -15,7 +15,7 @@ the threshold sweep (questions 8 to 11) and for the file it writes, `xtask/src/s
 (12, 13); the self-test (`PHASE1.md` §10) did for the planted `c` (14, 15) and for the seeded SO(3)
 subject and its `Log` defects (16 to 20), and for the seeded SE_N(3) subject and its defects (21
 to 25); `f32` scoring and the self-test's `f32` half did for the curve, its kernel and its floor
-(26 to 28).
+(26 to 28); the `f32` sweep did for `r`'s branch variable, mask, domain and prior (29).
 
 ## Decision
 
@@ -67,10 +67,11 @@ None until the open questions are resolved.
    above θ = 1 is tried. That record is `e`'s objective (8.69e3 u, 7 terms); a top of `nextUp(1.0)`
    gives `e` 8 terms and 2.60e3 u, and leaves `k`, `a`, `b`, `c`, `d`. Is the range closed at 1, or
    does the grid extend to the first switch that puts that record on the series arm?
-10. **The D12 prior for all six.** §6 describes it as one switch for `a`, `b`, `c` and evaluates it
-    as a named candidate; the sweep scores it for all six coefficients. `seeded:correct` no longer
-    runs it: it runs the generated switches, and D12 is scored only by the sweep (and, in tests,
-    by a kernel run at it). Report it for `k`, `d`, `e`?
+10. **The D12 prior for all eight.** §6 describes it as one switch for `a`, `b`, `c` and evaluates it
+    as a named candidate; the sweep scores it for `k, a, b, c, d, e` and `cos θ/2` (`z < 0.01`,
+    `θ < 0.1`) and, for `r`, as `(4 terms, 0.01)` in `s`, which is not D12's (29). `seeded:correct`
+    no longer runs it: it runs the generated switches, and D12 is scored only by the sweep (and, in
+    tests, by a kernel run at it). Report it for `k`, `d`, `e`, `cos θ/2`?
 11. **Ties.** Exact `f64` equality of the objective (`tied` counts them). A tolerance would make
     near-equal candidates tie, and the cheaper one win. Exact, or a tolerance?
 12. **The source revision of a generated file** (`PHASE1.md` §6: `Source sweep rev: <git rev>`).
@@ -113,7 +114,7 @@ None until the open questions are resolved.
     it has an infinite `Dual` derivative at `z = 0`, so `Exp` is a value subject. Acceptable until
     the series lands, or is the group rule owed first?
 20. **The switch of `r`** (§4: generated; `PHASE1.md` §0.0: its branch variable and `w ≤ 0` domain
-    are open, so it is not swept). The seeded `Log` takes the series arm where `n² = 0`, the one
+    are open, so it is swept only on the reading of 29). The seeded `Log` takes the series arm where `n² = 0`, the one
     place the exact arm is `0/0`, and types no constant: elsewhere `atan2` and the division share
     the one `n`, so `Log` is scale-invariant (§3.2) to the bits a subnormal `n²` keeps, where a
     bound at the smallest normal number returns 1.0926 for the rotation of angle 1 scaled to
@@ -156,20 +157,40 @@ None until the open questions are resolved.
     binary64. `theta:1e-4@f32` holds `6·10^-4`, where `b` by its definition is 0 and the error a
     plateau of `1/u`; with it the four fit `p = 1.644`, outside a window that does not depend on
     `u`, whereas binary64's range keeps its plateau stratum (one of seven). The top stratum is
-    `[0.1, 1)`, above D12's switch, so the defect and the kernel run the same exact arm there
-    (297 `u` both) and the two strata below it fit `p = 2.188`, 0.012 from the window's edge. The
-    range was chosen after the fit. Which is meant: the strata above the plateau (as coded), the
+    `[0.1, 1)`, above D12's switch, so the defect and the D12 kernel the range was fitted against
+    ran the same exact arm there (297 `u` both; the generated kernel that replaced D12 runs its
+    series) and the two strata below it fit `p = 2.188`, 0.012 from the window's edge. The range
+    was chosen after the fit. Which is meant: the strata above the plateau (as coded), the
     strata below D12's switch, or a range and window stated per precision?
-27. **D12 as the `f32` "correct" kernel** (§10: "the correct seeded kernel"). Until the `f32`
-    sweep (`0016` item 3), `seeded:correct` runs the `tf_tree` D12 prior at `f32`, four terms
-    below `z = 0.01` for all six coefficients (`NUMERICS.md` §4 lists it for `a`, `b`, `c` only),
-    its `subject_version` `d12`. Its errors on the `@f32` strata are large (up to 8.1e9 `u`,
-    `coeff_e`'s `d_branch` at `theta:1e-1@f32`; 1.9e7 for `c`), printed and pinned by a test, not
-    gated, and its `b` curve fits `p = -1.200` (`r² = 0.753`): silent because it rises with `θ`.
-    Is a kernel that is not the correct one the subject the `f32` half is silent on, or does the
-    half wait for the sweep's switches?
+27. **The `f32` "correct" kernel at the grid's edge** (§10: "the correct seeded kernel").
+    `seeded:correct` ran the `tf_tree` D12 prior at `f32` until the `f32` sweep (`0016` item 3);
+    it runs the sweep's constants now, as at binary64 (`subject_version` `generated`), and D12
+    stays the sweep's prior. At `f32` each of `k`…`e` sits at the grid's top (`θ = 1`, its optimum
+    above the grid: 9), so those switches are the grid's and not a measured optimum. The kernel's
+    errors are printed and equal the CSV's, not gated (up to 4.4e3 `u`, `coeff_e`'s `d_branch` at
+    `theta:1e0@f32`), and its `b` curve fits `p = -0.021` (`r² = 0.920`): silent. Is a kernel whose
+    switches are the grid's edge the subject the `f32` half is silent on, or does the half wait for
+    a grid that reaches them?
 28. **The floor at `f32`** (question 1 at binary64). The code takes `2^-126`, the smallest normal
     binary32, as it takes `2^-1022` at binary64. No reference of an `@f32` stratum of the eight
     scalar ids is zero and the smallest is `1.6·10^-9` (`coeff_r`, `q:w0@f32`, `d_branch`), so the
     floor is not exercised today; it would read a subnormal by its quantization on the vector ids
     that a later record gives `@f32` strata. Is question 1's reading right at `f32`?
+29. **The sweep of `r`** (`NUMERICS.md` §4 names `n²` as its branch variable and writes its series
+    in `n²/w²`; `PHASE1.md` §0.0 leaves its branch variable, mask and `w ≤ 0` domain open; 0015
+    (draft) NU.6 and P1.4 recommend a reading; no ready record specifies it, and `0016` item 1
+    does not decide it). `xtask/src/thresholds` and `seeded/kernel.rs` sweep it as follows. The
+    branch variable is `s = n²/w²`, `tan²(θ/2)`, formed by a division, the value the series arm's
+    Horner takes, not NU.6's division-free `n² < s_sw·w²`. A candidate takes the series arm iff
+    `w > 0` and `s < switch`; `w = 0` (`s` infinite) and `w < 0` take the exact arm. Only records
+    with `w > 0` enter the objective (every `theta:*` record, no `q:w0` one); the corpus has no
+    `w < 0` stratum, which NU.6 recommends, so that clause of the mask is not measured. The grid is
+    the others' in `s`: 64 points per decade over `[1e-16, 1]` (`n/w` from `1e-8` to `1`), 1 to 8
+    terms. `Dual<S, 1>` is seeded on `n²` at fixed `w`, the derivative the corpus stores (P1.4(a)),
+    not on `s` (P1.4(c): a `w²` factor, regenerating `coeff_r`). The prior is `(4 terms, s < 0.01)`,
+    the `z`-candidate of `k…e` taken in `s`: `θ = 0.2`, where D12's `θ < 0.1` is `s < 2.5e-3`, so
+    its figures (1.1e10 `u` at `f64`, 229 at `f32`) are that candidate's and not D12's; `r` has no
+    D12 value in `s`. Measured: 8 terms at `s = 1.07e-2` (`f64`, 260 `u`) and `0.143` (`f32`,
+    26.7 `u`), both interior to the grid. Is this the reading: the division against the
+    division-free mask, `s` against `n/w` or `θ` as the grid's variable, the seed, the prior, and
+    the domain that leaves `w ≤ 0` unmeasured until a stratum exists?
