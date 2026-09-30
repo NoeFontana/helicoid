@@ -25,6 +25,7 @@ class Stratum:
     draw: Callable[[SplitMix64], list[float]]  # binary64 thetas, in stream order
     carries_axes: bool = True  # PHASE1 section 4.4 lists an axis; `exact0` has none
     draw_quats: Callable[[SplitMix64], list[tuple]] | None = None  # a quaternion stratum's samples
+    rho_exp: int | None = None  # a `rho:*` SE_N(3) stratum's translation scale is 10^rho_exp
 
     def thetas(self, seed: int = SEED) -> list[float]:
         with mp.workdps(DPS):
@@ -116,8 +117,33 @@ def _q_nonunit(rng: SplitMix64) -> list[tuple]:
     return out
 
 
-QUAT_STRATA = (
-    *SCALAR_THETA_STRATA,
+Q_STRATA = (
     Stratum("q:w0", N_AXES, lambda rng: [], carries_axes=False, draw_quats=_q_w0),
     Stratum("q:nonunit", N_AXES, lambda rng: [], carries_axes=False, draw_quats=_q_nonunit),
 )
+QUAT_STRATA = (*SCALAR_THETA_STRATA, *Q_STRATA)
+
+
+# SE_N(3) ids (`sen3_*`) see the theta strata at unit translation scale, without `theta:dense` (a
+# grid for the coefficients' switch points), then the `rho:*` strata: five translation scales
+# crossed with five fixed thetas, each named `rho:<scale>/theta=<value>`. The two ids that take a
+# quaternion, `sen3_log` and `sen3_ad`, also see `Q_STRATA`. A stratum is SEN3_SAMPLES records: 64
+# would be 190 MB of dense matrices against a 50 MB corpus (docs/PHASE1.md section 4.4).
+SEN3_SAMPLES = 6
+RHO_EXPONENTS = (-6, -3, 0, 3, 4)
+CELL_THETAS = (
+    ("1e-8", lambda: mpf(10) ** -8),
+    ("1e-4", lambda: mpf(10) ** -4),
+    ("1e-1", lambda: mpf(10) ** -1),
+    ("1", lambda: mpf(1)),
+    ("pi-1e-6", lambda: mp.pi - mpf(10) ** -6),
+)
+SEN3_STRATA = (
+    *(s for s in SCALAR_THETA_STRATA if s.name != "theta:dense"),
+    *(
+        Stratum(f"rho:1e{e}/theta={name}", 1, lambda rng, v=value: [to_f64(v())], rho_exp=e)
+        for e in RHO_EXPONENTS
+        for name, value in CELL_THETAS
+    ),
+)
+SEN3_QUAT_STRATA = (*SEN3_STRATA, *Q_STRATA)

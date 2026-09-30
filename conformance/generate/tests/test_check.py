@@ -64,7 +64,9 @@ class CrossCheckTest(unittest.TestCase):
 class RegistryTest(unittest.TestCase):
     def test_every_coefficient_id_carries_its_own_cross_check(self):
         for name, spec in FUNCTIONS.items():
-            self.assertTrue(name.startswith(("coeff_", "so3_")), name)  # so3_*: test_so3.CheckTest
+            self.assertTrue(
+                name.startswith(("coeff_", "so3_", "sen3_")), name
+            )  # the others: their own tests
             if not name.startswith("coeff_"):
                 continue
             inputs = {"n": 0.6, "w": 0.8} if name == "coeff_r" else {"theta": 0.7}

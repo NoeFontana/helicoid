@@ -18,8 +18,8 @@ uv run --frozen python -m gen list
 | `pyproject.toml`, `uv.lock`, `.python-version` | CPython 3.12, `mpmath` pinned exactly; no numpy, no gmpy2 (`setup` refuses a non-Python backend) |
 | `gen/precision.py` | the only place `mp.dps` is set (120; rechecks at 150); `to_f64` |
 | `gen/rng.py` | splitmix64, per-stratum streams, log-uniform, uniform on S² |
-| `gen/strata.py` | the strata; `gen/registry.py` the function ids; `gen/coeff.py`, `gen/so3.py` their definitions |
-| `gen/series.py`, `gen/check.py` | the exact Taylor series (`coeff_series`); the per-record cross-checks |
+| `gen/strata.py` | the strata; `gen/registry.py` the function ids; `gen/coeff.py`, `gen/so3.py`, `gen/sen3.py` their definitions |
+| `gen/series.py`, `gen/check.py`, `gen/check_sen3.py` | the exact Taylor series (`coeff_series`); the per-record cross-checks |
 | `gen/fmt.py`, `gen/corpus.py`, `gen/manifest.py` | text formats and `Mat`, assembly (parallel by stratum) and recheck, `MANIFEST.json` |
 
 ## Record schema
@@ -96,6 +96,55 @@ strata of their own, after the θ strata (`Stratum.quaternions`):
   nonzero of x, y, z positive. A rotation by exactly π (`q:w0` rounds to a symmetric matrix) has
   w = 0 and either sign; |w| below 10⁻¹¹⁰ is that zero. `docs/NUMERICS.md` §11 scores this id by
   backward error, so `q` is informational.
+
+## SE_N(3)
+
+Ids `sen3_<f>_n{1,2,3}`, one file per N. A tangent τ is the flat array `[φ; ρ₁; …; ρ_N]` (rotation
+first, `docs/NUMERICS.md` §1); X is `q` (`[w, x, y, z]`) and `x = [x₁; …; x_N]`; both are hex floats.
+A dense matrix is column-major in the tangent's order: column j is the image of the basis vector
+e_j, m = 3 + 3N, `"shape":[m,m]`.
+
+| Id | In | Out | Reference, from the definition |
+|---|---|---|---|
+| `sen3_exp` | `tau` | `q`, `x` | `mp.expm` of the (3+N)-square hat matrix [[φ^, ρ₁ … ρ_N], [0, 0]]: `x` is its translation block, `q` the quaternion series of `so3_exp` |
+| `sen3_log` | `q`, `x` | `tau` | φ as `so3_log`; ρ_i solves J_l(φ) ρ_i = x_i, J_l the series of the same exponential's translation block. Each `q` is followed by −q, except w = +0 |
+| `sen3_ad` | `q`, `x` | `Ad` | the images of the basis under σ ↦ (X σ^ X⁻¹)^∨, X = [[R(q/‖q‖), x], [0, I]], X⁻¹ from `mp.inverse` of R |
+| `sen3_jr`, `sen3_jl` | `tau` | `J` | Σ (∓ad_τ)ⁿ/(n+1)! as dense m×m matrices; ad_τ is the images of the basis under σ ↦ [τ^, σ^]^∨ |
+| `sen3_jr_inv`, `sen3_jl_inv` | `tau` | `J` | `mp.inverse` of the above, the blocks off the diagonal and the first block column exactly 0 |
+
+- **Strata.** The θ strata at unit translation scale, minus `theta:dense` (a grid for the
+  coefficients' switch points), 27; then 25 cells `rho:1e<e>/theta=<θ>`, e ∈ {−6, −3, 0, 3, 4} and
+  θ ∈ {1e-8, 1e-4, 1e-1, 1, pi-1e-6} (fl(π − 10⁻⁶) as in `theta:pi-1e-k`), each with `rho_exp` e:
+  52 strata. `sen3_log` and `sen3_ad`, which take a quaternion, also see `q:w0` (q = (+0, u): an
+  angle of exactly π, the sign rule of `NUMERICS.md` §3.2, no −q) and `q:nonunit` (|q|² − 1 =
+  ±2⁻⁴⁵) of `so3_log`, at unit translation scale: 54. `phi_of` and `quat_of` of `so3` turn
+  (θ, axis) into φ and q; each ρ_i or x_i is a random direction at the stratum's scale, from the
+  stream `rho<i>` of that stratum, so a file of N = 2 extends the records of N = 1. A random θ
+  takes the first records of the stratum's stream; `theta:exact0` has φ = 0 and q = (1, 0, 0, 0),
+  where a Log with `0/0` in it shows.
+- **Samples.** `SEN3_SAMPLES` = 6 per stratum: an SE_N(3) file has 312 records; `ad` 324 and `log`
+  642 (each `q` and its negative) with the two `q:*` strata. `PHASE1.md` §4.4's 64 would be 190
+  MB, since each of `ad` and the four Jacobians is 5 dense matrices per record. 6 is a round
+  budget trade-off, not the largest count that fits: the family is 18 of the 50 MB and about 12 of
+  the 16 CPU-minutes of generation, the rest is left for `so2_*`, `se2_*` and the later phases'
+  ids, and each further sample per stratum costs ~3 MB and ~2 CPU-minutes (one constant and a
+  regeneration).
+- **Dense inverses.** LU with pivoting leaves rounding residue in the blocks a dual matrix has no
+  entry in, and the 150-digit recheck compares entrywise. `sen3.inverse` sets exactly those blocks
+  to 0 (`sen3.structural_zero`, the pattern `check_sen3._dual` asserts) and keeps every other
+  entry as the LU has it, down to `theta:subnormal`'s 1e-311: the 120- and 150-digit inverses
+  agree on all of them.
+- **Cross-checks** (`check_sen3.py`), all to 1e-100 of max(1, the largest entry): `exp`: R(q) is
+  `mp.expm` of the 3×3 hat, x_i = J_l(φ) ρ_i, and Log(Exp τ) = τ. `log`: `so3_log`'s checks on φ,
+  and `mp.expm` of the whole hat matrix returns X. `ad`: X Exp(t) X⁻¹ = Exp(Ad t) for one t, both
+  sides `mp.expm`, X inverted whole. `jr`, `jl`: J_l = Ad_Exp(τ) J_r with Exp by `mp.expm`, against
+  the other series; the inverses: J J⁻¹ = I against the series. Every dense output asserts the
+  dual-matrix structure (`NUMERICS.md` §2.2): the blocks off the diagonal and the first block
+  column are exactly 0, the diagonal blocks are one block. Not one check evaluates a block form of
+  `NUMERICS.md` §5; `tests/test_sen3.py` compares the corpus functions to them.
+- **`mp.logm`** of the (3+N)-square matrix is right to 1e-117 up to θ ≈ 2 and wrong near π (an
+  imaginary part of order 1e4, 7e3 to 1.5e4 across the records of θ = π − 10⁻⁶, ρ = 10⁴), so it is
+  a test cross-check only, as for `so3_log`.
 
 ## Coefficients
 
@@ -195,10 +244,11 @@ algorithm that produced it (`check.py`):
   and with two workers and compare it with the committed records: the worker count cannot change a
   byte. The whole corpus is regenerated once, and compared to the committed one byte for byte,
   manifest included, by `just corpus-check`; a second full regeneration inside the tests would
-  only double its four CPU-minutes.
+  only double its 16 CPU-minutes.
 - **Parallel.** One task per (id, stratum), joined in catalogue order, so the bytes are those of a
-  serial run whatever `--jobs` (`build_all`; default every core). The corpus is about 4 CPU-minutes
-  (`so3_log` and the Jacobians the most), about a minute on four cores.
+  serial run whatever `--jobs` (`build_all`; default every core). `just corpus` is 16 CPU-minutes
+  (`so3_log` and the SE_N(3) Jacobians the most, N = 3 at 80 CPU-seconds a file), 3 minutes of
+  wall time on eight cores; `just corpus-check` with its 113 unit tests takes as long.
 
 ## Adding a function id
 

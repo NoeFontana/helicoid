@@ -128,6 +128,18 @@ defined by the status tables in `docs/`; they win over this file.
   negative. Matrices are column-major with a sibling `shape`. Generation is parallel by stratum
   (`--jobs`), byte-identical to a serial run. `docs/PHASE1.md` §2 and §4.3 state the `Log` and
   `from_matrix` references. No library code changes; breaks nothing.
+- Corpus files for SE_N(3), N = 1, 2, 3: `sen3_exp`, `sen3_log`, `sen3_ad`, `sen3_jr`, `sen3_jl`,
+  `sen3_jr_inv`, `sen3_jl_inv` (21 files, 7 578 records, 18 MB): `mp.expm` of the hat matrix,
+  the inverse of it on θ ∈ [0, π], the conjugation definition of `Ad`, the defining series of
+  `ad_τ` as dense rotation-first matrices, and `mp.inverse` of those (the dual matrix's zero
+  blocks exactly 0, every other entry the LU's), each record checked to 100 digits (`mp.expm`,
+  `J_l = Ad_Exp(τ) J_r`, `J J⁻¹ = I`) with the dual-matrix structure asserted on the data; no
+  block form of `NUMERICS.md` §5 is evaluated. New strata: the 25 cells `rho:<scale>/theta=<θ>`
+  and the `theta:*` strata at unit translation scale, 6 records each, and `q:w0` and `q:nonunit`
+  for `sen3_log` and `sen3_ad`. `docs/PHASE1.md` §4.3 and §4.4 state the `sen3_log` reference
+  (`mp.logm` is wrong near π), the inverse rule and the sample count. `just corpus` is 16
+  CPU-minutes (3 minutes on eight cores); the `corpus-check` CI job gets a 60-minute timeout. No
+  library code changes; breaks nothing.
 
 ### Changed
 
