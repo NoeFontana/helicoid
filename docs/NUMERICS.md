@@ -18,7 +18,7 @@ computes from definitions (`PHASE1.md` §4.3), so a wrong line in this file fail
 
 | Section | Status |
 |---|---|
-| §1–§8, §10–§12, §14 | **Ready** |
+| §1–§8, §10–§12, §14, §15 | **Ready** |
 | §9 Sim(3) | **Owed**: group law and `Ad` stated; `Exp`, `Log`, `Jr` block must be derived and generator-verified before `PHASE5.md` §3 starts |
 
 ## 1. Conventions
@@ -311,7 +311,8 @@ $X(t) = X_0\,\mathrm{Exp}(t\,d)$ with $d = X_1 \ominus_R X_0$ and $\Delta = X_0^
 | `Dual::sqrt` derivative | $v > 0$ | $\pm\infty$ ($d \ne 0$), NaN ($d = 0$); value unaffected |
 | `Dual::atan2` derivative | $x_v^2 + y_v^2$ normal (larger argument in $\approx 10^{\pm154}$ `f64`, $10^{\pm19}$ `f32`) | $\pm\infty$, NaN at the origin, or $0$; value unaffected |
 | `Dual` quotient derivative | $q = a_v/b_v$ finite | NaN (value $\pm\infty$) |
-| `chol` | positive definite | `(L, mask = false)` |
+| `chol` | positive definite | `(L, mask = false)`; `L` finite for every input, nothing asserted (§15.3) |
+| `solve_lower`, `solve_upper` | every diagonal entry nonzero and not NaN (`debug_assert!`) | $\pm\infty$ or NaN (§15.3) |
 | Strided writes | in bounds | **panic** (the one documented class, D11) |
 
 ## 13. References
@@ -351,3 +352,79 @@ this table against the code.
 | `Gaussian::to_left` / `to_right` | dense $\mathrm{Ad}\,\Sigma\,\mathrm{Ad}^\top$ | 5 |
 | `gamma_apply_jacobian` | `Dual` through `reference` $\Gamma_m$ series (dense sum) | 5 |
 | `S2Chart::local` | $\mathrm{Log}$ of the minimal rotation taking $n$ to $m$, projected on $B$ | 5 |
+
+## 15. Cholesky and the triangular solves
+
+Fixed size $N$, over any `Real`; only one triangle of the input is read, the caller owns symmetry.
+
+### 15.1 Recurrence
+
+For symmetric positive definite $A$ there is a unique lower-triangular $L$ with positive diagonal
+and $A = L L^\top$. Since $(L L^\top)_{ij} = \sum_{k \le j} L_{ik} L_{jk}$ for $i \ge j$, solving
+for the last term column by column (Cholesky–Crout) gives, for $j = 0, \dots, N-1$:
+
+$$
+d_j = a_{jj} - \sum_{k<j} L_{jk}^2, \qquad L_{jj} = \sqrt{d_j}, \qquad
+L_{ij} = \frac{a_{ij} - \sum_{k<j} L_{ik} L_{jk}}{L_{jj}}\quad (i > j).
+$$
+
+Every sum runs in increasing $k$ from its first term, and the pivot is $a_{jj}$ minus the
+*finished* sum, not a running subtraction: the operation sequence is fixed (D16) and pinned to the
+bit by `the_factor_sums_left_to_right_and_subtracts_the_finished_sum`. The solves are
+$x_i = (b_i - \sum_{k<i} l_{ik} x_k)/l_{ii}$ (forward, $i$ ascending) and
+$x_i = (b_i - \sum_{k>i} u_{ik} x_k)/u_{ii}$ (backward, $i$ descending, $k$ ascending); for
+$A x = b$ pass $L^\top$ as $u$.
+
+### 15.2 The mask and the failure convention
+
+With $\mathrm{fin}(v) \Leftrightarrow 0 \cdot v = 0$ (false for NaN and $\pm\infty$), a pivot passes
+iff $\mathrm{ok}_j = (0 < d_j) \wedge \mathrm{fin}(d_j)$, and an entry $\hat x_{ij}$ (the quotient
+above, as computed) passes iff $\mathrm{fin}(\hat x_{ij})$. The mask is
+$\bigwedge_j \mathrm{ok}_j \wedge \bigwedge_{\mathrm{ok}_j,\, i>j} \mathrm{fin}(\hat x_{ij})$: a statement
+about the *computed* values, not a certificate about $A$. A zero pivot ($\pm 0$) is not positive:
+a singular matrix is not positive definite. Nothing branches; every lane evaluates every arm, so
+the failed arms are made harmless:
+
+- a failed pivot stores $L_{jj} = 1$ ($\sqrt{\cdot}$ is fed $\mathrm{select}(\mathrm{ok}_j, d_j, 1)$,
+  so a `Dual` derivative stays finite) and $L_{ij} = +0$ for every $i > j$, so garbage does not
+  feed later columns (it squares per column: $M + M^\top$ with entries below 20 overflows `f32`
+  at $N = 6$);
+- an entry that is not finite (overflow, or NaN or $\infty$ read from $A$) is stored as $+0$.
+
+Hence $L$ is finite for every input, entries above the diagonal are $+0$, and $\operatorname{diag}
+L > 0$. Overflow is reported through the mask, not returned as $\infty$; the magnitude range of
+$A$ is therefore not a domain of `chol`.
+
+### 15.3 Domains
+
+`chol` accepts every input, so it asserts nothing (`API.md` R4, R6: the mask is the report); its
+domain is "positive definite", on which $L$ is the Cholesky factor. `solve_lower` and
+`solve_upper` need every diagonal entry nonzero and not NaN, `debug_assert!`ed; a release build
+divides and returns $\pm\infty$ or NaN.
+
+### 15.4 Error bounds (Higham, *Accuracy and Stability of Numerical Algorithms*, 2nd ed.)
+
+With $\gamma_k = k u/(1 - k u)$ and $u$ as in §2.1, when the mask is set (the factorization ran to
+completion):
+
+- **Thm 10.3.** $\hat L \hat L^\top = A + E$, $\lvert E \rvert \le \gamma_{N+1}
+  \lvert \hat L \rvert \lvert \hat L \rvert^\top$ entrywise, however ill-conditioned $A$ is.
+- **Thm 8.5.** A triangular solve returns $(T + E)\hat x = b$, $\lvert E \rvert \le \gamma_N
+  \lvert T \rvert$.
+- **Thm 10.4.** Solving $A x = b$ through $\hat L$ returns $(A + E)\hat x = b$,
+  $\lvert E \rvert \le \gamma_{3N+1} \lvert \hat L \rvert \lvert \hat L \rvert^\top$.
+
+The converse fails: a positive definite $A$ with $\mathrm{cond}(A)$ near $1/u$, or a rank-deficient
+positive semidefinite one, has a pivot that is zero or tiny in exact arithmetic and is rounding
+noise as computed, so the mask may go either way there. A clear mask means "a computed pivot was
+not positive, or an entry overflowed". The tests check each bound with its own product's roundings
+added (`chol_tests`, header).
+
+### 15.5 Forward mode
+
+Through `Dual` the recurrence differentiates itself. It agrees with
+$\mathrm{d}L = L\,\Phi(L^{-1}\,\mathrm{d}A\,L^{-\top})$, $\Phi(X)$ the lower triangle of $X$ with
+the diagonal halved (checked by hand at $A = \left[\begin{smallmatrix}4&2\\2&5\end{smallmatrix}\right]$
+in `the_dual_derivative_matches_a_hand_derivation`). Derivative lanes of a failed arm are those of
+the constants $1$ and $0$; outside the domain of `Dual::sqrt` and the quotient (§12) they follow
+those rows.

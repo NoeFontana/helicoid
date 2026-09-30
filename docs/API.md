@@ -53,7 +53,8 @@ covariance. Ambient Jacobians (Phase 6) follow the same rule.
 
 **NORMATIVE.** Every function with a restricted domain carries a `# Domain` rustdoc section naming
 it (`NUMERICS.md` §12) and a `debug_assert!` enforcing it. Release builds never check; out-of-domain
-release behaviour is an unspecified value, never a panic, never UB (D11). Unit-norm inputs are
+release behaviour is an unspecified value, never a panic, never UB (D11). The one function that
+asserts nothing is `chol`: it accepts every input and its mask is the report (R4). Unit-norm inputs are
 checked by `*_unchecked` constructors in debug only; `*_normalized` constructors normalize.
 
 ## 2. `helicoid-linalg` — the leaf (Phase 2)
@@ -68,7 +69,7 @@ checked by `*_unchecked` constructors in debug only; `*_normalized` constructors
 | `Vector<S, N>`, `Matrix<S, R, C>`, `Point<S, N>` | structs | `repr(C)`; `Matrix` column-major `[[S; R]; C]`; aliases `Vec2`, `Vec3`, `Mat2`, `Mat3`, `Point2`, `Point3`. |
 | `hat`, `vee` | fns | `Vec3 ↔ Mat3` skew. |
 | `Mat3::inverse_adj` | fn | `(adjugate/det, det)`; the caller decides what `det` means. |
-| `chol<S, N>` | fn | Fixed-size Cholesky; `(L, S::Mask)`. |
+| `chol<S, N>`, `solve_lower`, `solve_upper` | fns | Fixed-size Cholesky; `(L, S::Mask)`. Triangular solves reading one triangle each; `NUMERICS.md` §15. |
 | `Strided<'a, S>`, `StridedMut<'a, S>` | structs | `col_major`, `row_major`, `block`; bounds-checked (`# Panics`). |
 | `eig3`, `svd3`, `solve_cubic` | fns | `NUMERICS.md` §13 references; signatures in `PHASE2.md` §6. |
 | `mint` | feature | `From`/`Into` for `Vector`, `Matrix`, `Point` at sizes 2–4. |

@@ -3,7 +3,8 @@
 //! Implemented so far: the scalar model (`docs/PHASE2.md` §2), i.e. [`Mask`], [`Real`], [`Blend`]
 //! and [`Precision`], with `f64` and `f32` as `Real` (mask `bool`, every transcendental through
 //! `libm`), forward-mode [`Dual`] numbers (§3), also a `Real`, and the fixed-size [`Vector`],
-//! [`Point`] and column-major [`Matrix`] with [`hat`]/[`vee`] and [`Mat3::inverse_adj`] (§4).
+//! [`Point`] and column-major [`Matrix`] with [`hat`]/[`vee`], [`Mat3::inverse_adj`] and the
+//! Cholesky factorization [`chol`] with [`solve_lower`]/[`solve_upper`] (§4).
 //! Numeric code is written once, generic over `S: Real`; a comparison yields `S::Mask` and control
 //! flow goes through [`Real::branch`] and [`Real::select`].
 //!
@@ -22,6 +23,7 @@
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
 
+mod chol;
 mod dual;
 mod float;
 mod matrix;
@@ -30,6 +32,7 @@ mod real;
 mod skew;
 mod vector;
 
+pub use chol::{chol, solve_lower, solve_upper};
 pub use dual::Dual;
 pub use matrix::{Mat2, Mat3, Matrix};
 pub use point::{Point, Point2, Point3};
@@ -41,6 +44,8 @@ pub use vector::{Vec2, Vec3, Vector};
 #[cfg(test)]
 extern crate std;
 
+#[cfg(test)]
+mod chol_tests;
 #[cfg(test)]
 mod dual_tests;
 #[cfg(test)]
