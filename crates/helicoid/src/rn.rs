@@ -128,24 +128,42 @@ impl<S: Real, const N: usize> Tangent<S> for RnTangent<S, N> {
         }
     }
     #[inline]
-    fn dot(&self, o: &Self) -> S {
-        self.rho.dot(o.rho)
+    fn dot_acc(&self, o: &Self, acc: S) -> S {
+        // `Vector::dot` would start its own sum, which is the same answer only for `acc = +0`.
+        self.rho
+            .0
+            .iter()
+            .zip(o.rho.0)
+            .fold(acc, |a, (&x, y)| a + x * y)
     }
     #[inline]
     fn write_dense(&self, out: &mut [S]) {
         debug_assert!(out.len() == N, "Tangent::write_dense: wrong length");
-        for (o, v) in out.iter_mut().zip(self.rho.0) {
-            *o = v;
+        // One length test and a block store on the contract path. The `zip` alone re-tests the
+        // length per component: at `N = 9` that was nine compares and nine scalar stores, none of
+        // them vectorized, on the boundary every solver crosses.
+        match out.first_chunk_mut::<N>() {
+            Some(o) => *o = self.rho.0,
+            None => {
+                for (o, v) in out.iter_mut().zip(self.rho.0) {
+                    *o = v;
+                }
+            }
         }
     }
     #[inline]
     fn read_dense(src: &[S]) -> Self {
         debug_assert!(src.len() == N, "Tangent::read_dense: wrong length");
-        Self {
-            rho: Vector(array::from_fn(|i| {
-                src.get(i).copied().unwrap_or_else(S::zero)
+        // A short `src` is out of domain and must not produce a usable tangent: `+0` is a valid
+        // component, so it would hand a solver a plausible wrong update, while NaN propagates to
+        // whatever the caller computes. D11 forbids the release check that would say so instead.
+        let rho = match src.first_chunk::<N>() {
+            Some(s) => Vector(*s),
+            None => Vector(array::from_fn(|i| {
+                src.get(i).copied().unwrap_or_else(|| S::zero() / S::zero())
             })),
-        }
+        };
+        Self { rho }
     }
 }
 
@@ -203,6 +221,15 @@ impl<S: Real, const N: usize> Jac<S, RnTangent<S, N>> for RnJac<S, N> {
     #[inline]
     fn sandwich<const D: usize>(&self, cov: &Matrix<S, D, D>) -> Matrix<S, D, D> {
         const { assert!(D == <RnTangent<S, N> as Tangent<S>>::DOF) };
+        // `(k I) Σ (k I)ᵀ = (Σ k) k` entry by entry, the order `laws::sandwich_matches_dense`
+        // forms its dense reference in, which is why the recorded `f64` bound is `0`.
+        //
+        // `scale(k * k)` is the obvious one-pass rewrite and is not taken. Measured at `D = 9` on
+        // the emitted release asm: for `f64` LLVM fuses the two passes, so it costs 42 multiplies
+        // against 41 here; for `Dual` it is one call against two, a real halving of the traversals.
+        // It is still not worth it, because it rounds once more than the reference and so gives up
+        // a bound of `0` — measured 0.00098 u — and `k` is `0` or `±1` on every public path, where
+        // the two forms agree to the bit anyway. The `Dual` cost is confined to the law.
         cov.scale(self.k).scale(self.k)
     }
 }

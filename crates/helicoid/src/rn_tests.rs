@@ -40,7 +40,7 @@ fn rn_jac<S: Sample>(v: &[f64; 3]) -> RnJac<S, 3> {
     RnJac::scalar(S::sample(v[0] + 0.5_f64.copysign(v[0]), 0))
 }
 
-laws_for!(rn, G, rn_jac, F64, F32);
+laws_for!(rn, G, rn_jac, 3, F64, F32);
 
 fn bits(x: &[f64]) -> Vec<u64> {
     x.iter().map(|v| v.to_bits()).collect()
@@ -180,7 +180,7 @@ mod out_of_domain {
 }
 
 /// ... and a release build (`cargo nextest run --release`) never panics: `write_dense` writes
-/// `min(len, DOF)` entries, `read_dense` reads a missing entry as `+0`, a larger `Jac` view keeps
+/// `min(len, DOF)` entries, `read_dense` reads a missing entry as NaN, a larger `Jac` view keeps
 /// its outside and `inverse` of `ad` divides by zero.
 #[cfg(not(debug_assertions))]
 #[test]
@@ -193,10 +193,11 @@ fn out_of_domain_does_not_panic_in_release() {
     t.write_dense(&mut long);
     assert_eq!(bits(&short), bits(&[1.0, 2.0]));
     assert_eq!(bits(&long), bits(&[1.0, 2.0, 3.0, 9.0, 9.0]));
-    assert_eq!(
-        bits(&RnTangent::<f64, 3>::read_dense(&short).rho.0),
-        bits(&[1.0, 2.0, 0.0])
-    );
+    // The missing component is poisoned, not zeroed, so a wrongly sized buffer cannot pass for a
+    // tangent whose last component happens to be zero.
+    let from_short = RnTangent::<f64, 3>::read_dense(&short).rho.0;
+    assert_eq!(bits(&from_short[..2]), bits(&[1.0, 2.0]));
+    assert!(from_short[2].is_nan(), "a missing entry must be NaN");
     assert_eq!(
         bits(&RnTangent::<f64, 3>::read_dense(&[1.0, 2.0, 3.0, 4.0]).rho.0),
         bits(&[1.0, 2.0, 3.0])

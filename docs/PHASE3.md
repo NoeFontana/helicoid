@@ -15,12 +15,12 @@ first blessed envelope. SO(3)/SE(3) start as a port of `tf_tree_math` generalize
 
 | Area | Status |
 |---|---|
-| Traits: `Tangent`, `Jac`, `LieGroup`, `Side` (§2) | Partial: the four traits and `Left`/`Right` as written in §2, `Side` delegating to `rplus`/`lplus`/`rminus`/`lminus` and their `*_jacobians`; the `DOF` tie (in each impl's `identity` and in every generic law) and `sandwich`'s `D == T::DOF` are `const` assertions, so a mismatch fails `cargo build`/`cargo test`, not `cargo check` (`sandwich`'s pinned by a `compile_fail` doctest); implemented by `Rn` and by a test-only non-abelian group (Heisenberg, `heis_tests.rs`; 2-step nilpotent, so no series term past the first is checked and its `Log` has no branch), both checked by the generic laws of `laws.rs` (axioms, `Exp`/`Log`, `Ad`, `ad` as a bracket with its series against `Ad`, `J_r`, `J_l`, `J_l = Ad J_r`, `⊕`/`⊖` round trips, `Side`, the rows of `NUMERICS.md` §2.3 against `Ad` and `J`, dense order, `sandwich`, `dual_value_is_plain_value`) under `f64`, `f32`, `Dual<f64, 3>`; `Side` has no first-class selector for the side row of `compose_jacobians`/`inverse_jacobian` (the test group compares `TypeId`s; whether `Side` gets a method or the groups use `TypeId` is for the SO(3) PR to decide); the rows are not compared with `Dual` differentiation: `jacobians_match_dual_*` and the twins (§8) not started |
+| Traits: `Tangent`, `Jac`, `LieGroup`, `Side` (§2) | Partial ([`0025`](./decisions/0025-a-structured-jacobian-and-a-sealed-side.md)): the four traits as written in §2, `Side` sealed to `Left`/`Right`, `dot_acc` the required operation; the `DOF` ties and `sandwich`'s `D == T::DOF` are `const` assertions, so a mismatch fails `cargo build`/`cargo test`, not `cargo check` (`sandwich`'s pinned by a `compile_fail` doctest); implemented by `Rn` and by a test-only non-abelian group (Heisenberg, `heis_tests.rs`), both under every generic law of `laws.rs` at `f64`, `f32` and `Dual<f64, 3>`. Not started: the side selector of `compose_jacobians`/`inverse_jacobian` (the test group compares `TypeId`s; the SO(3) PR decides), and comparing the §2.3 rows with `Dual` differentiation (`jacobians_match_dual_*` and the §8 twins) |
 | Coefficient kernel + `__sweep` + generated thresholds (§3) | Not started |
 | `Quat`, `SO3` (§4) | Not started |
 | `SEn3<S, N>`, `SEn3Tangent`, `SEn3Jac`; `SE3`, `SE23` (§5) | Not started |
 | `SO2`, `SE2` (§6) | Not started |
-| `Rn`, `Product` (§7) | Partial: `Rn<S, N>` with tangent `RnTangent { rho }` and `RnJac`, a scalar multiple `k I` (`I`, `-I` and `ad = 0`); every §2.3 row for both sides, all `±I` and symmetric; addition is `Mul` and `Rn + Rn` is pinned by a `compile_fail` doctest; `Product` not started |
+| `Rn`, `Product` (§7) | Partial ([`0025`](./decisions/0025-a-structured-jacobian-and-a-sealed-side.md)): `Rn<S, N>` with tangent `RnTangent { rho }` and `RnJac`, a scalar multiple `k I` (`I`, `-I` and `ad = 0`), correcting §7's `Jac = Mat<N>`, which cannot implement `Jac::inverse`; every §2.3 row for both sides, all `±I` and symmetric; addition is `Mul`, with `Rn + Rn` and `RnTangent + RnTangent` pinned by `compile_fail` doctests; `Product` not started |
 | Side Jacobians, action Jacobians (§8) | Not started |
 | Reference twins and proptests (§9) | Not started |
 | Envelope blessed; `docs/evidence/ENVELOPE.md` (§10) | Not started |
@@ -59,7 +59,10 @@ pub trait Tangent<S: Real>: Copy + Blend<S> {
     fn sub(&self, o: &Self) -> Self;
     fn neg(&self) -> Self;
     fn scale(&self, k: S) -> Self;
-    fn dot(&self, o: &Self) -> S;
+    /// The products of the dense components accumulated into `acc`, in index order.
+    fn dot_acc(&self, o: &Self, acc: S) -> S;
+    /// Provided. The `+0` seed is normative: `+0 + -0` is `+0`.
+    fn dot(&self, o: &Self) -> S { self.dot_acc(o, S::zero()) }
     /// NUMERICS.md §1 order. debug_assert!(out.len() == DOF).
     fn write_dense(&self, out: &mut [S]);
     fn read_dense(src: &[S]) -> Self;
@@ -108,7 +111,10 @@ pub trait LieGroup<S: Real>: Copy + Blend<S> + core::ops::Mul<Output = Self> {
     fn inverse_jacobian<Sd: Side>(&self) -> Self::Jac;
 }
 
-pub trait Side: Copy + 'static {
+// Sealed: `Right` and `Left` are the only implementations (0025). Whether a group reads its
+// side from a `TypeId` or from a first-class selector on `Side` is still the SO(3) PR's call;
+// sealing is what keeps that choice internal.
+pub trait Side: sealed::Sealed + Copy + 'static {
     fn plus<S: Real, G: LieGroup<S>>(x: &G, tau: &G::Tangent) -> G;
     fn minus<S: Real, G: LieGroup<S>>(y: &G, x: &G) -> G::Tangent;
     fn plus_jacobians<S: Real, G: LieGroup<S>>(x: &G, tau: &G::Tangent) -> (G::Jac, G::Jac);
@@ -120,7 +126,10 @@ pub trait Side: Copy + 'static {
 
 Each `*_jacobians` returns `(∂/∂first, ∂/∂second)` in its side's convention, exactly the rows of
 `NUMERICS.md` §2.3. **`DOF` is duplicated on `Tangent` and `LieGroup`** because stable Rust cannot
-compute array lengths from associated consts; a `const` assertion ties them in every impl.
+compute array lengths from associated consts; a `const` assertion ties them in every impl. The same
+limitation is why `dot_acc`, not `dot`, is the required operation: a composite tangent cannot size
+a flattening buffer from `DOF`, so it threads the accumulator instead
+([`0025`](./decisions/0025-a-structured-jacobian-and-a-sealed-side.md)).
 
 ## 3. The coefficient kernel
 
@@ -200,12 +209,15 @@ PR adds the rotation-first permuted SE(2) Jacobians to `NUMERICS.md` §6 before 
 
 ## 7. Rⁿ and products
 
-`Rn<S, N>(Vector<S, N>)`: addition as the group law, tangent `RnTangent { rho: Vector<S, N> }`,
+`Rn<S, N>(pub Vector<S, N>)`: addition as the group law, tangent `RnTangent { rho: Vector<S, N> }`,
 `Jac = RnJac`, the matrices `k I` (`jr = I`, `Ad = I`, `ad = 0`, `-I` in the `⊖` rows; a `Mat<N>`
 has no inverse at general `N`), so generic code needs no special case. `Product<A, B>(A, B)` with
 tangent `(A::Tangent, B::Tangent)`, `ProductJac(A::Jac, B::Jac)` block-diagonal,
-`DOF = A::DOF + B::DOF`, dense order A then B. `Product<SO3<S>, Rn<S, 3>>` is the tf2-semantics
-pose.
+`DOF = A::DOF + B::DOF`, dense order A then B, and `dot_acc` threaded as A then B so that the sum
+is the flat one §2 specifies. `Product<SO3<S>, Rn<S, 3>>` is the tf2-semantics pose. Rⁿ's field is
+`pub` because the group is abelian, so a reach-through to `Vector`'s `Add` can name no side; a
+non-abelian group exposes no such field
+([`0025`](./decisions/0025-a-structured-jacobian-and-a-sealed-side.md)).
 
 ## 8. Side and action Jacobians
 

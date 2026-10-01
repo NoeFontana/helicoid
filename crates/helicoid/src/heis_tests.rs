@@ -11,9 +11,9 @@
 //! nilpotent: it checks no series term past the first, and its `Log` has no branch.
 //!
 //! The bounds are recorded as described at [`Bounds`]. The worst errors, in `u`: `f64` and
-//! `Dual<f64, 3>` 4.00 for `group_axioms`, 3.85 for `adjoint_identity`, 3.97 for `plus_minus`, 5.43
-//! for `jac_dense_order`, 5.82 for `sandwich_matches_dense` and 0 for the rest; `f32` 4.08, 3.53,
-//! 3.95, 5.42, 3.86, 1.61 for `tangent_dense_order` and 0 for the rest.
+//! `Dual<f64, 3>` 4.00 for `group_axioms`, 3.85 for `adjoint_identity`, 3.97 for `plus_minus`, 5.89
+//! for `jac_dense_order`, 5.55 for `sandwich_matches_dense` and 0 for the rest; `f32` 4.08, 3.53,
+//! 3.95, 5.48, 4.09, 1.61 for `tangent_dense_order` and 0 for the rest.
 
 use crate::laws::{laws_for, Bounds, Sample};
 use crate::{Jac, LieGroup, Right, RnTangent, Side, Tangent};
@@ -96,6 +96,10 @@ impl<S: Real> Jac<S, RnTangent<S, 3>> for HJac<S> {
         }
     }
     fn write_dense(&self, out: &mut StridedMut<'_, S>) {
+        debug_assert!(
+            out.rows() == 3 && out.cols() == 3,
+            "Jac::write_dense: the view is not DOF x DOF"
+        );
         for c in 0..3 {
             for r in 0..3 {
                 out.set(r, c, self.0.get(r, c));
@@ -180,16 +184,23 @@ impl<S: Real> LieGroup<S> for Heis<S> {
     }
 }
 
-/// `I + M` with `M` the circulant of the sample, `M[r][c] = v[(c - r) mod 3] / 4`: full,
-/// non-symmetric and strictly diagonally dominant, so invertible with a condition number below 7.
+/// `I + D M / 4` with `M[r][c] = v[(c - r) mod 3]` the circulant of the sample and
+/// `D = diag(1, 1/2, 1/4)`: full, non-symmetric and strictly diagonally dominant, so invertible
+/// with a condition number below 7.
+///
+/// The row scaling is what makes the family **non-commuting**, and that is the whole point of this
+/// group: `jac_dense_order` pins `mul`'s operand order by comparing `a.mul(b)` against the dense
+/// product in that order, which detects nothing when `a b = b a`. A circulant commutes with every
+/// circulant, and `I` plus a circulant is one, so with `M` alone a `mul` that multiplies its
+/// operands the wrong way round passed every law; `D M D' M'` and `D M' D M` differ.
 fn heis_jac<S: Sample>(v: &[f64; 3]) -> HJac<S> {
     let row = |r: usize| {
+        let k = S::lit(0.25 / f64::from(1_u8 << r));
         Vector(array::from_fn(|c| {
-            S::sample(v[(c + 3 - r) % 3], (c + 3 - r) % 3)
+            k * S::sample(v[(c + 3 - r) % 3], (c + 3 - r) % 3)
         }))
     };
-    let m = Matrix::from_rows([row(0), row(1), row(2)]);
-    HJac(Matrix::identity() + m.scale(S::lit(0.25)))
+    HJac(Matrix::identity() + Matrix::from_rows([row(0), row(1), row(2)]))
 }
 
 const F64: Bounds = Bounds {
@@ -202,20 +213,33 @@ const F64: Bounds = Bounds {
     ad: 0.0,
     sides: 0.0,
     tangent_order: 0.0,
-    jac_order: 11.0,
+    jac_order: 12.0,
     sandwich: 12.0,
 };
 const F32: Bounds = Bounds {
     axioms: 9.0,
     tangent_order: 4.0,
-    sandwich: 8.0,
+    jac_order: 11.0,
+    sandwich: 9.0,
     ..F64
 };
 
-laws_for!(heis, Heis, heis_jac, F64, F32);
+laws_for!(heis, Heis, heis_jac, 3, F64, F32);
 
 fn bits(x: &[f64]) -> Vec<u64> {
     x.iter().map(|v| v.to_bits()).collect()
+}
+
+// No law calls `blend`, and neither type has a `branch`/`select` that would reach it, so without
+// this the two impls are unexecuted and swapping their arms changes nothing.
+#[test]
+fn blend_selects_each_value_type() {
+    let (a, b) = (Heis(Vector([1.0; 3])), Heis(Vector([2.0; 3])));
+    let (ja, jb) = (heis_jac::<f64>(&[0.5; 3]), heis_jac::<f64>(&[-0.5; 3]));
+    for (m, x, j) in [(true, a, ja), (false, b, jb)] {
+        assert_eq!(bits(&Heis::blend(m, a, b).0 .0), bits(&x.0 .0));
+        assert_eq!(dense(&HJac::blend(m, ja, jb)), dense(&j));
+    }
 }
 
 /// The dense matrix of `j` in column-major order, as bits.

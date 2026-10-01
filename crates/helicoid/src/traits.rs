@@ -23,8 +23,29 @@ pub trait Tangent<S: Real>: Copy + Blend<S> {
     fn neg(&self) -> Self;
     /// `k * self`.
     fn scale(&self, k: S) -> Self;
-    /// The Euclidean inner product of the dense components, summed in index order.
-    fn dot(&self, o: &Self) -> S;
+    /// The products of the dense components accumulated into `acc`, in index order.
+    ///
+    /// This, and not [`dot`](Tangent::dot), is the required operation (`0025`). A composite
+    /// tangent — `Product<A, B>`, whose dense order is A's components then B's (`PHASE3.md` §7) —
+    /// cannot build one index-order sum out of its factors' `dot`s, and stable Rust cannot size a
+    /// flattening buffer from `DOF`, an associated const (`0005`); threading the accumulator gives
+    /// the flat order at any nesting depth, with no buffer:
+    ///
+    /// ```text
+    /// fn dot_acc(&self, o: &Self, acc: S) -> S {
+    ///     self.1.dot_acc(&o.1, self.0.dot_acc(&o.0, acc))
+    /// }
+    /// ```
+    fn dot_acc(&self, o: &Self, acc: S) -> S;
+    /// The Euclidean inner product of the dense components, summed in index order:
+    /// `dot_acc(o, +0)`.
+    ///
+    /// The `+0` seed is normative, not an implementation detail — `+0 + -0` is `+0`, so seeding
+    /// from the first product instead would differ on a signed zero. It is what
+    /// `laws::tangent_dense_order` compares against, at a recorded `f64` bound of `0`.
+    fn dot(&self, o: &Self) -> S {
+        self.dot_acc(o, S::zero())
+    }
     /// Writes the components in the order of `NUMERICS.md` §1.
     ///
     /// # Domain
@@ -36,8 +57,10 @@ pub trait Tangent<S: Real>: Copy + Blend<S> {
     ///
     /// # Domain
     ///
-    /// `src.len() == DOF`, checked by `debug_assert!`. A release build never panics and reads a
-    /// missing entry as `+0`.
+    /// `src.len() == DOF`, checked by `debug_assert!`. A release build never panics (D11) and
+    /// reads a missing entry as NaN: `+0` is a valid component and would make a wrongly sized
+    /// buffer indistinguishable from a zero tangent, while NaN reaches whatever the caller
+    /// computes from it.
     fn read_dense(src: &[S]) -> Self;
 }
 

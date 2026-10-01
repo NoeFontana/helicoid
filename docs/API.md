@@ -16,7 +16,10 @@ A question none of these answers is a decision record, not an API choice.
 
 **NORMATIVE.** Every perturbation operation names its side: `rplus`, `lplus`, `rminus`, `lminus`,
 and their `*_jacobians`. Generic code takes `Sd: Side` (`Left`, `Right`). **No group, tangent or
-manifold type implements `Add`, `Sub`, `AddAssign` or `SubAssign`.** `Mul` is composition
+manifold type implements `Add`, `Sub`, `AddAssign` or `SubAssign`.** A group type exposes a field
+whose type does (`Rn`'s `Vector`) only where the group is **abelian**, so that `⊕_R = ⊕_L` and the
+reach-through can name no side; a tangent is a vector space and is exempt
+([`0025`](./decisions/0025-a-structured-jacobian-and-a-sealed-side.md)). `Mul` is composition
 (`a * b` is `T_a_x · T_x_b`) and action (`x * p`). Each side's Jacobians are expressed in that
 side's perturbation convention (`NUMERICS.md` §2.3).
 
@@ -78,7 +81,7 @@ checked by `*_unchecked` constructors in debug only; `*_normalized` constructors
 
 | Item | Kind | Phase | Notes |
 |---|---|---|---|
-| `Tangent<S>`, `Jac<S, T>`, `LieGroup<S>`, `Side`, `Left`, `Right` | traits/ZSTs | 3 | Signatures `PHASE3.md` §2. |
+| `Tangent<S>`, `Jac<S, T>`, `LieGroup<S>`, `Side`, `Left`, `Right` | traits/ZSTs | 3 | Signatures `PHASE3.md` §2. `Side` is sealed: `Left` and `Right` are the only impls. `Tangent::dot_acc` is required, `dot` provided (`0025`). |
 | `Quat<S>` | struct | 3 | `{ w, x, y, z }`; `from_wxyz_unchecked`, `from_wxyz_normalized`, `from_xyzw`, `to_xyzw`, `from_jpl`. |
 | `SO2<S>`, `SO3<S>`, `SE2<S>` | structs | 3 | |
 | `SEn3<S, const N: usize>`; `SE3<S> = SEn3<S, 1>`, `SE23<S> = SEn3<S, 2>` | struct, aliases | 3 | `{ q: Quat<S>, x: [Vec3<S>; N] }`. |

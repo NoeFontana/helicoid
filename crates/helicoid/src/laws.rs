@@ -63,10 +63,22 @@ fn norm(v: &[f64]) -> f64 {
     v.iter().map(|x| x * x).sum::<f64>().sqrt()
 }
 
+/// `max(‖v‖, 1)`, the denominator of a norm-wise error. `f64::max` returns the *other* operand for
+/// a NaN, so it would turn a NaN reference into a denominator of `1`; here NaN wins, as in
+/// [`worst`]. Every error goes through this, so no law can pass against a NaN reference.
+fn den(v: &[f64]) -> f64 {
+    let n = norm(v);
+    if n.is_nan() {
+        f64::NAN
+    } else {
+        n.max(1.0)
+    }
+}
+
 /// `‖a - b‖ / max(‖b‖, 1)` in units of `u`.
 fn e<S: Real>(a: &[f64], b: &[f64]) -> f64 {
     let diff = a.iter().zip(b).map(|(x, y)| (x - y) * (x - y));
-    diff.sum::<f64>().sqrt() / norm(b).max(1.0) / unit::<S>()
+    diff.sum::<f64>().sqrt() / den(b) / unit::<S>()
 }
 
 fn nan<S: Real>() -> S {
@@ -102,8 +114,10 @@ fn jerr<S: Real, G: LieGroup<S>, const D: usize>(a: &G::Jac, b: &G::Jac) -> f64 
 
 /// `‖Log(a ⊖_R b)‖` over `max(‖Log b‖, 1)`.
 fn gerr<S: Real, G: LieGroup<S>, const D: usize>(a: &G, b: &G) -> f64 {
+    // Unlike `e`, the numerator and the denominator are independent quantities: a NaN in `Log b`
+    // does not reach `Log(b⁻¹ a)`, so only `den` keeps it from being scaled away.
     let (d, r) = (dt::<S, G, D>(&a.rminus(b)), dt::<S, G, D>(&b.log()));
-    norm(&d) / norm(&r).max(1.0) / unit::<S>()
+    norm(&d) / den(&r) / unit::<S>()
 }
 
 /// `(x y) z = x (y z)`, `1 x = x 1 = x`, `x x⁻¹ = x⁻¹ x = 1`.
@@ -462,9 +476,9 @@ pub(crate) struct Bounds {
 }
 
 /// Tangent samples with entries `m 2^e`, `|m| < 1`, `-6 <= e <= 0`.
-pub(crate) fn sample() -> impl Strategy<Value = [f64; 3]> {
+pub(crate) fn sample<const D: usize>() -> impl Strategy<Value = [f64; D]> {
     let entry = (-1.0_f64..1.0, -6_i32..=0).prop_map(|(m, e)| m * 2_f64.powi(e));
-    proptest::array::uniform3(entry)
+    proptest::array::uniform(entry)
 }
 
 /// `Ok` when the worst error `v` of a law is within `bound`; a NaN is not.
@@ -478,20 +492,24 @@ pub(crate) fn within(v: f64, bound: f64) -> Result<(), TestCaseError> {
     }
 }
 
-/// Every law above as a proptest in a module `$p`, for `f64`, `f32` and `Dual<f64, 3>` (which takes
-/// the bounds of `f64`, its values being the same), for the three-dimensional group `$G<S>` whose
-/// tests define `$jac::<S>(&[f64; 3])`, an invertible `Jac` built from a sample.
+/// Every law above as a proptest in a module `$p`, for `f64`, `f32` and `Dual<f64, $D>` (which takes
+/// the bounds of `f64`, its values being the same), for the `$D`-dimensional group `$G<S>` whose
+/// tests define `$jac::<S>(&[f64; $D])`, an invertible `Jac` built from a sample.
+///
+/// `$D` is the group's `DOF`. The laws themselves are generic over it (`D` is a parameter of each);
+/// only the proptest bodies need it spelled, since a `Strategy` has to name its array length.
 macro_rules! laws_for {
-    ($p:ident, $G:ident, $jac:ident, $b64:ident, $b32:ident) => {
+    ($p:ident, $G:ident, $jac:ident, $D:literal, $b64:ident, $b32:ident) => {
         mod $p {
             use super::*;
-            $crate::laws::laws_for!(@case as_f64, f64, $b64, $G, $jac);
-            $crate::laws::laws_for!(@case as_f32, f32, $b32, $G, $jac);
-            $crate::laws::laws_for!(@case as_dual, helicoid_linalg::Dual<f64, 3>, $b64, $G, $jac);
-            $crate::laws::laws_for!(@plain $G);
+            $crate::laws::laws_for!(@case as_f64, f64, $b64, $G, $jac, $D);
+            $crate::laws::laws_for!(@case as_f32, f32, $b32, $G, $jac, $D);
+            $crate::laws::laws_for!(
+                @case as_dual, helicoid_linalg::Dual<f64, $D>, $b64, $G, $jac, $D);
+            $crate::laws::laws_for!(@plain $G, $D);
         }
     };
-    (@case $m:ident, $S:ty, $B:ident, $G:ident, $jac:ident) => {
+    (@case $m:ident, $S:ty, $B:ident, $G:ident, $jac:ident, $D:literal) => {
         mod $m {
             use super::*;
             use $crate::laws::{self, sample, tangent, within, Sample};
@@ -502,66 +520,69 @@ macro_rules! laws_for {
 
             type S = $S;
             type Gp = $G<S>;
+            const D: usize = $D;
 
-            fn t(v: &[f64; 3]) -> <Gp as LieGroup<S>>::Tangent {
-                tangent::<S, Gp, 3>(v)
+            fn t(v: &[f64; D]) -> <Gp as LieGroup<S>>::Tangent {
+                tangent::<S, Gp, D>(v)
             }
-            fn g(v: &[f64; 3]) -> Gp {
+            fn g(v: &[f64; D]) -> Gp {
                 Gp::exp(&t(v))
             }
-            fn j(v: &[f64; 3]) -> <Gp as LieGroup<S>>::Jac {
+            fn j(v: &[f64; D]) -> <Gp as LieGroup<S>>::Jac {
                 $jac::<S>(v)
             }
-            fn cov(a: &[f64; 3], b: &[f64; 3], c: &[f64; 3]) -> Matrix<S, 3, 3> {
-                let col = |v: &[f64; 3]| Vector(array::from_fn(|i| S::sample(v[i], i)));
-                Matrix::from_cols([col(a), col(b), col(c)])
+            fn cov(a: &[f64; D], b: &[f64; D], c: &[f64; D]) -> Matrix<S, D, D> {
+                let col = |v: &[f64; D]| Vector(array::from_fn(|i| S::sample(v[i], i)));
+                // Three independent columns cycled over `D`, so `Σ` is not symmetric and
+                // `sandwich` cannot pass with `J Σ Jᵀ` transposed.
+                Matrix::from_cols(array::from_fn(|i| col([a, b, c][i % 3])))
             }
 
             proptest! {
                 #[test]
-                fn group_axioms(a in sample(), b in sample(), c in sample()) {
-                    within(laws::group_axioms::<S, Gp, 3>(g(&a), g(&b), g(&c)), $B.axioms)?;
+                fn group_axioms(a in sample::<D>(), b in sample::<D>(), c in sample::<D>()) {
+                    within(laws::group_axioms::<S, Gp, D>(g(&a), g(&b), g(&c)), $B.axioms)?;
                 }
                 #[test]
-                fn exp_log_roundtrip(a in sample(), b in sample()) {
-                    within(laws::exp_log_roundtrip::<S, Gp, 3>(&t(&a), &g(&b)), $B.exp_log)?;
+                fn exp_log_roundtrip(a in sample::<D>(), b in sample::<D>()) {
+                    within(laws::exp_log_roundtrip::<S, Gp, D>(&t(&a), &g(&b)), $B.exp_log)?;
                 }
                 #[test]
-                fn adjoint_identity(a in sample(), b in sample()) {
-                    within(laws::adjoint_identity::<S, Gp, 3>(&g(&a), &t(&b)), $B.adjoint)?;
+                fn adjoint_identity(a in sample::<D>(), b in sample::<D>()) {
+                    within(laws::adjoint_identity::<S, Gp, D>(&g(&a), &t(&b)), $B.adjoint)?;
                 }
                 #[test]
-                fn jl_is_ad_jr(a in sample()) {
-                    within(laws::jl_is_ad_jr::<S, Gp, 3>(&t(&a)), $B.jl_ad_jr)?;
+                fn jl_is_ad_jr(a in sample::<D>()) {
+                    within(laws::jl_is_ad_jr::<S, Gp, D>(&t(&a)), $B.jl_ad_jr)?;
                 }
                 #[test]
-                fn plus_minus(a in sample(), b in sample(), c in sample()) {
-                    within(laws::plus_minus::<S, Gp, 3>(&g(&a), &g(&b), &t(&c)), $B.plus_minus)?;
+                fn plus_minus(a in sample::<D>(), b in sample::<D>(), c in sample::<D>()) {
+                    within(laws::plus_minus::<S, Gp, D>(&g(&a), &g(&b), &t(&c)), $B.plus_minus)?;
                 }
                 #[test]
-                fn jacobian_rows(a in sample(), b in sample(), c in sample()) {
-                    within(laws::jacobian_rows::<S, Gp, 3>(&g(&a), &g(&b), &t(&c)), $B.rows)?;
+                fn jacobian_rows(a in sample::<D>(), b in sample::<D>(), c in sample::<D>()) {
+                    within(laws::jacobian_rows::<S, Gp, D>(&g(&a), &g(&b), &t(&c)), $B.rows)?;
                 }
                 #[test]
-                fn ad_consistency(a in sample(), b in sample(), c in sample()) {
-                    within(laws::ad_consistency::<S, Gp, 3>(&t(&a), &t(&b), &t(&c)), $B.ad)?;
+                fn ad_consistency(a in sample::<D>(), b in sample::<D>(), c in sample::<D>()) {
+                    within(laws::ad_consistency::<S, Gp, D>(&t(&a), &t(&b), &t(&c)), $B.ad)?;
                 }
                 #[test]
-                fn side_delegation(a in sample(), b in sample(), c in sample()) {
-                    within(laws::side_delegation::<S, Gp, 3>(&g(&a), &g(&b), &t(&c)), $B.sides)?;
+                fn side_delegation(a in sample::<D>(), b in sample::<D>(), c in sample::<D>()) {
+                    within(laws::side_delegation::<S, Gp, D>(&g(&a), &g(&b), &t(&c)), $B.sides)?;
                 }
                 #[test]
-                fn tangent_dense_order(a in sample(), b in sample(), c in sample()) {
+                fn tangent_dense_order(a in sample::<D>(), b in sample::<D>(), c in sample::<D>()) {
                     let k = S::sample(c[0], 0);
-                    within(laws::tangent_dense_order::<S, Gp, 3>(&t(&a), &t(&b), k), $B.tangent_order)?;
+                    within(laws::tangent_dense_order::<S, Gp, D>(&t(&a), &t(&b), k), $B.tangent_order)?;
                 }
                 #[test]
-                fn jac_dense_order(a in sample(), b in sample(), c in sample()) {
-                    within(laws::jac_dense_order::<S, Gp, 3>(&j(&a), &j(&b), &t(&c)), $B.jac_order)?;
+                fn jac_dense_order(a in sample::<D>(), b in sample::<D>(), c in sample::<D>()) {
+                    within(laws::jac_dense_order::<S, Gp, D>(&j(&a), &j(&b), &t(&c)), $B.jac_order)?;
                 }
                 #[test]
-                fn sandwich_matches_dense(a in sample(), b in sample(), c in sample()) {
-                    within(laws::sandwich_matches_dense::<S, Gp, 3>(&j(&a), &cov(&a, &b, &c)), $B.sandwich)?;
+                fn sandwich_matches_dense(a in sample::<D>(), b in sample::<D>(), c in sample::<D>()) {
+                    within(laws::sandwich_matches_dense::<S, Gp, D>(&j(&a), &cov(&a, &b, &c)), $B.sandwich)?;
                 }
             }
         }
@@ -569,25 +590,30 @@ macro_rules! laws_for {
     // `probe` reads every method of the group; over any `f64` and with NaN, infinite and huge
     // derivative lanes the value parts must be the plain result, bit for bit (NaN sign and payload
     // of arithmetic excepted, as for `Dual`).
-    (@plain $G:ident) => {
+    (@plain $G:ident, $D:literal) => {
         proptest::proptest! {
             #[test]
             fn dual_value_is_plain_value(
-                a in proptest::array::uniform3(proptest::num::f64::ANY),
-                b in proptest::array::uniform3(proptest::num::f64::ANY),
+                a in proptest::array::uniform::<_, $D>(proptest::num::f64::ANY),
+                b in proptest::array::uniform::<_, $D>(proptest::num::f64::ANY),
                 k in proptest::num::f64::ANY,
             ) {
-                type D3 = helicoid_linalg::Dual<f64, 3>;
-                let plain = $crate::laws::probe::<f64, $G<f64>, 3>(&a, &b, k);
+                type D3 = helicoid_linalg::Dual<f64, $D>;
+                let plain = $crate::laws::probe::<f64, $G<f64>, $D>(&a, &b, k);
                 for poison in [false, true] {
-                    let lift = |v: &[f64; 3]| -> [D3; 3] {
+                    let lift = |v: &[f64; $D]| -> [D3; $D] {
+                        // The three poison lanes cycle over `DOF`; at `DOF = 3` this is the array.
+                        let p = [f64::NAN, f64::INFINITY, -1e300];
                         core::array::from_fn(|i| if poison {
-                            helicoid_linalg::Dual { v: v[i], d: [f64::NAN, f64::INFINITY, -1e300] }
+                            helicoid_linalg::Dual {
+                                v: v[i],
+                                d: core::array::from_fn(|l| p[l % 3]),
+                            }
                         } else {
                             helicoid_linalg::Dual::variable(v[i], i)
                         })
                     };
-                    let dual = $crate::laws::probe::<D3, $G<D3>, 3>(
+                    let dual = $crate::laws::probe::<D3, $G<D3>, $D>(
                         &lift(&a), &lift(&b), D3::constant(k));
                     proptest::prop_assert_eq!(plain.len(), dual.len());
                     for (p, d) in plain.iter().zip(&dual) {
@@ -599,3 +625,25 @@ macro_rules! laws_for {
     };
 }
 pub(crate) use laws_for;
+
+/// The harness's own rules, which no group's laws would show.
+mod self_test {
+    use super::{den, e, within, worst};
+
+    #[test]
+    fn a_nan_reference_does_not_become_a_denominator_of_one() {
+        // The trap: `f64::max` returns the *other* operand for a NaN.
+        assert_eq!(f64::NAN.max(1.0).to_bits(), 1.0_f64.to_bits());
+        assert!(den(&[f64::NAN]).is_nan());
+        assert_eq!(den(&[0.5]).to_bits(), 1.0_f64.to_bits());
+        assert_eq!(den(&[3.0, 4.0]).to_bits(), 5.0_f64.to_bits());
+        assert!(e::<f64>(&[1.0], &[f64::NAN]).is_nan());
+        assert!(worst(f64::NAN, 0.0).is_nan() && worst(0.0, f64::NAN).is_nan());
+    }
+
+    #[test]
+    fn a_nan_error_is_within_no_bound() {
+        assert!(within(f64::NAN, f64::INFINITY).is_err());
+        assert!(within(0.0, 0.0).is_ok());
+    }
+}
