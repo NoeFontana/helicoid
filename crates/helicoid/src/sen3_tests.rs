@@ -174,7 +174,8 @@ mod out_of_domain {
 }
 
 /// ... and a release build never panics: `write_dense` writes `min(len, DOF)` entries and
-/// `read_dense` reads a missing entry as `+0`.
+/// `read_dense` reads a missing entry as NaN, never as `+0`, which would be a valid component and
+/// so a plausible tangent (`Tangent::read_dense`).
 #[cfg(not(debug_assertions))]
 #[test]
 fn out_of_domain_does_not_panic_in_release() {
@@ -185,8 +186,8 @@ fn out_of_domain_does_not_panic_in_release() {
     assert_eq!(fb(short), fb([1.0, 2.0, 3.0, 4.0]));
     assert_eq!(fb(long), fb([1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 9.0, 9.0]));
     let back = SEn3Tangent::<f64, 1>::read_dense(&short);
-    assert_eq!(
-        (fb(back.phi.0), fb(back.rho[0].0)),
-        (fb([1.0, 2.0, 3.0]), fb([4.0, 0.0, 0.0]))
-    );
+    assert_eq!(fb(back.phi.0), fb([1.0, 2.0, 3.0]));
+    let rho = back.rho[0].0;
+    assert_eq!(fb([rho[0]]), fb([4.0]));
+    assert!(rho[1].is_nan() && rho[2].is_nan());
 }

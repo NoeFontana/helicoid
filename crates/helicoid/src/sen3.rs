@@ -125,7 +125,10 @@ impl<S: Real, const N: usize> Tangent<S> for SEn3Tangent<S, N> {
     #[inline]
     fn read_dense(src: &[S]) -> Self {
         debug_assert!(src.len() == Self::DOF, "Tangent::read_dense: wrong length");
-        let at = |i: usize| src.get(i).copied().unwrap_or_else(S::zero);
+        // A short `src` is out of domain and must not produce a usable tangent: `+0` is a valid
+        // component, so it would hand a solver a plausible wrong update, while NaN propagates to
+        // whatever the caller computes. D11 forbids the release check that would say so instead.
+        let at = |i: usize| src.get(i).copied().unwrap_or_else(|| S::zero() / S::zero());
         let block = |b: usize| Vector(array::from_fn(|r| at(3 * b + r)));
         Self {
             phi: block(0),
