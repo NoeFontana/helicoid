@@ -12,7 +12,9 @@
 //! itself.
 
 // `u` is `laws::unit`, the unit roundoff of `NUMERICS.md` §2.1; it is defined there, not again here.
-use crate::laws::{unit as u, Sample};
+// `Rng` shadows `proptest::prelude`'s re-export of the `rand` trait of that name, as the local
+// struct it replaces did.
+use crate::laws::{unit as u, Rng, Sample};
 use crate::Quat;
 use core::array;
 use helicoid_linalg::{Blend, Dual, Precision, Real};
@@ -269,35 +271,20 @@ props!(as_f64, f64, F64);
 props!(as_f32, f32, F32);
 props!(as_dual, Dual<f64, 4>, F64);
 
-/// splitmix64, seeded; `unif` is uniform on `[-1, 1)`.
-struct Rng(u64);
-
-impl Rng {
-    fn next(&mut self) -> u64 {
-        self.0 = self.0.wrapping_add(0x9E37_79B9_7F4A_7C15);
-        let mut z = self.0;
-        z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
-        z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
-        z ^ (z >> 31)
-    }
-    fn unif(&mut self) -> f64 {
-        (self.next() >> 11) as f64 / 2_f64.powi(52) - 1.0
-    }
-    /// The distribution of `unit_sample`.
-    ///
-    /// The draws are an explicit loop, not `array::from_fn`: two per component come off the stream
-    /// and `from_fn` does not promise the order it calls its closure in, so the recorded bounds of
-    /// the module header would be reproducible only by accident.
-    fn unit(&mut self) -> [f64; 4] {
-        loop {
-            let mut v = [0.0; 4];
-            for e in &mut v {
-                let m = self.unif();
-                *e = m * 2_f64.powi(-((self.next() % 7) as i32));
-            }
-            if v.iter().map(|x| x * x).sum::<f64>() > 0.004 {
-                return normalized(v);
-            }
+/// The distribution of `unit_sample`, drawn from the shared [`Rng`].
+///
+/// The draws are an explicit loop, not `array::from_fn`: two per component come off the stream and
+/// `from_fn` does not promise the order it calls its closure in, so the recorded bounds of the
+/// module header would be reproducible only by accident.
+fn unit_draw(rng: &mut Rng) -> [f64; 4] {
+    loop {
+        let mut v = [0.0; 4];
+        for e in &mut v {
+            let m = rng.unif();
+            *e = m * 2_f64.powi(-((rng.next() % 7) as i32));
+        }
+        if v.iter().map(|x| x * x).sum::<f64>() > 0.004 {
+            return normalized(v);
         }
     }
 }
@@ -315,7 +302,11 @@ fn measure_worst_errors() {
         let mut w = [0.0_f64; 9];
         let mut up = |i: usize, v: f64| w[i] = if v.is_nan() || v > w[i] { v } else { w[i] };
         for _ in 0..1_000_000 {
-            let (a, b, c) = (rng.unit(), rng.unit(), rng.unit());
+            let (a, b, c) = (
+                unit_draw(&mut rng),
+                unit_draw(&mut rng),
+                unit_draw(&mut rng),
+            );
             let p = [rng.unif(), rng.unif(), rng.unif()];
             up(0, conj_is_inverse::<S>(&a));
             up(1, associativity::<S>(&a, &b, &c));

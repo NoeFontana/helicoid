@@ -360,9 +360,11 @@ row spells the composition and the proptest writes it inline
 | `*_jacobians` (§2.3 closed forms) | chains of primitive Jacobians, dense | 3 |
 | `SO3::act_many` | per-point `act` | 3 |
 | `SEn3Jac::mul`, `inverse` | dense product / Gauss–Jordan | 3 |
+| `SEn3Jac::apply`, `apply_transpose` | dense $J x$ and $J^\top x$ | 3 |
+| `SEn3Jac::sandwich` | dense $J\,\Sigma\,J^\top$; also the twin the `Gaussian` row below asks for | 3 |
 | `SE3::geodesic` (dual-quaternion power) | $X_0\,\mathrm{Exp}(t\,\mathrm{Log}(X_0^{-1}X_1))$ | 4 |
 | `geodesic_jacobians` | `Dual` through the reference geodesic | 4 |
-| `Gaussian::to_left` / `to_right` | dense $\mathrm{Ad}\,\Sigma\,\mathrm{Ad}^\top$ | 5 |
+| `Gaussian::to_left` / `to_right` | dense $\mathrm{Ad}\,\Sigma\,\mathrm{Ad}^\top$: `reference::sen3jac_sandwich` with $J = \mathrm{Ad}$ | 5 |
 | `gamma_apply_jacobian` | `Dual` through `reference` $\Gamma_m$ series (dense sum) | 5 |
 | `S2Chart::local` | $\mathrm{Log}$ of the minimal rotation taking $n$ to $m$, projected on $B$ | 5 |
 | `chol_solve` (`helicoid-linalg`) | composition of public fns, no `reference` item: `solve_upper(&l.transpose(), solve_lower(&l, b))` | 2 |

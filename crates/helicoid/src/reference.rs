@@ -27,7 +27,7 @@
 
 use crate::dualmat::{dof, SEn3Jac};
 use crate::traits::Jac;
-use helicoid_linalg::{Mask, Real, StridedMut};
+use helicoid_linalg::{Mask, Matrix, Real, StridedMut};
 
 /// The terms added left to right from the first, `+0` when there are none.
 fn sum<S: Real>(mut terms: impl Iterator<Item = S>) -> S {
@@ -38,8 +38,11 @@ fn sum<S: Real>(mut terms: impl Iterator<Item = S>) -> S {
 }
 
 /// The dense image of `j` in row-major scratch, through the public [`Jac::write_dense`].
-fn dense<S: Real, const N: usize, const D: usize>(j: &SEn3Jac<S, N>) -> [[S; D]; D] {
-    let mut m = [[S::zero(); D]; D];
+///
+/// The scratch is NaN-poisoned, so an entry `write_dense` leaves unwritten reaches the twin's
+/// result instead of passing as a structural zero.
+pub(crate) fn dense<S: Real, const N: usize, const D: usize>(j: &SEn3Jac<S, N>) -> [[S; D]; D] {
+    let mut m = [[S::zero() / S::zero(); D]; D];
     j.write_dense(&mut StridedMut::row_major(m.as_flattened_mut(), D, D));
     m
 }
@@ -154,6 +157,117 @@ pub fn sen3jac_inverse<S: Real, const N: usize, const D: usize>(
             for c in 0..D {
                 out.set(r, c, out.get(r, c) - f * out.get(k, c));
             }
+        }
+    }
+}
+
+/// The twin of [`SEn3Jac::apply`](Jac::apply): the dense product `dense(j) x`, every one of the
+/// `D²` products formed, structural zeros included, each entry summed left to right from its first
+/// term. Writes it to `out`.
+///
+/// The twin takes and returns the dense components, not a [`SEn3Tangent`](crate::SEn3Tangent): the
+/// definition of *correct* here is the matrix-vector product, and the structure of the operand is
+/// what the fast path is allowed to exploit. A caller compares through
+/// [`write_dense`](crate::Tangent::write_dense).
+///
+/// # Domain
+///
+/// `D == 3 + 3N` (a build-time assertion) and `x.len() == out.len() == D`, checked by
+/// `debug_assert!`. A release build never panics: a short `x` drops the products past its end and
+/// a wrongly sized `out` is filled to `min(out.len(), D)`.
+pub fn sen3jac_apply<S: Real, const N: usize, const D: usize>(
+    j: &SEn3Jac<S, N>,
+    x: &[S],
+    out: &mut [S],
+) {
+    const { assert!(D == dof::<S, N>()) };
+    debug_assert!(
+        x.len() == D && out.len() == D,
+        "sen3jac_apply: an operand is not D long"
+    );
+    let m = dense::<S, N, D>(j);
+    for (o, row) in out.iter_mut().zip(&m) {
+        *o = sum(row.iter().zip(x).map(|(a, b)| *a * *b));
+    }
+}
+
+/// The twin of [`SEn3Jac::apply_transpose`](Jac::apply_transpose): the dense product
+/// `dense(j)ᵀ x`, formed and summed as [`sen3jac_apply`] does, down the columns instead of along
+/// the rows. Writes it to `out`.
+///
+/// The fast path does not associate this sum the same way — it adds `Aᵀ φ` and then one whole
+/// `B_iᵀ ρ_i` per block, where a dense row is one flat sum of `D` terms — so the two agree to a
+/// few `u`, not bit for bit. `Tangent::dot_acc`'s index order is normative (`0025`); the
+/// association inside a block product is not.
+///
+/// # Domain
+///
+/// As [`sen3jac_apply`].
+pub fn sen3jac_apply_transpose<S: Real, const N: usize, const D: usize>(
+    j: &SEn3Jac<S, N>,
+    x: &[S],
+    out: &mut [S],
+) {
+    const { assert!(D == dof::<S, N>()) };
+    debug_assert!(
+        x.len() == D && out.len() == D,
+        "sen3jac_apply_transpose: an operand is not D long"
+    );
+    let m = dense::<S, N, D>(j);
+    for (r, o) in (0..D).zip(out.iter_mut()) {
+        *o = sum(m.iter().zip(x).map(|(row, b)| row[r] * *b));
+    }
+}
+
+/// The twin of [`SEn3Jac::sandwich`](Jac::sandwich): the dense `dense(j) Σ dense(j)ᵀ`, every one
+/// of the `D⁴` products formed, structural zeros included. Writes it to the `D x D` view `out`.
+///
+/// Entry `(i, k)` is `Σ_p Σ_q J_ip Σ_pq J_kq`: the inner sum over `q` left to right from its first
+/// term, then those `D` sums over `p` the same way. `Σ` need not be symmetric and the result is
+/// not symmetrized, as for the fast path. This is also the twin `NUMERICS.md` §14 owes
+/// `Gaussian::to_left`/`to_right` at Phase 5 — `Ad Σ Adᵀ` is this product with `j = Ad`.
+///
+/// # Domain
+///
+/// `D == 3 + 3N` (a build-time assertion) and `out` is `D x D`, checked by `debug_assert!`; a
+/// smaller view panics in the strided access, the one documented panic class (D11). Here `D` ties
+/// three things — the scratch, the type of `cov` and the view — so the assertion is pinned:
+///
+/// ```compile_fail,E0080
+/// use helicoid::{reference, Jac, SEn3Jac};
+/// use helicoid_linalg::{Matrix, StridedMut};
+/// let j: SEn3Jac<f64, 1> = Jac::identity();
+/// let mut out = [0.0; 49];
+/// let cov = Matrix::<f64, 7, 7>::identity();
+/// reference::sen3jac_sandwich::<f64, 1, 7>(&j, &cov, &mut StridedMut::col_major(&mut out, 7, 7));
+/// ```
+///
+/// Positive control:
+///
+/// ```
+/// use helicoid::{reference, Jac, SEn3Jac};
+/// use helicoid_linalg::{Matrix, StridedMut};
+/// let j: SEn3Jac<f64, 1> = Jac::identity();
+/// let mut out = [0.0; 36];
+/// let cov = Matrix::<f64, 6, 6>::identity();
+/// reference::sen3jac_sandwich::<f64, 1, 6>(&j, &cov, &mut StridedMut::col_major(&mut out, 6, 6));
+/// assert_eq!(out[0].to_bits(), 1.0_f64.to_bits());
+/// ```
+pub fn sen3jac_sandwich<S: Real, const N: usize, const D: usize>(
+    j: &SEn3Jac<S, N>,
+    cov: &Matrix<S, D, D>,
+    out: &mut StridedMut<'_, S>,
+) {
+    const { assert!(D == dof::<S, N>()) };
+    debug_assert!(
+        out.rows() == D && out.cols() == D,
+        "sen3jac_sandwich: the view is not D x D"
+    );
+    let m = dense::<S, N, D>(j);
+    for (i, mi) in m.iter().enumerate() {
+        for (k, mk) in m.iter().enumerate() {
+            let row = |p: usize| sum((0..D).map(|q| mi[p] * cov.get(p, q) * mk[q]));
+            out.set(i, k, sum((0..D).map(row)));
         }
     }
 }

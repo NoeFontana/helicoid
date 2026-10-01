@@ -7,22 +7,28 @@
 //! --run-ignored only --no-capture`), rounded up to an integer, with `N = 1, 2, 3` sharing one
 //! bound.
 //!
-//! An error is `‖fast - twin‖_F` in units of `u`, over `max(‖twin‖_F, 1)` for a product and for
-//! `sandwich`, and the worst over the value and the three derivative lanes of `Dual<f64, 3>` (a
-//! plain scalar has zero lanes). The inverse is scaled by its conditioning instead: `κ = ‖M‖_F
-//! ‖M⁻¹‖_F` of the dense matrix `M`, and then `‖M⁻¹‖` for the value or `‖M⁻¹‖² ‖dM‖` for a
-//! derivative lane (the size of `M⁻¹ dM M⁻¹`). The twin loses `κ u` on `M`, the structured
-//! inverse loses it on `A` and again in `A⁻¹ B A⁻¹`, so the two agree to a few `κ u`, not to a few
-//! `u`; the recorded figure is that ratio, on the inputs with `κ u <= 1e-3`, where first-order
-//! error analysis holds (`κ` up to about `1.7e4` for `f32`). The others are rejected.
+//! An error is `‖fast - twin‖_F` in units of `u`, over `max(‖twin‖_F, 1)` for a product, for
+//! `sandwich` and for `apply` (`‖·‖` of a vector there), and the worst over the value and the
+//! three derivative lanes of `Dual<f64, 3>` (a plain scalar has zero lanes). The inverse is
+//! scaled by its conditioning instead: `κ = ‖M‖_F ‖M⁻¹‖_F` of the dense matrix `M`, and then
+//! `‖M⁻¹‖` for the value or `‖M⁻¹‖² ‖dM‖` for a derivative lane (the size of `M⁻¹ dM M⁻¹`). The
+//! twin loses `κ u` on `M`, the structured inverse loses it on `A` and again in `A⁻¹ B A⁻¹`, so
+//! the two agree to a few `κ u`, not to a few `u`; the recorded figure is that ratio, on the
+//! inputs with `κ u <= 1e-3`, where first-order error analysis holds (`κ` up to about `1.7e4` for
+//! `f32`). The others are rejected.
 //!
 //! The worst figures, for `N = 1, 2, 3`: `f64`, product 2.82, 2.37, 2.04, inverse 1.25, 0.92, 0.74,
-//! `sandwich` 5.74, 3.87, 2.94; `f32`, product 2.67, 2.41, 2.14, inverse 1.06, 0.80, 0.83,
-//! `sandwich` 6.48, 3.58, 2.93; `Dual<f64, 3>`, product 3.34, 2.56, 2.27, inverse 1.25, 0.92, 0.74,
-//! `sandwich` 8.62, 4.06, 3.47.
+//! `sandwich` 5.74, 3.87, 2.94, `apply` 3.61, 4.89, 7.20; `f32`, product 2.67, 2.41, 2.14, inverse
+//! 1.06, 0.80, 0.83, `sandwich` 6.48, 3.58, 2.93, `apply` 3.62, 4.72, 6.63; `Dual<f64, 3>`, product
+//! 3.34, 2.56, 2.27, inverse 1.25, 0.92, 0.74, `sandwich` 8.62, 4.06, 3.47, `apply` 4.05, 4.89,
+//! 7.20. `apply` grows with `N` because the dense sum it is compared against grows with `D`, not
+//! because the structured form loses more.
 
-use crate::laws::Sample;
-use crate::reference::{sen3jac_inverse, sen3jac_mul};
+// `Rng` shadows `proptest::prelude`'s re-export of the `rand` trait of that name.
+use crate::laws::{norm, unit as u, within, worst, Rng, Sample};
+use crate::reference::{
+    dense, sen3jac_apply, sen3jac_apply_transpose, sen3jac_inverse, sen3jac_mul, sen3jac_sandwich,
+};
 use crate::{Jac, SEn3Jac, SEn3Tangent, Tangent};
 use core::array;
 use core::cell::Cell;
@@ -35,21 +41,25 @@ struct Bounds {
     mul: f64,
     inverse: f64,
     sandwich: f64,
+    apply: f64,
 }
 const F64: Bounds = Bounds {
     mul: 6.0,
     inverse: 3.0,
     sandwich: 12.0,
+    apply: 15.0,
 };
 const F32: Bounds = Bounds {
     mul: 6.0,
     inverse: 3.0,
     sandwich: 13.0,
+    apply: 14.0,
 };
 const DUAL: Bounds = Bounds {
     mul: 7.0,
     inverse: 3.0,
     sandwich: 18.0,
+    apply: 15.0,
 };
 
 /// The value and the three derivative lanes of a scalar as `f64`; a plain scalar has zero lanes.
@@ -69,13 +79,6 @@ impl Lanes for f32 {
 impl Lanes for Dual<f64, 3> {
     fn lanes(self) -> [f64; 4] {
         [self.v, self.d[0], self.d[1], self.d[2]]
-    }
-}
-
-fn u<S: Real>() -> f64 {
-    match S::PRECISION {
-        Precision::F64 => f64::EPSILON / 2.0,
-        Precision::F32 => f64::from(f32::EPSILON) / 2.0,
     }
 }
 
@@ -100,28 +103,8 @@ fn jac<S: Lanes, const N: usize>(v: &[f64]) -> SEn3Jac<S, N> {
     jac_of(v, |x, k| S::sample(x, k % 3))
 }
 
-/// `write_dense`, row-major, through a NaN-poisoned buffer so that an unwritten entry fails.
-fn dense<S: Real, const N: usize, const D: usize>(j: &SEn3Jac<S, N>) -> [[S; D]; D] {
-    let mut m = [[S::zero() / S::zero(); D]; D];
-    j.write_dense(&mut StridedMut::row_major(m.as_flattened_mut(), D, D));
-    m
-}
-
 fn lane<S: Lanes, const D: usize>(m: &[[S; D]; D], l: usize) -> [[f64; D]; D] {
     array::from_fn(|r| array::from_fn(|c| m[r][c].lanes()[l]))
-}
-
-fn norm(v: &[f64]) -> f64 {
-    v.iter().map(|x| x * x).sum::<f64>().sqrt()
-}
-
-/// The larger error; NaN wins.
-fn worst(a: f64, b: f64) -> f64 {
-    if a.is_nan() || b.is_nan() {
-        f64::NAN
-    } else {
-        a.max(b)
-    }
 }
 
 /// `‖m‖_F` of each of the four lanes of a dense matrix.
@@ -204,33 +187,87 @@ fn inverse_twin<S: Lanes, const N: usize, const D: usize>(v: &[f64]) -> Option<f
     Some(worst_lane(diffs(&fast, &twin), scale))
 }
 
-/// `J Σ Jᵀ` against the same product formed densely in `S` from `write_dense`, on `A + εB` and a
-/// dense `Σ` (not symmetric: the formula is linear in `Σ`).
-fn sandwich_dense<S: Lanes, const N: usize, const D: usize>(v: &[f64]) -> f64 {
+/// `fast.sandwich(Σ)` against the twin, on `A + εB` and a dense `Σ` (not symmetric: the formula is
+/// linear in `Σ`).
+fn sandwich_twin<S: Lanes, const N: usize, const D: usize>(v: &[f64]) -> f64 {
     let (j, s) = (jac::<S, N>(&v[..9 * (N + 1)]), &v[9 * (N + 1)..]);
     let cov = Matrix::<S, D, D>::from_cols(array::from_fn(|c| {
         Vector(array::from_fn(|r| S::sample(s[D * c + r], (D * c + r) % 3)))
     }));
-    let d = dense::<S, N, D>(&j);
-    let want: [[S; D]; D] = array::from_fn(|i| {
-        array::from_fn(|k| {
-            let row =
-                |p: usize| (0..D).fold(S::zero(), |acc, q| acc + d[i][p] * cov.get(p, q) * d[k][q]);
-            (0..D).fold(S::zero(), |acc, p| acc + row(p))
-        })
-    });
+    let mut twin = [[S::zero(); D]; D];
+    sen3jac_sandwich::<S, N, D>(
+        &j,
+        &cov,
+        &mut StridedMut::row_major(twin.as_flattened_mut(), D, D),
+    );
     let got = j.sandwich::<D>(&cov);
     let got: [[S; D]; D] = array::from_fn(|r| array::from_fn(|c| got.get(r, c)));
-    worst_lane(diffs(&got, &want), norms(&want).map(|n| n.max(1.0)))
+    worst_lane(diffs(&got, &twin), norms(&twin).map(|n| n.max(1.0)))
+}
+
+/// `‖a - b‖` of each of the four lanes of a dense vector, in units of `u`.
+fn vdiffs<S: Lanes, const D: usize>(a: &[S; D], b: &[S; D]) -> [f64; 4] {
+    array::from_fn(|l| {
+        let d: [f64; D] = array::from_fn(|i| a[i].lanes()[l] - b[i].lanes()[l]);
+        norm(&d) / u::<S>()
+    })
+}
+
+/// `‖a‖` of each of the four lanes of a dense vector.
+fn vnorms<S: Lanes, const D: usize>(a: &[S; D]) -> [f64; 4] {
+    array::from_fn(|l| norm(&array::from_fn::<f64, D, _>(|i| a[i].lanes()[l])))
+}
+
+/// `apply` and `apply_transpose` against their twins, the dense `J x` and `Jᵀ x`.
+///
+/// The entries must not be exactly representable for this to say anything: the structured forms do
+/// not associate the sum the way a dense row does, and
+/// `apply_and_apply_transpose_are_the_dense_matrix_and_its_transpose` compares them on integers,
+/// which hides it.
+fn apply_twin<S: Lanes, const N: usize, const D: usize>(v: &[f64]) -> f64 {
+    let w = 9 * (N + 1);
+    let j = jac::<S, N>(&v[..w]);
+    let t =
+        SEn3Tangent::<S, N>::read_dense(&array::from_fn::<S, D, _>(|i| S::sample(v[w + i], i % 3)));
+    let mut x = [S::zero(); D];
+    t.write_dense(&mut x);
+    let (mut a, mut b) = ([S::zero(); D], [S::zero(); D]);
+    sen3jac_apply::<S, N, D>(&j, &x, &mut a);
+    sen3jac_apply_transpose::<S, N, D>(&j, &x, &mut b);
+    let run = |got: SEn3Tangent<S, N>, twin: [S; D]| {
+        let mut y = [S::zero(); D];
+        got.write_dense(&mut y);
+        worst_lane(vdiffs(&y, &twin), vnorms(&twin).map(|n| n.max(1.0)))
+    };
+    worst(run(j.apply(&t), a), run(j.apply_transpose(&t), b))
+}
+
+/// The four lanes of every entry of a dense matrix as bits, signed zeros canonicalized: a
+/// structural zero is `+0` from `write_dense` and `-0` from a negated dense matrix.
+fn lane_bits<S: Lanes, const D: usize>(m: &[[S; D]; D]) -> [[[u64; 4]; D]; D] {
+    m.map(|row| row.map(|x| x.lanes().map(canon)))
+}
+
+/// `neg` and `Blend` carry every derivative lane.
+///
+/// Both are per-entry, so the dense comparison is exact whatever the input and no bound is
+/// recorded. They are tested over `Dual` and not only `f64` because the mask is a `bool` for every
+/// `Real` of this crate: at `f64` `Blend` cannot do worse than pick one of two whole structs,
+/// while at `Dual` it runs `S::select` per value *and* per lane, and `Real::branch` — what every
+/// future switch-point arm of `SEn3` goes through — is built on it.
+fn neg_and_blend_carry_lanes<S: Lanes, const N: usize, const D: usize>(v: &[f64]) -> bool {
+    let w = 9 * (N + 1);
+    let (a, b) = (jac::<S, N>(&v[..w]), jac::<S, N>(&v[w..]));
+    let (yes, no) = (S::zero().lt(S::one()), S::one().lt(S::zero()));
+    let minus = dense::<S, N, D>(&a).map(|row| row.map(|x| -x));
+    lane_bits(&dense::<S, N, D>(&SEn3Jac::blend(yes, a, b))) == lane_bits(&dense::<S, N, D>(&a))
+        && lane_bits(&dense::<S, N, D>(&SEn3Jac::blend(no, a, b)))
+            == lane_bits(&dense::<S, N, D>(&b))
+        && lane_bits(&dense::<S, N, D>(&a.neg())) == lane_bits(&minus)
 }
 
 fn entries(n: usize) -> impl Strategy<Value = Vec<f64>> {
     proptest::collection::vec(-1.0_f64..1.0, n)
-}
-
-fn within(v: f64, bound: f64) -> Result<(), TestCaseError> {
-    prop_assert!(v <= bound, "worst error {} exceeds {}", v, bound);
-    Ok(())
 }
 
 macro_rules! props {
@@ -259,25 +296,37 @@ macro_rules! props {
                     within(r, $B.inverse)?;
                 }
                 #[test]
-                fn sandwich_matches_dense(v in entries(9 * ($N + 1) + $D * $D)) {
-                    within(sandwich_dense::<S, $N, $D>(&v), $B.sandwich)?;
+                fn sen3jac_sandwich_matches_reference(v in entries(9 * ($N + 1) + $D * $D)) {
+                    within(sandwich_twin::<S, $N, $D>(&v), $B.sandwich)?;
+                }
+                #[test]
+                fn sen3jac_apply_matches_reference(v in entries(9 * ($N + 1) + $D)) {
+                    within(apply_twin::<S, $N, $D>(&v), $B.apply)?;
+                }
+                #[test]
+                fn neg_and_blend_carry_every_lane(v in entries(18 * ($N + 1))) {
+                    prop_assert!(neg_and_blend_carry_lanes::<S, $N, $D>(&v));
                 }
             }
 
-            /// The worst error of every law over 10^6 seeded cases: mul, inverse, sandwich.
+            /// The worst error of every law over 10^6 seeded cases: mul, inverse, sandwich, apply.
             #[test]
             #[ignore = "measurement: prints the figures the bounds are recorded from"]
             #[allow(clippy::print_stdout)]
             fn measure_worst_errors() {
                 let mut rng = Rng(0x0123_4567_89AB_CDEF);
-                let mut w = [0.0_f64; 3];
+                // A separate stream for `apply`, so that adding it left mul, inverse and sandwich
+                // drawing exactly what they drew when their figures were recorded.
+                let mut ap = Rng(0xDEAD_BEEF_0BAD_F00D);
+                let mut w = [0.0_f64; 4];
                 let mut up = |i: usize, v: f64| w[i] = worst(w[i], v);
                 for _ in 0..1_000_000 {
                     up(0, mul_twin::<S, $N, $D>(&rng.vec(18 * ($N + 1))));
                     if let Some(r) = inverse_twin::<S, $N, $D>(&rng.vec(9 * ($N + 1))) {
                         up(1, r);
                     }
-                    up(2, sandwich_dense::<S, $N, $D>(&rng.vec(9 * ($N + 1) + $D * $D)));
+                    up(2, sandwich_twin::<S, $N, $D>(&rng.vec(9 * ($N + 1) + $D * $D)));
+                    up(3, apply_twin::<S, $N, $D>(&ap.vec(9 * ($N + 1) + $D)));
                 }
                 std::println!("{} {} {:.2?}", std::any::type_name::<S>(), stringify!($m), w);
             }
@@ -288,25 +337,6 @@ macro_rules! props {
 props!(as_f64, f64, F64);
 props!(as_f32, f32, F32);
 props!(as_dual, Dual<f64, 3>, DUAL);
-
-/// splitmix64, seeded; `unif` is uniform on `[-1, 1)`.
-struct Rng(u64);
-
-impl Rng {
-    fn next(&mut self) -> u64 {
-        self.0 = self.0.wrapping_add(0x9E37_79B9_7F4A_7C15);
-        let mut z = self.0;
-        z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
-        z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
-        z ^ (z >> 31)
-    }
-    fn unif(&mut self) -> f64 {
-        (self.next() >> 11) as f64 / 2_f64.powi(52) - 1.0
-    }
-    fn vec(&mut self, n: usize) -> Vec<f64> {
-        (0..n).map(|_| self.unif()).collect()
-    }
-}
 
 fn canon(x: f64) -> u64 {
     // `-0 + 0 = +0`: the exact tests are about values, and a sum of products has zeros of either sign.
@@ -417,20 +447,23 @@ fn ramp<S: Real, const N: usize, const D: usize>() -> SEn3Tangent<S, N> {
     SEn3Tangent::read_dense(&array::from_fn::<S, D, _>(|i| S::lit((i + 1) as f64)))
 }
 
+/// On the integer `ints`, where every product and partial sum is exact whatever the association,
+/// `apply` and `apply_transpose` are their twins entry for entry. The association *is* visible on
+/// other inputs; `sen3jac_apply_matches_reference` is what bounds it.
 #[test]
 fn apply_and_apply_transpose_are_the_dense_matrix_and_its_transpose() {
     fn run<const N: usize, const D: usize>() {
         let (j, t) = (ints::<f64, N>(), ramp::<f64, N, D>());
-        let (d, mut x) = (lane(&dense::<f64, N, D>(&j), 0), [0.0; D]);
+        let mut x = [0.0; D];
         t.write_dense(&mut x);
-        let dot = |f: &dyn Fn(usize, usize) -> f64| -> [f64; D] {
-            array::from_fn(|r| (0..D).map(|c| f(r, c) * x[c]).sum())
-        };
+        let (mut a, mut b) = ([0.0; D], [0.0; D]);
+        sen3jac_apply::<f64, N, D>(&j, &x, &mut a);
+        sen3jac_apply_transpose::<f64, N, D>(&j, &x, &mut b);
         let (mut y, mut z) = ([0.0; D], [0.0; D]);
         j.apply(&t).write_dense(&mut y);
         j.apply_transpose(&t).write_dense(&mut z);
-        assert_eq!(y.map(canon), dot(&|r, c| d[r][c]).map(canon));
-        assert_eq!(z.map(canon), dot(&|r, c| d[c][r]).map(canon));
+        assert_eq!(y.map(canon), a.map(canon));
+        assert_eq!(z.map(canon), b.map(canon));
     }
     run::<1, 6>();
     run::<2, 9>();
@@ -502,26 +535,25 @@ fn the_inverses_of_a_permutation_are_the_hand_inverse() {
     assert_eq!(canon_dense(&dense::<f64, 1, 6>(&j.inverse())), want);
 }
 
+/// The same for `sandwich`: on integers it is its twin entry for entry.
 #[test]
 fn sandwich_of_integers_is_exact() {
     fn run<const N: usize, const D: usize>() {
         let j = ints::<f64, N>();
-        let d = lane(&dense::<f64, N, D>(&j), 0);
         // A non-symmetric integer `Σ`, entry `(i + 2k) mod 7 - 3`.
         let cov = Matrix::<f64, D, D>::from_cols(array::from_fn(|c| {
             Vector(array::from_fn(|r| ((r + 2 * c) % 7) as f64 - 3.0))
         }));
+        let mut twin = [[0.0; D]; D];
+        sen3jac_sandwich::<f64, N, D>(
+            &j,
+            &cov,
+            &mut StridedMut::row_major(twin.as_flattened_mut(), D, D),
+        );
         let got = j.sandwich::<D>(&cov);
-        for i in 0..D {
-            for k in 0..D {
-                let want: f64 = (0..D)
-                    .map(|p| {
-                        (0..D)
-                            .map(|q| d[i][p] * cov.get(p, q) * d[k][q])
-                            .sum::<f64>()
-                    })
-                    .sum();
-                assert_eq!(canon(got.get(i, k)), canon(want), "({i}, {k})");
+        for (i, row) in twin.iter().enumerate() {
+            for (k, want) in row.iter().enumerate() {
+                assert_eq!(canon(got.get(i, k)), canon(*want), "({i}, {k})");
             }
         }
     }
@@ -703,19 +735,6 @@ proptest! {
     }
 }
 
-#[test]
-fn blend_selects_the_whole_jacobian() {
-    let a = unimodular::<f64, 2>();
-    let b = ints::<f64, 2>().mul(&a);
-    for (m, want) in [(true, a), (false, b)] {
-        let got = SEn3Jac::blend(m, a, b);
-        assert_eq!(
-            canon_dense(&dense::<f64, 2, 9>(&got)),
-            canon_dense(&dense::<f64, 2, 9>(&want))
-        );
-    }
-}
-
 /// `A` with a zero row: singular, and the third pivot of the twin is exactly `0`.
 fn singular() -> SEn3Jac<f64, 1> {
     let a = rows3([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [0.0, 0.0, 0.0]]);
@@ -759,6 +778,21 @@ mod out_of_domain {
     fn write_dense_into_a_larger_view() {
         let mut buf = [0.0; 49];
         ints::<f64, 1>().write_dense(&mut StridedMut::col_major(&mut buf, 7, 7));
+    }
+
+    // The same for each twin's view assertion, which a smaller view never reaches either.
+    #[test]
+    #[should_panic(expected = "sen3jac_mul")]
+    fn the_twin_of_mul_into_a_larger_view() {
+        let (j, mut buf) = (ints::<f64, 1>(), [0.0; 49]);
+        sen3jac_mul::<f64, 1, 6>(&j, &j, &mut StridedMut::col_major(&mut buf, 7, 7));
+    }
+
+    #[test]
+    #[should_panic(expected = "sen3jac_inverse")]
+    fn the_twin_of_inverse_into_a_larger_view() {
+        let mut buf = [0.0; 49];
+        sen3jac_inverse::<f64, 1, 6>(&unimodular(), &mut StridedMut::col_major(&mut buf, 7, 7));
     }
 }
 

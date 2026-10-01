@@ -39,7 +39,13 @@ fn ops_match_dense<S: Lanes, const N: usize, const D: usize>(v: &[f64]) -> bool 
     // `dot_acc`'s accumulator — the operation `0025` makes the required one — unexecuted.
     let dot_k = (0..D).fold(k, |acc, i| acc + da[i] * db[i]);
     let round = dense_of::<S, N, D>(&SEn3Tangent::<S, N>::read_dense(&da));
-    bits(&dense_of::<S, N, D>(&a.add(&b))) == bits(&array::from_fn(|i| da[i] + db[i]))
+    // `Blend` selects one whole tangent. It is here, not in a test of its own at `f64`, because
+    // the mask is a `bool` for every `Real` of this crate: a lost derivative lane of `Dual` is the
+    // only way the impl can differ from a copy, and `Real::branch` is built on it.
+    let (yes, no) = (S::zero().lt(S::one()), S::one().lt(S::zero()));
+    bits(&dense_of::<S, N, D>(&SEn3Tangent::blend(yes, a, b))) == bits(&da)
+        && bits(&dense_of::<S, N, D>(&SEn3Tangent::blend(no, a, b))) == bits(&db)
+        && bits(&dense_of::<S, N, D>(&a.add(&b))) == bits(&array::from_fn(|i| da[i] + db[i]))
         && bits(&dense_of::<S, N, D>(&a.sub(&b))) == bits(&array::from_fn(|i| da[i] - db[i]))
         && bits(&dense_of::<S, N, D>(&a.neg())) == bits(&da.map(|x| -x))
         && bits(&dense_of::<S, N, D>(&a.scale(k))) == bits(&da.map(|x| x * k))
@@ -140,19 +146,6 @@ fn twist_translation_first_by_hand() {
         (fb(z.omega().0), fb(z.v().0)),
         (fb([0.0, 0.0, 7.0]), fb([0.0; 3]))
     );
-}
-
-#[test]
-fn blend_selects_the_whole_tangent() {
-    let a = SEn3Tangent::<f64, 2>::read_dense(&array::from_fn::<f64, 9, _>(|i| i as f64));
-    let b = a.neg();
-    for (m, want) in [(true, a), (false, b)] {
-        let got = SEn3Tangent::blend(m, a, b);
-        assert_eq!(
-            fb(dense_of::<f64, 2, 9>(&got)),
-            fb(dense_of::<f64, 2, 9>(&want))
-        );
-    }
 }
 
 /// A domain is a `debug_assert!` (D11): the debug profile that `just test` runs panics ...
