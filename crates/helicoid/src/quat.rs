@@ -9,7 +9,27 @@ use helicoid_linalg::{Blend, Mask, Mat3, Precision, Real, Vector};
 /// `Quat` is a value with no invariant: the unit-norm contract belongs to the group type built on
 /// it, and each constructor states what it does about it. Composition is the Hamilton product,
 /// spelled `p * q` (`docs/API.md` R1), and never normalizes (`NUMERICS.md` §3.6); there is no
-/// `Add` or `Sub`.
+/// `Add` or `Sub`, and no `PartialEq` — neither of these compiles:
+///
+/// ```compile_fail,E0369
+/// use helicoid::Quat;
+/// let q = Quat { w: 1.0_f64, x: 0.0, y: 0.0, z: 0.0 };
+/// let _ = q + q;
+/// ```
+///
+/// ```compile_fail,E0369
+/// use helicoid::Quat;
+/// let q = Quat { w: 1.0_f64, x: 0.0, y: 0.0, z: 0.0 };
+/// let _ = q == q;
+/// ```
+///
+/// Positive control: composition is `Mul`.
+///
+/// ```
+/// use helicoid::Quat;
+/// let q = Quat { w: 0.0_f64, x: 1.0, y: 0.0, z: 0.0 };
+/// assert_eq!((q * q).w, -1.0);
+/// ```
 ///
 /// Other component orders enter and leave only through named converters (R3): [`from_xyzw`],
 /// [`to_xyzw`] and [`from_jpl`].
@@ -148,16 +168,23 @@ impl<S: Real> Quat<S> {
     /// None is asserted. The rotation reading needs `q` unit to the tolerance of
     /// [`from_wxyz_unchecked`](Quat::from_wxyz_unchecked): the matrix errs by
     /// `| ‖q‖² - 1 | ‖v‖` when applied to `v`.
+    #[inline]
     pub fn to_matrix(&self) -> Mat3<S> {
         let (w, x, y, z) = (self.w, self.x, self.y, self.z);
         let two = S::lit(2.0);
         let (tw, tx, ty, tz) = (two * w, two * x, two * y, two * z);
         let d = w * w - (x * x + y * y + z * z);
+        // Nine distinct products, bound once each: the six off-diagonal ones appear in two entries
+        // apiece, so spelling them twice doubles the sign sites to keep in step and, for `Dual`,
+        // the `1 + 2N` multiplies each one costs. The sums below are unchanged (D16).
+        let (xx, yy, zz) = (tx * x, ty * y, tz * z);
+        let (xy, xz, yz) = (tx * y, tx * z, ty * z);
+        let (wx, wy, wz) = (tw * x, tw * y, tw * z);
         // Column-major: `col(c)[r]`; `[u]×` is `[[0, -z, y], [z, 0, -x], [-y, x, 0]]`.
         Mat3::from_cols([
-            Vector([d + tx * x, tx * y + tw * z, tx * z - tw * y]),
-            Vector([tx * y - tw * z, d + ty * y, ty * z + tw * x]),
-            Vector([tx * z + tw * y, ty * z - tw * x, d + tz * z]),
+            Vector([d + xx, xy + wz, xz - wy]),
+            Vector([xy - wz, d + yy, yz + wx]),
+            Vector([xz + wy, yz - wx, d + zz]),
         ])
     }
 

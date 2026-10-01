@@ -10,7 +10,8 @@
 //! `from_wxyz_unchecked` accepts) 5.00 and 3.73. `orth` and `det` include the rounding of the
 //! `f64` check itself.
 
-use crate::laws::Sample;
+// `u` is `laws::unit`, the unit roundoff of `NUMERICS.md` §2.1; it is defined there, not again here.
+use crate::laws::{unit as u, Sample};
 use crate::Quat;
 use core::array;
 use helicoid_linalg::{Blend, Dual, Precision, Real};
@@ -51,13 +52,6 @@ const F32: Bounds = Bounds {
 /// A struct literal: no domain, for the quaternions that are not unit.
 fn raw<S: Real>(w: S, x: S, y: S, z: S) -> Quat<S> {
     Quat { w, x, y, z }
-}
-
-fn u<S: Real>() -> f64 {
-    match S::PRECISION {
-        Precision::F64 => f64::EPSILON / 2.0,
-        Precision::F32 => f64::from(f32::EPSILON) / 2.0,
-    }
 }
 
 /// The quaternion whose components are the samples `v` (`Dual`: one variable per component).
@@ -128,12 +122,11 @@ fn associativity<S: Sample>(a: &[f64; 4], b: &[f64; 4], c: &[f64; 4]) -> f64 {
 fn orthogonal<S: Sample>(v: &[f64; 4]) -> (f64, f64) {
     let r = rows(&quat::<S>(v));
     let g = matmul(&transpose(&r), &r);
-    let flat = |m: &[[f64; 3]; 3]| m.as_flattened().to_vec();
     let det = r[0][0] * (r[1][1] * r[2][2] - r[1][2] * r[2][1])
         - r[0][1] * (r[1][0] * r[2][2] - r[1][2] * r[2][0])
         + r[0][2] * (r[1][0] * r[2][1] - r[1][1] * r[2][0]);
     (
-        diff::<S>(&flat(&g), &flat(&EYE)),
+        diff::<S>(g.as_flattened(), EYE.as_flattened()),
         (det - 1.0).abs() / u::<S>(),
     )
 }
@@ -156,12 +149,10 @@ fn matrix_form<S: Sample>(v: &[f64; 4]) -> f64 {
 fn sandwich<S: Sample>(v: &[f64; 4], p: &[f64; 3]) -> f64 {
     let q = quat::<S>(v);
     let z = S::zero();
-    let pq = raw(
-        z,
-        S::sample(p[0], 0),
-        S::sample(p[1], 1),
-        S::sample(p[2], 2),
-    );
+    // The point is a constant, not a sample: `quat` has already taken `Dual`'s four variable lanes
+    // for the components of `q`, so sampling it would alias three of them. The law compares values
+    // only, so it needs no lane of its own — but the collision would be silent.
+    let pq = raw(z, S::constant(p[0]), S::constant(p[1]), S::constant(p[2]));
     let (r, p) = (rows(&q), vals(&pq));
     let out = vals(&(q * pq * q.conjugate()));
     let rp: [f64; 3] = array::from_fn(|i| (0..3).map(|k| r[i][k] * p[k + 1]).sum());
@@ -271,10 +262,17 @@ impl Rng {
         (self.next() >> 11) as f64 / 2_f64.powi(52) - 1.0
     }
     /// The distribution of `unit_sample`.
+    ///
+    /// The draws are an explicit loop, not `array::from_fn`: two per component come off the stream
+    /// and `from_fn` does not promise the order it calls its closure in, so the recorded bounds of
+    /// the module header would be reproducible only by accident.
     fn unit(&mut self) -> [f64; 4] {
         loop {
-            let v: [f64; 4] =
-                array::from_fn(|_| self.unif() * 2_f64.powi(-((self.next() % 7) as i32)));
+            let mut v = [0.0; 4];
+            for e in &mut v {
+                let m = self.unif();
+                *e = m * 2_f64.powi(-((self.next() % 7) as i32));
+            }
             if v.iter().map(|x| x * x).sum::<f64>() > 0.004 {
                 return normalized(v);
             }
@@ -359,7 +357,7 @@ fn matrix_hand_cases() {
     let cyc = Quat::from_wxyz_unchecked(0.5_f64, 0.5, 0.5, 0.5);
     let r = [[0.0, 0.0, 1.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]];
     assert_eq!(mbits(rows(&cyc)), mbits(r));
-    // Active: `R e_x` is `q i q*`, the second column of the rows above.
+    // Active: `R e_x` is `q i q*`, the first column of the rows above.
     let i = raw(0.0, 1.0, 0.0, 0.0);
     assert_eq!(bits(&(cyc * i * cyc.conjugate())), fb([0.0, 0.0, 1.0, 0.0]));
     let diag = |a: f64, b: f64, c: f64| [[a, 0.0, 0.0], [0.0, b, 0.0], [0.0, 0.0, c]];
@@ -700,4 +698,40 @@ fn product_and_norm_sum_left_to_right() {
     // `w² + x² + y² + z²` left to right; `(w² + y²) + (x² + z²)` ends one ulp lower.
     let p = of(CASES[0].0);
     assert_eq!(p.norm_sq().to_bits(), 0x3fe7_eecb_d52a_fdd5);
+}
+
+/// `R(q)`'s grouping is part of the same contract, and `matrix_hand_cases` cannot pin it: those
+/// inputs (`0`, `±0.5`, `±1`, `±2`) make every intermediate exact, so they hold under any
+/// regrouping — including the `1 - 2(y² + z²)` diagonal that assumes a unit `q`.
+///
+/// The quaternion below is unit to `2^-52` (inside the domain of `from_wxyz_unchecked`) and chosen
+/// so that all three other groupings of `d = w² - ((x² + y²) + z²)` land one ulp away.
+#[test]
+fn matrix_sums_group_as_written() {
+    let q = Quat::from_wxyz_unchecked(
+        f64::from_bits(0x3fdb_04b1_d1e9_1bff),
+        f64::from_bits(0xbfe9_74eb_499d_dec2),
+        f64::from_bits(0x3fc4_c888_1ff2_cebf),
+        f64::from_bits(0xbfd9_cdd1_8fcb_04d6),
+    );
+    assert_eq!(
+        mbits(rows(&q)),
+        [
+            [
+                0x3fe3_e8ac_0881_c992,
+                0x3fb5_035f_615d_dd40,
+                0x3fe8_ea23_6537_6268
+            ],
+            [
+                0xbfe3_2906_030c_e70c,
+                0xbfe2_e817_44c2_c5d3,
+                0x3fe1_4dcc_d231_0ee0
+            ],
+            [
+                0x3fe0_2403_b077_ebf8,
+                0xbfe9_aef8_6040_c380,
+                0xbfd4_6150_026a_1566
+            ],
+        ]
+    );
 }

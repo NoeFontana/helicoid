@@ -174,9 +174,11 @@ defined by the status tables in `docs/`; they win over this file.
   `Dual<f64, 3>` with recorded bounds. `docs/PHASE3.md` §7 and `docs/API.md` §3 name `RnTangent`
   and `RnJac`. New public API, nothing breaks. `proptest` becomes a dev-dependency of `helicoid`.
 - `helicoid`: `Quat<S>` (`docs/PHASE3.md` §4): Hamilton product as `Mul`, `conjugate`, `norm_sq`,
-  `to_matrix`, `from_wxyz_unchecked` (debug-asserts `|‖q‖² - 1| <= 2^-40` for `f64`, `2^-16` for
-  `f32`), `from_wxyz_normalized` and `renormalize` (first-order Newton step, no domain
-  asserted since `NUMERICS.md` states none; accuracy domain documented), and the converters
+  `to_matrix` (its operand grouping pinned by a bit-exact golden, D16), `from_wxyz_unchecked`
+  (debug-asserts `|‖q‖² - 1| <= 2^-40` for `f64`, `2^-16` for `f32`), `from_wxyz_normalized`
+  and `renormalize` (first-order Newton step, no domain asserted since `NUMERICS.md` states
+  none; accuracy domain documented), no `Add`, `Sub` or `PartialEq` (`compile_fail`
+  doctests), and the converters
   `from_xyzw`, `to_xyzw`, `from_jpl`. New public API, nothing breaks; `SO3` is not here yet.
 
 ### Changed
