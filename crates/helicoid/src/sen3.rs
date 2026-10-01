@@ -113,7 +113,18 @@ impl<S: Real, const N: usize> Tangent<S> for SEn3Tangent<S, N> {
     // seeds it with is normative: seeding from the first product instead differs on a signed zero.
     #[inline]
     fn dot_acc(&self, o: &Self, acc: S) -> S {
-        self.comps().zip(o.comps()).fold(acc, |a, (x, y)| a + x * y)
+        // Indexed, not over `comps`: the order is the one `comps` gives and the products are the
+        // same, with no `Chain`/`FlatMap` state for the accumulator to carry.
+        let mut a = acc;
+        for r in 0..3 {
+            a = a + self.phi.0[r] * o.phi.0[r];
+        }
+        for i in 0..N {
+            for r in 0..3 {
+                a = a + self.rho[i].0[r] * o.rho[i].0[r];
+            }
+        }
+        a
     }
     #[inline]
     fn write_dense(&self, out: &mut [S]) {

@@ -58,6 +58,11 @@ fn zero3<S: Real>() -> Mat3<S> {
     Matrix::from_cols([Vector([S::zero(); 3]); 3])
 }
 
+/// The `D x D` zero matrix, the scratch `sandwich` overwrites block by block.
+fn zeros<S: Real, const D: usize>() -> Matrix<S, D, D> {
+    Matrix::from_cols([Vector([S::zero(); D]); D])
+}
+
 /// The `3 x 3` block `(bi, bj)` of a dense matrix.
 fn block<S: Real, const D: usize>(m: &Matrix<S, D, D>, bi: usize, bj: usize) -> Mat3<S> {
     Matrix::from_cols(array::from_fn(|c| {
@@ -69,6 +74,15 @@ fn put<S: Real, const D: usize>(m: &mut Matrix<S, D, D>, bi: usize, bj: usize, b
     for c in 0..3 {
         for r in 0..3 {
             m.set(3 * bi + r, 3 * bj + c, b.get(r, c));
+        }
+    }
+}
+
+/// The same, into a strided view.
+fn put_view<S: Real>(out: &mut StridedMut<'_, S>, bi: usize, bj: usize, b: &Mat3<S>) {
+    for c in 0..3 {
+        for r in 0..3 {
+            out.set(3 * bi + r, 3 * bj + c, b.get(r, c));
         }
     }
 }
@@ -110,12 +124,11 @@ impl<S: Real, const N: usize> Jac<S, SEn3Tangent<S, N>> for SEn3Jac<S, N> {
     #[inline]
     fn inverse(&self) -> Self {
         let (inv, det) = self.diag.inverse_adj();
-        // `0 < |det| < ∞`: false for `±0`, NaN and `±∞`.
+        // `0 < |det| < ∞`: false for `±0`, NaN and `±∞`. `|det|` is bound, not taken twice: for a
+        // `Dual` scalar `abs` is a select and a negation per derivative lane.
+        let m = det.abs();
         debug_assert!(
-            S::zero()
-                .lt(det.abs())
-                .and(det.abs().lt(S::lit(f64::INFINITY)))
-                .all(),
+            S::zero().lt(m).and(m.lt(S::lit(f64::INFINITY))).all(),
             "SEn3Jac::inverse: det A is zero, NaN or infinite"
         );
         Self {
@@ -170,19 +183,20 @@ impl<S: Real, const N: usize> Jac<S, SEn3Tangent<S, N>> for SEn3Jac<S, N> {
             out.rows() == dof::<S, N>() && out.cols() == dof::<S, N>(),
             "Jac::write_dense: the view is not DOF x DOF"
         );
+        // The structure is fixed, so each block is written once from a reference: no `Option` of a
+        // `Mat3` to construct and copy per entry. `bi == bj` is tested first, so `bj == 0` is
+        // reached only with `bi > 0`.
+        let zero = zero3();
         for bi in 0..=N {
             for bj in 0..=N {
-                let blk = match (bi, bj) {
-                    (i, j) if i == j => Some(self.diag),
-                    (i, 0) => self.col.get(i - 1).copied(),
-                    _ => None,
+                let blk = if bi == bj {
+                    &self.diag
+                } else if bj == 0 {
+                    &self.col[bi - 1]
+                } else {
+                    &zero
                 };
-                for c in 0..3 {
-                    for r in 0..3 {
-                        let v = blk.map_or_else(S::zero, |m| m.get(r, c));
-                        out.set(3 * bi + r, 3 * bj + c, v);
-                    }
-                }
+                put_view(out, bi, bj, blk);
             }
         }
     }
@@ -209,12 +223,18 @@ impl<S: Real, const N: usize> Jac<S, SEn3Tangent<S, N>> for SEn3Jac<S, N> {
     /// let j: SEn3Jac<f64, 1> = Jac::identity();
     /// let _ = j.sandwich::<6>(&Matrix::<f64, 6, 6>::identity());
     /// ```
+    #[inline]
     fn sandwich<const D: usize>(&self, cov: &Matrix<S, D, D>) -> Matrix<S, D, D> {
         const { assert!(D == dof::<S, N>()) };
         let a = self.diag;
         let at = a.transpose();
-        // `M = J Σ`: block row 0 is `A Σ_0l`, block row `i` is `B_i Σ_0l + A Σ_il`.
-        let mut m = *cov;
+        // The `N` transposes of `col`, taken once: the inner loop below would retake each of them
+        // on every block row.
+        let bt: [Mat3<S>; N] = self.col.map(|b| b.transpose());
+        // `M = J Σ`: block row 0 is `A Σ_0l`, block row `i` is `B_i Σ_0l + A Σ_il`. The scratch
+        // starts at zero, not at `Σ`: both loops write every one of the `(N + 1)²` blocks, so
+        // seeding from a copy of their input would copy `D²` scalars that nothing reads.
+        let mut m = zeros::<S, D>();
         for l in 0..=N {
             let s0 = block(cov, 0, l);
             put(&mut m, 0, l, &(a * s0));
@@ -223,13 +243,12 @@ impl<S: Real, const N: usize> Jac<S, SEn3Tangent<S, N>> for SEn3Jac<S, N> {
             }
         }
         // `M Jᵀ`: block column 0 is `M_i0 Aᵀ`, block column `j` is `M_i0 B_jᵀ + M_ij Aᵀ`.
-        let mut out = m;
+        let mut out = zeros();
         for i in 0..=N {
             let m0 = block(&m, i, 0);
             put(&mut out, i, 0, &(m0 * at));
-            for (j, b) in self.col.iter().enumerate() {
-                let sum = m0 * b.transpose() + block(&m, i, j + 1) * at;
-                put(&mut out, i, j + 1, &sum);
+            for (j, b) in bt.iter().enumerate() {
+                put(&mut out, i, j + 1, &(m0 * *b + block(&m, i, j + 1) * at));
             }
         }
         out
