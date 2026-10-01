@@ -131,10 +131,18 @@ $\mathrm{Ad}_R = R$, $\mathrm{ad}_\varphi = W$.
 
 ### 3.6 Renormalization
 
-Composition never normalizes. Construction from external data and the explicit `renormalize`
-apply the first-order Newton step $q \leftarrow q\,(3 - \|q\|^2)/2$ (exact to
-$O((\|q\|^2 - 1)^2)$, no `sqrt`). `from_wxyz_unchecked` debug-asserts
-$|\|q\|^2 - 1| \le 2^{-40}$ (`f64`; `tf_tree_math`'s `1e-12`) or $2^{-16}$ (`f32`).
+Composition never normalizes. The explicit `renormalize` applies the first-order Newton step
+$q \leftarrow q\,(3 - \|q\|^2)/2$ (exact to $O((\|q\|^2 - 1)^2)$, no `sqrt`); it repairs drift, and
+is a normalization only for $|\|q\|^2 - 1| \le 2^{-26.29}$ (`f64`) or $2^{-11.79}$ (`f32`)
+(`maths/so3.md` SO.15), returning $0$ at $\|q\|^2 = 3$ and reversing $q$ beyond.
+
+Construction from external data **divides by the norm**: $q \leftarrow q/\|q\|$, one `sqrt` and one
+division per component, whose domain is $\|q\|^2$ normal
+([`0027`](./decisions/0027-a-normalizing-constructor-normalizes.md) — every `*_normalized`
+constructor normalizes, as `API.md` R6 reads it, and the step belongs to `renormalize` alone).
+`from_wxyz_unchecked` debug-asserts $|\|q\|^2 - 1| \le 2^{-40}$ (`f64`; `tf_tree_math`'s `1e-12`)
+or $2^{-16}$ (`f32`); every $q$ it admits is inside the step's accuracy domain by 13.7 bits in
+`f64` and 4.2 in `f32`.
 
 ## 4. The coefficient catalogue
 
@@ -305,6 +313,8 @@ $X(t) = X_0\,\mathrm{Exp}(t\,d)$ with $d = X_1 \ominus_R X_0$ and $\Delta = X_0^
 | `SO3::log` | all unit $q$; at $w = +0$ a function of $q$'s sign (§3.2) | — |
 | `jr_inv`, `jl_inv` (SO(3), SE_N(3)) | $\theta < 2\pi$ | unspecified finite value |
 | `from_wxyz_unchecked` | $\lvert\|q\|^2 - 1\rvert \le 2^{-40}$ (`f64`), $2^{-16}$ (`f32`) | garbage in, garbage out |
+| `from_wxyz_normalized` | $\|q\|^2$ normal (components within $\approx 10^{\pm154}$ `f64`, $10^{\pm19}$ `f32`); `debug_assert!` on the result (§3.6, [`0027`](./decisions/0027-a-normalizing-constructor-normalizes.md)) | NaN at $q = 0$; zero above the overflow |
+| `renormalize` | none; a normalization only for $\lvert\|q\|^2 - 1\rvert \le 2^{-26.29}$ (`f64`), $2^{-11.79}$ (`f32`) (§3.6) | defined everywhere; $0$ at $\|q\|^2 = 3$, $q$ reversed beyond |
 | `S2Chart::local` | $m \ne -n$ | unspecified finite value |
 | `geodesic` | $\theta(d) < \pi$ | §10 |
 | `Sim3` | $\sigma$ finite | — |

@@ -17,10 +17,16 @@ use std::{format, vec::Vec};
 /// A scalar a test can build from a sample: `Dual` gets one variable per component.
 pub(crate) trait Sample: Real {
     fn sample(v: f64, i: usize) -> Self;
+    /// The same value with no derivative, for a quantity a law holds fixed. `Real::lit` will not
+    /// do: it debug-asserts that its argument is exactly representable, which a sample is not.
+    fn constant(v: f64) -> Self;
 }
 
 impl Sample for f64 {
     fn sample(v: f64, _: usize) -> Self {
+        v
+    }
+    fn constant(v: f64) -> Self {
         v
     }
 }
@@ -29,11 +35,17 @@ impl Sample for f32 {
     fn sample(v: f64, _: usize) -> Self {
         v as f32
     }
+    fn constant(v: f64) -> Self {
+        v as f32
+    }
 }
 
 impl<const N: usize> Sample for Dual<f64, N> {
     fn sample(v: f64, i: usize) -> Self {
         Dual::variable(v, i)
+    }
+    fn constant(v: f64) -> Self {
+        Dual::constant(v)
     }
 }
 
@@ -43,7 +55,7 @@ pub(crate) fn tangent<S: Sample, G: LieGroup<S>, const D: usize>(v: &[f64; D]) -
     <G::Tangent as Tangent<S>>::read_dense(&s)
 }
 
-fn unit<S: Real>() -> f64 {
+pub(crate) fn unit<S: Real>() -> f64 {
     match S::PRECISION {
         Precision::F64 => f64::EPSILON / 2.0,
         Precision::F32 => f64::from(f32::EPSILON) / 2.0,

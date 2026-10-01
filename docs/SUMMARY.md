@@ -48,3 +48,4 @@
 - [0020: `Dual::sqrt` at zero keeps its derivative](decisions/0020-dual-sqrt-at-zero-keeps-its-derivative.md)
 - [0021: The Cholesky finite guard stays](decisions/0021-the-cholesky-finite-guard-stays.md)
 - [0025: A structured Jacobian and a sealed `Side`](decisions/0025-a-structured-jacobian-and-a-sealed-side.md)
+- [0027: A normalizing constructor normalizes](decisions/0027-a-normalizing-constructor-normalizes.md)
