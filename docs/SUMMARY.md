@@ -42,6 +42,7 @@
 - [0011: Continuous time waits for a consumer](decisions/0011-continuous-time-waits-for-a-consumer.md)
 - [0012: A retraction is a chart](decisions/0012-a-retraction-is-a-chart.md)
 - [0013: SIMD lanes owe a measurement (draft)](decisions/0013-simd-lanes-owe-a-measurement.md)
+- [0015: Specification gaps found while building the instrument (draft)](decisions/0015-specification-gaps-found-while-building-the-instrument.md)
 - [0018: libm arch is bit-identical for exact operations](decisions/0018-libm-arch-is-bit-identical-for-exact-operations.md)
 - [0019: A Cholesky solve without the transpose](decisions/0019-a-cholesky-solve-without-the-transpose.md)
 - [0020: `Dual::sqrt` at zero keeps its derivative](decisions/0020-dual-sqrt-at-zero-keeps-its-derivative.md)

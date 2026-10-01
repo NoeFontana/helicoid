@@ -93,10 +93,14 @@ them against (CO.10).
 
 ## Open items for the normative documents
 
+The gaps the corpus generator, `helicoid-linalg` and the lint found in the specs, with most of the items
+below, are collected for decision, with a recommendation each, in the draft record
+[`0015`](../decisions/0015-specification-gaps-found-while-building-the-instrument.md).
+
 - `NUMERICS.md` §12 has no row for the Jacobians of `rminus`, `lminus` and `Log`
   (`rminus_jacobians`, `lminus_jacobians`), which exist only for $\theta(X) < \pi$ (LG.2(c),
   LG.14). `API.md` R6 asks every restricted-domain function to name its §12 entry. Adding the row
-  is a `NUMERICS.md` edit and needs a draft record; none is filed.
+  is a `NUMERICS.md` edit and needs a record: it is gap NU.9 of the draft `0015`.
 - `NUMERICS.md` §3.2: the flip is "implemented as `copysign`", yet "at $w = +0$ nothing flips" and
   "$q$ and $-q$ return $\pm\pi\hat n$". A sign-bit `copysign` flips at $w = -0$ (`copysign(1, -0.0) = -1`;
   `w < 0` does not), so $q = (+0, u)$ and $-q = (-0, -u)$ both return $+\pi\hat n$; only the `w < 0`
