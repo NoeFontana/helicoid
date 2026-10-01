@@ -33,6 +33,7 @@ grep -m1 -H '^\*\*Status:' docs/decisions/0*.md
 | [`0019`](./0019-a-cholesky-solve-without-the-transpose.md) | `chol_solve(&L, b)`: `A x = b` from the factor, `L^T` read by column, bit-identical to the transposed-copy composition; the column solve stays private. |
 | [`0020`](./0020-dual-sqrt-at-zero-keeps-its-derivative.md) | `Dual::sqrt` at 0 keeps `d / (2 sqrt v)`: the NaN is the report, the §10 row needs it; a zero-safe norm is a later, additive record. |
 | [`0021`](./0021-the-cholesky-finite-guard-stays.md) | the `chol` per-entry finite guard stays: four bit-identical variants measured, none worth a rewrite; the 15% bar and the finiteness of `L` are stated. |
+| [`0025`](./0025-a-structured-jacobian-and-a-sealed-side.md) | the trait layer as built: Rⁿ's Jacobian is structured, correcting `PHASE3.md` §7 rather than `0005`; `Side` is sealed while the side selector stays with the SO(3) PR; `Tangent` gains a threaded `dot_acc` so `Product` can meet the bound-`0` dense-order law; `read_dense` poisons a missing entry; a group exposes an `Add`-carrying field only where it is abelian. |
 
 ## Lifecycle
 

@@ -9,6 +9,12 @@ defined by the status tables in `docs/`; they win over this file.
 
 ### Added
 
+- `docs/decisions/0025` (ready): the trait layer as built. Rⁿ's Jacobian is the structured `RnJac`,
+  correcting `PHASE3.md` §7's `Jac = Mat<N>`, which cannot implement the exact `Jac::inverse` of
+  `0005`; `Side` is sealed to `Left`/`Right` while the side selector stays with the SO(3) PR;
+  `Tangent::dot_acc` becomes the required operation so that `Product` can meet the bound-`0`
+  dense-order law; `read_dense` poisons a missing entry; and a group exposes an `Add`-carrying field
+  only where it is abelian.
 - `docs/decisions/0020`: `Dual::sqrt` at zero keeps `d / (2 sqrt v)` (the NaN is the report and the
   `PHASE1.md` §10 row needs it); the guarded norm is a doctest, a zero-safe norm is a later record.
 - `docs/decisions/0021`: the per-entry finite guard of `chol` stays; four bit-identical variants were
@@ -158,6 +164,15 @@ defined by the status tables in `docs/`; they win over this file.
   readings and edits of the implementing PRs that await ratification (including the widening of D11 to
   strided reads). It decides nothing and edits no spec; `docs/maths/index.md` gains a pointer to it.
   Documentation only; breaks nothing.
+- `helicoid`: the traits `Tangent`, `Jac` and `LieGroup`, the sealed `Side` with its only two
+  implementations `Left` and `Right`
+  (`docs/PHASE3.md` §2), the conventions of `0002` in the crate docs, and the trivial group
+  `Rn<S, N>` with `RnTangent` and `RnJac` (§7): addition is `Mul`, there is no `Add` or `Sub`
+  (`compile_fail` doctests), and every row of `NUMERICS.md` §2.3 is written for both sides.
+  `Jac::sandwich` and the `DOF` tie are `const` assertions. Generic law checks (test-only
+  `laws`) run for `Rn` and for a test-only non-abelian group (Heisenberg) under `f64`, `f32` and
+  `Dual<f64, 3>` with recorded bounds. `docs/PHASE3.md` §7 and `docs/API.md` §3 name `RnTangent`
+  and `RnJac`. New public API, nothing breaks. `proptest` becomes a dev-dependency of `helicoid`.
 
 ### Changed
 
@@ -174,3 +189,16 @@ defined by the status tables in `docs/`; they win over this file.
   back substitution against `l^T` read by column, with no transposed copy. Bit-identical to
   `solve_upper(&l.transpose(), solve_lower(&l, b))` (NaN sign and payload aside), same domain and
   release behaviour; `docs/decisions/0019`, `docs/NUMERICS.md` §15.6. New public API, nothing breaks.
+- `Tangent::dot` becomes a provided method over the new required `dot_acc`, and
+  `Tangent::read_dense` reads a missing entry as NaN rather than `+0` (`0025`): `+0` is a valid
+  component, so a wrongly sized buffer was indistinguishable from a zero tangent.
+- The law harness divides every norm-wise error by a NaN-preserving denominator. `f64::max` returns
+  the other operand for a NaN, so a NaN reference had been scaling away to a denominator of `1`,
+  and a law could pass against it.
+- The non-abelian test group's sample Jacobian is no longer a circulant. Circulants commute, so
+  `jac_dense_order` — which pins `Jac::mul`'s operand order against the dense product — could not
+  detect a `mul` that multiplied its operands the wrong way round. Row-scaling breaks the
+  commutation; the recorded `f64` bounds move to `jac_order` 12 and `sandwich` 12, `f32` to 11 and 9.
+- `Tangent::read_dense`/`write_dense` take the exact-length path through `first_chunk`, so the
+  documented boundary costs one length test instead of one per component (measured at `DOF = 9` on
+  the emitted release asm: 1 branch and vectorized moves, against 17 and 9 scalar ones).
