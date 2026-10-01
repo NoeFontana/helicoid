@@ -85,21 +85,40 @@ impl<S: Real> Quat<S> {
         q
     }
 
-    /// The quaternion `(w, x, y, z)` after one [`renormalize`](Quat::renormalize) step.
+    /// The quaternion `(w, x, y, z)` divided by `‖q‖`: a normalization, for external data whose
+    /// norm the caller cannot vouch for (`NUMERICS.md` §3.6, `0027`).
     ///
-    /// This is the first-order Newton step, not a normalization: it is exact to
-    /// `O((‖q‖² - 1)²)` and no more, and it does not compute a `sqrt`. Its accuracy domain is
-    /// `| ‖q‖² - 1 | <= 2^-26.29` (`f64`) or `2^-11.79` (`f32`) (`docs/maths/so3.md` SO.15);
-    /// see [`renormalize`](Quat::renormalize).
+    /// One `sqrt` and one division per component, so the result is unit for every `q` in the
+    /// domain — which is what this constructor is for, and why it is not
+    /// [`renormalize`](Quat::renormalize): the Newton step costs no `sqrt` but is a normalization
+    /// only within `| ‖q‖² - 1 | <= 2^-26.29` (`f64`) or `2^-11.79` (`f32`), returns zero at
+    /// `‖q‖² = 3` and reverses `q` beyond it (`docs/maths/so3.md` SO.14). Use that one to repair
+    /// the drift of a quaternion already near unit norm, and this one for anything else.
     ///
     /// # Domain
     ///
-    /// None is asserted (`NUMERICS.md` §3.6 and §12 state none); a release and a debug build
-    /// give the same result for every input.
+    /// `‖q‖²` normal: nonzero, and the components within about `10^±154` (`f64`) or `10^±19`
+    /// (`f32`). The `debug_assert!` is on the result, which is unit to the tolerance
+    /// [`from_wxyz_unchecked`](Quat::from_wxyz_unchecked) accepts for every input in the domain
+    /// (measured `6 u` for `f64` and `5.50 u` for `f32` against a bound of `2^13 u` and `2^8 u`).
+    /// Release builds check nothing (D11): at `q = 0` every component is `0/0`, a NaN that reaches
+    /// whatever the caller computes, and above the overflow the result is zero.
     #[inline]
     pub fn from_wxyz_normalized(w: S, x: S, y: S, z: S) -> Self {
-        let mut q = Self { w, x, y, z };
-        q.renormalize();
+        let n = Self { w, x, y, z }.norm_sq().sqrt();
+        let q = Self {
+            w: w / n,
+            x: x / n,
+            y: y / n,
+            z: z / n,
+        };
+        debug_assert!(
+            (q.norm_sq() - S::one())
+                .abs()
+                .le(unit_tolerance::<S>())
+                .all(),
+            "Quat::from_wxyz_normalized: ‖q‖² is zero, not finite, or NaN"
+        );
         q
     }
 
@@ -196,8 +215,9 @@ impl<S: Real> Quat<S> {
     /// most `u` for `|η| <= 2^-26.29` (`f64`) or `2^-11.79` (`f32`); the computed `|η'|` is a few
     /// `u` (measured at most `5u` for `f64` and `3.73u` for `f32`, from the edge of the domain of
     /// [`from_wxyz_unchecked`](Quat::from_wxyz_unchecked)). From a larger `η` it is only a better
-    /// guess, not a normalization: it returns zero at `η = 2` and reverses `q` beyond it. Divide
-    /// by `sqrt(‖q‖²)` for a full normalization.
+    /// guess, not a normalization: it returns zero at `η = 2` and reverses `q` beyond it. For a
+    /// quaternion that is not already near unit norm, use
+    /// [`from_wxyz_normalized`](Quat::from_wxyz_normalized), which divides by `‖q‖`.
     ///
     /// # Domain
     ///

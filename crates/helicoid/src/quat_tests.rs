@@ -7,8 +7,9 @@
 //! errors, `f64` then `f32`: `conj` 6.00 and 3.00, `assoc` 5.00 and 5.00,
 //! `orth` 13.00 and 6.90, `det` 18.00 and 6.94, `matrix` 7.00 and 3.35, `sandwich` 6.00 and 5.48,
 //! `jpl` 7.00 and 3.37, `step` (one Newton step from `|η| = 2^-40` or `2^-16`, the edge of what
-//! `from_wxyz_unchecked` accepts) 5.00 and 3.73. `orth` and `det` include the rounding of the
-//! `f64` check itself.
+//! `from_wxyz_unchecked` accepts) 5.00 and 3.73, `norm` (`from_wxyz_normalized` of a quaternion
+//! that is not unit) 6.00 and 5.50. `orth` and `det` include the rounding of the `f64` check
+//! itself.
 
 // `u` is `laws::unit`, the unit roundoff of `NUMERICS.md` §2.1; it is defined there, not again here.
 use crate::laws::{unit as u, Sample};
@@ -27,6 +28,7 @@ struct Bounds {
     sandwich: f64,
     jpl: f64,
     step: f64,
+    norm: f64,
 }
 const F64: Bounds = Bounds {
     conj: 12.0,
@@ -37,6 +39,7 @@ const F64: Bounds = Bounds {
     sandwich: 12.0,
     jpl: 14.0,
     step: 10.0,
+    norm: 12.0,
 };
 const F32: Bounds = Bounds {
     conj: 6.0,
@@ -47,6 +50,7 @@ const F32: Bounds = Bounds {
     sandwich: 11.0,
     jpl: 7.0,
     step: 8.0,
+    norm: 11.0,
 };
 
 /// A struct literal: no domain, for the quaternions that are not unit.
@@ -87,6 +91,14 @@ fn unit_sample() -> impl Strategy<Value = [f64; 4]> {
 
 fn vec3() -> impl Strategy<Value = [f64; 3]> {
     proptest::array::uniform3(-1.0_f64..1.0)
+}
+
+/// A quaternion that is not unit: `unit_sample` times a general positive scale, so `η` runs from
+/// `-1` to about `4e6` and `‖q‖²` is inexact. A power of two would not test anything — it scales
+/// `norm_sq` and its `sqrt` exactly, leaving every quotient of `from_wxyz_normalized` unchanged.
+fn scaled_sample() -> impl Strategy<Value = [f64; 4]> {
+    (unit_sample(), 1.0_f64..2.0, -10_i32..=10)
+        .prop_map(|(v, m, e)| v.map(|x| x * (m * 2_f64.powi(e))))
 }
 
 /// `R` as rows, from the entries of `to_matrix`.
@@ -193,6 +205,12 @@ fn newton_step<S: Sample>(v: &[f64; 4], negative: bool) -> f64 {
     eta(&q).abs() / u::<S>()
 }
 
+/// `|η|` of `from_wxyz_normalized` applied to a `q` that is not unit.
+fn normalizes<S: Sample>(v: &[f64; 4]) -> f64 {
+    let s: [S; 4] = array::from_fn(|i| S::sample(v[i], i));
+    eta(&Quat::from_wxyz_normalized(s[0], s[1], s[2], s[3])).abs() / u::<S>()
+}
+
 /// `‖q‖² - 1`, summed in `f64` from the entries.
 fn eta<S: Real>(q: &Quat<S>) -> f64 {
     vals(q).iter().map(|x| x * x).sum::<f64>() - 1.0
@@ -237,6 +255,10 @@ macro_rules! props {
                 #[test]
                 fn a_newton_step_repairs_the_accepted_range(a in unit_sample(), neg in any::<bool>()) {
                     within(newton_step::<S>(&a, neg), $B.step)?;
+                }
+                #[test]
+                fn from_wxyz_normalized_is_unit(a in scaled_sample()) {
+                    within(normalizes::<S>(&a), $B.norm)?;
                 }
             }
         }
@@ -285,9 +307,12 @@ impl Rng {
 #[ignore = "measurement: prints the figures the bounds are recorded from"]
 #[allow(clippy::print_stdout)]
 fn measure_worst_errors() {
-    fn run<S: Sample>() -> [f64; 8] {
+    fn run<S: Sample>() -> [f64; 9] {
         let mut rng = Rng(0x0123_4567_89AB_CDEF);
-        let mut w = [0.0_f64; 8];
+        // A separate stream for the scale of the `norm` law, so that adding it left the other
+        // eight laws drawing exactly what they drew when their figures were recorded.
+        let mut scale = Rng(0xDEAD_BEEF_0BAD_F00D);
+        let mut w = [0.0_f64; 9];
         let mut up = |i: usize, v: f64| w[i] = if v.is_nan() || v > w[i] { v } else { w[i] };
         for _ in 0..1_000_000 {
             let (a, b, c) = (rng.unit(), rng.unit(), rng.unit());
@@ -301,6 +326,8 @@ fn measure_worst_errors() {
             up(5, sandwich::<S>(&a, &p));
             up(6, jpl_matrix::<S>(&a));
             up(7, newton_step::<S>(&a, rng.next() & 1 == 1));
+            let k = (1.0 + scale.unif().abs()) * 2_f64.powi((scale.next() % 21) as i32 - 10);
+            up(8, normalizes::<S>(&a.map(|x| x * k)));
         }
         w
     }
@@ -463,8 +490,12 @@ fn newton_step_hand_case() {
     q.renormalize();
     assert_eq!(bits(&q), [0.5625, 0.5625, 0.5625, 0.0].map(f64::to_bits));
     assert_eq!(eta(&q).to_bits(), (-0.050_781_25_f64).to_bits());
+    // The same input through `from_wxyz_normalized`, which divides by `‖q‖` (`0027`): `η` is one
+    // `u`, not `-0.05`. The step left 2.9e14 u of it, from an input one eighth away from unit.
     let n = Quat::from_wxyz_normalized(0.5_f64, 0.5, 0.5, 0.0);
-    assert_eq!(bits(&n), bits(&q));
+    let third = 1.0_f64 / 3.0_f64.sqrt();
+    assert_eq!(bits(&n), fb([third, third, third, 0.0]));
+    assert!(eta(&n).abs() <= 2.0 * u::<f64>());
 }
 
 #[test]
@@ -541,6 +572,21 @@ mod out_of_domain {
         let _ = Quat::from_wxyz_unchecked(1.0 + 2_f64.powi(-40), 0.0, 0.0, 0.0);
     }
 
+    // `‖q‖²` is zero, so the quotients are NaN and the assert on the result fails.
+    #[test]
+    #[should_panic(expected = "Quat::from_wxyz_normalized")]
+    fn normalized_rejects_the_zero_quaternion() {
+        let _ = Quat::from_wxyz_normalized(0.0_f64, 0.0, 0.0, 0.0);
+    }
+
+    // `‖q‖²` overflows, so `q / ∞` is zero and the assert on the result fails. `f32` reaches this
+    // at `10^19`, not `10^154`.
+    #[test]
+    #[should_panic(expected = "Quat::from_wxyz_normalized")]
+    fn normalized_rejects_an_overflowing_norm_in_f32() {
+        let _ = Quat::from_wxyz_normalized(1e20_f32, 0.0, 0.0, 0.0);
+    }
+
     #[test]
     #[should_panic(expected = "Quat::from_wxyz_unchecked")]
     fn unchecked_rejects_just_outside_in_dual() {
@@ -603,19 +649,45 @@ fn out_of_domain_does_not_panic_in_release() {
     let q = Quat::from_wxyz_unchecked(3.0_f64, 0.0, 0.0, f64::NAN);
     assert_eq!(q.w.to_bits(), 3.0_f64.to_bits());
     assert!(q.z.is_nan());
+    // `0/0` per component. A zero quaternion would pass for a valid value — `to_matrix` of it is
+    // the zero matrix, which sends every point to the origin — where NaN reaches the caller.
+    let n = Quat::from_wxyz_normalized(0.0_f64, 0.0, 0.0, 0.0);
+    assert!([n.w, n.x, n.y, n.z].iter().all(|c| c.is_nan()));
 }
 
 /// The step asserts nothing (`NUMERICS.md` §3.6 states no domain): it is `q (3 - ‖q‖²)/2` for
 /// every input in every profile, zero at `η = 2` and reversing `q` beyond it (SO.14).
 #[test]
 fn the_step_is_defined_for_every_input() {
-    let step = |w, x, y, z| bits(&Quat::from_wxyz_normalized(w, x, y, z));
+    let step = |w, x, y, z| {
+        let mut q = raw(w, x, y, z);
+        q.renormalize();
+        bits(&q)
+    };
     assert_eq!(step(0.0, 1.0, 1.0, 1.0), fb([0.0; 4]));
     assert_eq!(step(2.0, 0.0, 0.0, 0.0), fb([-1.0, -0.0, -0.0, -0.0]));
     assert_eq!(step(0.0, 0.0, 0.0, 0.0), fb([0.0; 4]));
     // In `f32`: `‖q‖² = 2.25`, `k = 0.375`, `w' = 0.5625`.
-    let q = Quat::from_wxyz_normalized(1.5_f32, 0.0, 0.0, 0.0);
+    let mut q = raw(1.5_f32, 0.0, 0.0, 0.0);
+    q.renormalize();
     assert_eq!(q.w.to_bits(), 0.5625_f32.to_bits());
+}
+
+/// `from_wxyz_normalized` divides by `‖q‖` (`0027`), so it is unit where the step is not a
+/// normalization at all: the three inputs below are the step's zero, its reversal, and the
+/// `‖q‖² = 3` case that returns the zero quaternion.
+#[test]
+fn from_wxyz_normalized_is_unit_far_from_unit_norm() {
+    let third = 1.0_f64 / 3.0_f64.sqrt();
+    let n = |w, x, y, z| bits(&Quat::from_wxyz_normalized(w, x, y, z));
+    assert_eq!(n(0.0, 1.0, 1.0, 1.0), fb([0.0, third, third, third]));
+    assert_eq!(n(2.0, 0.0, 0.0, 0.0), fb([1.0, 0.0, 0.0, 0.0]));
+    assert_eq!(n(3.0, 0.0, 0.0, 0.0), fb([1.0, 0.0, 0.0, 0.0]));
+    // Already unit, and `‖q‖² = 1` exactly: the division is by one, so the input is returned.
+    assert_eq!(n(0.5, 0.5, 0.5, 0.5), fb([0.5; 4]));
+    // `f32`, `‖q‖² = 2.25`: `‖q‖ = 1.5` exactly, so `w' = 1` exactly.
+    let q = Quat::from_wxyz_normalized(1.5_f32, 0.0, 0.0, 0.0);
+    assert_eq!(q.w.to_bits(), 1.0_f32.to_bits());
 }
 
 /// The operation order is part of the contract (D16): a bit-exact golden of random bit
