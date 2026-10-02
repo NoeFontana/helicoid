@@ -519,8 +519,18 @@ impl Rng {
     pub(crate) fn unif(&mut self) -> f64 {
         (self.next() >> 11) as f64 / 2_f64.powi(52) - 1.0
     }
-    pub(crate) fn vec(&mut self, n: usize) -> Vec<f64> {
-        (0..n).map(|_| self.unif()).collect()
+    /// `N` draws into a caller-owned array, the stream [`unif`](Self::unif) gives in order.
+    ///
+    /// The loop is explicit rather than `array::from_fn` because the order of the draws *is* the
+    /// stream: a helper whose visiting order is unspecified would put the reproducibility of every
+    /// recorded figure at the mercy of its implementation. No allocation, so a `10^6`-case
+    /// measurement does not pay one per draw-set per iteration.
+    pub(crate) fn arr<const N: usize>(&mut self) -> [f64; N] {
+        let mut out = [0.0; N];
+        for x in &mut out {
+            *x = self.unif();
+        }
+        out
     }
 }
 

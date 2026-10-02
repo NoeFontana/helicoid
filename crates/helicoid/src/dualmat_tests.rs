@@ -155,15 +155,23 @@ fn to_f64<S: Lanes, const N: usize>(j: &SEn3Jac<S, N>) -> SEn3Jac<f64, N> {
     }
 }
 
-/// `κ_F` of the dense matrix of `j`, with `M⁻¹` from the twin in `f64`.
+/// `κ_F` of the dense matrix of `j`, with `M⁻¹` from the closed form `A⁻¹ − ε A⁻¹ B_i A⁻¹`.
+///
+/// Not from [`sen3jac_inverse`]: that twin `debug_assert!`s a nonzero pivot, so a filter computed
+/// from it panics on exactly the singular draws the filter exists to reject — and proptest shrinks a
+/// failure toward `0`, so the panic, not the bound violation, is what a regression would report.
+/// `Mat3::inverse_adj` asserts nothing and divides by `det A`, so a singular or non-finite `A`
+/// gives a non-finite `κ`, which fails `κ u <= 1e-3` like any other out-of-domain draw. It also
+/// costs one 3x3 inverse where the twin cost a second `D³` elimination per case.
 fn kappa<S: Lanes, const N: usize, const D: usize>(j: &SEn3Jac<S, N>) -> f64 {
     let j64 = to_f64(j);
-    let mut inv = [[0.0; D]; D];
-    sen3jac_inverse::<f64, N, D>(
-        &j64,
-        &mut StridedMut::row_major(inv.as_flattened_mut(), D, D),
-    );
-    norm(dense::<f64, _, _, D>(&j64).as_flattened()) * norm(inv.as_flattened())
+    let (ainv, _det) = j64.diag.inverse_adj();
+    let inv = SEn3Jac {
+        diag: ainv,
+        col: j64.col.map(|b| -(ainv * b * ainv)),
+    };
+    norm(dense::<f64, _, _, D>(&j64).as_flattened())
+        * norm(dense::<f64, _, _, D>(&inv).as_flattened())
 }
 
 /// The error of `inverse` against the twin over `κ u`, or `None` where `κ u > 1e-3`. The value
@@ -322,12 +330,12 @@ macro_rules! props {
                 let mut w = [0.0_f64; 4];
                 let mut up = |i: usize, v: f64| w[i] = worst(w[i], v);
                 for _ in 0..1_000_000 {
-                    up(0, mul_twin::<S, $N, $D>(&rng.vec(18 * ($N + 1))));
-                    if let Some(r) = inverse_twin::<S, $N, $D>(&rng.vec(9 * ($N + 1))) {
+                    up(0, mul_twin::<S, $N, $D>(&rng.arr::<{ 18 * ($N + 1) }>()));
+                    if let Some(r) = inverse_twin::<S, $N, $D>(&rng.arr::<{ 9 * ($N + 1) }>()) {
                         up(1, r);
                     }
-                    up(2, sandwich_twin::<S, $N, $D>(&rng.vec(9 * ($N + 1) + $D * $D)));
-                    up(3, apply_twin::<S, $N, $D>(&ap.vec(9 * ($N + 1) + $D)));
+                    up(2, sandwich_twin::<S, $N, $D>(&rng.arr::<{ 9 * ($N + 1) + $D * $D }>()));
+                    up(3, apply_twin::<S, $N, $D>(&ap.arr::<{ 9 * ($N + 1) + $D }>()));
                 }
                 std::println!("{} {} {:.2?}", std::any::type_name::<S>(), stringify!($m), w);
             }
