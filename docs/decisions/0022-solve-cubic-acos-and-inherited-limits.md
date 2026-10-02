@@ -15,7 +15,8 @@ port, and testing the port against planted roots found three limits that omnisac
 
 ## Decision (proposed)
 
-1. `acos x = atan2(sqrt((1 - x)(1 + x)), x)` and `pi = atan2(+0, -1)`, private to `cubic.rs`. The
+1. `acos x = atan2(sqrt((1 - x)(1 + x)), x)` and `pi = atan2(+0, -1)`, `pub(crate)` in `cubic.rs`
+   (`eig3`, `0023` (draft), calls them too, at `x = r` in `[-1, 1]`, the ends included). The
    factored product keeps the sine accurate where `x` is near `+-1` (a double root), where
    `sqrt(1 - x²)` loses everything. Evidence: within 2 ulp of `libm::acos` and `acosf` on 4e6
    points, the ends included; `pi` bit-equal to `f64::consts::PI` and `f32::consts::PI`; the roots

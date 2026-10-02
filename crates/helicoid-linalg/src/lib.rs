@@ -5,8 +5,8 @@
 //! `libm`), forward-mode [`Dual`] numbers (§3), also a `Real`, and the fixed-size [`Vector`],
 //! [`Point`] and column-major [`Matrix`] with [`hat`]/[`vee`], [`Mat3::inverse_adj`] and the
 //! Cholesky factorization [`chol`] with [`solve_lower`]/[`solve_upper`]/[`chol_solve`] (§4), the
-//! strided views [`Strided`]/[`StridedMut`] over caller memory (§5), and the real roots of a cubic,
-//! [`solve_cubic`] (§6).
+//! strided views [`Strided`]/[`StridedMut`] over caller memory (§5), and (§6) the real roots of a
+//! cubic, [`solve_cubic`], and the eigendecomposition of a symmetric 3x3 matrix, [`eig3`].
 //!
 //! The optional feature `mint` (off by default) adds `From`/`Into` between [`Vector`]/[`Point`]/
 //! [`Matrix`] and the `mint` types, for `f32` and `f64` (§7); it is the only interop, so
@@ -34,6 +34,7 @@
 mod chol;
 mod cubic;
 mod dual;
+mod eig3;
 mod float;
 mod matrix;
 #[cfg(feature = "mint")]
@@ -47,6 +48,7 @@ mod vector;
 pub use chol::{chol, chol_solve, solve_lower, solve_upper};
 pub use cubic::solve_cubic;
 pub use dual::Dual;
+pub use eig3::eig3;
 pub use matrix::{Mat2, Mat3, Matrix};
 pub use point::{Point, Point2, Point3};
 pub use real::{Blend, Mask, Precision, Real};
@@ -64,6 +66,8 @@ mod chol_tests;
 mod cubic_tests;
 #[cfg(test)]
 mod dual_tests;
+#[cfg(test)]
+mod eig3_tests;
 #[cfg(test)]
 mod linalg_tests;
 #[cfg(all(test, feature = "mint"))]
