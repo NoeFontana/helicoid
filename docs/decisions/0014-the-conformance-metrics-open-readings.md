@@ -11,7 +11,8 @@ before it can score a record. `xtask/src/conformance/metric.rs` (`TABLE` and its
 the smallest reading of each so that the harness core runs (`PHASE1.md` §5). The readings fix the
 bar every envelope baseline is blessed against (`0006`); none is blessed yet (`PHASE1.md` §8 is not
 started), so each is still free to change. `xtask/src/thresholds` (`PHASE1.md` §6) did the same for
-the threshold sweep (questions 8 to 11); no `generated.rs` is written from it yet.
+the threshold sweep (questions 8 to 11) and for the file it writes, `xtask/src/seeded/generated.rs`
+(12, 13); the self-test (`PHASE1.md` §10) did for the planted `c` (14, 15).
 
 ## Decision
 
@@ -64,7 +65,25 @@ None until the open questions are resolved.
    gives `e` 8 terms and 2.60e3 u, and leaves `k`, `a`, `b`, `c`, `d`. Is the range closed at 1, or
    does the grid extend to the first switch that puts that record on the series arm?
 10. **The D12 prior for all six.** §6 describes it as one switch for `a`, `b`, `c` and evaluates it
-    as a named candidate; the sweep scores it for all six coefficients, as `seeded:correct` runs it.
-    Report it for `k`, `d`, `e`?
+    as a named candidate; the sweep scores it for all six coefficients. `seeded:correct` no longer
+    runs it: it runs the generated switches, and D12 is scored only by the sweep (and, in tests,
+    by a kernel run at it). Report it for `k`, `d`, `e`?
 11. **Ties.** Exact `f64` equality of the objective (`tied` counts them). A tolerance would make
     near-equal candidates tie, and the cheaper one win. Exact, or a tolerance?
+12. **The source revision of a generated file** (`PHASE1.md` §6: `Source sweep rev: <git rev>`).
+    A git revision cannot name the commit that holds the file and differs on every commit, so no
+    byte-for-byte drift check survives it. The emitter writes the SHA-256 of the sweep CSV and, on
+    a line of its own, of `coeff_series.jsonl`, which supplies the literals. Amend §6 to say so, or
+    is a revision meant?
+13. **One objective line per constant.** §6 shows `Objective (max u): value 1.9, derivative 3.4.`
+    on the revision's line, for one constant; the file holds six. The emitter writes one line
+    above each constant, from the CSV's `value_max_u` and `deriv_max_u`. Which is meant?
+14. **What `10^-8` is** (`PHASE1.md` §10, the planted `c`). §6 puts a switch in the branch
+    variable, where `10^-8` is `z` and `θ = 1e-4`; `PROJECT.md` §2 names "`1e-8` in most
+    libraries" without saying which variable. The planted `c` reads it as `θ`: `z = 1e-16`, the
+    sweep grid's first point. Which is meant?
+15. **"Ranks it dominated"** (§10). No margin is stated. The self-test says dominated when the
+    candidate's objective exceeds the chosen candidate's by more than `10^6` (7.3e33 u against
+    7.4e3 u, rank 7841 of 8200), and ranks the `(terms, switch)` the subject declares, which it
+    checks against the objective the harness measures for the subject's `c`, to the bit. State a
+    margin, a rank, or neither?
