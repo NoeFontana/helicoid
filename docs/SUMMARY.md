@@ -60,3 +60,4 @@
 - [0029: A `Product` needs a way to be built from its factors](decisions/0029-a-product-needs-a-way-to-be-built-from-its-factors.md)
 - [0030: A consumer comparison is a trigger `0021` does not list (draft)](decisions/0030-a-consumer-comparison-is-a-trigger-0021-does-not-list.md)
 - [0031: What the cubic port inherits from omnisac (draft)](decisions/0031-what-the-cubic-port-inherits-from-omnisac.md)
+- [0032: Domination charges `helicoid` for D16 (draft)](decisions/0032-domination-charges-helicoid-for-d16.md)

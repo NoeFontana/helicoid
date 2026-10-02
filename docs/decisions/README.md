@@ -44,6 +44,7 @@ grep -m1 -H '^\*\*Status:' docs/decisions/0*.md
 | [`0029`](./0029-a-product-needs-a-way-to-be-built-from-its-factors.md) | `Product` has private fields and no constructor, so the tf2 pose is reachable only through an `Exp`/`Log` round trip; `from_parts`/`parts` proposed for the SO(3) PR; nothing decided. |
 | [`0030`](./0030-a-consumer-comparison-is-a-trigger-0021-does-not-list.md) | `chol` factorises 2.6-3.4x slower than `nalgebra` at `N = 6` (`chol_solve` is at parity, the residual is better); the attribution failed because the harness control moves 11%, so `0021`'s 15% bar is unmet and nothing is touched; an external subject proposed as a trigger, and `PHASE1.md` §9's harness proposed for `helicoid-linalg`. Nothing decided. |
 | [`0031`](./0031-what-the-cubic-port-inherits-from-omnisac.md) | the four numerical limits the cubic port inherits from omnisac, measured, with a recommended order: the one-real-root cancellation first (3.33e-6 to 3.42e-17, and a `-inf` derivative at a simple root), then the underflow that reports three roots for a one-root cubic; nothing decided. |
+| [`0032`](./0032-domination-charges-helicoid-for-d16.md) | `so3_log`'s 8 domination failures are `libm::atan2` against the host's glibc, not an algorithm: swapping only `atan2` reproduces `helicoid` on 8 of 8 strata and sophus-rs on 7 of 8, and `tf_tree_math` (also on the `libm` crate) is bit-identical to us on all 30. D16 costs at most 0.74 u, as EA.13(d) predicted; a `libm-bound` verdict proposed so the bar stops charging us for it. Nothing decided. |
 
 ## Lifecycle
 
