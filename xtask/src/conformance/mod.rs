@@ -22,13 +22,14 @@
 //!   `<subject>--<fn>.csv` so it never replaces a full result.
 //! - **`git_rev`** is `HEAD`, plus `-dirty` when the tree has uncommitted changes.
 //! - **Not implemented**: backward error (`Log` near π, `from_matrix`), `f32`, oracle runners, the
-//!   envelope, the `helicoid` subject, and the seeded defects that need SE_N(3).
+//!   envelope, the `helicoid` subject, and the `Dual` comparison of the planted `Q` defect.
 
 pub(crate) mod corpus;
 pub(crate) mod metric;
 pub(crate) mod number;
 mod report;
 mod selftest;
+mod selftest_se3;
 mod selftest_so3;
 pub(crate) mod subject;
 

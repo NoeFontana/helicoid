@@ -236,7 +236,7 @@ fn observe(mechanism: Mechanism, rows: &[Row], negated: &[Half]) -> (bool, Strin
 }
 
 /// The rows that fail `bar`: a non-finite output, a `NaN` and a `max_u` above it.
-fn over_the_bar(name: &str, rows: &[Row], bar: f64) -> Vec<String> {
+pub(super) fn over_the_bar(name: &str, rows: &[Row], bar: f64) -> Vec<String> {
     let mut failures = Vec::new();
     for r in rows {
         if r.nonfinite > 0 {
