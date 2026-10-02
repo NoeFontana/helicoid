@@ -16,7 +16,8 @@ the threshold sweep (questions 8 to 11) and for the file it writes, `xtask/src/s
 subject and its `Log` defects (16 to 20), and for the seeded SE_N(3) subject and its defects (21
 to 25); `f32` scoring and the self-test's `f32` half did for the curve, its kernel and its floor
 (26 to 28); the `f32` sweep did for `r`'s branch variable, mask, domain and prior (29); the oracle runner did
-for the file protocol and for what a runner owes (31, 32).
+for the file protocol and for what a runner owes (31, 32), and for
+sophus-rs (33 to 35).
 
 ## Decision
 
@@ -222,4 +223,26 @@ None until the open questions are resolved.
     six basis twists), `Quat::rotate` (`so3_act`, which assumes a unit `q`, so `q:nonunit` and
     `q:w0` would score that assumption) and `quat_from_rot3` (`so3_from_matrix`, checked for shape
     and finiteness only). For those ids `0010`'s "dominate on every paired stratum" pairs nothing.
-    Answer them, with which strata, or leave the ids to sophus-rs and the containers?
+    Answer them, with which strata, or leave the ids to sophus-rs and the containers? sophus-rs
+    0.15.0 exports `LieGroup::adj` and `LieGroup::transform` too, and its runner leaves
+    `sen3_ad_n1` and `so3_act` unanswered until this is answered.
+33. **Which sophus-rs is oracle #2** (§7: "pinned version"; its example `sophus_to_helicoid_tangent`,
+    `0002` and `PROJECT.md` §1 read Sophus as translation-first). `sophus_lie` 0.10.0 to 0.14.0
+    are: tangent `[υ; ω]`, parameters `[p; q]`, no Jacobian. 0.15.0 (2025-08-09) is rotation-first,
+    tangent `[ω; ν]`, parameters `[q; p]` with `w` first, and has `left_jacobian` and
+    `inv_left_jacobian`. The runner pins 0.15.0, the latest, the only one with a Jacobian and the
+    convention of `0002`, so its conversions change a layout, not an order, and it has no
+    permutation and no permutation test; a bump fails its tests.
+    Is 0.15.0 the oracle, is 0.14.0 a second runner (the permutation §7 has in mind), or does the
+    version `locus_fusion` builds against decide? Say which `0002`'s "Sophus is translation-first"
+    means, C++ Sophus and sophus-rs 0.14 or all of them.
+34. **Right Jacobians of an oracle that has only the left one** (§7: "any exposed Jacobians").
+    sophus-rs exposes `J_l` and its inverse; the runner answers `so3_jr`, `so3_jr_inv`,
+    `sen3_jr_n1` and `sen3_jr_inv_n1` at the negated tangent, `J_r(τ) = J_l(−τ)` (`NUMERICS.md`
+    §1), which repeats the left rows' errors under four more ids. Keep the four, or only the ids
+    the oracle has?
+35. **`sen3_log` at `w = +0` scores an oracle's branch.** sophus-rs 0.15.0 returns `−π û` for
+    `q = (+0, u)` where `NUMERICS.md` §3.2 says `+π û`; `Exp(−π û)` is `−q`, the same rotation.
+    `so3_log` aligns the sign at `w = +0`, so its row does not show it, while `sen3_log_n1`
+    (`SignRule::Fixed`) scores 1.78e16 `u` in `q:w0`, since `ρ = J_l⁻¹(φ) x` follows the branch of
+    `φ`. Align `sen3_log` there too (to which `ρ`?), or keep recording it as an error?

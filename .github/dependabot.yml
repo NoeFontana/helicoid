@@ -34,3 +34,14 @@ updates:
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 10
+
+  # The sophus-rs pin (`=0.15.0`, `PIN` in src/main.rs, Cargo.lock) moves by hand: 0.15.0 changed
+  # the tangent order of 0.14.0 and earlier, so a bump is a decision (0014 (draft) question 28).
+  - package-ecosystem: "cargo"
+    directory: "/runners/sophus_rs"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+    ignore:
+      - dependency-name: "sophus_lie"
+      - dependency-name: "sophus_autodiff"

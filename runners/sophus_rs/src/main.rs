@@ -1,0 +1,215 @@
+//! The sophus-rs oracle (`docs/PHASE1.md` §7): reads corpus JSONL and writes one answer file per
+//! function id it supports. It never reads a reference and never scores;
+//! `cargo xtask conformance --oracle sophus_rs` does, with the harness's exact metric.
+//!
+//! ```text
+//! sophus_rs_runner --version               the pin, one line: the result rows' subject_version
+//! sophus_rs_runner --out DIR FILE.jsonl…   DIR/<id>.jsonl for each FILE whose id is supported
+//! ```
+//!
+//! An answer line is `{"id":N,"out":{"<field>":["<hex float>",…]}}`, `N` the record's `id`, fields
+//! flat in the reference's order (matrices column-major, no `shape`), values as in [`hexfloat`].
+
+mod convert;
+mod hexfloat;
+
+use std::collections::BTreeMap;
+use std::io::Write;
+use std::path::Path;
+use std::process::ExitCode;
+
+use serde_json::{json, Map, Value};
+
+use convert::{answer, supported, Fields};
+
+/// The oracle, as `Cargo.toml` pins it: `sophus_lie`, with the `sophus_autodiff` it is built on.
+const PIN: &str = "sophus_lie@0.15.0";
+
+/// The `in` object of a corpus record: every entry is a hex-float string or an array of them.
+fn inputs(object: &Map<String, Value>) -> Result<Fields, String> {
+    let mut fields = BTreeMap::new();
+    for (key, value) in object {
+        let one = |v: &Value| match v.as_str() {
+            Some(s) => hexfloat::parse(s),
+            None => Err(format!("`{key}`: not a string: {v}")),
+        };
+        let values = match value {
+            Value::Array(items) => items.iter().map(one).collect::<Result<_, _>>()?,
+            v => vec![one(v)?],
+        };
+        fields.insert(key.clone(), values);
+    }
+    Ok(fields)
+}
+
+/// The answer file of `fn_id` for the corpus file `text`: one line per record, in order.
+fn answer_file(fn_id: &str, text: &str) -> Result<String, String> {
+    let mut out = String::with_capacity(text.len() / 2);
+    for (i, line) in text.lines().enumerate() {
+        let at = |e: String| format!("line {}: {e}", i + 1);
+        let record: Value = serde_json::from_str(line).map_err(|e| at(e.to_string()))?;
+        let id = record
+            .get("id")
+            .and_then(Value::as_u64)
+            .ok_or_else(|| at("no `id`".into()))?;
+        let object = record
+            .get("in")
+            .and_then(Value::as_object)
+            .ok_or_else(|| at("no `in` object".into()))?;
+        let given = inputs(object).map_err(at)?;
+        let answered = answer(fn_id, &given)
+            .ok_or_else(|| format!("`{fn_id}` is not supported"))?
+            .map_err(at)?;
+        let out_fields: Map<String, Value> = answered
+            .into_iter()
+            .map(|(k, v)| {
+                (
+                    k,
+                    v.iter()
+                        .map(|&x| Value::from(hexfloat::format(x)))
+                        .collect(),
+                )
+            })
+            .collect();
+        out.push_str(&json!({ "id": id, "out": out_fields }).to_string());
+        out.push('\n');
+    }
+    Ok(out)
+}
+
+fn run(args: &[String], stdout: &mut impl Write, stderr: &mut impl Write) -> Result<(), String> {
+    let io = |e: std::io::Error| e.to_string();
+    match args {
+        [flag] if flag == "--version" => writeln!(stdout, "{PIN}").map_err(io),
+        [flag, dir, files @ ..] if flag == "--out" && !files.is_empty() => {
+            let dir = Path::new(dir);
+            std::fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+            let (mut answered, mut skipped) = (Vec::new(), 0usize);
+            for file in files {
+                let path = Path::new(file);
+                let fn_id = path
+                    .file_stem()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or_default();
+                if !supported().any(|id| id == fn_id) {
+                    skipped += 1;
+                    continue;
+                }
+                let text = std::fs::read_to_string(path).map_err(|e| format!("{file}: {e}"))?;
+                let lines = answer_file(fn_id, &text).map_err(|e| format!("{file}: {e}"))?;
+                let target = dir.join(format!("{fn_id}.jsonl"));
+                std::fs::write(&target, lines).map_err(|e| format!("{}: {e}", target.display()))?;
+                answered.push(fn_id);
+            }
+            writeln!(
+                stderr,
+                "answered {answered:?}; {skipped} files of other ids skipped"
+            )
+            .map_err(io)
+        }
+        _ => Err("usage: sophus_rs_runner --version | --out DIR FILE.jsonl…".into()),
+    }
+}
+
+fn main() -> ExitCode {
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    match run(&args, &mut std::io::stdout(), &mut std::io::stderr()) {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(e) => {
+            // Nothing else to do with a failed write to stderr.
+            let _ = writeln!(std::io::stderr(), "sophus_rs_runner: {e}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const CORPUS: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../conformance/corpus");
+
+    /// A corpus line as the generator writes it, its reference elided to what the runner ignores.
+    const LINE: &str = r#"{"id":0,"in":{"phi":["0x0.0p+0","0x0.0p+0","0x1.921fb54442d18p+0"]},"out":{"q":["1e0"]},"stratum":"s"}"#;
+
+    #[test]
+    fn a_record_is_answered_with_its_id_and_hex_floats() -> Result<(), String> {
+        let out = answer_file("so3_exp", LINE)?;
+        let line: Value = serde_json::from_str(out.trim_end()).map_err(|e| e.to_string())?;
+        assert_eq!(line["id"], 0);
+        let q: Vec<f64> = line["out"]["q"]
+            .as_array()
+            .ok_or("no q")?
+            .iter()
+            .map(|v| hexfloat::parse(v.as_str().unwrap_or_default()))
+            .collect::<Result<_, _>>()?;
+        assert_eq!(q.len(), 4);
+        // The angle is `0x1.921fb54442d18p+0` = 1.5707963267948966, so `q = (√½, 0, 0, √½)`.
+        assert!((q[0] - core::f64::consts::FRAC_1_SQRT_2).abs() < 4e-16 && q[1].to_bits() == 0);
+        assert_eq!(out.matches('\n').count(), 1);
+        Ok(())
+    }
+
+    #[test]
+    fn a_bad_line_or_an_unsupported_id_is_an_error_naming_the_line() {
+        let e = answer_file("so3_exp", &format!("{LINE}\n{{}}\n"))
+            .err()
+            .unwrap_or_default();
+        assert!(e.contains("line 2"), "{e}");
+        let bad = LINE.replace("0x1.921fb54442d18p+0", "1.5");
+        assert!(answer_file("so3_exp", &bad)
+            .err()
+            .unwrap_or_default()
+            .contains("bad hex float"));
+        assert!(answer_file("so3_act", LINE).is_err());
+    }
+
+    /// Every input of every supported corpus file is `float.hex()` to the byte and every record is
+    /// answered, without a panic. A non-finite answer is the harness's to record (§7), not this
+    /// test's to refuse. The corpus is committed, so this reads it as it is.
+    #[test]
+    fn the_whole_supported_corpus_is_answered() -> Result<(), String> {
+        for fn_id in supported() {
+            let path = format!("{CORPUS}/{fn_id}.jsonl");
+            let text = std::fs::read_to_string(&path).map_err(|e| format!("{path}: {e}"))?;
+            for line in text.lines() {
+                let record: Value = serde_json::from_str(line).map_err(|e| e.to_string())?;
+                for value in record["in"].as_object().ok_or("in")?.values() {
+                    for s in value.as_array().ok_or("array")? {
+                        let s = s.as_str().ok_or("string")?;
+                        assert_eq!(hexfloat::format(hexfloat::parse(s)?), s);
+                    }
+                }
+            }
+            let answers = answer_file(fn_id, &text)?;
+            assert_eq!(answers.lines().count(), text.lines().count(), "{fn_id}");
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn the_pin_is_the_version_of_the_manifest_and_of_the_lockfile() -> Result<(), String> {
+        let version = PIN.strip_prefix("sophus_lie@").ok_or("PIN")?;
+        for krate in ["sophus_lie", "sophus_autodiff"] {
+            assert!(include_str!("../Cargo.toml").contains(&format!("{krate} = \"={version}\"")));
+            let locked =
+                format!("name = \"{krate}\"\nversion = \"{version}\"\nsource = \"registry+");
+            assert!(include_str!("../Cargo.lock").contains(&locked), "{krate}");
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn the_command_line_is_version_or_out_with_files() {
+        let (mut out, mut err) = (Vec::new(), Vec::new());
+        let mut go = |args: &[&str]| {
+            let args: Vec<String> = args.iter().map(ToString::to_string).collect();
+            run(&args, &mut out, &mut err)
+        };
+        assert!(go(&["--version"]).is_ok());
+        for bad in [&[][..], &["--out", "d"], &["--nope"], &["x.jsonl"]] {
+            assert!(go(bad).is_err(), "{bad:?}");
+        }
+        assert_eq!(String::from_utf8_lossy(&out), format!("{PIN}\n"));
+    }
+}

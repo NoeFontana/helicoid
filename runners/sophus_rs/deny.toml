@@ -1,0 +1,20 @@
+# `just oracle-sophus-rs` audits the runner with this file, not the root's, so that the one advisory
+# exception below never reaches the workspace's own audit, whose graph has no `paste`.
+
+[advisories]
+version = 2
+yanked = "deny"
+# What it says, why it cannot be fixed, what makes it removable.
+ignore = [
+    { id = "RUSTSEC-2024-0436", reason = "`paste`, a proc-macro of `simba`, is unmaintained. `sophus_lie` 0.15.0 needs nalgebra 0.33, which needs it, and there is no patched release. Removable when the pinned sophus-rs moves to a nalgebra without it." },
+]
+
+[licenses]
+version = 2
+allow = ["MIT", "Apache-2.0", "Unicode-3.0"]
+confidence-threshold = 0.93
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]

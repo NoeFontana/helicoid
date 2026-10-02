@@ -33,8 +33,8 @@
 //!   `precision` column `f32`.
 //! - **`helicoid`** (`crate::shipped`) is a plain subject over the eight `coeff_*` ids at both
 //!   precisions; a plain run of any of them prints its rows beside `seeded:correct`'s.
-//! - **Not implemented**: backward error (`Log` near π, `from_matrix`), the container and sophus-rs
-//!   oracle runners, the envelope, `helicoid` on any other id, and the `Dual` comparison of the
+//! - **Not implemented**: backward error (`Log` near π, `from_matrix`), the container oracle
+//!   runners, the envelope, `helicoid` on any other id, and the `Dual` comparison of the
 //!   planted `Q` defect.
 
 pub(crate) mod corpus;
