@@ -59,6 +59,18 @@ impl<S: Real, const N: usize> SEn3Tangent<S, N> {
     fn comps(self) -> impl Iterator<Item = S> {
         once(self.phi).chain(self.rho).flat_map(|v| v.0)
     }
+
+    /// The tangent whose dense component `i` is `at(i)`, in the order [`comps`](Self::comps) gives.
+    ///
+    /// One body for both arms of [`read_dense`](Tangent::read_dense), so the in-range arm and the
+    /// NaN-poisoning one cannot drift apart in the order they assign.
+    #[inline]
+    fn from_dense_fn(at: impl Fn(usize) -> S) -> Self {
+        Self {
+            phi: Vector(array::from_fn(&at)),
+            rho: array::from_fn(|i| Vector(array::from_fn(|r| at(3 * (i + 1) + r)))),
+        }
+    }
 }
 
 impl<S: Real, const N: usize> Blend<S> for SEn3Tangent<S, N> {
@@ -129,8 +141,24 @@ impl<S: Real, const N: usize> Tangent<S> for SEn3Tangent<S, N> {
     #[inline]
     fn write_dense(&self, out: &mut [S]) {
         debug_assert!(out.len() == Self::DOF, "Tangent::write_dense: wrong length");
-        for (o, v) in out.iter_mut().zip(self.comps()) {
-            *o = v;
+        // Indexed, as `dot_acc` is and for its reason: the order is the one `comps` gives, with no
+        // `Chain`/`FlatMap` state to carry on the path every dense export and every `apply_flat`
+        // column takes. The one `get_mut` bounds the whole arm, which then stores at constant
+        // a slice of length `DOF`, which `copy_from_slice` then fills per block: at `N = 3` that arm
+        // is one `cmp`/`jb` and a `movups`-packed copy in release on x86_64, with no bounds branch
+        // and no `memcpy` call, against twelve scalar stores driven by a `Chain<Once, IntoIter>`
+        // inside a `FlatMap`.
+        // A view longer or shorter than `DOF` keeps what the `zip` did -- the prefix that fits, the
+        // tail untouched -- which `out_of_domain_does_not_panic_in_release` pins.
+        if let Some(d) = out.get_mut(..Self::DOF) {
+            d[..3].copy_from_slice(&self.phi.0);
+            for i in 0..N {
+                d[3 * (i + 1)..3 * (i + 2)].copy_from_slice(&self.rho[i].0);
+            }
+        } else {
+            for (o, v) in out.iter_mut().zip(self.comps()) {
+                *o = v;
+            }
         }
     }
     #[inline]
@@ -139,11 +167,20 @@ impl<S: Real, const N: usize> Tangent<S> for SEn3Tangent<S, N> {
         // A short `src` is out of domain and must not produce a usable tangent: `+0` is a valid
         // component, so it would hand a solver a plausible wrong update, while NaN propagates to
         // whatever the caller computes. D11 forbids the release check that would say so instead.
-        let at = |i: usize| src.get(i).copied().unwrap_or_else(|| S::zero() / S::zero());
-        let block = |b: usize| Vector(array::from_fn(|r| at(3 * b + r)));
-        Self {
-            phi: block(0),
-            rho: array::from_fn(|i| block(i + 1)),
+        //
+        // One length test, not one per component. `ProductJac::sandwich` reaches `read_dense` once
+        // per column and once per row of its `D x D` argument, and again per nesting level, so the
+        // in-range arm reads a slice of length `DOF` at constant indices and carries no per-entry
+        // bound: at `N = 3` it is one `cmp`/`jb` and twelve loads in release on x86_64. The
+        // poisoning arm below is the shape a per-component `get` had on every call -- thirteen
+        // compares and as many selects -- and it is now only reached out of domain. Only the
+        // missing entries are poisoned, which is `0025` decision 4 and what
+        // `out_of_domain_does_not_panic_in_release` pins.
+        match src.get(..Self::DOF) {
+            Some(d) => Self::from_dense_fn(|i| d[i]),
+            None => Self::from_dense_fn(|i| {
+                src.get(i).copied().unwrap_or_else(|| S::zero() / S::zero())
+            }),
         }
     }
 }
