@@ -43,6 +43,8 @@ $\begin{bmatrix}R & [t]_\times R\\ 0 & R\end{bmatrix}$ in Solà et al.
 | $\sigma_m$, $\tau_m$, $\rho_m$, $E_x$, $E_s$, $E_\times$, $s_j$ | on `coefficients.md` (and $\sigma_m$ on `se3.md`, as in the row above), not the tangents, translation tangent or $\mathrm{Exp}$ above: the series families (CO.1), a relative truncation size, the errors of the exact arm, of the series arm and at the crossing, and the coefficient of $z^j$; its symbol note lists the rest |
 | $\mathcal F$, $\mathcal B$, $\mathcal B_M$, $\beta$, $e$, $\underline y$, $\nu_g$, $\zeta$, $\chi$, $\mathsf G$ | on `error-analysis.md` only: forward and backward error in units of $u$ (EA.3), $\mathcal B_M$ the Frobenius residual of `from_matrix`; the residual rotation vector $\mathrm{Log}(X^{-1}\mathrm{Exp}\,\hat\varphi)$ (not `so2-se2.md`'s $\beta$ nor LG.16's singular value) and the tangent error $\hat\varphi - \varphi$ (not `NUMERICS.md` §4's coefficient $e$, which EA.20 also names); the floor of the §11 metric; the accuracy factor of a library function ($\lvert\delta\rvert \le \nu_gu$); $\pi - \theta$; the measured constant of EA.10(c); splitmix64's increment. $\eta = 2\pi - \theta$ there (not `so3.md`'s $\eta$), $\varepsilon$ is a relative perturbation size (not the dual unit $\epsilon_i$), $\lambda$ the azimuth of EA.22 (and $\lambda_{\max}(K)$ of EA.9 is `so3.md`'s eigenvalue), $\hat n$ the axis (a sample of EA.22), $n$ the vector norm $\lVert q_{\mathrm v}\rVert$ or a sample count; label prefix `EA` |
 | $\gamma$, $X(t)$, $\Delta$, $d$, $E_t$, $E$, $E_s$, $\hat q$, $h$, $m$, $o$, $\Theta$, $\nu$, $\Lambda$, $\varkappa$, $\bar m$, $\varpi_t$, $\mu_s$, $M_s$, $\mathbf t$ | on `geodesics.md`, and not the same symbols elsewhere: $\gamma$ and $\nu$ are not `so2-se2.md`'s ($\frac\theta2\cot\frac\theta2$, $\lVert\rho\rVert/2$), $\Lambda$ is not `se3.md`'s $\Lambda_i$ (SE.16), $\mu_s(\theta)$ is not its $\mu = \varphi\times\rho$ (SE.7), $\Delta$ is not `error-analysis.md`'s rotation error, and $E_s = \mathrm{Exp}(s\,\mathrm{Log}\,E)$ (a rotation) is not `coefficients.md`'s error $E_s$ ($E = R_0^\top R_1$ in GE.5, not the $E$ of the row above, which GE.6 uses as $E = E_t$). The geodesic map $\gamma(X_0, X_1, t) = X(t)$, $\Delta = X_0^{-1}X_1$, $d = \mathrm{Log}\,\Delta$, $E_t = \mathrm{Exp}(t\,d)$ and $\alpha = \theta/2$ (as in SO.5); the dual quaternion $\hat q = q_{\mathrm r} + \epsilon q_{\mathrm d}$ (the $\epsilon$ of `NUMERICS.md` §2.2 for one block); the screw's axial displacement $h$ (not a differencing step), its axis point $o$, moment $m = o\times\hat n$, dual angle $\Theta = \theta + \epsilon h$, dual axis $\nu = \hat n + \epsilon m$ and $\Lambda = \tfrac12\Theta\nu$; $\varkappa = q_{\mathrm d,w}/\lVert q_{\mathrm v}\rVert^2$ (the `k` of `screw_pow`, not `NUMERICS.md` §4's $k$), $\bar m = m\sin\alpha$, the slerp weight $\varpi_t = \sin(t\alpha)/\sin\alpha$; $\mu_s(\theta)$, $M_s$ of GE.5; $\mathbf t$ the pose translation in §6–§7 (there $t$ is the parameter), $s$ the parameter in §4 (there $t$ is a translation), and $q_{\mathrm r}, q_{\mathrm d}$ the real and dual parts of $\hat q$ ($q_{\mathrm v}$ the vector part, as on `coefficients.md`); label prefix `GE` |
+| $\mathcal M$, $\mathrm{ret}_X$, $\mathrm{loc}_X$, $\mathrm{rj}_X$, $\mathrm{lj}_X$, $\Phi$, $\Psi_Y$, $\ell(\theta)$, $\Lambda$ | on `charts.md`: a manifold; the `retract` and `local` of the chart frozen at $X$ and their Jacobians `retract_jacobian`, `local_jacobian` (CH.1); the transition between two charts at one base and its first-order value at the retracted point (CH.6); $\ell(\theta) = \lVert(J_l(\varphi) - I)\rho\rVert/\lVert\rho_\perp\rVert$ (CH.7; the $g(z) = (e^z - 1)/z$ of LG.7 is used there too); the LM damping scaling $\Lambda$ (a symmetric positive-definite matrix, with the scalar $\lambda$; not `geodesics.md`'s) |
+| $n$, $m$, $\varsigma$, $\nu$, $H$, $B$, $K$, $s$, $w$, $\alpha$, $E$, $Z$, $A(\delta)$, $T$ | on `charts.md` §5 only, as in `NUMERICS.md` §8: $n$, $m$ unit vectors of $S^2$ (not the tangent dimension); $\varsigma = \mathrm{sgn}(n_z)$; $\nu$ the Householder vector and $H$ the Householder matrix (not `geodesics.md`'s dual axis and group element); $B = [b_1\ b_2]$; $K$ the quarter turn of `so2-se2.md`; $s = \lVert n\times m\rVert$ (not $s(\theta)$), $w = n\cdot m$ (not the quaternion's), $\alpha$ the angle between them; $E = \mathrm{Exp}(B\delta)$ (or the minimal rotation $E_{nm}$); $Z$ the frame change between the bases at $n$ and at $m$; $A(\delta) = \frac{\sin\theta}\theta I + b\,\delta\delta^\top$ (not a dual-block matrix); $T$ the frame jump at $n_z = 0$; label prefix `CH` |
 | $O(\lVert\delta\rVert^2)$ | remainder bounded by $C\lVert\delta\rVert^2$ as $\delta \to 0$, $C$ locally uniform in the base point |
 
 ## Labels and the `Checked:` line
@@ -50,7 +52,7 @@ $\begin{bmatrix}R & [t]_\times R\\ 0 & R\end{bmatrix}$ in Solà et al.
 - A statement is labelled `<page>.<n>` (`LG` for [`lie-groups.md`](./lie-groups.md), `SO` for
   [`so3.md`](./so3.md), `CO` for [`coefficients.md`](./coefficients.md), `SE` for
   [`se3.md`](./se3.md), `PL` (planar) for [`so2-se2.md`](./so2-se2.md), `EA` (error analysis) for
-  [`error-analysis.md`](./error-analysis.md), `GE` (geodesics) for [`geodesics.md`](./geodesics.md)), numbered in order of appearance. Labels are stable:
+  [`error-analysis.md`](./error-analysis.md), `GE` (geodesics) for [`geodesics.md`](./geodesics.md), `CH` (charts) for [`charts.md`](./charts.md)), numbered in order of appearance. Labels are stable:
   later results are appended, never renumbered, so other pages and PR descriptions can cite them.
 - Each result states its domain and carries a proof, or says which step is only outlined.
 - Each proposition ends with one **Checked:** line: what was run, at which precision, over which
@@ -68,9 +70,9 @@ $\begin{bmatrix}R & [t]_\times R\\ 0 & R\end{bmatrix}$ in Solà et al.
   1.4.1, `so3.md` and `coefficients.md` at 1.3.0 (the latter with sympy 1.14.0 for the exact
   rational series), `se3.md` at 1.4.1 (sympy 1.14.0, run with mpmath 1.3.0, for its exact
   identities), `so2-se2.md` at 1.3.0 (sympy 1.14.0), `error-analysis.md` at 1.3.0 (numpy 2.5.3; the
-  `libm` 0.2.16 crate; wasmtime 49.0.0 for its wasm32 run), `geodesics.md` at 1.3.0 (sympy 1.14.0). It is not a pin, and no claim on these
+  `libm` 0.2.16 crate; wasmtime 49.0.0 for its wasm32 run), `geodesics.md` at 1.3.0 (sympy 1.14.0), `charts.md` at 1.3.0 (sympy 1.14.0 for its exact identities; numpy 2.5.3 for its `f64` rows). It is not a pin, and no claim on these
   pages depends on it; the claims about mpmath's own behaviour (`mp.logm` of an $\mathrm{SO}(3)$, an
-  $\mathrm{SE}_N(3)$ (an $\mathrm{SE}(3)$ one again in GE.13) and an $\mathrm{SE}(2)$ matrix, below) were checked on both 1.3.0 and 1.4.1.
+  $\mathrm{SE}_N(3)$ (an $\mathrm{SE}(3)$ one again in GE.13, an $\mathrm{SO}(3)$ minimal rotation in CH.9) and an $\mathrm{SE}(2)$ matrix, below) were checked on both 1.3.0 and 1.4.1.
 - A wrong variant is characterised by its exact gap to the right formula (`lie-groups.md` §6),
   never by a sampled minimum: every wrong variant tends to the right one as the tangent tends to
   $0$, so a sampled minimum measures the sampler.
@@ -86,9 +88,10 @@ $\begin{bmatrix}R & [t]_\times R\\ 0 & R\end{bmatrix}$ in Solà et al.
 | [`so2-se2.md`](./so2-se2.md) | §1 (SE(2) tangent), §2.3 (its rows, instantiated), §2.4 (SO(2), SE(2) action rows: proposed), §4 ($a, b, c$ and $\alpha, \beta$: series, singularities), §6, §12, §14 (missing SE(2) rows) | `SO2::{exp, log, adjoint, ad, jr, jl, jr_inv, jl_inv, act_jacobians}`, `SE2::{exp, log, adjoint, ad, jr, jl, jr_inv, jl_inv, act_jacobians}`, `coeffs::se2_coeffs` |
 | [`error-analysis.md`](./error-analysis.md) | §2.1 ($u$), §3.2, §11 (the metric, its floors, the conditioning of `Log`, `from_matrix`, $J^{-1}$), §12 ($J^{-1}$ near $2\pi$, `Exp` at large $\theta$), D8, D16; `PHASE1.md` §2, §4.3, §4.4, §5, §8; `PHASE2.md` §3, §8 | `Dual<S, N>`, `Real::{select, branch}`, `xtask::conformance` metrics, `xtask envelope`, `conformance/generate` (splitmix64, stratum sampling, the precision budget) |
 | [`geodesics.md`](./geodesics.md) | §10 (all), §12 (`geodesic`), §14 (the `SE3::geodesic` and `geodesic_jacobians` rows); `PHASE4.md` §1–§3 | `LieGroup::{geodesic, geodesic_jacobians, geodesic_velocity}`, `reference::geodesic`, `SE3::geodesic` (fast twin), `SO3::geodesic`, `Product` (provided methods), `Side` |
+| [`charts.md`](./charts.md) | §1, §2.3 (the rows the group charts use), §4 ($b$, $r$), §5.3 ($Q$), §8 (all), §12 (`S2Chart::local`), §14 (its twin); `PHASE5.md` §1–§2; `0012` | `Chart::{at, base, retract, local, retract_jacobian, local_jacobian}`, `RightChart<G>`, `LeftChart<G>`, `Screw`, `Decoupled`, `WorldTranslation`, `ProductJac`, `S2`, `S2Chart` |
 
 Not derived yet, so `NUMERICS.md` alone states them: every section outside the Map rows, notably
-§7–§9 (of these only $\Gamma_m$'s coefficients are placed, CO.4(d)); §10 is placed by `geodesics.md` (GE.1–GE.14); §11 is placed by `error-analysis.md`
+§7 and §9 (of these only $\Gamma_m$'s coefficients are placed, CO.4(d)); §8 is placed by `charts.md` (CH.8–CH.11), §10 by `geodesics.md` (GE.1–GE.14); §11 is placed by `error-analysis.md`
 (EA.3–EA.13) and LG.16 (the conditioning of the exact $J$ and $\mathrm{Ad}$). The switch points and
 series lengths of §4 are generated (0004), not derived: `coefficients.md` derives the magnitudes to check
 them against (CO.10).
@@ -102,7 +105,7 @@ below, are collected for decision, with a recommendation each, in the draft reco
 - `NUMERICS.md` §12 has no row for the Jacobians of `rminus`, `lminus` and `Log`
   (`rminus_jacobians`, `lminus_jacobians`), which exist only for $\theta(X) < \pi$ (LG.2(c),
   LG.14). `API.md` R6 asks every restricted-domain function to name its §12 entry. Adding the row
-  is a `NUMERICS.md` edit and needs a record: it is gap NU.9 of the draft `0015`.
+  is a `NUMERICS.md` edit and needs a record: it is gap NU.9 of the draft `0015`. The `local_jacobian` of a group chart is that Jacobian (CH.3), `S2Chart`'s is defined for $m \ne -n$ only (CH.10); `retract_jacobian` is a formula defined for every $\delta$, invertible on $U_0 = \{\theta < \pi\}$ (CH.2(b); `S2Chart`'s is singular at $\theta = \pi$, CH.10(a)).
 - `NUMERICS.md` §3.2: the flip is "implemented as `copysign`", yet "at $w = +0$ nothing flips" and
   "$q$ and $-q$ return $\pm\pi\hat n$". A sign-bit `copysign` flips at $w = -0$ (`copysign(1, -0.0) = -1`;
   `w < 0` does not), so $q = (+0, u)$ and $-q = (-0, -u)$ both return $+\pi\hat n$; only the `w < 0`
@@ -168,7 +171,7 @@ below, are collected for decision, with a recommendation each, in the draft reco
   safe argument, but the series is in $s = n^2/w^2$ and valid for $w > 0$ only; its division by
   $w^2$ is non-finite at $w = 0$ (0003 item 3: "no arm is ever non-finite"), and §8's
   `S2Chart::local` has $w = n\cdot m$ of either sign, where the series returns $-2$ for $2\pi/n$
-  ($n^2 = 10^{-6}$, $w = -1$) (CO.16). §8's "$\alpha/\lVert n \times m\rVert$ is §4's $r$" is $r/2$.
+  ($n^2 = 10^{-6}$, $w = -1$) (CO.16). §8's "$\alpha/\lVert n \times m\rVert$ is §4's $r$" is $r/2$ (CH.9(c): it equals $r(\lVert n \times m\rVert^2, 1 + n\cdot m)$ exactly, a non-negative second argument).
 - `NUMERICS.md` §12 has no row for the domain of `Exp` (and the other coefficient users), while
   `PHASE2.md` §2 promises a finite result for finite in-domain input: $\theta^2$ overflows for
   $\lVert\varphi\rVert > 1.3\times10^{154}$ (`f64`), $1.8\times10^{19}$ (`f32`) and the exact arm
@@ -269,6 +272,18 @@ below, are collected for decision, with a recommendation each, in the draft reco
   pick geodesics $O(1)$ apart (GE.13(d)): it needs a margin, or one shared flip predicate. Its "1e-14" cannot be an absolute bound at
   $\lVert t_0\rVert \sim 10^4$, where the spacing of `f64` is $1.8\times10^{-12}$; `NUMERICS.md` §11's translation floor is the scale to use
   (the exact arm errs by $\le 5.4u$ on that scale given $\hat q_\Delta$, GE.13(a); forming $\Delta$ is not in that figure).
+- `PHASE5.md` §1.3 (and `0012`, Context) say the three SE(3) charts "agree to first order at $\delta = 0$ and differ at second order". `Screw` and `Decoupled` do (equal
+  $\mathrm D\,\mathrm{ret}(0)$; the gap $R(J_l(\varphi) - I)\rho$, of norm $\ell(\theta)\lVert\rho_\perp\rVert \le \frac\theta2\lVert\rho\rVert$, CH.5(c), CH.7). `WorldTranslation` does not, unless $R = I$: its $\rho$ is the
+  world-frame translation, $\mathrm D\Phi^{\mathrm{Dec}\to\mathrm{WT}}(0) = \mathrm{diag}(I, R)$, so for the same $\delta$ the retracted translations differ at first order ($1.13\lVert\delta\rVert$ at $\theta(R) = 1.2$,
+  $\delta = [0; 10^{-8}, 0, 0]$, i.e. $2\sin\frac{\theta(R)}2\lVert\rho\rVert$). What is true: it agrees with `Decoupled` exactly after the linear map $\mathrm{diag}(I, R)$ on the translation tangent (CH.4(b)). An LM with
+  identity damping then takes the same step in both; a diagonally scaled one does not (CH.7(b)).
+- `NUMERICS.md` §8 says $\mathrm{sgn}(0) = +1$, `PHASE5.md` §2 has a stratum "$n_z = \pm0$". For $n_z = -0.0$ the reading `n_z >= 0` gives $\varsigma = +1$ and `copysign(1, n_z)` gives $-1$; both bases are valid and differ by the
+  reflection $T$ of CH.11(a) ($\lVert B_+ - B_-\rVert_F = 2$), so `s2_retract` and `s2_local` at that stratum differ by $O(1)$ between the readings. §8 should say which.
+- `PHASE5.md` §2 gives the reference of `s2_local` as the minimal rotation "via `mp.expm`/`mp.logm`". Like `so3_log` above, `mp.logm` of it is complex and non-principal from $\alpha \approx 3.03$ ($20$ of $20$ samples per angle at
+  $3.03, 3.04, 3.05, 3.1, 3.14$; exact at $3.02$; 50 digits, mpmath 1.3.0 and 1.4.1; CH.9), so the `s2:near-antipode` stratum needs a reference that does not use `mp.logm` (the geometric $\mathrm{SO}(3)$ inverse of CH.9's definition agrees with
+  the closed form to $2.6\times10^{-104}$).
+- `NUMERICS.md` §12 has no row for the unit-norm domain of `S2` (`n`, and `m` in `local`), while the quaternion has one (`from_wxyz_unchecked`, $2^{-40}$ in `f64`); §8 and `PHASE5.md` §2 do not say whether `S2` renormalises. With $\lVert n\rVert = 1 + \varepsilon$
+  the basis of `Chart::at` keeps $B^\top B = I$ but has $B^\top n = O(\varepsilon)$ (the $H$ form), or loses both by $2\varepsilon$ (the closed form of CH.8(d), which spends $\nu^\top\nu = 2(1 + \lvert n_z\rvert)$) (CH.8(e)). A tolerance, or a renormalisation, is a `NUMERICS.md` §8, §12 edit and needs a record.
 
 ## References
 
@@ -294,5 +309,6 @@ below, are collected for decision, with a recommendation each, in the draft reco
   OOPSLA 2014. **[Vigna]** S. Vigna, `splitmix64.c`, public domain,
   https://prng.di.unimi.it/splitmix64.c (the reference outputs of EA.23).
 - **[Milnor]** J. Milnor, "Curvatures of left invariant metrics on Lie groups", Adv. Math. 21, 1976 (bi-invariant metrics; the geodesics of $\mathrm{SO}(3)$). **[Arnold]** V. I. Arnold, "Sur la géométrie différentielle des groupes de Lie de dimension infinie et ses applications à l'hydrodynamique des fluides parfaits", Ann. Inst. Fourier 16, 1966 (the Euler–Poincaré equation of a left-invariant metric). **[Kavan]** L. Kavan, S. Collins, C. O'Sullivan, J. Žára, "Dual quaternions for rigid transformation blending", TCD-CS-2006-46, 2006 (the screw parameters of a dual quaternion; ScLERP).
+- **[MilnorHB]** J. Milnor, "Analytic proofs of the 'hairy ball theorem' and the Brouwer fixed point theorem", Amer. Math. Monthly 85(7), 1978 (no continuous unit tangent field on $S^2$; CH.11(b)).
 - **[mpmath]** F. Johansson et al., *mpmath: a Python library for arbitrary-precision
   floating-point arithmetic* (the checking tool; version stated in each `Checked:` line).

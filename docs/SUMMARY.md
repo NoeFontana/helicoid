@@ -18,6 +18,7 @@
 - [SO(2) and SE(2): Exp, Log, adjoints, the rotation-first Jacobians](maths/so2-se2.md)
 - [Error analysis, conditioning, forward-mode AD, the reference corpus](maths/error-analysis.md)
 - [Geodesics: invariance, Jacobians, the dual-quaternion power](maths/geodesics.md)
+- [Charts: retractions, the SE(3) charts, S²](maths/charts.md)
 
 # Specifications
 - [Phase 1: skeleton and the instrument](PHASE1.md)
