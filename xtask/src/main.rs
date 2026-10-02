@@ -3,29 +3,32 @@
 
 #![allow(clippy::print_stderr)]
 
+mod conformance;
 mod lint;
 
 use std::process::ExitCode;
 
 /// Every implemented task; the usage line and the unknown-task error read this list.
-const TASKS: &[&str] = &["lint"];
+const TASKS: &[&str] = &["lint", "conformance"];
 
 fn main() -> ExitCode {
-    let task = std::env::args().nth(1);
-    if dispatch(task.as_deref(), lint::run) {
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    if dispatch(&args, lint::run, conformance::run) {
         ExitCode::SUCCESS
     } else {
         ExitCode::FAILURE
     }
 }
 
-/// Runs `task`, reporting on stderr; `true` only when it ran and found nothing to complain about.
-/// `lint` is injected so the exit policy tests without touching the disk.
+/// Runs the task named by `args[0]` with the rest as its arguments, reporting on stderr; `true`
+/// only when it ran and found nothing to complain about. The tasks are injected so the exit policy
+/// tests without touching the disk.
 fn dispatch(
-    task: Option<&str>,
+    args: &[String],
     lint: impl FnOnce() -> Result<Vec<lint::Violation>, String>,
+    conformance: impl FnOnce(&[String]) -> Result<(), String>,
 ) -> bool {
-    match task {
+    match args.first().map(String::as_str) {
         Some("lint") => match lint() {
             Ok(violations) if violations.is_empty() => true,
             Ok(violations) => {
@@ -37,6 +40,13 @@ fn dispatch(
             }
             Err(e) => {
                 eprintln!("xtask lint: {e}");
+                false
+            }
+        },
+        Some("conformance") => match conformance(&args[1..]) {
+            Ok(()) => true,
+            Err(e) => {
+                eprintln!("xtask conformance: {e}");
                 false
             }
         },
@@ -58,10 +68,39 @@ mod tests {
     #[test]
     fn exit_policy() {
         let violation = || lint::Violation::new("a.md", 1, "bad");
-        assert!(dispatch(Some("lint"), || Ok(vec![])));
-        assert!(!dispatch(Some("lint"), || Ok(vec![violation()])));
-        assert!(!dispatch(Some("lint"), || Err("boom".into())));
-        assert!(!dispatch(Some("nope"), || Ok(vec![])));
-        assert!(!dispatch(None, || Ok(vec![])));
+        let run = |args: &[&str],
+                   lint: Result<Vec<lint::Violation>, String>,
+                   conf: Result<(), String>| {
+            let args: Vec<String> = args.iter().map(ToString::to_string).collect();
+            dispatch(&args, || lint, |_| conf)
+        };
+        assert!(run(&["lint"], Ok(vec![]), Ok(())));
+        assert!(!run(&["lint"], Ok(vec![violation()]), Ok(())));
+        assert!(!run(&["lint"], Err("boom".into()), Ok(())));
+        assert!(!run(&["nope"], Ok(vec![]), Ok(())));
+        assert!(!run(&[], Ok(vec![]), Ok(())));
+        assert!(run(
+            &["conformance", "--fn", "x"],
+            Err("unused".into()),
+            Ok(())
+        ));
+        assert!(!run(&["conformance"], Ok(vec![]), Err("nonfinite".into())));
+    }
+
+    #[test]
+    fn conformance_receives_the_arguments_after_its_name() {
+        let args: Vec<String> = ["conformance", "--fn", "so2_exp"]
+            .map(String::from)
+            .to_vec();
+        let seen = std::cell::RefCell::new(Vec::new());
+        let ok = dispatch(
+            &args,
+            || Ok(vec![]),
+            |rest| {
+                seen.borrow_mut().extend(rest.iter().cloned());
+                Ok(())
+            },
+        );
+        assert!(ok && *seen.borrow() == ["--fn", "so2_exp"]);
     }
 }

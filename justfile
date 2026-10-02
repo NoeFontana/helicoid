@@ -60,6 +60,12 @@ wasm:
     cargo build --target wasm32-wasip1 -p helicoid-linalg -p helicoid --locked
     cargo build --target wasm32-wasip1 -p helicoid-linalg --features mint --locked
 
+# In-process subjects over the corpus: forward error per (fn, stratum) into conformance/results/,
+# the table by max_u descending; fails on any non-finite output and when nothing was scored.
+# Arguments: --subject NAME, --fn ID.
+conformance *args:
+    cargo xtask conformance {{args}}
+
 # Regenerate the mpmath corpus into conformance/corpus (`docs/PHASE1.md` §4; needs `uv`).
 corpus:
     cd conformance/generate && uv run --frozen python -m gen all --out ../corpus

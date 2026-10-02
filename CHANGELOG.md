@@ -202,6 +202,19 @@ defined by the status tables in `docs/`; they win over this file.
   `productjac_sandwich_matches_reference`. Tested by the generic laws on `Product<Rn<3>, Rn<2>>`,
   `Product<Rn<2>, Heis>`, `Product<Heis, Rn<2>>` and a nested product with two Heisenberg factors
   (test-only, the one non-abelian factor until SO(3)). New public API, nothing breaks.
+- `cargo xtask conformance [--subject NAME] [--fn ID]` (`just conformance`), the harness core of
+  `docs/PHASE1.md` §5: the corpus reader, the `Subject` trait with an empty in-process registry, the
+  forward error of `NUMERICS.md` §11 in units of `u = 2⁻⁵³` formed exactly in integers and rounded
+  once (the 30-digit reference is never parsed to `f64`), per `(fn, stratum, precision, subject)`
+  `n`, `max_u`, `p99_u` (nearest rank), `argmax_id` and `nonfinite`, written to
+  `conformance/results/<subject>.csv` and printed by `max_u` descending. A non-finite output, an
+  error that overflows binary64 and a run that scored nothing (the registry is empty, so today's
+  run) fail; `so3_from_matrix` is checked for shape and finiteness only. The floor of a tangent or a
+  coefficient (`2⁻¹⁰²²`), the SE_N(3) tangent's sign, the maximum over a record's fields, one norm
+  over a whole tangent and overflow as non-finite are readings recorded in `xtask/src/conformance/`
+  and proposed by draft record 0014. Backward error, `f32` (refused), `--self-test` and the
+  `helicoid` and seeded subjects are not implemented. `xtask` gains `num-bigint` and
+  `helicoid-linalg`; no library code changes; breaks nothing.
 
 ### Changed
 
