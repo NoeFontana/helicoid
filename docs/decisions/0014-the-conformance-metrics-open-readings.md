@@ -194,3 +194,14 @@ None until the open questions are resolved.
     26.7 `u`), both interior to the grid. Is this the reading: the division against the
     division-free mask, `s` against `n/w` or `θ` as the grid's variable, the seed, the prior, and
     the domain that leaves `w ≤ 0` unmeasured until a stratum exists?
+30. **One maximum against per-stratum bars.** `PHASE1.md` §6 scores a sweep candidate by one
+    maximum over all strata; §8 and D8/D15 compare per function, per stratum, on the max. They
+    disagree where a candidate is best on the maximum and not on a stratum. Measured: `cos θ/2`'s
+    objective is set by `theta:1e0`, where both arms are one expression, so the tie goes to two
+    terms below `θ = 7.5e-8` (`z < 2.6e-6` at `f32`), and the exact arm above costs 1.4 to 1.9 `u`
+    where the D12 series costs 0.85 to 1.7, on nine strata (`theta:1e-3`…`1e-8` at `f64`,
+    `theta:1e-2`, `theta:1e-3`, `theta:dense` at `f32`). An oracle that behaves like that series
+    would dominate `helicoid` there. Is the objective per stratum (a candidate must not lose to the
+    prior on any stratum), or one maximum with the tie broken toward more terms, or is the
+    measured result kept and the stratum bar of §8 the one to relax? Nothing is decided; the
+    subject reports it and a test pins it.

@@ -22,6 +22,15 @@ defined by the status tables in `docs/`; they win over this file.
   no code change.
 - Tests pinning today's `Dual` derivative at a zero `sqrt` argument: `Vector<Dual>::norm` of the
   zero vector, and `chol` on a zero or a negative pivot.
+- The `helicoid` conformance subject (`docs/PHASE1.md` §5, `xtask/src/shipped.rs`): the shipped
+  groups of `helicoid::coeffs` through `__sweep`, over the eight `coeff_*` ids at `f64` and `f32`,
+  `value` and `d_branch` on `Dual<S, 1>`, registered as a plain subject, so `just conformance`
+  prints and writes its per-`(fn, stratum, precision)` rows beside `seeded:correct`'s. It equals
+  `seeded:correct` bit for bit on every record (the two share every candidate) and scores finite
+  everywhere; a four-terms-below-`z = 0.01` prior (D12 for `a`, `b`, `c`; not D12's for `r`, `k`,
+  `d`, `e`, `cos θ/2`: 0014 (draft) questions 10, 29) has a smaller maximum on nine `cos θ/2`
+  strata, pinned by a test and raised as 0014 question 30. No baseline, no envelope. Tooling
+  only; nothing breaks.
 - The coefficient kernel (`docs/PHASE3.md` §3, `0004`): `helicoid::coeffs`, `pub(crate)`, with the
   groups `exp_coeffs`, `jr_coeffs`, `jr_inv_coeff`, `q_coeffs` and `log_ratio`, each one `S::branch`
   on "every member is on its series arm", off which the group's exact arms run once, at the safe

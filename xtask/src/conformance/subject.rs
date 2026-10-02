@@ -55,8 +55,10 @@ impl Registered {
     }
 }
 
-/// The in-process subjects: the seeded kernels and defects (`crate::seeded`); `helicoid` arrives
-/// with Phase 3. The harness's own oracles are test subjects and never rows a bar reads.
+/// The in-process subjects: `helicoid` (`crate::shipped`) and the seeded kernels and defects
+/// (`crate::seeded`). The harness's own oracles are test subjects and never rows a bar reads.
 pub(crate) fn registry() -> Vec<Registered> {
-    crate::seeded::registry()
+    let mut all = vec![crate::shipped::registered()];
+    all.extend(crate::seeded::registry());
+    all
 }
