@@ -7,8 +7,45 @@ defined by the status tables in `docs/`; they win over this file.
 
 ## [Unreleased]
 
+### Changed
+
+- `solve_cubic` internals, every one bit-identical (`bits_are_omnisacs` and the planted-root suite
+  are unmoved): `pi` is a per-precision literal rather than `atan2(+0, -1)`, which was a `libm` call
+  for a compile-time constant that no workspace LTO could fold — `eig3` paid it per call too; `tol`
+  takes its exponent as a const parameter and evaluates `pow2` in a `const` block, so the thresholds
+  are literals and `pow2`'s stated domain is a compile error rather than a silently wrong float;
+  `pow2`, `tol`, `max`, `pi` and `acos` gain `#[inline]`; the three-root arm hoists `theta / 3`,
+  `2 pi / 3` and `2 r` out of its per-phase closure; `term_q` loses an `abs` it cannot need and
+  `a.abs()` is bound once.
+- The single-and-double-root arm's unreachability is now an executable claim: a `debug_assert!` that
+  `repeated` implies `triple`, exercised by the random-bit-pattern and planted-root proptests. It is
+  reachable only if the leading-coefficient floor is lowered, which `0031` (draft) L3 recommends, so
+  the assert fires before the arm silently starts answering.
+- `pi_and_acos_are_within_their_ulps` keeps the `atan2` twin (D6): the literal is asserted bit-equal
+  to `0.0.atan2(-1.0)` at both precisions, so the evidence that justified the swap does not vanish
+  into the swap.
+- `dual_tests`' `ulps`/`ulps32` and their assertion wrappers come from one `macro_rules!` per width,
+  so a change to the total-order key cannot reach one precision and miss the other.
+- `eig3`'s three private helpers gain `#[inline]`, the convention the rest of the crate keeps; it
+  also picks up `pi` as a literal, which it was paying as a `libm::atan2` per call.
+
 ### Added
 
+- `docs/decisions/0022` (**ready**, retitled *`Real` owes `acos` and `cos`*): the private
+  `atan2(sqrt((1 - x)(1 + x)), x)` costs 2.61x `libm::acos` (11.42 ns against 4.37) and is
+  marginally *less* accurate everywhere measured, the near-`±1` region it was chosen for included
+  (1.28 u against 0.92 as `x -> 1`), and it forfeits bit-identity with omnisac in the trigonometric
+  arm. `solve_cubic` and `eig3` are both callers — `eig3`'s own PR amended this record to say so —
+  so "public surface for one caller" does not hold. `Real::cos` saves a further 26% per call over a
+  `sin_cos` whose sine is discarded. `pi` as a literal has landed; the two methods are step 1.
+- `docs/decisions/0031` (draft): the four numerical limits the cubic port inherits from omnisac,
+  each measured, with a recommended order. The one-real-root cancellation first — `x^3 + p x - 1` at
+  `p = 1e-5` returns exactly `1.0` for a root of `0.999996666666666679`, a relative error of 3.33e-6,
+  which the `u v = -p/3` pairing takes to 3.42e-17 and which also removes a `-inf` `Dual` derivative
+  at a simple root; it dominates on the max (4.67e-10 to 2.63e-12 over 16 010 random one-root
+  cubics) but is *not* uniformly better per row. Then the underflow that reports three valid slots
+  for a one-root cubic, the leading floor that rejects `(x - 100)(x - 101)(x + 99)` at `f32`, the
+  discriminant band measured against the wrong quantity, and the `1/a` reciprocal. Nothing decided.
 - `docs/decisions/0028` (draft): `SEn3Jac`'s `diag`/`col` are `pub` in `PHASE3.md` §5 and private
   under `0025` decision 5, and `ProductJac` took the other reading; three options, their costs, and a
   recommendation (narrow, the reversible direction). Nothing decided, no code change.
@@ -410,13 +447,13 @@ defined by the status tables in `docs/`; they win over this file.
   to `2^-40` (8192 `u`, from 9007 `u`) at `f64`, `2^-17` and `2^-11` at `f32`, the nearest
   power-of-two multiples of `u` (a polynomial whose leading coefficient or discriminant lies in the
   thin strip between old and new changes its root count); `acos` as `atan2(sqrt((1 - x)(1 + x)),
-  x)`, within 2 ulp of `libm::acos`, and `pi` as `atan2(+0, -1)`, a reading proposed by `0022`
-  (draft): the roots of the trigonometric arm move by up to about 11 `u` of the largest root, an
-  observed maximum and not a bound. Everything else agrees to the bit with omnisac (on `libm`) on
+  x)`, within 2 ulp of `libm::acos`, and `pi` as `atan2(+0, -1)` — a reading `0022` has since
+  reversed, and `pi` is already a literal: the roots of the trigonometric arm move by up to about
+  11 `u` of the largest root, an observed maximum and not a bound, which `0022` step 1 removes. Everything else agrees to the bit with omnisac (on `libm`) on
   10^6 random and adversarial polynomials per seed (a scratch differential, not committed; `GOLDEN`
   in the tests is 36 of its rows). Tested against omnisac's cases, an mpmath fixture, planted roots
   against a measured error model, the slot order, the `Dual` derivative, two lanes and the mask.
-  Limits it inherits, in the rustdoc `# Domain` and `0022` (draft), fixed by none of this: the
+  Limits it inherits, in the rustdoc `# Domain` and `0031` (draft), fixed by none of this: the
   one-real-root arm is not backward stable (`x^3 + p x - 1` is off by `4e-6` at `p` near `1e-5`,
   `f64`, and its `Dual` derivative is `-inf` below `p = 1.3e-5`); a repeated root can be dropped
   where `p` and `q` cancel; a cubic with one real root can read as three where `p^3` and `q^2`

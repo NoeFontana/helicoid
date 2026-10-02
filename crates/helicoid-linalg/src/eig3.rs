@@ -15,6 +15,7 @@ use crate::vector::{Vec3, Vector};
 /// The unit vector along `v`, or `fallback` where `v` is zero or has an entry that is not finite.
 /// `v` is divided by its largest entry first, so no square under- or overflows and the result has
 /// unit length at every magnitude.
+#[inline]
 fn unit_or<S: Real>(v: Vec3<S>, fallback: Vec3<S>) -> Vec3<S> {
     let [x, y, z] = v.0.map(Real::abs);
     let big = S::select(x.lt(y), y, x);
@@ -32,6 +33,7 @@ fn unit_or<S: Real>(v: Vec3<S>, fallback: Vec3<S>) -> Vec3<S> {
 
 /// A unit vector orthogonal to the unit vector `v`: `v x e`, `e` the axis of its smallest
 /// component, so `|v x e|^2 = 1 - v_e^2 >= 2/3`. The first axis on a tie.
+#[inline]
 fn any_orthogonal<S: Real>(v: Vec3<S>) -> Vec3<S> {
     let [x, y, z] = v.0.map(Real::abs);
     let (zero, one) = (S::zero(), S::one());
@@ -50,6 +52,7 @@ fn any_orthogonal<S: Real>(v: Vec3<S>) -> Vec3<S> {
 /// The longest cross product of two rows of `A - lambda I`; `m` is `[xx, yy, zz, xy, xz, yz]`. For
 /// a simple eigenvalue `lambda` the rows span a plane, and the cross product of two of them is an
 /// eigenvector.
+#[inline]
 fn null_vec<S: Real>(m: [S; 6], lambda: S) -> Vec3<S> {
     let [xx, yy, zz, xy, xz, yz] = m;
     let r0 = Vector([xx - lambda, xy, xz]);

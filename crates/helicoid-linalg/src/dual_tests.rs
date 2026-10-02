@@ -128,25 +128,38 @@ fn arithmetic_rules_are_exact_on_dyadic_inputs() {
     assert_eq!(flat((x * x + y * y).sqrt()), want([5.0, 0.6, 0.8]));
 }
 
-/// The distance in representable doubles.
-fn ulps(a: f64, b: f64) -> u64 {
-    let key = |x: f64| {
-        let bits = x.to_bits();
-        if bits >> 63 == 1 {
-            !bits
-        } else {
-            bits | (1 << 63)
+/// The distance in representable values, and the assertion over it, once per width.
+///
+/// Both precisions share one total-order key (negatives inverted, non-negatives sign-bit set) so
+/// that a change to how it treats signed zeros cannot reach one and miss the other.
+macro_rules! ulps_for {
+    ($ulps:ident, $near:ident, $f:ty, $u:ty, $sign:expr) => {
+        /// The distance in representable `
+        #[doc = stringify!($f)]
+        /// `s.
+        fn $ulps(a: $f, b: $f) -> u64 {
+            let key = |x: $f| {
+                let bits = x.to_bits();
+                if bits >> $sign == 1 {
+                    !bits
+                } else {
+                    bits | (1 << $sign)
+                }
+            };
+            u64::from(key(a).abs_diff(key(b)))
+        }
+
+        fn $near(got: $f, want: $f, max_ulps: u64, what: core::fmt::Arguments<'_>) {
+            assert!(
+                $ulps(got, want) <= max_ulps,
+                "{what}: got {got:e}, want {want:e}"
+            );
         }
     };
-    key(a).abs_diff(key(b))
 }
 
-fn near(got: f64, want: f64, max_ulps: u64, what: core::fmt::Arguments<'_>) {
-    assert!(
-        ulps(got, want) <= max_ulps,
-        "{what}: got {got:e}, want {want:e}"
-    );
-}
+ulps_for!(ulps, near, f64, u64, 63);
+ulps_for!(ulps32, near32, f32, u32, 31);
 
 // The reference values below are `mp.diff` (central, step 2^-50 times the input scale) of
 // `mp.sqrt`, `mp.sin`/`mp.cos`, `mp.atan2` and the quotient and product at 80 digits from exact
@@ -392,19 +405,6 @@ const CBRT32: [(f32, f32, f32); 13] = [
     (-0.3_f32, -0.66943294_f32, 0.74381435_f32),
 ];
 
-/// `ulps` for `f32`.
-fn ulps32(a: f32, b: f32) -> u64 {
-    let key = |x: f32| {
-        let bits = x.to_bits();
-        if bits >> 31 == 1 {
-            !bits
-        } else {
-            bits | (1 << 31)
-        }
-    };
-    u64::from(key(a).abs_diff(key(b)))
-}
-
 // The bounds, 1 ulp on the value and 2 on every derivative, are those of these rows, not of the
 // rule. Over these rows the value is 0 (`libm::cbrt` is correctly rounded, `cbrtf` agrees here),
 // the derivative `d / (3 c^2)` at most 2, the second derivative and the Hessian entries at most 2.
@@ -422,9 +422,8 @@ fn dual_cbrt_matches_mpmath_derivative() {
     for (x, c, want) in CBRT32 {
         let r = Dual::<f32, 1>::variable(x, 0).cbrt();
         assert_eq!(r.v.to_bits(), libm::cbrtf(x).to_bits());
-        assert!(ulps32(r.v, c) <= 1, "f32 cbrt at {x:e}: {:e} vs {c:e}", r.v);
-        let d = ulps32(r.d[0], want);
-        assert!(d <= 2, "f32 cbrt' at {x:e}: {:e} vs {want:e}", r.d[0]);
+        near32(r.v, c, 1, format_args!("f32 cbrt at {x:e}"));
+        near32(r.d[0], want, 2, format_args!("f32 cbrt' at {x:e}"));
     }
 }
 
