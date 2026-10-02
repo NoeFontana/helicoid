@@ -139,6 +139,16 @@ defined by the status tables in `docs/`; they win over this file.
   `sqrt`-at-0 hazard and the safe argument); the mpmath corpus (exact inputs, 30 digits, precision budget and the
   `dps = 150` recheck, log-uniform decades, uniform axes on S² by Archimedes, splitmix64 and per-stratum streams).
   Documentation only; no code, no formula change. Six open items for the normative documents are added in the maths index and one extended, and `coefficients.md`'s remark on the `libm` crate is corrected.
+- `docs/maths/geodesics.md`: the geodesic of `NUMERICS.md` §10 (the curve, its constant body and spatial velocity,
+  what "geodesic" claims on SE_N(3): the autoparallel of the canonical connection and, on SE(3) only, the geodesic of its indefinite invariant forms (no nondegenerate one for N >= 2, no Riemannian one);
+  left-, right- and inversion-invariance; `Product<SO3, R3>` as (slerp, lerp), bi-invariant for its own law and
+  failing right-invariance only when composed as SE(3) poses, with the exact gap; the Jacobians with respect to
+  `X0`, `X1` and `t` derived from those of `Exp`, their left forms and cancellation-free forms of `J0` and its left form; unit
+  dual quaternions, the screw parameters, the power, its sign rule and the grouped one-`atan2` evaluation of
+  `tf_tree_math`'s `screw_pow`, with its equivalence to the geodesic; where the twin cancels or branches (no
+  cancellation in `f64` value at small angle or near π, the per-type 0/0 guard, the `Dual` translation derivative that loses about 1/α whatever series is used, the endpoints, the cut at π); SO(3) slerp).
+  Documentation only; no code, no formula change, no normative document changed. Five open items for the
+  normative documents are added in the maths index.
 - `cargo xtask lint`, run by `just lint`: no line citations in markdown or comments, no draft
   decision record cited as settled (status-table rows, Rust comments, amendment banners; not
   prose elsewhere), and `@generated` files registered with their owning task and header. Owed:
