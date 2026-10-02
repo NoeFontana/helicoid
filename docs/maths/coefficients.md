@@ -339,7 +339,7 @@ $z \to 0$); $r$: 800 points, 0 violations. $Z_m$ is sufficient, not shown necess
 counterexample for $m \le 4$ up to $16Z_m$). `f64` Horner against the exact $P_m$, 3000 log-uniform
 $z \in [10^{-8}, 1]$ per family and $m \in \{2, 4, 6, 8\}$: at most $1.33u$ (value) and $2.06u$ (the
 derivative of dual Horner, CO.13(b)); the general ratio above evaluated at the stated $\theta$ from the
-exact rationals. **Permanent:** planned, the sweep CSV
+exact rationals. **Permanent:** the sweep CSV
 (`conformance/sweeps/thresholds.csv`, `PHASE1.md` §6); nothing for the bounds themselves.
 
 ## 5. Where the arms meet
@@ -444,7 +444,7 @@ re-run (glibc; 30 samples per cell of $1/30$ decade over $[10^{-6}, \pi - 0.1]$,
 references from the definitions at 120 digits, derivatives as the symbolic $\mathrm d/\mathrm dz$ of
 the definitions): its per-coefficient optima agree with the table within $20\%$ in $\theta_s$ and $1.5\times$
 in error. Scripts not committed. **Permanent:** none for the magnitudes (a sanity
-check, by design); planned `branch_continuity_*` (`PHASE3.md` §9) and the sweep CSV.
+check, by design); the sweep CSV (`xtask thresholds`); planned `branch_continuity_*` (`PHASE3.md` §9).
 
 ## 6. Derivatives
 
@@ -526,7 +526,7 @@ $10^{-149}$; (b): 1600 points ($k, a, b, d, e$; $m = 1..8$), 0 violations, plus 
 log-uniform $\theta$ per decade over $[10^{-6}, 1]$, against `mp.diff` of the definitions; the re-run
 against the symbolic derivative of the definitions at 120 digits; the split of the worked case by
 making one source of error exact at a time (20000 samples over $[10^{-3}, 0.03]$).
-**Permanent:** planned, the sweep's derivative column (0004 item 1) and `jacobians_match_dual_*`.
+**Permanent:** the sweep CSV's derivative column (0004 item 1); planned `jacobians_match_dual_*`.
 
 ## 7. Safe argument, $\theta = 0$, underflow, $\pi$
 

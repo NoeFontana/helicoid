@@ -230,6 +230,21 @@ defined by the status tables in `docs/`; they win over this file.
   argument on a mask that evaluates both arms. A plain `just conformance` now scores `seeded:correct`
   and skips planted subjects unless named. `xtask` gains `libm` (the fit's logarithm, the same bits on
   every host). No library code changes; breaks nothing.
+- `cargo xtask thresholds [--check]` (`just thresholds`, `thresholds-check`, a CI job), the sweep of
+  `docs/PHASE1.md` §6 over the seeded kernels at `f64` for `k, a, b, c, d, e`: 1 to 8 series terms
+  times 1025 switch points (64 per decade of `z = θ²`, `θ` from `1e-8` to `1`, each the correctly
+  rounded `10^(i/64)`), each arm's error formed once per record over every `theta:*` record (value
+  and `d/dz` through `Dual<f64, 1>`, exact, in `u`), the maximum minimised, ties to fewer terms
+  then the larger switch, the `tf_tree` D12 prior scored beside the choice. Writes
+  `conformance/sweeps/thresholds.csv` (committed, byte-identical, compared with a fresh run by a
+  test). The rows are of this corpus and grid, not general optima: `terms` is the cap of 8 for every row but `e`;
+  `k` and `d` sit at the top of the grid (`θ = 1`), `b` one step below it (unique, 1.3% under the
+  top), `a` and `c` inside it; `e`'s objective is one record at `θ = 1` exactly, which `z < switch`
+  never puts on the series arm (a top of `nextUp(1)` gives it 8 terms and 3.3 times less). Columns
+  name the record that attains each objective and the objective one grid step either side. The
+  grid, top, prior and tie readings are `0014` (draft) questions 8 to 11. Not swept: `r`, `f32`,
+  SE(2)'s `α`, `β`; `generated.rs` waits for Phase 3. No new dependency, no library code changes;
+  breaks nothing.
 
 ### Changed
 

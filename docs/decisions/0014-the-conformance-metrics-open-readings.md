@@ -10,7 +10,8 @@
 before it can score a record. `xtask/src/conformance/metric.rs` (`TABLE` and its module docs) took
 the smallest reading of each so that the harness core runs (`PHASE1.md` §5). The readings fix the
 bar every envelope baseline is blessed against (`0006`); none is blessed yet (`PHASE1.md` §8 is not
-started), so each is still free to change.
+started), so each is still free to change. `xtask/src/thresholds` (`PHASE1.md` §6) did the same for
+the threshold sweep (questions 8 to 11); no `generated.rs` is written from it yet.
 
 ## Decision
 
@@ -52,3 +53,18 @@ None until the open questions are resolved.
    exact arm's derivative errs by θ⁻⁴, so a record's maximum over `value` and `d_branch`, which is
    what a results row holds, fits `p` = 3.98 and misses the window. Score the field, or widen the
    window and score the record?
+8. **Per decade of what** (`PHASE1.md` §6). "A log grid of 64 points per decade" of the branch
+   variable, "spanning θ ∈ [1e-8, 1]". The sweep takes decades of `z = θ²`: 1025 points,
+   `10^((i−1024)/64)`, 128 per decade of θ. Decades of θ are 513 points, the even indices; they move
+   `a` to θ = 0.835 (37.8 u against 25.8), `b` to the top (64.4 u against 63.5) and `e`'s switch to
+   0.965 (the same objective), and leave `k`, `c`, `d`. Which is meant?
+9. **The top of the grid.** It ends at `z = 1` and a candidate takes the series arm where
+   `z < switch`, so the corpus record at θ = 1 exactly is always on the exact arm and no switch
+   above θ = 1 is tried. That record is `e`'s objective (8.69e3 u, 7 terms); a top of `nextUp(1.0)`
+   gives `e` 8 terms and 2.60e3 u, and leaves `k`, `a`, `b`, `c`, `d`. Is the range closed at 1, or
+   does the grid extend to the first switch that puts that record on the series arm?
+10. **The D12 prior for all six.** §6 describes it as one switch for `a`, `b`, `c` and evaluates it
+    as a named candidate; the sweep scores it for all six coefficients, as `seeded:correct` runs it.
+    Report it for `k`, `d`, `e`?
+11. **Ties.** Exact `f64` equality of the objective (`tied` counts them). A tolerance would make
+    near-equal candidates tie, and the cheaper one win. Exact, or a tolerance?
