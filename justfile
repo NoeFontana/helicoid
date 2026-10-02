@@ -68,10 +68,11 @@ wasm:
 conformance *args:
     cargo xtask conformance {{args}}
 
-# The threshold sweep of the seeded kernels over the corpus (`docs/PHASE1.md` §6): writes
-# conformance/sweeps/thresholds.csv and xtask/src/seeded/generated.rs. `coeffs/generated.rs`
-# joins them with Phase 3. The second is compiled into xtask: a hand edit that no longer compiles
-# stops this recipe too, and `git restore xtask/src/seeded/generated.rs` is the way back.
+# The threshold sweep of the seeded kernels over the corpus, at `f64` and `f32` (`docs/PHASE1.md`
+# §6): writes conformance/sweeps/thresholds-seeded.csv and xtask/src/seeded/generated.rs.
+# `thresholds.csv` and `coeffs/generated.rs` are the `helicoid` target's, with Phase 3. The second
+# is compiled into xtask: a hand edit that no longer compiles stops this recipe too, and
+# `git restore xtask/src/seeded/generated.rs` is the way back.
 thresholds:
     cargo xtask thresholds
 

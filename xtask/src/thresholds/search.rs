@@ -184,6 +184,7 @@ pub(super) fn search(
 mod tests {
     use super::*;
     use crate::thresholds::grid::grid;
+    use helicoid_linalg::Precision;
 
     fn at(value: f64, deriv: f64) -> Errors {
         Errors { value, deriv }
@@ -210,7 +211,7 @@ mod tests {
 
     #[test]
     fn the_search_finds_a_known_optimum() -> Result<(), String> {
-        let g = grid();
+        let g = grid(Precision::F64);
         // The exact arm is bad below `g[600]` and the series above it, so only a switch exactly
         // there survives; a term fewer than 8 costs one unit more.
         let t = g[600];
@@ -240,7 +241,7 @@ mod tests {
 
     #[test]
     fn ties_go_to_fewer_terms_then_to_the_larger_switch() -> Result<(), String> {
-        let g = grid();
+        let g = grid(Precision::F64);
         // The exact arm is right from `g[600]`, so a switch below it is bad. A series arm is
         // right up to `g[650]` for 3 terms and up to `g[700]` for 4 or more (1 and 2 terms cost 5).
         // The tied candidates are 3 terms with `g[600]..=g[651]` and 4 to 8 with `g[600]..=g[701]`:
@@ -268,7 +269,7 @@ mod tests {
 
     #[test]
     fn everything_tied_has_no_next_objective_and_an_empty_grid_is_an_error() -> Result<(), String> {
-        let g = grid();
+        let g = grid(Precision::F64);
         let flat = synthetic(&g, |_| deriv(3.0), |_, _| deriv(3.0));
         let s = search(&flat, &g, (4, 0.01))?;
         // One term and the largest switch: the preference alone decides.
@@ -322,7 +323,7 @@ mod tests {
 
     #[test]
     fn an_infinite_error_never_wins_against_a_finite_one() -> Result<(), String> {
-        let g = grid();
+        let g = grid(Precision::F64);
         let s = search(
             &synthetic(
                 &g,

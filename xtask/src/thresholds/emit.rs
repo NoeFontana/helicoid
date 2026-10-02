@@ -1,7 +1,8 @@
-//! `xtask/src/seeded/generated.rs` (`docs/PHASE1.md` §6, `0004` item 3): the seeded twin of
-//! Phase 3's `coeffs/generated.rs`, a function of the sweep CSV and `coeff_series.jsonl` and of
-//! nothing else, so `thresholds --check` compares it byte for byte. One `Switch<f64, terms>` per
-//! coefficient, `K_F64` to `E_F64`, defined in `seeded::switch`.
+//! `xtask/src/seeded/generated.rs` (`docs/PHASE1.md` §6, `0004` item 3, `0016` item 3): the seeded
+//! twin of Phase 3's `coeffs/generated.rs`, a function of the sweep CSV and `coeff_series.jsonl`
+//! and of nothing else, so `thresholds --check` compares it byte for byte. One `Switch<S, terms>`
+//! per coefficient and precision in the CSV's order, `K_F64` to `R_F64`, then `K_F32` to `R_F32`,
+//! defined in `seeded::switch`.
 //!
 //! The file is compiled into this tool (`seeded:correct` runs it), so a hand edit that no longer
 //! compiles stops `cargo xtask` from building, and neither `thresholds` nor `thresholds --check`
@@ -13,22 +14,28 @@
 //!   which supplies the literals. A git revision cannot name the commit that contains the file and
 //!   differs on every commit, which no byte-for-byte check survives.
 //! - **The objective line** is one per constant, above it, from the CSV's own columns: §6's
-//!   example shows one line for one constant, and a file holds six.
+//!   example shows one line for one constant, and a file holds sixteen.
 //! - **`terms`** is the array length, so the kernel's `terms` is `series.len()` and the constant
 //!   holds the terms the sweep measured and no others.
 //! - **A literal** is the shortest decimal that round-trips (`{:e}`) of the series term rounded
-//!   once, in integers, at binary64 (`Series::<f64>`): Rust's own parser reads it back to the same
-//!   bits, so it is the correctly rounded value of the exact rational. Binary32 waits for its sweep.
+//!   once, in integers, at the constant's own precision (`Series::<f64>`, `Series::<f32>`): Rust's
+//!   own parser reads it back to the same bits, so it is the correctly rounded value of the exact
+//!   rational, and a binary32 literal is never a binary64 one rounded again (`0016` item 3).
+//! - **`r`'s constant** is the series in `s = n²/w²` (the comment names it); its prefactor `2/w`
+//!   is the kernel's.
 //! - **The layout** is what `rustfmt` leaves alone, `just lint` running `cargo fmt --check`, at
 //!   its defaults: an array of at most `array_width` (60) characters, brackets excluded, is one line;
 //!   a longer one whose elements are all at most `short_array_element_width_threshold` (10)
 //!   characters is packed, as many to a line as fit in `max_width` (100); any other is one element
 //!   per line. `a_series_is_laid_out_as_rustfmt_leaves_it` runs `rustfmt` over the boundaries.
 
+use std::fmt::LowerExp;
+
+use helicoid_linalg::Precision;
 use sha2::{Digest, Sha256};
 
-use super::{CSV, HEADER};
-use crate::seeded::{Coeff, Series, SERIES_FILE};
+use super::{precision_name, shown, CSV, HEADER};
+use crate::seeded::{Series, Swept, SERIES_FILE};
 
 /// The generated file, relative to the repository root.
 pub(super) const PATH: &str = "xtask/src/seeded/generated.rs";
@@ -64,20 +71,15 @@ fn number<'a>(row: &'a str, name: &str) -> Result<&'a str, String> {
     }
 }
 
-/// `0x3ff0_0000_0000_0000`.
-fn grouped(bits: u64) -> String {
-    let word = |shift: u32| (bits >> shift) & 0xffff;
-    format!(
-        "0x{:04x}_{:04x}_{:04x}_{:04x}",
-        word(48),
-        word(32),
-        word(16),
-        word(0)
-    )
+/// `bits` as `hex` hex digits in groups of four: `0x3ff0_0000_0000_0000`, `0x3f80_0000`.
+fn grouped(bits: u64, hex: usize) -> String {
+    let digits = format!("{bits:0hex$x}");
+    let words: Vec<&str> = (0..hex).step_by(4).map(|i| &digits[i..i + 4]).collect();
+    format!("0x{}", words.join("_"))
 }
 
 /// The series of `terms` literals, at `indent` spaces, as rustfmt lays an array out.
-fn series_literal(terms: &[f64], indent: usize) -> String {
+fn series_literal<T: LowerExp>(terms: &[T], indent: usize) -> String {
     let items: Vec<String> = terms.iter().map(|x| format!("{x:e}")).collect();
     let contents = items.join(", ");
     if contents.len() <= ARRAY_WIDTH {
@@ -107,62 +109,84 @@ fn series_literal(terms: &[f64], indent: usize) -> String {
     format!("series: [\n{body}{}],", " ".repeat(indent))
 }
 
-/// The constant of `c` from its CSV `row`.
-fn constant(c: Coeff, row: &str, series: &Series<f64>) -> Result<String, String> {
-    let name = c.name();
-    if cell(row, "coeff")? != name || cell(row, "precision")? != "f64" {
-        return Err(format!("`{row}` is not the f64 row of `{name}`"));
+/// The constant of `id` at `precision` from its CSV `row`.
+fn constant(
+    id: Swept,
+    precision: Precision,
+    row: &str,
+    (wide, narrow): (&Series<f64>, &Series<f32>),
+) -> Result<String, String> {
+    let (name, p) = (id.name(), precision_name(precision));
+    if cell(row, "coeff")? != name || cell(row, "precision")? != p {
+        return Err(format!("`{row}` is not the {p} row of `{name}`"));
     }
     let terms: usize = cell(row, "terms")?
         .parse()
         .map_err(|e| format!("{name}: terms: {e}"))?;
-    if !(1..=series.terms()).contains(&terms) {
+    if !(1..=wide.terms()).contains(&terms) {
         return Err(format!(
             "{name}: {terms} terms of a {}-term series",
-            series.terms()
+            wide.terms()
         ));
     }
+    let hex = match precision {
+        Precision::F64 => 16,
+        Precision::F32 => 8,
+    };
     let bits = cell(row, "switch_bits")?
         .strip_prefix("0x")
+        .filter(|h| h.len() == hex)
         .and_then(|h| u64::from_str_radix(h, 16).ok())
-        .ok_or_else(|| format!("{name}: switch_bits is not 0x and 16 hex digits"))?;
-    let switch = f64::from_bits(bits);
+        .ok_or_else(|| format!("{name}: switch_bits is not 0x and {hex} hex digits"))?;
+    let (switch, literals) = match precision {
+        Precision::F64 => (
+            f64::from_bits(bits),
+            series_literal(&wide.swept(id)[..terms], 4),
+        ),
+        Precision::F32 => (
+            f64::from(f32::from_bits(bits as u32)),
+            series_literal(&narrow.swept(id)[..terms], 4),
+        ),
+    };
     // The comment is the bits' own decimal: a CSV whose columns disagree is refused, not emitted.
-    let decimal = format!("{switch:e}");
+    let decimal = shown(precision, switch);
     if !switch.is_finite() || switch < 0.0 || decimal != cell(row, "switch_z")? {
         return Err(format!(
             "{name}: switch_bits and switch_z disagree or are not a z >= 0"
         ));
     }
     let (value, deriv) = (number(row, "value_max_u")?, number(row, "deriv_max_u")?);
-    let literals = series_literal(&series.of(c)[..terms], 4);
+    let variable = if id == Swept::R { "n²/w²" } else { "θ²" };
     Ok(format!(
         "// Objective (max u): value {value}, derivative {deriv}.\n\
-         pub(crate) const {upper}_F64: Switch<f64, {terms}> = Switch {{\n    \
-         below: f64::from_bits({}), // θ² < {decimal}\n    \
+         pub(crate) const {upper}_{}: Switch<{p}, {terms}> = Switch {{\n    \
+         below: {p}::from_bits({}), // {variable} < {decimal}\n    \
          {literals}\n}};\n",
-        grouped(bits),
+        p.to_uppercase(),
+        grouped(bits, hex),
         upper = name.to_uppercase(),
     ))
 }
 
-/// The generated file for the sweep `csv`, with the series of the corpus: `series_file` is the
-/// bytes of `coeff_series.jsonl`, of which `series` is the reading.
+/// The generated file for the sweep `csv`, with the series of the corpus at both precisions:
+/// `series_file` is the bytes of `coeff_series.jsonl`, of which the series are the readings.
 pub(super) fn render(
     csv: &str,
     series_file: &[u8],
-    series: &Series<f64>,
+    wide: &Series<f64>,
+    narrow: &Series<f32>,
 ) -> Result<String, String> {
     let mut lines = csv.lines();
     if lines.next() != Some(HEADER) {
         return Err(format!("{CSV} does not start with its documented header"));
     }
     let rows: Vec<&str> = lines.collect();
-    if rows.len() != Coeff::ALL.len() {
+    let of = Swept::ALL.len();
+    if rows.len() != 2 * of {
         return Err(format!(
-            "{CSV} has {} rows; expected one per coefficient, {}",
+            "{CSV} has {} rows; expected one per coefficient and precision, {}",
             rows.len(),
-            Coeff::ALL.len()
+            2 * of
         ));
     }
     let mut out = format!(
@@ -172,9 +196,15 @@ pub(super) fn render(
         sha256_hex(csv.as_bytes()),
         sha256_hex(series_file)
     );
-    for (c, row) in Coeff::ALL.into_iter().zip(rows) {
+    for (i, row) in rows.into_iter().enumerate() {
+        let precision = [Precision::F64, Precision::F32][i / of];
         out.push('\n');
-        out.push_str(&constant(c, row, series)?);
+        out.push_str(&constant(
+            Swept::ALL[i % of],
+            precision,
+            row,
+            (wide, narrow),
+        )?);
     }
     Ok(out)
 }
@@ -183,7 +213,10 @@ pub(super) fn render(
 mod tests {
     use super::*;
     use crate::conformance::corpus_dir;
+    use crate::conformance::number::Dyadic;
     use crate::conformance::root;
+    use crate::conformance::testkit::Scratch;
+    use num_bigint::BigUint;
 
     fn committed_csv() -> Result<String, String> {
         let path = root()?.join(CSV);
@@ -195,47 +228,72 @@ mod tests {
         std::fs::read(&path).map_err(|e| format!("{}: {e}", path.display()))
     }
 
-    fn series() -> Result<Series<f64>, String> {
-        Series::load(&corpus_dir()?)
+    fn series() -> Result<(Series<f64>, Series<f32>), String> {
+        let dir = corpus_dir()?;
+        Ok((Series::load(&dir)?, Series::load(&dir)?))
     }
 
-    /// The switch `synthetic` gives `b`: four different 16-bit words, none zero.
+    /// The switch `synthetic` gives `b` at `f64`: four different 16-bit words, none zero.
     const B_SWITCH_BITS: u64 = 0x3fc0_1234_5678_9abc;
+    /// And at `f32`: two.
+    const B_SWITCH_BITS32: u32 = 0x3c01_2345;
 
     /// A sweep CSV of the documented columns with `terms[i]` terms and the switch `2^-(i+1)` for
-    /// coefficient `i`, except `b`'s ([`B_SWITCH_BITS`]); the objectives `1.5e0` and `2.5e1`, and
-    /// `0` in every other cell.
-    fn synthetic(terms: [usize; 6]) -> String {
+    /// each id `i` at both precisions, except `b`'s (`B_SWITCH_BITS`, `B_SWITCH_BITS32`); the
+    /// objectives `1.5e0` and `2.5e1`, and `0` in every other cell.
+    fn synthetic(terms: [usize; 8]) -> String {
         let mut out = format!("{HEADER}\n");
-        for (i, c) in Coeff::ALL.iter().enumerate() {
-            let z = match c {
-                Coeff::B => f64::from_bits(B_SWITCH_BITS),
-                _ => 1.0 / (1u64 << (i + 1)) as f64,
-            };
-            let cells: Vec<String> = HEADER
-                .split(',')
-                .map(|name| match name {
-                    "coeff" => c.name().to_string(),
-                    "precision" => "f64".to_string(),
-                    "terms" => terms[i].to_string(),
-                    "switch_bits" => format!("0x{:016x}", z.to_bits()),
-                    "switch_z" => format!("{z:e}"),
-                    "value_max_u" => "1.5e0".to_string(),
-                    "deriv_max_u" => "2.5e1".to_string(),
-                    _ => "0".to_string(),
-                })
-                .collect();
-            out.push_str(&cells.join(","));
-            out.push('\n');
+        for precision in [Precision::F64, Precision::F32] {
+            for (i, id) in Swept::ALL.iter().enumerate() {
+                let z = 1.0 / (1u64 << (i + 1)) as f64;
+                let (bits, z) = match (precision, id) {
+                    (Precision::F64, Swept::Coeff(crate::seeded::Coeff::B)) => {
+                        let z = f64::from_bits(B_SWITCH_BITS);
+                        (format!("0x{:016x}", B_SWITCH_BITS), z)
+                    }
+                    (Precision::F32, Swept::Coeff(crate::seeded::Coeff::B)) => {
+                        let z = f64::from(f32::from_bits(B_SWITCH_BITS32));
+                        (format!("0x{:08x}", B_SWITCH_BITS32), z)
+                    }
+                    (Precision::F64, _) => (format!("0x{:016x}", z.to_bits()), z),
+                    (Precision::F32, _) => (format!("0x{:08x}", (z as f32).to_bits()), z),
+                };
+                let cells: Vec<String> = HEADER
+                    .split(',')
+                    .map(|name| match name {
+                        "coeff" => id.name().to_string(),
+                        "precision" => precision_name(precision).to_string(),
+                        "terms" => terms[i].to_string(),
+                        "switch_bits" => bits.clone(),
+                        "switch_z" => shown(precision, z),
+                        "value_max_u" => "1.5e0".to_string(),
+                        "deriv_max_u" => "2.5e1".to_string(),
+                        _ => "0".to_string(),
+                    })
+                    .collect();
+                out.push_str(&cells.join(","));
+                out.push('\n');
+            }
         }
         out
     }
 
+    /// `x` at `f32`, as the series holds it.
+    fn lit32(x: f32) -> String {
+        format!("{x:e}")
+    }
+
     #[test]
     fn a_constant_has_the_documented_shape() -> Result<(), String> {
-        let text = render(&synthetic([8, 8, 3, 1, 8, 7]), &series_file()?, &series()?)?;
+        let (wide, narrow) = series()?;
+        let text = render(
+            &synthetic([8, 8, 3, 1, 8, 7, 8, 5]),
+            &series_file()?,
+            &wide,
+            &narrow,
+        )?;
         let mut lines = text.lines();
-        let marker = "// @generated by `cargo xtask thresholds` from conformance/sweeps/thresholds.csv — do not edit.";
+        let marker = "// @generated by `cargo xtask thresholds` from conformance/sweeps/thresholds-seeded.csv — do not edit.";
         assert_eq!(lines.next(), Some(marker));
         for lead in [
             "// Source sweep rev: sha256 ",
@@ -262,29 +320,50 @@ mod tests {
             lit(1.0 / 5040.0)
         );
         assert!(text.contains(&format!("\n{want}\n")), "{text}");
+        // The same at `f32`: two words of bits, literals of binary32's own rounding.
+        let want32 = format!(
+            "// Objective (max u): value 1.5e0, derivative 2.5e1.\n\
+             pub(crate) const B_F32: Switch<f32, 3> = Switch {{\n    \
+             below: f32::from_bits(0x3c01_2345), // θ² < {}\n    \
+             series: [{}, {}, {}],\n}};\n",
+            lit32(f32::from_bits(B_SWITCH_BITS32)),
+            lit32(1.0 / 6.0),
+            lit32(-1.0 / 120.0),
+            lit32(1.0 / 5040.0)
+        );
+        assert!(text.contains(&format!("\n{want32}\n")), "{text}");
         // `c`: one term, and a series that fits on one line stays on one.
         let one = "pub(crate) const C_F64: Switch<f64, 1> = Switch {\n    \
             below: f64::from_bits(0x3fb0_0000_0000_0000), // θ² < 6.25e-2\n    \
             series: [8.333333333333333e-2],\n};\n";
         assert!(text.contains(one), "{text}");
-        assert_eq!(text.matches("pub(crate) const").count(), 6);
+        // `r` is a series in `n²/w²`, and its name is one letter.
+        assert!(
+            text.contains("pub(crate) const R_F32: Switch<f32, 5>"),
+            "{text}"
+        );
+        assert!(text.contains(", // n²/w² < 3.90625e-3\n"), "{text}");
+        assert_eq!(text.matches("pub(crate) const").count(), 16);
+        assert!(text.contains("pub(crate) const COS_HALF_F64: Switch<f64, 8>"));
         assert!(text.contains("pub(crate) const E_F64: Switch<f64, 7>") && text.ends_with("};\n"));
         Ok(())
     }
 
     #[test]
-    fn a_switch_is_four_groups_of_sixteen_bits_from_the_high_word_down() {
-        assert_eq!(grouped(0x0123_4567_89ab_cdef), "0x0123_4567_89ab_cdef");
-        assert_eq!(grouped(0), "0x0000_0000_0000_0000");
-        assert_eq!(grouped(1), "0x0000_0000_0000_0001");
-        assert_eq!(grouped(u64::MAX), "0xffff_ffff_ffff_ffff");
+    fn a_switch_is_groups_of_sixteen_bits_from_the_high_word_down() {
+        assert_eq!(grouped(0x0123_4567_89ab_cdef, 16), "0x0123_4567_89ab_cdef");
+        assert_eq!(grouped(0, 16), "0x0000_0000_0000_0000");
+        assert_eq!(grouped(1, 16), "0x0000_0000_0000_0001");
+        assert_eq!(grouped(u64::MAX, 16), "0xffff_ffff_ffff_ffff");
+        assert_eq!(grouped(0x3f80_0000, 8), "0x3f80_0000");
+        assert_eq!(grouped(1, 8), "0x0000_0001");
     }
 
     #[test]
     fn the_sources_are_named_by_their_digests_and_a_changed_source_changes_the_file(
     ) -> Result<(), String> {
-        let (csv, jsonl, series) = (synthetic([8; 6]), series_file()?, series()?);
-        let text = render(&csv, &jsonl, &series)?;
+        let (csv, jsonl, (wide, narrow)) = (synthetic([8; 8]), series_file()?, series()?);
+        let text = render(&csv, &jsonl, &wide, &narrow)?;
         assert_eq!(
             sha256_hex(b"abc"),
             "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
@@ -306,45 +385,164 @@ mod tests {
         assert!(text.contains(&rev) && text.contains(&source), "{text}");
         // One digit of one objective, or one byte of the series file: the constants are the same,
         // the file is not, and it is the line of that source that moves.
-        let other = render(&csv.replacen("1.5e0", "1.6e0", 1), &jsonl, &series)?;
+        let other = render(&csv.replacen("1.5e0", "1.6e0", 1), &jsonl, &wide, &narrow)?;
         assert_ne!(other, text);
         assert!(other.contains(&source) && !other.contains(&rev));
         let mut edited = jsonl.clone();
         edited.push(b'\n');
-        let other = render(&csv, &edited, &series)?;
+        let other = render(&csv, &edited, &wide, &narrow)?;
         assert!(other.contains(&rev) && !other.contains(&source));
-        assert_eq!(render(&csv, &jsonl, &series)?, text);
+        assert_eq!(render(&csv, &jsonl, &wide, &narrow)?, text);
         Ok(())
     }
 
+    /// The literals of the constant `name` in `text`, one line or one per line.
+    fn literals_of<'a>(text: &'a str, name: &str) -> Result<Vec<&'a str>, String> {
+        let body = text.split(&format!("pub(crate) const {name}:")).nth(1);
+        let body = body
+            .ok_or("no constant")?
+            .split("};")
+            .next()
+            .unwrap_or_default();
+        let list = body.split("series: [").nth(1).ok_or("no series")?;
+        let list = list.split(']').next().unwrap_or_default();
+        Ok(list
+            .split(',')
+            .map(str::trim)
+            .filter(|x| !x.is_empty())
+            .collect())
+    }
+
     #[test]
-    fn every_literal_reads_back_as_the_series_term_rounded_once() -> Result<(), String> {
-        let (csv, series) = (committed_csv()?, series()?);
-        let text = render(&csv, &series_file()?, &series)?;
-        let mut checked = 0;
-        let mut expected = 0;
-        for (c, row) in Coeff::ALL.into_iter().zip(csv.lines().skip(1)) {
+    fn every_literal_reads_back_as_the_series_term_rounded_once_at_its_precision(
+    ) -> Result<(), String> {
+        let (csv, (wide, narrow)) = (committed_csv()?, series()?);
+        let text = render(&csv, &series_file()?, &wide, &narrow)?;
+        let (mut checked, mut expected) = (0, 0);
+        for (i, row) in csv.lines().skip(1).enumerate() {
+            let id = Swept::ALL[i % 8];
             let terms: usize = cell(row, "terms")?.parse().map_err(|e| format!("{e}"))?;
-            let name = format!("pub(crate) const {}_F64", c.name().to_uppercase());
-            let body = text.split(&name).nth(1).ok_or("no constant")?;
-            let body = body.split("};").next().unwrap_or_default();
-            let is_literal = |l: &&str| l.starts_with(|c: char| c == '-' || c.is_ascii_digit());
-            let literals: Vec<&str> = body
-                .lines()
-                .map(str::trim)
-                .filter(is_literal)
-                .map(|l| l.trim_end_matches(','))
-                .collect();
-            assert_eq!(literals.len(), terms, "{c:?}");
-            for (literal, &want) in literals.iter().zip(series.of(c)) {
-                // Rust's own parser, not the harness's integer rounding: the same bits.
-                let got: f64 = literal.parse().map_err(|e| format!("{literal}: {e}"))?;
-                assert_eq!(got.to_bits(), want.to_bits(), "{c:?}: {literal}");
+            let p = cell(row, "precision")?;
+            let literals = literals_of(
+                &text,
+                &format!("{}_{}", id.name().to_uppercase(), p.to_uppercase()),
+            )?;
+            assert_eq!(literals.len(), terms, "{id:?} {p}");
+            for (j, literal) in literals.iter().enumerate() {
+                // Rust's own parser, not the harness's integer rounding: the same bits, at the
+                // precision of the constant.
+                let (got, want) = match p {
+                    "f64" => (literal.parse::<f64>(), wide.swept(id)[j]),
+                    _ => (
+                        literal.parse::<f32>().map(f64::from),
+                        f64::from(narrow.swept(id)[j]),
+                    ),
+                };
+                let got = got.map_err(|e| format!("{literal}: {e}"))?;
+                assert_eq!(got.to_bits(), want.to_bits(), "{id:?} {p}: {literal}");
                 checked += 1;
             }
             expected += terms;
         }
-        assert_eq!(checked, expected);
+        assert_eq!((checked, csv.lines().count()), (expected, 17));
+        Ok(())
+    }
+
+    /// `x`, a finite binary64, times `2^1074`: an integer.
+    fn scaled(x: f64) -> BigUint {
+        let d = Dyadic::of(x);
+        BigUint::from(d.mant) << (d.exp + 1074) as usize
+    }
+
+    #[test]
+    fn every_f32_literal_is_the_nearest_binary32_to_its_exact_rational() -> Result<(), String> {
+        // Not through `ratio_to_f32`: `num/den` lies between the midpoints from the literal to
+        // its two binary32 neighbours, in integers (`2 num 2^1074` against `den (a + b)`, `a`, `b`
+        // the values times `2^1074`), so no rounding of a binary64 value could pass.
+        let (csv, file) = (committed_csv()?, series_file()?);
+        let text = render(&csv, &file, &series()?.0, &series()?.1)?;
+        let file = String::from_utf8(file).map_err(|e| e.to_string())?;
+        let mut checked = 0;
+        for line in file.lines() {
+            let row: serde_json::Value = serde_json::from_str(line).map_err(|e| e.to_string())?;
+            let name = row["coeff"].as_str().ok_or("no coeff")?;
+            let literals = literals_of(&text, &format!("{}_F32", name.to_uppercase()))?;
+            for (term, literal) in row["series"]
+                .as_array()
+                .ok_or("no series")?
+                .iter()
+                .zip(literals)
+            {
+                let term = term.as_str().and_then(|t| t.split_once('/'));
+                let big = |t: &str| BigUint::parse_bytes(t.trim_start_matches('-').as_bytes(), 10);
+                let (num, den) = term
+                    .and_then(|(n, d)| Some((big(n)?, big(d)?)))
+                    .ok_or("bad term")?;
+                let x = literal
+                    .parse::<f32>()
+                    .map_err(|e| format!("{literal}: {e}"))?
+                    .abs();
+                let (lo, hi) = (
+                    scaled(f64::from(x.next_down())),
+                    scaled(f64::from(x.next_up())),
+                );
+                let (here, twice) = (scaled(f64::from(x)), (num << 1075usize));
+                assert!(
+                    &den * (&lo + &here) <= twice && twice <= &den * (&here + &hi),
+                    "{name}: {literal}"
+                );
+                checked += 1;
+            }
+        }
+        let mut f32_terms = 0;
+        for row in csv.lines().skip(9) {
+            f32_terms += cell(row, "terms")?
+                .parse::<usize>()
+                .map_err(|e| e.to_string())?;
+        }
+        assert_eq!(checked, f32_terms);
+        Ok(())
+    }
+
+    #[test]
+    fn a_binary32_literal_is_rounded_from_the_rational_and_not_from_the_binary64_literal(
+    ) -> Result<(), String> {
+        // `k`'s first term made `(2^70 + 2^46 + 1)/2^70`, `1 + 2^-24 + 2^-70`: above the binary32
+        // tie between 1 and `1 + 2^-23`, which binary64 holds as the tie itself and a second
+        // rounding sends to the even 1. No term of the committed series is such a value, so the
+        // committed file cannot show a literal taken from the binary64 one; this one does.
+        let one = BigUint::from(1u32);
+        let den = &one << 70usize;
+        let term = format!("{}/{den}", &den + (&one << 46usize) + &one);
+        let file = String::from_utf8(series_file()?).map_err(|e| e.to_string())?;
+        let hazard = file.replacen(
+            "\"series\":[\"1/2\",",
+            &format!("\"series\":[\"{term}\","),
+            1,
+        );
+        assert_ne!(hazard, file);
+        let scratch = Scratch::new("hazard-series");
+        std::fs::create_dir_all(&scratch.0).map_err(|e| e.to_string())?;
+        std::fs::write(scratch.0.join(SERIES_FILE), &hazard).map_err(|e| e.to_string())?;
+        let (wide, narrow) = (
+            Series::<f64>::load(&scratch.0)?,
+            Series::<f32>::load(&scratch.0)?,
+        );
+        let text = render(&committed_csv()?, hazard.as_bytes(), &wide, &narrow)?;
+        let first = |name: &str| -> Result<String, String> {
+            let literals = literals_of(&text, name)?;
+            literals
+                .first()
+                .map(|l| (*l).to_string())
+                .ok_or("no literal".into())
+        };
+        let (k32, k64) = (first("K_F32")?, first("K_F64")?);
+        let (once, twice) = (
+            k32.parse::<f32>().map_err(|e| e.to_string())?,
+            k64.parse::<f64>().map_err(|e| e.to_string())? as f32,
+        );
+        assert_eq!(once.to_bits(), (1.0 + f32::EPSILON).to_bits(), "{k32}");
+        assert_eq!(twice.to_bits(), 1.0f32.to_bits(), "{k64}");
         Ok(())
     }
 
@@ -470,10 +668,12 @@ mod tests {
 
     #[test]
     fn a_csv_that_is_not_the_documented_one_is_refused() -> Result<(), String> {
-        let (jsonl, series) = (series_file()?, series()?);
-        let base = synthetic([8; 6]);
+        let (jsonl, (wide, narrow)) = (series_file()?, series()?);
+        let base = synthetic([8; 8]);
         let refuses = |csv: &str, why: &str| {
-            let e = render(csv, &jsonl, &series).err().unwrap_or_default();
+            let e = render(csv, &jsonl, &wide, &narrow)
+                .err()
+                .unwrap_or_default();
             assert!(e.contains(why), "{why}: {e}");
         };
         let edit = |from: &str, to: &str| {
@@ -483,25 +683,31 @@ mod tests {
         refuses("", "documented header");
         refuses(&base.replacen("coeff,", "coeff ,", 1), "documented header");
         let first = base.lines().take(2).collect::<Vec<_>>().join("\n") + "\n";
-        refuses(&first, "expected one per coefficient, 6");
+        refuses(&first, "expected one per coefficient and precision, 16");
         refuses(&edit("c,f64,8", "c,f32,8"), "f64 row of `c`");
         refuses(&edit("k,f64,8", "c,f64,8"), "f64 row of `k`");
+        refuses(&edit("r,f32,8", "r,f64,8"), "f32 row of `r`");
         refuses(&edit("c,f64,8", "c,f64,17"), "17 terms");
         refuses(&edit("c,f64,8", "c,f64,0"), "0 terms");
         refuses(&edit("c,f64,8", "c,f64,x"), "terms");
-        // 2^-2 is 0x3fd0..; the decimal column must be the bits' own, and a z below 0 is refused.
+        // 2^-2 is 0x3fd0.. at `f64` and 0x3e80_0000 at `f32`; the decimal column must be the bits'
+        // own, a z below 0 is refused, and so are the wrong number of digits for the precision.
         refuses(
             &edit("0x3fd0000000000000", "0x3fd0000000000001"),
             "disagree",
         );
+        refuses(&edit("0x3e800000", "0x3e800001"), "disagree");
         refuses(
             &edit("0x3fd0000000000000", "3fd0000000000000"),
             "16 hex digits",
         );
+        refuses(&edit("0x3e800000", "0x3fd0000000000000"), "8 hex digits");
+        refuses(&edit("0x3fd0000000000000", "0x3e800000"), "16 hex digits");
         refuses(
             &edit("0x3fd0000000000000", "0xbfd0000000000000"),
             "disagree",
         );
+        refuses(&edit("0x3e800000", "0xbe800000"), "disagree");
         refuses(&edit("1.5e0", "inf"), "not a finite number");
         refuses(&edit("2.5e1", "x"), "not a finite number");
         Ok(())

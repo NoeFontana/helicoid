@@ -340,7 +340,7 @@ counterexample for $m \le 4$ up to $16Z_m$). `f64` Horner against the exact $P_m
 $z \in [10^{-8}, 1]$ per family and $m \in \{2, 4, 6, 8\}$: at most $1.33u$ (value) and $2.06u$ (the
 derivative of dual Horner, CO.13(b)); the general ratio above evaluated at the stated $\theta$ from the
 exact rationals. **Permanent:** the sweep CSV
-(`conformance/sweeps/thresholds.csv`, `PHASE1.md` §6); nothing for the bounds themselves.
+(`conformance/sweeps/thresholds-seeded.csv`, `PHASE1.md` §6); nothing for the bounds themselves.
 
 ## 5. Where the arms meet
 

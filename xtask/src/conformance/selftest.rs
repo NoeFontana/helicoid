@@ -18,12 +18,11 @@
 //! - **At `f32`** (`docs/decisions/0016` item 2) the same mechanisms run on the `@f32` strata of the
 //!   coefficient ids, in units of `2^-24`, by the same subject through the same adapter: the curve
 //!   is `theta:1e-3@f32` to `theta:1e-1@f32` (`DECADES_F32`; a reading, 0014 (draft) question 26),
-//!   in the same window, the non-finite count `theta:exact0@f32`. The "correct" kernel there is the
-//!   D12 prior (`seeded:correct` at version `d12`), not a correct one: its errors, up to 8.1e9 `u`,
-//!   are printed and pinned by a test and not gated, and "silent" says only that neither mechanism
-//!   fires (0014 (draft) question 27). The sweep's ranking is binary64's until the `f32` sweep
-//!   exists, so the planted `c` is not run there (`Registered::no_f32` refuses it); the `Log` and
-//!   SE(3) defects have no `@f32` stratum to run on.
+//!   in the same window, the non-finite count `theta:exact0@f32`. The correct kernel there runs the
+//!   `f32` constants of `generated.rs` (`0016` item 3), whose errors are printed and equal the
+//!   CSV's `f32` rows. The sweep's ranking of the planted `c` is binary64's, so `c` is not run at
+//!   `f32` (`Registered::no_f32` refuses it); the `Log` and SE(3) defects have no `@f32` stratum to
+//!   run on.
 //! - **Non-finite** counts the (record, field) pairs of `theta:exact0` in every coefficient id, so a
 //!   NaN in `value` or in `d_branch` both count.
 //! - **The sweep's ranking** is for `c` with switch `1e-8` (as `θ`: 0014 (draft) question 14) and
@@ -36,8 +35,8 @@
 //!   run also fails when the objective the harness measures for the subject's `c` is not the ranked
 //!   one, to the bit: a subject cannot change what it computes and keep its declaration.
 //! - **The correct kernel** runs the generated switches (`seeded::generated`, from
-//!   `conformance/sweeps/thresholds.csv`), not an optimum in general: the sweep's choice over this
-//!   corpus and grid. Its errors are printed, and equal the CSV's per-field maxima.
+//!   `conformance/sweeps/thresholds-seeded.csv`), not an optimum in general: the sweep's choice over
+//!   this corpus and grid. Its errors are printed, and equal the CSV's per-field maxima.
 //! - **Only the named mechanism is gated** for a defect. The other mechanism's reading is printed
 //!   and not gated: `b` by its definition is `0/0` at `z = 0`, so it fires `nonfinite` too
 //!   (`the_b_defect_also_fires_the_nonfinite_mechanism_and_the_k_defect_not_the_curve`).
@@ -62,8 +61,9 @@ const DECADES: std::ops::RangeInclusive<i32> = 2..=8;
 /// below which `b` by its definition is 0 and its error a plateau of `1/u`. `DECADES` keeps the
 /// one stratum that holds `2.6e-8`, its plateau one point of seven (`p = 1.937`); here it would be
 /// one of four and fit `p = 1.64`, outside §10's window, which does not depend on `u`. The top
-/// stratum, `[0.1, 1)`, is above D12's switch: the defect and the kernel run the same exact arm
-/// there, and the two strata below it fit `p = 2.188` (0014 (draft) question 26).
+/// stratum, `[0.1, 1)`, is above D12's switch, where the defect and the D12 kernel this reading was
+/// made against ran one exact arm; the `f32` sweep leaves the range as it is, and the two strata
+/// below it fit `p = 2.188` (0014 (draft) question 26).
 const DECADES_F32: std::ops::RangeInclusive<i32> = 1..=3;
 /// A candidate is dominated when its objective is more than this factor above the chosen one's.
 const DOMINATED_BY: f64 = 1e6;
@@ -82,8 +82,8 @@ impl Mechanism {
         Mechanism::SweepRank,
     ];
 
-    /// The mechanisms meaningful at `precision`: the sweep that ranks `c` is binary64's until the
-    /// `f32` sweep exists (`0016` item 3).
+    /// The mechanisms meaningful at `precision`: the sweep that ranks `c` is binary64's, and no
+    /// planted `c` is a candidate of the `f32` sweep.
     fn at(precision: Precision) -> &'static [Mechanism] {
         match precision {
             Precision::F64 => &Self::ALL,
@@ -556,42 +556,50 @@ mod tests {
     #[test]
     fn the_correct_kernels_errors_are_the_sweeps_per_field_maxima() -> Result<(), String> {
         // The generated kernel's max over strata, per output field, is the CSV's, digit for digit
-        // as printed (`{:.3e}`): the harness and the sweep score the same kernel by two routes.
-        let report = run_cases(vec![Case::new(Seeded::generated(), None)], WINDOW)?;
-        let csv_path = crate::conformance::root()?.join("conformance/sweeps/thresholds.csv");
+        // as printed (`{:.3e}`): the harness and the sweep score the same kernel by two routes, at
+        // both precisions (at `f32` the `f32` rows and the `@f32` strata).
+        let csv_path = crate::conformance::root()?.join("conformance/sweeps/thresholds-seeded.csv");
         let csv = std::fs::read_to_string(&csv_path).map_err(|e| e.to_string())?;
         let rows: Vec<Vec<&str>> = csv
             .lines()
             .skip(1)
             .map(|r| r.split(',').collect())
             .collect();
-        assert_eq!(rows.len(), 6);
-        for (c, row) in Coeff::ALL.into_iter().zip(rows) {
-            let shown = |x: &str| {
-                x.parse::<f64>()
-                    .map(|x| format!("{x:.3e}"))
-                    .map_err(|e| e.to_string())
-            };
-            // Columns 7 and 8 of the CSV: `value_max_u`, `deriv_max_u`.
-            let want = format!(
-                "coeff_{} value {} d_branch {}",
-                c.name(),
-                shown(row[7])?,
-                shown(row[8])?
-            );
-            let got = lines(&report, &format!("coeff_{}", c.name()));
-            let got: Vec<String> = got
-                .iter()
-                .map(|l| {
-                    let words: Vec<&str> = l.split(' ').collect();
-                    // `coeff_x value V (stratum) d_branch D (stratum)`
-                    format!(
-                        "{} {} {} {} {}",
-                        words[0], words[1], words[2], words[4], words[5]
-                    )
-                })
-                .collect();
-            assert_eq!(got, [want], "{c:?}");
+        assert_eq!(rows.len(), 16);
+        let generated = || vec![Case::new(Seeded::generated(), None)];
+        for (precision, report) in [
+            ("f64", run_cases(generated(), WINDOW)?),
+            ("f32", run_f32(generated(), WINDOW)?),
+        ] {
+            for c in Coeff::ALL {
+                let row = rows.iter().find(|r| r[0] == c.name() && r[1] == precision);
+                let row = row.ok_or_else(|| format!("no `{precision}` row for {c:?}"))?;
+                let shown = |x: &str| {
+                    x.parse::<f64>()
+                        .map(|x| format!("{x:.3e}"))
+                        .map_err(|e| e.to_string())
+                };
+                // Columns 7 and 8 of the CSV: `value_max_u`, `deriv_max_u`.
+                let want = format!(
+                    "coeff_{} value {} d_branch {}",
+                    c.name(),
+                    shown(row[7])?,
+                    shown(row[8])?
+                );
+                let got = lines(&report, &format!("coeff_{}", c.name()));
+                let got: Vec<String> = got
+                    .iter()
+                    .map(|l| {
+                        let words: Vec<&str> = l.split(' ').collect();
+                        // `coeff_x value V (stratum) d_branch D (stratum)`
+                        format!(
+                            "{} {} {} {} {}",
+                            words[0], words[1], words[2], words[4], words[5]
+                        )
+                    })
+                    .collect();
+                assert_eq!(got, [want], "{c:?} {precision}");
+            }
         }
         Ok(())
     }
@@ -793,7 +801,7 @@ mod tests {
         let (curve, zero) = ("b value curve fits theta^-p", "nonfinite in theta:exact0");
         let want = [
             format!("seeded:b-no-series -> {curve} -> detected ok p = 2.134, r2 = 1.000"),
-            format!("seeded:correct -> {curve} -> silent ok p = -1.200, r2 = 0.753"),
+            format!("seeded:correct -> {curve} -> silent ok p = -0.021, r2 = 0.920"),
             format!("seeded:correct -> {zero} -> silent ok nonfinite = 0"),
             format!("seeded:k-sqrt-unsafe -> {zero} -> detected ok coeff_k d_branch: 1"),
         ];
@@ -802,27 +810,6 @@ mod tests {
         }
         // The planted `c` is the sweep's, and the sweep is binary64's: no `f32` subject is ranked.
         assert!(!report.text.contains("sweep ranks"), "{}", report.text);
-        Ok(())
-    }
-
-    #[test]
-    fn the_f32_d12_kernels_errors_are_pinned_per_coefficient() -> Result<(), String> {
-        // Bit-deterministic (D16): the max over `@f32` strata, in u, of the kernel the f32 half
-        // calls correct, which is the D12 prior. Printed and not gated, so this pins it: a moved
-        // series length, switch, operand or exact-arm form moves a cell.
-        let report = run_f32(vec![Case::new(Seeded::generated(), None)], WINDOW)?;
-        let want = [
-            "coeff_k value 1.313e0 (theta:dense@f32) d_branch 1.845e3 (theta:1e-1@f32)",
-            "coeff_a value 2.918e0 (theta:dense@f32) d_branch 1.845e3 (theta:1e-1@f32)",
-            "coeff_b value 3.311e2 (theta:dense@f32) d_branch 1.141e6 (theta:dense@f32)",
-            "coeff_c value 2.387e3 (theta:1e-1@f32) d_branch 1.860e7 (theta:dense@f32)",
-            "coeff_d value 2.125e3 (theta:dense@f32) d_branch 1.653e7 (theta:dense@f32)",
-            "coeff_e value 1.829e6 (theta:1e-1@f32) d_branch 8.115e9 (theta:1e-1@f32)",
-        ];
-        assert_eq!(lines(&report, "coeff_"), want);
-        assert!(report
-            .text
-            .contains("seeded:correct d12: the max over strata"));
         Ok(())
     }
 
@@ -865,8 +852,8 @@ mod tests {
         };
         assert_eq!(fit(&[4, 3, 2, 1]), Some(1.644));
         assert_eq!(fit(&[3, 2, 1]), Some(2.134));
-        // `theta:1e-1@f32` is above D12's switch: both kernels run the exact arm there, and the two
-        // strata below it fit 0.012 from the window's edge (0014 (draft) question 26).
+        // `theta:1e-1@f32` is above D12's switch: the two strata below it fit 0.012 from the
+        // window's edge (0014 (draft) question 26).
         assert_eq!(fit(&[3, 2]), Some(2.188));
         Ok(())
     }

@@ -22,6 +22,21 @@ defined by the status tables in `docs/`; they win over this file.
   no code change.
 - Tests pinning today's `Dual` derivative at a zero `sqrt` argument: `Vector<Dual>::norm` of the
   zero vector, and `chol` on a zero or a negative pivot.
+- Threshold sweep per precision (`0016` item 3): `cargo xtask thresholds` now sweeps `k, a, b, c, d, e`,
+  `cos θ/2` and `r` at `f64` on the plain strata and at `f32` on the `@f32` strata, with one objective,
+  grid (each point correctly rounded at the precision it is swept at) and tie-break. At `f32` each of
+  `k`…`e` sits at the top of the grid (`θ = 1`), its optimum at or above it, as `docs/maths` CO.10
+  predicts; `cos θ/2` sits at the exact arm's floor at both precisions, its switch the tie-break's.
+  `r` is swept on a reading pending the maintainer, not a spec: branch variable `s = n²/w²`, only
+  records with `w > 0`, series arm iff `w > 0` and `s < switch`, grid over `s` from `1e-16` to `1`,
+  its prior `(4 terms, s < 0.01)` and not D12's (0014 (draft) question 29). The seeded sweep's
+  outputs are renamed `conformance/sweeps/thresholds-seeded.csv` (16 rows) and
+  `xtask/src/seeded/generated.rs` (a `Switch` per id and precision, the `f32` literals correctly
+  rounded from the exact rationals, a test in integers), leaving `thresholds.csv` to
+  `helicoid::coeffs`. `seeded:correct` runs the `f32` constants (where it ran the D12 prior;
+  `subject_version` `generated`) and now also answers `coeff_cos_half` and `coeff_r`; the
+  self-test's pinned `f32` figures follow (the correct kernel's `b` curve reads `p = -0.021`).
+  `xtask` only; the earlier `f64` rows are unchanged; breaks nothing.
 - Harness: `Precision::F32` scoring (`0016` item 2). `cargo xtask conformance --precision f32` scores
   `f32` subjects on the `@f32` strata alone, in units of `2^-24`, with inputs and outputs asserted
   exactly binary32. An id named with `--fn` that has no `@f32` strata is an error, not a skip; without
