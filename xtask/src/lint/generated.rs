@@ -11,6 +11,7 @@ use super::{File, Violation};
 const REGISTRY: &[(&str, &str)] = &[
     ("xtask/src/seeded/generated.rs", "thresholds"),
     ("crates/helicoid/src/coeffs/generated.rs", "thresholds"),
+    ("docs/evidence/ENVELOPE.md", "envelope"),
 ];
 
 pub(crate) fn check_registry(files: &[File]) -> Vec<Violation> {
@@ -115,12 +116,13 @@ mod tests {
     }
 
     #[test]
-    fn the_registry_names_the_switch_files_and_their_task() {
+    fn the_registry_names_the_generated_files_and_their_tasks() {
         assert_eq!(
             REGISTRY,
             [
                 ("xtask/src/seeded/generated.rs", "thresholds"),
-                ("crates/helicoid/src/coeffs/generated.rs", "thresholds")
+                ("crates/helicoid/src/coeffs/generated.rs", "thresholds"),
+                ("docs/evidence/ENVELOPE.md", "envelope"),
             ]
         );
         // The header the generator writes, from its first line, is the one the check parses.
@@ -134,8 +136,10 @@ mod tests {
             ),
             File::new(REGISTRY[1].0, &header("conformance/sweeps/thresholds.csv")),
         ];
-        assert!(check_registry(&files).is_empty());
-        assert_eq!(check_registry(&[]).len(), 2);
+        // Every registered file but `ENVELOPE.md` is present, so exactly that one is reported.
+        assert_eq!(check_registry(&files).len(), REGISTRY.len() - files.len());
+        assert_eq!(check_registry(&stubs()).len(), 0);
+        assert_eq!(check_registry(&[]).len(), REGISTRY.len());
     }
 
     #[test]

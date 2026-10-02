@@ -2,7 +2,8 @@
 //! it claims to. It runs the correct seeded kernel, which no mechanism may fire on, and every
 //! planted defect (`crate::seeded`), which must fire its named mechanism, over the `coeff_*` corpus
 //! ids (the `Log` defects over `so3_log`: `selftest_so3`; the SE(3) defects over `sen3_*`:
-//! `selftest_se3`), and fails when either does not hold.
+//! `selftest_se3`; the envelope half of the planted `c`: `selftest_envelope`), and fails when either
+//! does not hold.
 //! Nothing is written to `conformance/results/`.
 //!
 //! Readings where §10 is silent, each the smallest:
@@ -29,9 +30,10 @@
 //!   two terms (`seeded::C_PLANTED`): the sweep of `coeff_c` (`crate::thresholds`) scores that
 //!   candidate like any it sweeps, and it is detected when its objective exceeds the chosen
 //!   candidate's by more than [`DOMINATED_BY`], a factor of `10^6` (question 15), "strictly worse
-//!   by a stated margin"; §10's other half, the envelope, is not started. The reading printed is the objective, the chosen one and the candidate's rank among
-//!   the swept ones. Every subject is measured with its own `c`, so the correct kernel, whose `c` is
-//!   the chosen candidate, must be silent. The rank is of the candidate a subject declares, so the
+//!   by a stated margin". The reading printed is the objective, the chosen one and the candidate's
+//!   rank among the swept ones; §10's other half, the envelope, is `selftest_envelope`. Every
+//!   subject is measured with its own `c`, so the correct kernel, whose `c` is the chosen
+//!   candidate, must be silent. The rank is of the candidate a subject declares, so the
 //!   run also fails when the objective the harness measures for the subject's `c` is not the ranked
 //!   one, to the bit: a subject cannot change what it computes and keep its declaration.
 //! - **The correct kernel** runs the generated switches (`seeded::generated`, from
@@ -49,7 +51,7 @@ use helicoid_linalg::Precision;
 use super::metric::{COEFF_D_BRANCH, COEFF_VALUE};
 use super::report::Row;
 use super::subject::Registered;
-use super::{corpus, evaluate_by, selftest_se3, selftest_so3};
+use super::{corpus, evaluate_by, selftest_envelope, selftest_se3, selftest_so3};
 use crate::seeded::{Coeff, Defect, Seeded};
 use crate::thresholds::{Ranker, Ranking};
 
@@ -408,26 +410,29 @@ fn check(
     Ok(Report { text, failures })
 }
 
-/// The halves over `dir` (the coefficients, SO(3) and SE_N(3) at binary64, then the coefficients at
-/// `f32`): their reports joined, and every failure among them.
+/// The halves over `dir` (the coefficients, SO(3), SE_N(3) and the envelope's at binary64, then
+/// the coefficients at `f32`): their reports joined, and every failure among them.
 fn halves(
     dir: &Path,
     coefficients: Vec<Case>,
     so3: Vec<selftest_so3::Case>,
     se3: Vec<selftest_se3::Case>,
+    envelope: Seeded,
 ) -> Result<Report, String> {
     let coefficients = check(dir, coefficients, Precision::F64, WINDOW)?;
     let so3 = selftest_so3::check(dir, so3, selftest_so3::BAR)?;
     let se3 = selftest_se3::check(dir, se3, selftest_se3::BAR)?;
+    let envelope = selftest_envelope::check(dir, envelope)?;
     let f32 = check(dir, cases_f32(), Precision::F32, WINDOW)?;
     let f32_title = "f32 (the @f32 strata, u = 2^-24; the vector ids have none):";
     let text = format!(
-        "{}\n{}\n{}\n{f32_title}\n{}",
-        coefficients.text, so3.text, se3.text, f32.text
+        "{}\n{}\n{}\n{}\n{f32_title}\n{}",
+        coefficients.text, so3.text, se3.text, envelope.text, f32.text
     );
     let mut failures = coefficients.failures;
     failures.extend(so3.failures);
     failures.extend(se3.failures);
+    failures.extend(envelope.failures);
     failures.extend(f32.failures.into_iter().map(|f| format!("f32: {f}")));
     Ok(Report { text, failures })
 }
@@ -435,7 +440,8 @@ fn halves(
 #[allow(clippy::print_stdout)]
 pub(crate) fn run(dir: &Path) -> Result<(), String> {
     let cases = (cases(), selftest_so3::cases(), selftest_se3::cases());
-    let report = halves(dir, cases.0, cases.1, cases.2)?;
+    let planted = selftest_envelope::planted();
+    let report = halves(dir, cases.0, cases.1, cases.2, planted)?;
     print!("{}", report.text);
     match report.failures.as_slice() {
         [] => Ok(()),
@@ -489,8 +495,25 @@ mod tests {
     fn a_failure_in_the_se3_half_fails_the_self_test() -> Result<(), String> {
         let dir = corpus_dir()?;
         let (so3, se3) = (selftest_so3::cases(), selftest_se3::defect_not_planted());
-        let report = halves(&dir, cases(), so3, se3)?;
+        let planted = selftest_envelope::planted();
+        let report = halves(&dir, cases(), so3, se3, planted)?;
         let want = "seeded:correct: `every stratum of sen3_jr, sen3_jl fails` is not detected";
+        assert_eq!(report.failures.len(), 1, "{:?}", report.failures);
+        assert!(
+            report.failures[0].starts_with(want),
+            "{:?}",
+            report.failures
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn a_failure_in_the_envelope_half_fails_the_self_test() -> Result<(), String> {
+        let dir = corpus_dir()?;
+        let (so3, se3) = (selftest_so3::cases(), selftest_se3::cases());
+        // The correct kernel planted as the defect: nothing for the envelope to detect.
+        let report = halves(&dir, cases(), so3, se3, Seeded::generated())?;
+        let want = "seeded:correct: `envelope fails against seeded:correct` is not detected";
         assert_eq!(report.failures.len(), 1, "{:?}", report.failures);
         assert!(
             report.failures[0].starts_with(want),

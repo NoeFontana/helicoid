@@ -98,7 +98,7 @@ Single test: `cargo nextest run -p helicoid -- so3_exp_log_roundtrip`. The gener
 | `just oracle-tf-tree-math` | the `tf_tree_math` runner (workspace-excluded): its fmt, clippy, doc, deny, tests, then its rows over the corpus (`conformance --oracle`) |
 | `just oracle-sophus-rs` | the same for the sophus-rs runner (`runners/sophus_rs`, audited with its own `deny.toml`) |
 | `just oracles` | container-only: Sophus, manif, GTSAM runners; excluded-crate runners: `tf_tree_math`, sophus-rs |
-| `just envelope` | merge results, apply the domination and no-regress bars; `--bless` updates the baseline |
+| `just envelope` | merge results, apply the domination and no-regress bars, then coverage; `--check` also fails on a baseline or `docs/evidence/ENVELOPE.md` that `--bless` would change; `--bless` (for `helicoid`) writes both, and nothing while a bar or coverage fails |
 | `just determinism` | compare output digests across x86_64, aarch64, wasm32 |
 | `just bench` / `bench-check` | criterion; paired bootstrap gate against `baseline/` |
 
