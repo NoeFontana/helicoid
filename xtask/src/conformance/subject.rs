@@ -21,10 +21,25 @@ pub(crate) trait Subject {
 /// `docs/PHASE1.md` §5 lists three methods).
 pub(crate) struct Registered {
     pub(crate) version: String,
+    /// The version at `f32`, for a subject whose `f32` kernel is not its binary64 one.
+    pub(crate) version_f32: String,
+    /// Why the subject has no `f32` kernel, when it has none: a run at `f32` is then an error on
+    /// every id it supports, never the answer of another kernel under this subject's name.
+    pub(crate) no_f32: Option<String>,
     pub(crate) subject: Box<dyn Subject>,
     /// A seeded defect: evaluated only when a run names it (`--subject`) or in `--self-test`, so
     /// that a plain run's verdict and table are about real subjects.
     pub(crate) planted: bool,
+}
+
+impl Registered {
+    /// The `subject_version` its rows at `precision` carry.
+    pub(crate) fn version_at(&self, precision: Precision) -> &str {
+        match precision {
+            Precision::F64 => &self.version,
+            Precision::F32 => &self.version_f32,
+        }
+    }
 }
 
 #[cfg(test)]
@@ -32,6 +47,8 @@ impl Registered {
     pub(crate) fn new(version: &str, subject: Box<dyn Subject>) -> Self {
         Self {
             version: version.to_string(),
+            version_f32: version.to_string(),
+            no_f32: None,
             subject,
             planted: false,
         }

@@ -261,17 +261,34 @@ pub(crate) fn sqrt_ratio(num: &BigUint, den: &BigUint) -> f64 {
 
 #[cfg(test)]
 impl Decimal {
-    /// The correctly rounded binary64 of the reference: what a perfect subject returns.
-    pub(crate) fn to_f64(self) -> f64 {
+    /// The reference as an exact integer ratio, for the roundings below.
+    fn ratio(self) -> (BigUint, BigUint) {
         let mant = BigUint::from(self.mant);
         let ten = BigUint::from(10u32);
         let exp = self.exp10.unsigned_abs();
-        let (num, den) = if self.exp10 >= 0 {
+        if self.exp10 >= 0 {
             (mant * ten.pow(exp), BigUint::from(1u32))
         } else {
             (mant, ten.pow(exp))
-        };
+        }
+    }
+
+    /// The correctly rounded binary64 of the reference: what a perfect subject returns.
+    pub(crate) fn to_f64(self) -> f64 {
+        let (num, den) = self.ratio();
         let x = ratio_to_f64(&num, &den);
+        if self.neg {
+            -x
+        } else {
+            x
+        }
+    }
+
+    /// The correctly rounded binary32, rounded once from the ratio and not through binary64: what
+    /// a perfect `f32` subject returns.
+    pub(crate) fn to_f32(self) -> f32 {
+        let (num, den) = self.ratio();
+        let x = ratio_to_f32(&num, &den);
         if self.neg {
             -x
         } else {
@@ -535,7 +552,16 @@ mod tests {
                 want.to_bits(),
                 "{s}"
             );
+            // The same decimal at binary32: Rust's parser rounds once, as `to_f32` must (a
+            // binary64 in between would round twice).
+            let want: f32 = s.parse().map_err(|e| format!("{s}: {e}"))?;
+            let got = s.parse::<Decimal>()?.to_f32();
+            assert_eq!(got.to_bits(), want.to_bits(), "{s}");
         }
+        // 1 + 2^-24 + 2^-60 is above the binary32 tie 1 + 2^-24, which binary64 holds as the tie.
+        let above = "1.00000005960464477625798673799e0".parse::<Decimal>()?;
+        assert_eq!(above.to_f32(), 1.0 + f32::EPSILON);
+        assert_eq!(above.to_f64() as f32, 1.0);
         Ok(())
     }
 }

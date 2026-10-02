@@ -22,6 +22,17 @@ defined by the status tables in `docs/`; they win over this file.
   no code change.
 - Tests pinning today's `Dual` derivative at a zero `sqrt` argument: `Vector<Dual>::norm` of the
   zero vector, and `chol` on a zero or a negative pivot.
+- Harness: `Precision::F32` scoring (`0016` item 2). `cargo xtask conformance --precision f32` scores
+  `f32` subjects on the `@f32` strata alone, in units of `2^-24`, with inputs and outputs asserted
+  exactly binary32. An id named with `--fn` that has no `@f32` strata is an error, not a skip; without
+  `--fn` the run scores the eight ids that have them and names the others a selected subject supports.
+  A subject with no `f32` kernel (the planted `c`, a sweep candidate) is an error at `f32`, never the
+  D12 answer under its name. The seeded coefficient kernels run at `f32` through the same adapter (the
+  D12 prior, not a correct kernel, until the `f32` sweep of `0016` item 3); the correctly rounded and
+  neighbouring-ulp sanity subjects have `f32` variants; `--self-test` runs the error-curve and
+  non-finite mechanisms at both precisions (`b` without its series fits p = 1.937 at binary64, 2.134
+  at binary32; the `f32` range, kernel and floor are questions 26 to 28 of draft record 0014).
+  `xtask` only; nothing breaks.
 - Corpus: `@f32` strata for `coeff_k`, `coeff_a`…`coeff_e` and `coeff_r` (`0016` item 1: the binary64
   inputs rounded to nearest-even binary32, the reference recomputed at the rounded inputs), and the
   id `coeff_cos_half` (cos θ/2) with its series as the eighth row of `coeff_series`; `0016` item 1
@@ -220,9 +231,9 @@ defined by the status tables in `docs/`; they win over this file.
   run) fail; `so3_from_matrix` is checked for shape and finiteness only. The floor of a tangent or a
   coefficient (`2⁻¹⁰²²`), the SE_N(3) tangent's sign, the maximum over a record's fields, one norm
   over a whole tangent and overflow as non-finite are readings recorded in `xtask/src/conformance/`
-  and proposed by draft record 0014. Backward error, `f32` (refused), `--self-test` and the
-  `helicoid` and seeded subjects are not implemented. `xtask` gains `num-bigint` and
-  `helicoid-linalg`; no library code changes; breaks nothing.
+  and proposed by draft record 0014. Backward error and the `helicoid` subject are not implemented
+  (`f32`, `--self-test` and the seeded subjects follow in the entries below). `xtask` gains
+  `num-bigint` and `helicoid-linalg`; no library code changes; breaks nothing.
 - `cargo xtask conformance --self-test` (`just conformance --self-test`, a CI job) and the seeded
   subjects of `docs/PHASE1.md` §10 (`xtask/src/seeded`): the coefficient kernels `k, a, b, c, d, e`
   generic over `Real` (exact arm at the safe argument, one `S::branch`; series read at run time from
