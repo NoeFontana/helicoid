@@ -485,12 +485,13 @@ fn branch_continuity_f32() -> Result<(), String> {
 struct Counts {
     nonfinite: usize,
     sqrt: usize,
+    cbrt: usize,
     sin_cos: usize,
     atan2: usize,
 }
 
 thread_local!(static COUNTS: Cell<Counts> = const {
-    Cell::new(Counts { nonfinite: 0, sqrt: 0, sin_cos: 0, atan2: 0 })
+    Cell::new(Counts { nonfinite: 0, sqrt: 0, cbrt: 0, sin_cos: 0, atan2: 0 })
 });
 
 fn tally(f: impl FnOnce(&mut Counts)) {
@@ -614,6 +615,10 @@ impl<const F32: bool, M: Mask + From<bool> + 'static> Real for Lane<F32, M> {
     fn sqrt(self) -> Self {
         tally(|c| c.sqrt += 1);
         Self::note(libm::sqrt(self.0))
+    }
+    fn cbrt(self) -> Self {
+        tally(|c| c.cbrt += 1);
+        Self::note(libm::cbrt(self.0))
     }
     fn sin_cos(self) -> (Self, Self) {
         tally(|c| c.sin_cos += 1);

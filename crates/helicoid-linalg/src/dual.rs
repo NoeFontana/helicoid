@@ -15,6 +15,7 @@
 //! | `a * b` | `a.d[i] * b.v + a.v * b.d[i]` |
 //! | `a / b` | `(a.d[i] - q * b.d[i]) / b.v`, `q = a.v / b.v`: no `b.v^2` to overflow |
 //! | `sqrt(x)` | `x.d[i] / (2 sqrt x.v)` |
+//! | `cbrt(x)` | `x.d[i] / (3 c^2)`, `c = cbrt x.v` |
 //! | `sin_cos(x)` | `(x.d[i] cos x.v, -x.d[i] sin x.v)` |
 //! | `atan2(y, x)` | `(x.v y.d[i] - y.v x.d[i]) / (x.v^2 + y.v^2)` |
 //! | `abs(x)` | `sgn(x.v) x.d[i]`, `sgn(+-0) = +1` |
@@ -193,6 +194,26 @@ impl<S: Real, const N: usize> Real for Dual<S, N> {
         Self {
             v: r,
             d: self.d.map(|d| d / two_r),
+        }
+    }
+
+    /// The value is `S::cbrt` of the value, defined for every argument.
+    ///
+    /// # Domain
+    ///
+    /// The derivative `d / (3 c^2)`, `c = cbrt v`, needs `self.v != 0`: at `v = +-0` it is `+-inf`
+    /// (the sign of `d`, since `c^2` is `+0` for both zeros) where `d` is not zero and NaN
+    /// (`0 / 0`) where it is, untouched components included; the value is unaffected. Unchecked,
+    /// since the value at 0 is legal. The safe-argument pattern keeps a zero out of any selected
+    /// arm. Elsewhere it is accurate: `c^2` is a normal number for every nonzero finite `v` at
+    /// both precisions. At `v = +-inf` it is `0` for finite `d`.
+    #[inline]
+    fn cbrt(self) -> Self {
+        let c = self.v.cbrt();
+        let three_c2 = S::lit(3.0) * (c * c);
+        Self {
+            v: c,
+            d: self.d.map(|d| d / three_c2),
         }
     }
 

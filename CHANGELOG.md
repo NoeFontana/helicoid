@@ -392,6 +392,15 @@ defined by the status tables in `docs/`; they win over this file.
   waits for the `helicoid` subject. The readings (the bar, "fails", the strata counted, the
   per-coefficient switches, the association of `Q`'s words) are 0014 (draft) questions 21 to 25. No
   new dependency, no library code changes; breaks nothing.
+- `helicoid-linalg`: `Real::cbrt` (`docs/PHASE2.md` §2 and §3, `docs/API.md` §2, `docs/NUMERICS.md`
+  §12; step 1 of `0017`, which `solve_cubic` needs): the real cube root, total and odd, through
+  `libm::cbrt`/`cbrtf`. `Dual` differentiates it as `d / (3 c^2)`, `c = cbrt v`: infinite at 0
+  like `sqrt`, with the sign of `d` at either zero, accurate elsewhere, `0` at `+-inf`.
+  Checked against mpmath on chosen rows (both signs, subnormals; first derivative at `f64` and
+  `f32`, second derivative and the Hessian of `cbrt(x y)` at `f64`) to 2 ulp; random inputs reach
+  about 4 ulp on the first derivative and 10 on the second, the value 0 ulp. **Breaks** an
+  out-of-tree `impl Real`, which gains a required method (none is known; the in-tree ones are
+  updated); nothing else breaks.
 
 ### Changed
 

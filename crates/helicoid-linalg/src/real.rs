@@ -107,6 +107,11 @@ pub trait Real:
     /// `self >= 0` or NaN; the scalar impls check it in debug builds. Release builds return NaN
     /// for a negative argument. Lane code evaluates both arms, so it passes a safe argument.
     fn sqrt(self) -> Self;
+    /// The real cube root: odd, `cbrt(-x) = -cbrt(x)`, so a zero and an infinity keep their sign.
+    ///
+    /// Every argument is in the domain. The derivative of a `Dual` is singular at 0
+    /// ([`Dual::cbrt`](crate::Dual)).
+    fn cbrt(self) -> Self;
     /// `(sin self, cos self)`.
     fn sin_cos(self) -> (Self, Self);
     /// The angle of the point `(x, self)`, i.e. `atan2(y = self, x)`.
