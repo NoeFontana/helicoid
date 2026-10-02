@@ -58,4 +58,5 @@
 - [0027: A normalizing constructor normalizes](decisions/0027-a-normalizing-constructor-normalizes.md)
 - [0028: Two ready specs disagree on the blocks of `SEn3Jac`](decisions/0028-two-ready-specs-disagree-on-the-blocks-of-sen3jac.md)
 - [0029: A `Product` needs a way to be built from its factors](decisions/0029-a-product-needs-a-way-to-be-built-from-its-factors.md)
+- [0030: A consumer comparison is a trigger `0021` does not list (draft)](decisions/0030-a-consumer-comparison-is-a-trigger-0021-does-not-list.md)
 - [0031: What the cubic port inherits from omnisac (draft)](decisions/0031-what-the-cubic-port-inherits-from-omnisac.md)

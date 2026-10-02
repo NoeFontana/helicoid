@@ -31,6 +31,17 @@ defined by the status tables in `docs/`; they win over this file.
 
 ### Added
 
+- `docs/decisions/0030` (draft): `chol` factorises 2.6 to 3.4x slower than `nalgebra`'s at `N = 6`
+  and 1.3 to 1.5x at `N = 3, 8`, measured advisorily beside the two solves `locus-tag` runs today;
+  `chol_solve` is at parity and the residual favours `chol`. The attribution did not settle: a
+  verbatim-copy control of the measured body itself read −0.4% to +11.3%, so the harness cannot
+  adjudicate `0021`'s 15% bar. A bit-identical indexed reduction is nonetheless a live candidate
+  (whole ten-run range below zero, midpoint near −20%) and is deliberately **not** taken, because
+  the sweep tested one of the bar's three clauses — the `f64` success path — and not failing input
+  or `Dual`, where `0021`'s own row-major variants lost 38% to 41%. Proposes an external subject as
+  a `0021` rule-3 trigger, `PHASE1.md` §9's `criterion`/`bench-gate` harness extended to
+  `helicoid-linalg`, and comparison rows in a workspace-excluded `runners/` crate. Five open
+  questions, no code change.
 - `docs/decisions/0022` (**ready**, retitled *`Real` owes `acos` and `cos`*): the private
   `atan2(sqrt((1 - x)(1 + x)), x)` costs 2.61x `libm::acos` (11.42 ns against 4.37) and is
   marginally *less* accurate everywhere measured, the near-`±1` region it was chosen for included
