@@ -10,7 +10,7 @@
 
 use crate::{Jac, Left, LieGroup, Right, Side, Tangent};
 use core::array;
-use helicoid_linalg::{Dual, Matrix, Precision, Real, StridedMut};
+use helicoid_linalg::{Dual, Matrix, Precision, Real};
 use proptest::prelude::*;
 use std::{format, vec::Vec};
 
@@ -105,15 +105,13 @@ fn dt<S: Real, G: LieGroup<S>, const D: usize>(t: &G::Tangent) -> [f64; D] {
     buf.map(S::value_f64)
 }
 
-/// The dense matrix of `j`, column-major (`m[c][r]`), through a NaN-poisoned `StridedMut` so that
-/// an entry `write_dense` leaves unwritten fails whatever reads it.
+/// The dense matrix of `j`, column-major (`m[c][r]`), through `reference::dense_oriented` so that
+/// the NaN poison a hand case relies on has one definition.
 ///
 /// Generic over the `Jac` and not over a group, so a hand case can read a block of a composite
 /// Jacobian — a factor's — which belongs to no group of the composite's dimension.
 fn dense<S: Real, T: Tangent<S>, J: Jac<S, T>, const D: usize>(j: &J) -> [[S; D]; D] {
-    let mut buf = [[nan::<S>(); D]; D];
-    j.write_dense(&mut StridedMut::col_major(buf.as_flattened_mut(), D, D));
-    buf
+    crate::reference::dense_oriented(j, 1, D)
 }
 
 /// [`dense`] as bits, so a hand case tells `+0` from `-0` and sees a NaN.
