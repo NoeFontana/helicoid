@@ -31,6 +31,14 @@ use crate::traits::{Jac, Tangent};
 use helicoid_linalg::{Mask, Matrix, Real, StridedMut};
 
 /// The terms added left to right from the first, `+0` when there are none.
+///
+/// The same association as `helicoid_linalg`'s `vector::sum`, which is `pub(crate)` there and so out
+/// of reach from here. `Matrix`'s `Mul` sums through that one and every twin below sums through this
+/// one, and `integer_products_and_inverses_are_exact`, `sandwich_of_integers_is_exact` and
+/// `apply_and_apply_transpose_are_the_dense_matrix_and_its_transpose` all assert the two agree bit
+/// for bit; a signed zero tells the seeds apart. So the two must change together, and neither may
+/// change alone. Making linalg's public instead is a new public item and owes a record
+/// (`docs/API.md` §6).
 fn sum<S: Real>(mut terms: impl Iterator<Item = S>) -> S {
     match terms.next() {
         Some(first) => terms.fold(first, |acc, t| acc + t),
@@ -38,14 +46,34 @@ fn sum<S: Real>(mut terms: impl Iterator<Item = S>) -> S {
     }
 }
 
-/// The dense image of `j` in row-major scratch, through the public [`Jac::write_dense`].
+/// The dense image of `j` in a `D x D` scratch, through the public [`Jac::write_dense`].
 ///
-/// The scratch is NaN-poisoned, so an entry `write_dense` leaves unwritten reaches the twin's
-/// result instead of passing as a structural zero.
-pub(crate) fn dense<S: Real, T: Tangent<S>, J: Jac<S, T>, const D: usize>(j: &J) -> [[S; D]; D] {
+/// The scratch is NaN-poisoned, so an entry `write_dense` leaves unwritten reaches the result
+/// instead of passing as a structural zero. `(rs, cs)` is the orientation, and the only thing the
+/// two callers differ in: [`dense`] passes the `(D, 1)` of `StridedMut::row_major`, so `m[r][c]` is
+/// entry `(r, c)`, and the hand cases of `laws` pass the `(1, D)` of `col_major` for `m[c][r]`. The
+/// strides and not a constructor, because `StridedMut`'s lifetime is a parameter of the type, so
+/// `row_major` is early-bound and cannot be passed as a `for<'a>` callback. One body, so the poison
+/// has one place to be kept rather than two to be kept in step.
+pub(crate) fn dense_oriented<S: Real, T: Tangent<S>, J: Jac<S, T>, const D: usize>(
+    j: &J,
+    rs: usize,
+    cs: usize,
+) -> [[S; D]; D] {
     let mut m = [[S::zero() / S::zero(); D]; D];
-    j.write_dense(&mut StridedMut::row_major(m.as_flattened_mut(), D, D));
+    j.write_dense(&mut StridedMut::with_strides(
+        m.as_flattened_mut(),
+        D,
+        D,
+        rs,
+        cs,
+    ));
     m
+}
+
+/// [`dense_oriented`] row-major (`m[r][c]`), the orientation every twin here reads.
+pub(crate) fn dense<S: Real, T: Tangent<S>, J: Jac<S, T>, const D: usize>(j: &J) -> [[S; D]; D] {
+    dense_oriented(j, D, 1)
 }
 
 /// The dense `M Σ Mᵀ` of the row-major `m`, written to the `D x D` view `out`.

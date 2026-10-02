@@ -25,6 +25,12 @@ test:
 lint:
     cargo fmt --all -- --check
     cargo clippy --workspace --all-targets -- -D warnings
+    # The release profile too. `debug_assertions` is off there, so every `cfg(not(debug_assertions))`
+    # test body -- the ones `just test`'s release run is the only thing that executes -- is cfg'd out
+    # of the dev pass above and would otherwise never be checked against the denied `unwrap_used`,
+    # `expect_used`, `panic`, `todo`, `unimplemented` and `dbg_macro`. The `mint` pass below stays
+    # dev-only, as `just test`'s `mint` run is.
+    cargo clippy --workspace --all-targets --release -- -D warnings
     cargo clippy -p helicoid -- -D warnings
     cargo xtask lint
     cargo clippy -p helicoid-linalg --all-targets --features mint -- -D warnings

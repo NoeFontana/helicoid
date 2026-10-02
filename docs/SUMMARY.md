@@ -54,3 +54,5 @@
 - [0021: The Cholesky finite guard stays](decisions/0021-the-cholesky-finite-guard-stays.md)
 - [0025: A structured Jacobian and a sealed `Side`](decisions/0025-a-structured-jacobian-and-a-sealed-side.md)
 - [0027: A normalizing constructor normalizes](decisions/0027-a-normalizing-constructor-normalizes.md)
+- [0028: Two ready specs disagree on the blocks of `SEn3Jac`](decisions/0028-two-ready-specs-disagree-on-the-blocks-of-sen3jac.md)
+- [0029: A `Product` needs a way to be built from its factors](decisions/0029-a-product-needs-a-way-to-be-built-from-its-factors.md)

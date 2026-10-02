@@ -10,7 +10,7 @@
 
 use crate::{Jac, Left, LieGroup, Right, Side, Tangent};
 use core::array;
-use helicoid_linalg::{Dual, Matrix, Precision, Real, StridedMut};
+use helicoid_linalg::{Dual, Matrix, Precision, Real};
 use proptest::prelude::*;
 use std::{format, vec::Vec};
 
@@ -105,15 +105,13 @@ fn dt<S: Real, G: LieGroup<S>, const D: usize>(t: &G::Tangent) -> [f64; D] {
     buf.map(S::value_f64)
 }
 
-/// The dense matrix of `j`, column-major (`m[c][r]`), through a NaN-poisoned `StridedMut` so that
-/// an entry `write_dense` leaves unwritten fails whatever reads it.
+/// The dense matrix of `j`, column-major (`m[c][r]`), through `reference::dense_oriented` so that
+/// the NaN poison a hand case relies on has one definition.
 ///
 /// Generic over the `Jac` and not over a group, so a hand case can read a block of a composite
 /// Jacobian — a factor's — which belongs to no group of the composite's dimension.
 fn dense<S: Real, T: Tangent<S>, J: Jac<S, T>, const D: usize>(j: &J) -> [[S; D]; D] {
-    let mut buf = [[nan::<S>(); D]; D];
-    j.write_dense(&mut StridedMut::col_major(buf.as_flattened_mut(), D, D));
-    buf
+    crate::reference::dense_oriented(j, 1, D)
 }
 
 /// [`dense`] as bits, so a hand case tells `+0` from `-0` and sees a NaN.
@@ -519,8 +517,18 @@ impl Rng {
     pub(crate) fn unif(&mut self) -> f64 {
         (self.next() >> 11) as f64 / 2_f64.powi(52) - 1.0
     }
-    pub(crate) fn vec(&mut self, n: usize) -> Vec<f64> {
-        (0..n).map(|_| self.unif()).collect()
+    /// `N` draws into a caller-owned array, the stream [`unif`](Self::unif) gives in order.
+    ///
+    /// The loop is explicit rather than `array::from_fn` because the order of the draws *is* the
+    /// stream: a helper whose visiting order is unspecified would put the reproducibility of every
+    /// recorded figure at the mercy of its implementation. No allocation, so a `10^6`-case
+    /// measurement does not pay one per draw-set per iteration.
+    pub(crate) fn arr<const N: usize>(&mut self) -> [f64; N] {
+        let mut out = [0.0; N];
+        for x in &mut out {
+            *x = self.unif();
+        }
+        out
     }
 }
 
