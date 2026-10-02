@@ -38,6 +38,7 @@ unreachable_pub = "warn"
 unused_must_use = "deny"
 
 [workspace.dependencies]
+helicoid = { path = "crates/helicoid", version = "0.0.0" }
 helicoid-linalg = { path = "crates/helicoid-linalg", version = "0.0.0" }
 # `0007`: the whole third-party budget of the library crates. `arch` routes only the exactly rounded
 # `sqrt`, `fma` and `rint` to the target's instruction: every non-NaN bit is unchanged (D16, `0018`).

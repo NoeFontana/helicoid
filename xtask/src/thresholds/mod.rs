@@ -1,15 +1,24 @@
-//! `cargo xtask thresholds [--check]` (`docs/PHASE1.md` §6, `docs/decisions/0004`, `0016` item 3):
-//! for each of `k, a, b, c, d, e`, `cos θ/2` and `r` at `f64` and at `f32`, the series terms and
-//! switch that minimise the maximum, over every `theta:*` record of `coeff_<c>` (the `@f32`
+//! `cargo xtask thresholds [--check] [seeded|helicoid]` (`docs/PHASE1.md` §6, `docs/decisions/0004`,
+//! `0016` item 3): for each of `k, a, b, c, d, e`, `cos θ/2` and `r` at `f64` and at `f32`, the series
+//! terms and switch that minimise the maximum, over every `theta:*` record of `coeff_<c>` (the `@f32`
 //! strata at `f32`), of the larger of the value error and the `d/dz` error through `Dual<S, 1>`,
 //! both exact and in units of `u` of the precision (`conformance::metric`, the `coeff_*` rule of
-//! one field each). Writes `conformance/sweeps/thresholds-seeded.csv` and, from it,
-//! `xtask/src/seeded/generated.rs` (`emit`); `--check` compares a fresh sweep with both, byte for
-//! byte, and writes nothing. The sweep measures the seeded kernel at a candidate it is handed,
-//! never at `generated.rs`, so that file is an output and not an input; the seeded correct kernel
-//! then runs it, which is why a hand edit that does not compile stops the tool building (`emit`).
-//! Phase 3 points the tool at `helicoid::coeffs`, whose own files are `conformance/sweeps/
-//! thresholds.csv` and `crates/helicoid/src/coeffs/generated.rs`.
+//! one field each). Two targets, both when none is named. **`seeded`** sweeps the seeded kernels and
+//! writes `conformance/sweeps/thresholds-seeded.csv` and, from it, `xtask/src/seeded/generated.rs`.
+//! **`helicoid`** sweeps the arms `helicoid::coeffs` ships, through its hidden `__sweep` feature
+//! (`measure::HelicoidArms`), and writes `conformance/sweeps/thresholds.csv` and
+//! `crates/helicoid/src/coeffs/generated.rs`. `--check` compares a fresh sweep with each file, byte
+//! for byte, and writes nothing. A sweep measures a kernel at a candidate it is handed, never at a
+//! generated file's `Switch`, so that file is an output and not an input; the seeded correct kernel
+//! then runs its file, which is why a hand edit that does not compile stops the tool building
+//! (`emit`).
+//!
+//! **The `helicoid` target is a fixed point.** Its file holds the swept series, a function of the
+//! corpus alone, beside the `Switch`es, a function of the sweep; the arms read only the first, so a
+//! second run writes the same bytes. When the corpus's series change, the compiled-in ones are
+//! stale: the run finds it before sweeping, writes the new series beside placeholder switches
+//! (`bootstrap`) and fails; run it again to sweep them. `--check` reports the staleness and writes
+//! nothing.
 //!
 //! **Candidates.** `1..=8` terms times `grid`: 64 points per decade of the branch variable
 //! `z = θ²` from `1e-16` (`θ = 1e-8`) to `1` (`θ = 1`), ends included, 8200 candidates, at each
@@ -58,10 +67,12 @@
 //! | `prior_rank` | 1 + the grid candidates whose objective is smaller than the prior's |
 //! | `tied` | grid candidates with exactly the chosen objective, among which the tie-break chose |
 //! | `next_objective` | the smallest grid objective above the chosen one; empty when none |
+//! | `at_switch_exact_value_u`, `at_switch_exact_deriv_u` | the chosen candidate's exact arm's errors at the two records that bracket its switch, the last below it and the first at or above it, the larger of the two (`search::at_switch`) |
+//! | `at_switch_series_value_u`, `at_switch_series_deriv_u` | its series arm's: the sum of the two arms' is what the jump between them at the switch is compared with (`docs/maths/coefficients.md` CO.12), a sample at two records and not a bound over the interval |
 //!
 //! Numbers are shortest round-trip decimals (`{:e}`), those of an `f32` row's switch and branch
-//! variable at `f32`. Not swept: SE(2)'s `α`, `β` (no corpus id), a switch shared by a call-site
-//! group (CO.18), and `crates/helicoid/src/coeffs/generated.rs` (Phase 3).
+//! variable at `f32`. Not swept: SE(2)'s `α`, `β` (no corpus id) and a switch shared by a call-site
+//! group (CO.18).
 
 mod emit;
 mod grid;
@@ -74,15 +85,54 @@ use helicoid_linalg::{Dual, Precision, Real};
 
 use crate::conformance::root;
 use crate::seeded::{d12, Coeff, Series, Swept, D1, SERIES_FILE};
-use search::{Field, Sweep};
+use measure::{HelicoidArms, SeededArms};
+use search::{Errors, Field, Sweep};
 
-const USAGE: &str = "usage: cargo xtask thresholds [--check]";
-/// The committed sweep of the seeded kernels, relative to the repository root. The name leaves
-/// `conformance/sweeps/thresholds.csv` to `helicoid::coeffs` (Phase 3).
-const CSV: &str = "conformance/sweeps/thresholds-seeded.csv";
+const USAGE: &str = "usage: cargo xtask thresholds [--check] [seeded|helicoid]";
+/// The committed sweep of the seeded kernels, relative to the repository root.
+const CSV_SEEDED: &str = "conformance/sweeps/thresholds-seeded.csv";
+/// The committed sweep of `helicoid::coeffs`.
+const CSV_HELICOID: &str = "conformance/sweeps/thresholds.csv";
 const HEADER: &str = "coeff,precision,terms,switch_bits,switch_z,switch_theta,grid_index,\
 value_max_u,deriv_max_u,objective,argmax_field,argmax_stratum,argmax_id,argmax_z,below_objective,\
-above_objective,top_objective,prior_objective,prior_rank,tied,next_objective";
+above_objective,top_objective,prior_objective,prior_rank,tied,next_objective,at_switch_exact_value_u,\
+at_switch_exact_deriv_u,at_switch_series_value_u,at_switch_series_deriv_u";
+
+/// What a sweep measures.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Target {
+    /// The kernels of `xtask/src/seeded`.
+    Seeded,
+    /// The arms of `helicoid::coeffs`, as shipped.
+    Helicoid,
+}
+
+impl Target {
+    const ALL: [Target; 2] = [Target::Seeded, Target::Helicoid];
+
+    fn name(self) -> &'static str {
+        match self {
+            Target::Seeded => "seeded",
+            Target::Helicoid => "helicoid",
+        }
+    }
+
+    /// The committed sweep, relative to the repository root.
+    fn csv(self) -> &'static str {
+        match self {
+            Target::Seeded => CSV_SEEDED,
+            Target::Helicoid => CSV_HELICOID,
+        }
+    }
+
+    /// The generated file, relative to the repository root.
+    fn generated(self) -> &'static str {
+        match self {
+            Target::Seeded => emit::PATH_SEEDED,
+            Target::Helicoid => emit::PATH_HELICOID,
+        }
+    }
+}
 
 /// One coefficient's sweep at one precision and the record that attains its objective.
 struct Row {
@@ -93,10 +143,16 @@ struct Row {
     stratum: String,
     record: u64,
     z: f64,
+    /// The chosen candidate's exact arm's and series arm's errors at the switch (`search::at_switch`).
+    arms: (Errors, Errors),
 }
 
-/// The sweep of `ids` over the corpus in `dir` at the precision of `S`.
-fn sweep_at<S: Real + Into<f64>>(dir: &Path, ids: &[Swept]) -> Result<Vec<Row>, String> {
+/// The sweep of `ids` over the corpus in `dir` at the precision of `S`, of `target`'s arms.
+fn sweep_at<S: Real + Into<f64>>(
+    dir: &Path,
+    target: Target,
+    ids: &[Swept],
+) -> Result<Vec<Row>, String> {
     let series = Series::<Dual<S, 1>>::load(dir)?;
     let prior = d12(&series)?;
     let grid = grid::grid(S::PRECISION);
@@ -108,12 +164,16 @@ fn sweep_at<S: Real + Into<f64>>(dir: &Path, ids: &[Swept]) -> Result<Vec<Row>, 
     }
     ids.iter()
         .map(|&id| {
-            let m = measure::samples(dir, &series, id)?;
+            let m = match target {
+                Target::Seeded => measure::samples(dir, &SeededArms(&series), id)?,
+                Target::Helicoid => measure::samples::<S>(dir, &HelicoidArms, id)?,
+            };
             let prior = (prior.terms, prior.switch_z.v.into());
             let sweep = search::search(&m.samples, &grid, prior)?;
             let (field, at) = sweep.chosen.argmax();
             let (stratum, record) = m.records[at].clone();
             let z = m.samples[at].z;
+            let arms = search::at_switch(&m.samples, sweep.chosen.terms, sweep.chosen.switch);
             Ok(Row {
                 id,
                 precision: S::PRECISION,
@@ -122,15 +182,16 @@ fn sweep_at<S: Real + Into<f64>>(dir: &Path, ids: &[Swept]) -> Result<Vec<Row>, 
                 stratum,
                 record,
                 z,
+                arms,
             })
         })
         .collect()
 }
 
 /// The sweep of `ids` at `f64`, then at `f32`.
-fn sweep(dir: &Path, ids: &[Swept]) -> Result<Vec<Row>, String> {
-    let mut rows = sweep_at::<f64>(dir, ids)?;
-    rows.extend(sweep_at::<f32>(dir, ids)?);
+fn sweep(dir: &Path, target: Target, ids: &[Swept]) -> Result<Vec<Row>, String> {
+    let mut rows = sweep_at::<f64>(dir, target, ids)?;
+    rows.extend(sweep_at::<f32>(dir, target, ids)?);
     Ok(rows)
 }
 
@@ -190,6 +251,10 @@ fn render(rows: &[Row]) -> String {
             s.prior_rank.to_string(),
             s.tied.to_string(),
             opt(s.next),
+            format!("{:e}", r.arms.0.value),
+            format!("{:e}", r.arms.0.deriv),
+            format!("{:e}", r.arms.1.value),
+            format!("{:e}", r.arms.1.deriv),
         ];
         out.push_str(&cells.join(","));
         out.push('\n');
@@ -221,7 +286,7 @@ impl Ranker {
         let series = Series::<D1>::load(dir)?;
         let prior = d12(&series)?;
         let grid = grid::grid(Precision::F64);
-        let samples = measure::samples(dir, &series, Swept::Coeff(c))?.samples;
+        let samples = measure::samples(dir, &SeededArms(&series), Swept::Coeff(c))?.samples;
         let sweep = search::search(&samples, &grid, (prior.terms, prior.switch_z.v))?;
         Ok(Self {
             samples,
@@ -249,15 +314,78 @@ impl Ranker {
     }
 }
 
-/// The files a sweep writes, as `(path relative to the repository root, text)`: the CSV and the
-/// generated file, both computed before either is written.
-fn files(dir: &Path, rows: &[Row]) -> Result<Vec<(&'static str, String)>, String> {
+/// The files a sweep of `target` writes, as `(path relative to the repository root, text)`: the
+/// CSV and the generated file, both computed before either is written.
+fn files(dir: &Path, target: Target, rows: &[Row]) -> Result<Vec<(&'static str, String)>, String> {
     let csv = render(rows);
-    let path = dir.join(SERIES_FILE);
-    let series_file = std::fs::read(&path).map_err(|e| format!("{}: {e}", path.display()))?;
+    let series_file = series_file(dir)?;
     let (wide, narrow) = (Series::<f64>::load(dir)?, Series::<f32>::load(dir)?);
-    let generated = emit::render(&csv, &series_file, &wide, &narrow)?;
-    Ok(vec![(CSV, csv), (emit::PATH, generated)])
+    let generated = match target {
+        Target::Seeded => emit::render(&csv, &series_file, &wide, &narrow)?,
+        Target::Helicoid => emit::render_helicoid(&csv, &series_file, (&wide, &narrow), false)?,
+    };
+    Ok(vec![(target.csv(), csv), (target.generated(), generated)])
+}
+
+/// The bytes of `coeff_series.jsonl` in the corpus `dir`.
+fn series_file(dir: &Path) -> Result<Vec<u8>, String> {
+    let path = dir.join(SERIES_FILE);
+    std::fs::read(&path).map_err(|e| format!("{}: {e}", path.display()))
+}
+
+/// Whether the swept series `helicoid::__sweep` was compiled with are the corpus's: the first
+/// `TERMS` terms of each row, rounded once at each precision, bit for bit.
+fn swept_is_current(dir: &Path) -> Result<bool, String> {
+    use helicoid::__sweep::{swept_f32, swept_f64};
+    current(
+        dir,
+        |name| swept_f64(name).map(<[f64]>::to_vec),
+        |name| swept_f32(name).map(<[f32]>::to_vec),
+    )
+}
+
+/// [`swept_is_current`] for the series `wide_of` and `narrow_of` name for each coefficient.
+fn current(
+    dir: &Path,
+    wide_of: impl Fn(&str) -> Option<Vec<f64>>,
+    narrow_of: impl Fn(&str) -> Option<Vec<f32>>,
+) -> Result<bool, String> {
+    let (wide, narrow) = (Series::<f64>::load(dir)?, Series::<f32>::load(dir)?);
+    let bits = |x: &[f64]| x.iter().map(|x| x.to_bits()).collect::<Vec<_>>();
+    let bits32 = |x: &[f32]| x.iter().map(|x| x.to_bits()).collect::<Vec<_>>();
+    Ok(Swept::ALL.into_iter().all(|id| {
+        let (w, n) = (
+            &wide.swept(id)[..search::TERMS],
+            &narrow.swept(id)[..search::TERMS],
+        );
+        wide_of(id.name()).map(|x| bits(&x)) == Some(bits(w))
+            && narrow_of(id.name()).map(|x| bits32(&x)) == Some(bits32(n))
+    }))
+}
+
+/// The `helicoid` file for the corpus's series beside placeholder switches (never chosen, 8 terms):
+/// what a run writes when the compiled-in series are stale, so the next one measures the new ones.
+fn bootstrap(dir: &Path) -> Result<String, String> {
+    let mut csv = format!("{HEADER}\n");
+    for precision in [Precision::F64, Precision::F32] {
+        for id in Swept::ALL {
+            let zero = match precision {
+                Precision::F64 => "0x0000000000000000",
+                Precision::F32 => "0x00000000",
+            };
+            let cells = HEADER.split(',').map(|name| match name {
+                "coeff" => id.name(),
+                "precision" => precision_name(precision),
+                "terms" => "8",
+                "switch_bits" => zero,
+                _ => "0e0",
+            });
+            csv.push_str(&cells.collect::<Vec<_>>().join(","));
+            csv.push('\n');
+        }
+    }
+    let (wide, narrow) = (Series::<f64>::load(dir)?, Series::<f32>::load(dir)?);
+    emit::render_helicoid(&csv, &series_file(dir)?, (&wide, &narrow), true)
 }
 
 /// `Ok` when `fresh` is what `path` (repository-relative) holds, else the first line that differs.
@@ -305,30 +433,59 @@ pub(crate) fn run(args: &[String]) -> Result<(), String> {
     run_at(&root, &root.join("conformance/corpus"), args)
 }
 
+/// The `--check` flag and the targets named, in [`Target::ALL`] order, every one when none is.
+fn parse(args: &[String]) -> Result<(bool, Vec<Target>), String> {
+    let (mut check, mut named) = (false, Vec::new());
+    for arg in args {
+        match Target::ALL.into_iter().find(|t| t.name() == arg) {
+            _ if arg == "--check" && !check => check = true,
+            Some(t) if !named.contains(&t) => named.push(t),
+            _ => return Err(USAGE.to_string()),
+        }
+    }
+    let targets = Target::ALL
+        .into_iter()
+        .filter(|t| named.is_empty() || named.contains(t));
+    Ok((check, targets.collect()))
+}
+
 /// [`run`] with the files under `root` and the corpus in `corpus`.
 #[allow(clippy::print_stdout)]
 fn run_at(root: &Path, corpus: &Path, args: &[String]) -> Result<(), String> {
-    let check = match args {
-        [] => false,
-        [flag] if flag == "--check" => true,
-        _ => return Err(USAGE.to_string()),
-    };
-    let rows = sweep(corpus, &Swept::ALL)?;
-    let files = files(corpus, &rows)?;
+    let (check, targets) = parse(args)?;
+    if targets.contains(&Target::Helicoid) && !swept_is_current(corpus)? {
+        let path = Target::Helicoid.generated();
+        let stale = format!("{path} holds series that are not the corpus's {SERIES_FILE}");
+        if check {
+            return Err(format!("{stale}; run `just thresholds`, twice"));
+        }
+        finish(root, path, &bootstrap(corpus)?, false)?;
+        return Err(format!(
+            "{stale}: wrote the new ones beside placeholder switches; run it again"
+        ));
+    }
+    let mut files = Vec::new();
+    for target in targets {
+        let rows = sweep(corpus, target, &Swept::ALL)?;
+        files.extend(self::files(corpus, target, &rows)?);
+        if !check {
+            for r in &rows {
+                println!(
+                    "{} {} {}: {} terms, switch root {} (grid {}), objective {:e} u; prior {:e} u",
+                    target.name(),
+                    r.id.name(),
+                    precision_name(r.precision),
+                    r.sweep.chosen.terms,
+                    shown(r.precision, root_of(r.precision, r.sweep.chosen.switch)),
+                    r.sweep.index,
+                    r.sweep.chosen.objective(),
+                    r.sweep.prior.objective()
+                );
+            }
+        }
+    }
     finish_all(root, &files, check)?;
     if !check {
-        for r in &rows {
-            println!(
-                "{} {}: {} terms, switch root {} (grid {}), objective {:e} u; prior {:e} u",
-                r.id.name(),
-                precision_name(r.precision),
-                r.sweep.chosen.terms,
-                shown(r.precision, root_of(r.precision, r.sweep.chosen.switch)),
-                r.sweep.index,
-                r.sweep.chosen.objective(),
-                r.sweep.prior.objective()
-            );
-        }
         for (path, _) in &files {
             eprintln!("thresholds: wrote {}", root.join(path).display());
         }
@@ -343,20 +500,50 @@ mod tests {
     use crate::conformance::testkit::Scratch;
     use crate::seeded::C_PLANTED;
 
-    fn committed() -> Result<String, String> {
-        let path = root()?.join(CSV);
+    fn committed(target: Target) -> Result<String, String> {
+        let path = root()?.join(target.csv());
         std::fs::read_to_string(&path).map_err(|e| format!("{}: {e}", path.display()))
     }
 
-    /// The files of a fresh sweep of every id at both precisions.
+    /// The files of a fresh sweep of every id at both precisions, of each target in turn.
     fn fresh() -> Result<Vec<(&'static str, String)>, String> {
-        let dir = corpus_dir()?;
-        files(&dir, &sweep(&dir, &Swept::ALL)?)
+        static FRESH: std::sync::OnceLock<Result<Vec<(&'static str, String)>, String>> =
+            std::sync::OnceLock::new();
+        FRESH
+            .get_or_init(|| {
+                let dir = corpus_dir()?;
+                let mut all = Vec::new();
+                for target in Target::ALL {
+                    all.extend(files(&dir, target, &sweep(&dir, target, &Swept::ALL)?)?);
+                }
+                Ok(all)
+            })
+            .clone()
     }
 
     #[test]
     fn arguments_are_refused_and_a_difference_names_its_file_and_line() {
         assert!(run(&["--nope".to_string()]).is_err() && run(&["a".into(), "b".into()]).is_err());
+        // A target or the flag, once each, in any order; no target is every target.
+        let parsed = |args: &[&str]| {
+            let args: Vec<String> = args.iter().map(ToString::to_string).collect();
+            parse(&args)
+        };
+        let both = (false, Target::ALL.to_vec());
+        assert_eq!(parsed(&[]), Ok(both.clone()));
+        assert_eq!(parsed(&["--check"]), Ok((true, both.1)));
+        assert_eq!(
+            parsed(&["helicoid", "--check"]),
+            Ok((true, vec![Target::Helicoid]))
+        );
+        assert_eq!(parsed(&["seeded"]), Ok((false, vec![Target::Seeded])));
+        for bad in [
+            &["--check", "--check"][..],
+            &["seeded", "seeded"],
+            &["helicoids"],
+        ] {
+            assert!(parsed(bad).is_err(), "{bad:?}");
+        }
         assert!(compare("p", "a\nb\n", "a\nb\n").is_ok());
         let e = compare("x/p.rs", "a\nb\n", "a\nc\n")
             .err()
@@ -377,26 +564,45 @@ mod tests {
             paths,
             [
                 "conformance/sweeps/thresholds-seeded.csv",
-                "xtask/src/seeded/generated.rs"
+                "xtask/src/seeded/generated.rs",
+                "conformance/sweeps/thresholds.csv",
+                "crates/helicoid/src/coeffs/generated.rs",
             ]
         );
         finish_all(&root()?, &fresh, true)
     }
 
     #[test]
+    fn the_shipped_arms_are_measured_to_the_seeded_arms_errors() -> Result<(), String> {
+        // Every error of every arm at every record is the same number, so the two sweeps write the
+        // same CSV, and the arms are the same bit for bit (`measure`'s test).
+        let fresh = fresh()?;
+        assert_eq!(fresh[0].1, fresh[2].1);
+        Ok(())
+    }
+
+    #[test]
     fn two_sweeps_write_the_same_bytes() -> Result<(), String> {
         let two = [Swept::Coeff(Coeff::B), Swept::Coeff(Coeff::E)];
-        let run = || sweep(&corpus_dir()?, &two).map(|s| render(&s));
-        let (first, second) = (run()?, run()?);
-        assert_eq!(first, second);
-        // The header, then `b`, `e` at `f64`, then at `f32`.
-        assert_eq!(first.lines().count(), 5);
+        for target in Target::ALL {
+            let run = || sweep(&corpus_dir()?, target, &two).map(|s| render(&s));
+            let (first, second) = (run()?, run()?);
+            assert_eq!(first, second);
+            // The header, then `b`, `e` at `f64`, then at `f32`.
+            assert_eq!(first.lines().count(), 5);
+        }
         Ok(())
     }
 
     #[test]
     fn the_committed_rows_are_the_documented_columns() -> Result<(), String> {
-        let text = committed()?;
+        for target in Target::ALL {
+            committed_rows_are_the_documented_columns(&committed(target)?)?;
+        }
+        Ok(())
+    }
+
+    fn committed_rows_are_the_documented_columns(text: &str) -> Result<(), String> {
         let mut rows = text.lines();
         assert_eq!(rows.next(), Some(HEADER));
         let columns: Vec<&str> = HEADER.split(',').collect();
@@ -434,6 +640,16 @@ mod tests {
             // The switch is 16 hex digits of bits at `f64` and 8 at `f32`, the row's own precision.
             let width = if cell("precision")? == "f64" { 18 } else { 10 };
             assert_eq!(cell("switch_bits")?.len(), width, "{row}");
+            // The arms' errors at the switch are finite, and no better than the sweep's own
+            // records of the arm it uses there, which they include.
+            for name in [
+                "at_switch_exact_value_u",
+                "at_switch_exact_deriv_u",
+                "at_switch_series_value_u",
+                "at_switch_series_deriv_u",
+            ] {
+                assert!(num(name)?.is_finite() && num(name)? >= 0.0, "{row}: {name}");
+            }
             names.push((cells[0], cells[1]));
         }
         let ids = ["k", "a", "b", "c", "d", "e", "cos_half", "r"];
@@ -547,18 +763,135 @@ mod tests {
         let read = |dir: &Path, path: &str| {
             std::fs::read_to_string(dir.join(path)).map_err(|e| format!("{path}: {e}"))
         };
-        run_at(at, &corpus, &[])?;
-        for path in [CSV, emit::PATH] {
+        let (path, args) = (Target::Seeded.generated(), ["seeded".to_string()]);
+        run_at(at, &corpus, &args)?;
+        for path in [Target::Seeded.csv(), path] {
             assert_eq!(read(at, path)?, read(&root()?, path)?, "{path}");
         }
-        run_at(at, &corpus, &check)?;
+        run_at(at, &corpus, &[args[0].clone(), check[0].clone()])?;
         // A hand edit fails the check, which names the file and the line and leaves the edit.
-        let edited = read(at, emit::PATH)?.replacen("0x3f", "0x3e", 1);
-        std::fs::write(at.join(emit::PATH), &edited).map_err(|e| e.to_string())?;
+        let edited = read(at, path)?.replacen("0x3f", "0x3e", 1);
+        std::fs::write(at.join(path), &edited).map_err(|e| e.to_string())?;
         let e = run_at(at, &corpus, &check).err();
         let e = e.ok_or("the check passed a hand edit")?;
-        assert!(e.starts_with(emit::PATH) && e.contains("line "), "{e}");
-        assert_eq!(read(at, emit::PATH)?, edited);
+        assert!(e.starts_with(path) && e.contains("line "), "{e}");
+        assert_eq!(read(at, path)?, edited);
+        Ok(())
+    }
+
+    #[test]
+    fn a_helicoid_run_writes_its_files_and_stale_series_are_written_beside_placeholders(
+    ) -> Result<(), String> {
+        let (corpus, scratch) = (corpus_dir()?, Scratch::new("run-helicoid"));
+        let (at, args) = (scratch.0.as_path(), ["helicoid".to_string()]);
+        let read = |dir: &Path, path: &str| {
+            std::fs::read_to_string(dir.join(path)).map_err(|e| format!("{path}: {e}"))
+        };
+        let (csv, generated) = (Target::Helicoid.csv(), Target::Helicoid.generated());
+        run_at(at, &corpus, &args)?;
+        for path in [csv, generated] {
+            assert_eq!(read(at, path)?, read(&root()?, path)?, "{path}");
+        }
+        assert!(swept_is_current(&corpus)?);
+        // A corpus whose series differ from the compiled-in ones: `k`'s second term is not `-1/48`.
+        let stale = at.join("corpus");
+        std::fs::create_dir_all(&stale).map_err(|e| e.to_string())?;
+        let series = String::from_utf8(series_file(&corpus)?).map_err(|e| e.to_string())?;
+        let edited = series.replacen("\"-1/48\"", "\"-1/49\"", 1);
+        assert_ne!(edited, series);
+        std::fs::write(stale.join(SERIES_FILE), edited).map_err(|e| e.to_string())?;
+        assert!(!swept_is_current(&stale)?);
+        let out = at.join("out");
+        // A check reports it and writes nothing; a run writes the series and fails, so that the
+        // next one measures them.
+        let e = run_at(&out, &stale, &[args[0].clone(), "--check".into()]).err();
+        assert!(e.is_some_and(|e| e.contains("not the corpus's")) && !out.exists());
+        let e = run_at(&out, &stale, &args).err().unwrap_or_default();
+        assert!(e.contains("placeholder switches; run it again"), "{e}");
+        let written = read(&out, generated)?;
+        assert!(written.contains("// Placeholder switches: the series changed;"));
+        assert!(written.contains("Switch<f64, 8> = Switch::first("));
+        assert!(
+            written.contains(&format!("{:e},", 1.0 / -49.0)),
+            "{written}"
+        );
+        assert!(!out.join(csv).exists());
+        Ok(())
+    }
+
+    /// `series`, the text of `coeff_series.jsonl`, with the `term`-th term of `coeff` a different
+    /// rational.
+    fn with_term_changed(series: &str, coeff: &str, term: usize) -> Result<String, String> {
+        let key = format!("\"coeff\":\"{coeff}\"");
+        let mut changed = false;
+        let lines: Vec<String> = series
+            .lines()
+            .map(|line| {
+                if !line.contains(&key) {
+                    return Ok(line.to_string());
+                }
+                let (head, rest) = line.split_once("\"series\":[").ok_or("no series")?;
+                let (list, tail) = rest.split_once(']').ok_or("no end of series")?;
+                let mut items: Vec<String> = list.split(',').map(str::to_string).collect();
+                let item = items.get_mut(term).ok_or("no such term")?;
+                *item = format!("{}7\"", item.trim_end_matches('"'));
+                changed = true;
+                Ok::<_, String>(format!("{head}\"series\":[{}]{tail}", items.join(",")))
+            })
+            .collect::<Result<_, _>>()?;
+        assert!(changed, "no row for {coeff}");
+        Ok(lines.join("\n") + "\n")
+    }
+
+    #[test]
+    fn a_changed_corpus_series_is_stale_at_every_coefficient_and_swept_term() -> Result<(), String>
+    {
+        // Any of the `TERMS` swept terms of any row, and no term past them, which the arms never read.
+        let (corpus, scratch) = (corpus_dir()?, Scratch::new("stale-corpus"));
+        let text = String::from_utf8(series_file(&corpus)?).map_err(|e| e.to_string())?;
+        let stale = scratch.0.join("corpus");
+        std::fs::create_dir_all(&stale).map_err(|e| e.to_string())?;
+        for id in Swept::ALL {
+            for term in [0, search::TERMS - 1, search::TERMS] {
+                let edited = with_term_changed(&text, id.name(), term)?;
+                std::fs::write(stale.join(SERIES_FILE), edited).map_err(|e| e.to_string())?;
+                let current = swept_is_current(&stale)?;
+                assert_eq!(current, term == search::TERMS, "{id:?} term {term}");
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn a_compiled_in_series_off_by_one_bit_is_stale_at_either_precision() -> Result<(), String> {
+        // The other side of the comparison: the tables `generated.rs` holds, one bit off in one term
+        // of one coefficient at one precision, or missing.
+        let corpus = corpus_dir()?;
+        let wide = |name: &str| helicoid::__sweep::swept_f64(name).map(<[f64]>::to_vec);
+        let narrow = |name: &str| helicoid::__sweep::swept_f32(name).map(<[f32]>::to_vec);
+        assert!(current(&corpus, wide, narrow)?);
+        for id in Swept::ALL {
+            for term in [0, search::TERMS - 1] {
+                let off64 = |name: &str| {
+                    let mut v = wide(name)?;
+                    if name == id.name() {
+                        v[term] = f64::from_bits(v[term].to_bits() ^ 1);
+                    }
+                    Some(v)
+                };
+                let off32 = |name: &str| {
+                    let mut v = narrow(name)?;
+                    if name == id.name() {
+                        v[term] = f32::from_bits(v[term].to_bits() ^ 1);
+                    }
+                    Some(v)
+                };
+                assert!(!current(&corpus, off64, narrow)?, "{id:?} f64 term {term}");
+                assert!(!current(&corpus, wide, off32)?, "{id:?} f32 term {term}");
+            }
+            let missing = |name: &str| (name != id.name()).then(|| wide(name)).flatten();
+            assert!(!current(&corpus, missing, narrow)?, "{id:?} missing");
+        }
         Ok(())
     }
 
@@ -599,7 +932,7 @@ mod tests {
     ) -> Result<(), String> {
         let dir = corpus_dir()?;
         let ranker = Ranker::new(&dir, Coeff::A)?;
-        let chosen = committed()?;
+        let chosen = committed(Target::Seeded)?;
         let row = chosen
             .lines()
             .find(|l| l.starts_with("a,f64,"))

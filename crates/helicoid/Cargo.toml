@@ -18,6 +18,11 @@ workspace = true
 all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
 
+[features]
+# Hidden, not API: the coefficient evaluators `cargo xtask thresholds` sweeps, so the code measured is
+# the code shipped (`docs/PHASE3.md` §3, `0004` item 4). Only `xtask` may enable it (`cargo xtask lint`).
+__sweep = []
+
 [dependencies]
 helicoid-linalg.workspace = true
 libm.workspace = true

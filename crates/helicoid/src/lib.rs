@@ -29,6 +29,11 @@
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
 
+// The kernel has no consumer until SO(3) lands (`docs/PHASE3.md` §0.0): it is built for the tests
+// and the sweep, so a default build carries no dead code. The SO(3) PR drops the `cfg`; what only
+// the tests and the sweep call is gated inside, and `just lint` builds a default `helicoid` to see.
+#[cfg(any(test, feature = "__sweep"))]
+mod coeffs;
 mod dualmat;
 mod product;
 mod quat;
@@ -38,6 +43,9 @@ mod sen3;
 mod side;
 mod traits;
 
+#[cfg(feature = "__sweep")]
+#[doc(hidden)]
+pub use coeffs::sweep as __sweep;
 pub use dualmat::SEn3Jac;
 pub use product::{Product, ProductJac};
 pub use quat::Quat;

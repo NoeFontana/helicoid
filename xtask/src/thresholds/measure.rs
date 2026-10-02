@@ -1,7 +1,8 @@
-//! The per-record errors of every arm, formed once from the seeded kernel and the committed
-//! corpus (`docs/PHASE1.md` §6): the exact arm, and the arm of each of `1..=TERMS` series terms.
-//! At `f32` (`docs/decisions/0016` item 3) the records are the `@f32` strata's and the kernel runs
-//! on `Dual<f32, 1>`; everything else, the objective included, is binary64's.
+//! The per-record errors of every arm, formed once from a kernel's arms ([`Arms`]: the seeded
+//! kernel's or `helicoid::coeffs`' through the hidden `__sweep` feature) and the committed corpus
+//! (`docs/PHASE1.md` §6): the exact arm, and the arm of each of `1..=TERMS` series terms. At `f32`
+//! (`docs/decisions/0016` item 3) the records are the `@f32` strata's and the kernel runs on
+//! `Dual<f32, 1>`; everything else, the objective included, is binary64's.
 
 use std::path::Path;
 
@@ -11,7 +12,71 @@ use super::search::{Errors, Sample, TERMS};
 use crate::conformance::corpus::{self, Record};
 use crate::conformance::metric::{Rule, Score, COEFF_D_BRANCH, COEFF_VALUE};
 use crate::conformance::subject::Output;
-use crate::seeded::{branch_variable, evaluate, input, Candidate, Series, Swept};
+use crate::seeded::{branch_variable, evaluate, input, Candidate, Coeff, Input, Series, Swept};
+
+/// The two arms of one kernel at a record's arguments on `Dual<S, 1>`, seeded at the branch variable.
+pub(super) trait Arms<S: Real> {
+    /// The exact arm at `x`, with no safe argument: at `z = 0` it is not finite.
+    fn exact(&self, id: Swept, x: Input<Dual<S, 1>>) -> Dual<S, 1>;
+    /// The series arm of `terms` terms at `x`.
+    fn series(&self, id: Swept, x: Input<Dual<S, 1>>, terms: usize) -> Dual<S, 1>;
+}
+
+/// The seeded kernel's arms: its own candidate with a switch that always or never selects the series.
+pub(super) struct SeededArms<'a, S: Real>(pub(super) &'a Series<Dual<S, 1>>);
+
+impl<S: Real> SeededArms<'_, S> {
+    fn at(&self, id: Swept, x: Input<Dual<S, 1>>, terms: usize, switch: f64) -> Dual<S, 1> {
+        let cand = Candidate {
+            terms,
+            switch_z: Dual::<S, 1>::lit(switch),
+        };
+        evaluate(id, x, cand, self.0.swept(id))
+    }
+}
+
+impl<S: Real> Arms<S> for SeededArms<'_, S> {
+    fn exact(&self, id: Swept, x: Input<Dual<S, 1>>) -> Dual<S, 1> {
+        self.at(id, x, 1, 0.0)
+    }
+
+    fn series(&self, id: Swept, x: Input<Dual<S, 1>>, terms: usize) -> Dual<S, 1> {
+        self.at(id, x, terms, f64::INFINITY)
+    }
+}
+
+/// The arms `helicoid::coeffs` ships, through `helicoid::__sweep`.
+pub(super) struct HelicoidArms;
+
+impl<S: Real> Arms<S> for HelicoidArms {
+    fn exact(&self, id: Swept, x: Input<Dual<S, 1>>) -> Dual<S, 1> {
+        use helicoid::__sweep as k;
+        match id {
+            Swept::Coeff(Coeff::K) => k::exact_k(x.z),
+            Swept::Coeff(Coeff::A) => k::exact_a(x.z),
+            Swept::Coeff(Coeff::B) => k::exact_b(x.z),
+            Swept::Coeff(Coeff::C) => k::exact_c(x.z),
+            Swept::Coeff(Coeff::D) => k::exact_d(x.z),
+            Swept::Coeff(Coeff::E) => k::exact_e(x.z),
+            Swept::CosHalf => k::exact_cos_half(x.z),
+            Swept::R => k::exact_r(x.z, x.w),
+        }
+    }
+
+    fn series(&self, id: Swept, x: Input<Dual<S, 1>>, terms: usize) -> Dual<S, 1> {
+        use helicoid::__sweep as k;
+        match id {
+            Swept::Coeff(Coeff::K) => k::series_k(x.z, terms),
+            Swept::Coeff(Coeff::A) => k::series_a(x.z, terms),
+            Swept::Coeff(Coeff::B) => k::series_b(x.z, terms),
+            Swept::Coeff(Coeff::C) => k::series_c(x.z, terms),
+            Swept::Coeff(Coeff::D) => k::series_d(x.z, terms),
+            Swept::Coeff(Coeff::E) => k::series_e(x.z, terms),
+            Swept::CosHalf => k::series_cos_half(x.z, terms),
+            Swept::R => k::series_r(x.z, x.w, terms),
+        }
+    }
+}
 
 /// The value and the `d/dz` of `r` against the reference of `rec`, exact, in units of `u` of the
 /// precision `r` is computed at.
@@ -43,7 +108,7 @@ pub(super) struct Measured {
 /// `r_is_swept_over_the_records_with_w_above_zero_in_s_and_the_others_are_not` pins.
 pub(super) fn samples<S: Real + Into<f64>>(
     dir: &Path,
-    series: &Series<Dual<S, 1>>,
+    arms: &impl Arms<S>,
     id: Swept,
 ) -> Result<Measured, String> {
     let fn_id = format!("coeff_{}", id.name());
@@ -61,21 +126,14 @@ pub(super) fn samples<S: Real + Into<f64>>(
         // kernel compares, so a candidate selects as the kernel does.
         let x =
             input::<S>(id, &rec).ok_or_else(|| format!("{fn_id} {}: no usable input", rec.id))?;
-        let arm = |terms, switch: f64| {
-            let cand = Candidate {
-                terms,
-                switch_z: Dual::<S, 1>::lit(switch),
-            };
-            errors(&rec, evaluate(id, x.seed(), cand, series.swept(id)))
-        };
-        let exact = arm(1, 0.0)?;
+        let exact = errors(&rec, arms.exact(id, x.seed()))?;
         let mut s = Sample {
             z: branch_variable(id, x).into(),
             exact,
             series: [exact; TERMS],
         };
         for terms in 1..=TERMS {
-            s.series[terms - 1] = arm(terms, f64::INFINITY)?;
+            s.series[terms - 1] = errors(&rec, arms.series(id, x.seed(), terms))?;
         }
         out.push(s);
         records.push((rec.stratum, rec.id));
@@ -98,6 +156,7 @@ mod tests {
     use crate::seeded::{d12, Coeff, Defect, Seeded, D1};
     use crate::thresholds::grid::grid;
     use crate::thresholds::search::score;
+    use crate::thresholds::{CSV_HELICOID, CSV_SEEDED};
 
     const BOTH: [Precision; 2] = [Precision::F64, Precision::F32];
 
@@ -146,7 +205,7 @@ mod tests {
             (8, g[1024]),
         ];
         for id in Swept::ALL {
-            let Measured { samples, records } = samples(dir, &series, id)?;
+            let Measured { samples, records } = samples(dir, &SeededArms(&series), id)?;
             assert_eq!(
                 (samples.len(), records.len()),
                 (1710, 1710),
@@ -185,9 +244,14 @@ mod tests {
         spliced_is_whole::<f32>(&dir, Seeded::uniform_f32)
     }
 
-    /// `(terms, switch_bits, value_max_u, deriv_max_u)` of the committed row of `id` at `at`.
-    fn committed_row(id: Swept, at: Precision) -> Result<(usize, u64, f64, f64), String> {
-        let path = crate::conformance::root()?.join(super::super::CSV);
+    /// `(terms, switch_bits, value_max_u, deriv_max_u)` of the row of `id` at `at` in the committed
+    /// sweep `csv`.
+    fn committed_row(
+        csv: &str,
+        id: Swept,
+        at: Precision,
+    ) -> Result<(usize, u64, f64, f64), String> {
+        let path = crate::conformance::root()?.join(csv);
         let text = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
         let header: Vec<&str> = super::super::HEADER.split(',').collect();
         let precision = format!("{at:?}").to_lowercase();
@@ -215,7 +279,7 @@ mod tests {
         let generated = Seeded::generated();
         for at in BOTH {
             for id in Swept::ALL {
-                let (terms, bits, value, deriv) = committed_row(id, at)?;
+                let (terms, bits, value, deriv) = committed_row(CSV_SEEDED, id, at)?;
                 let (n, switch, series) = generated.switch(id, at).ok_or("no kernel")?;
                 let bits = match at {
                     Precision::F64 => f64::from_bits(bits),
@@ -260,7 +324,7 @@ mod tests {
         let dir = corpus_dir()?;
         let series = Series::<D1>::load(&dir)?;
         let c = Swept::Coeff(Coeff::C);
-        let samples = samples(&dir, &series, c)?.samples;
+        let samples = samples(&dir, &SeededArms(&series), c)?.samples;
         let (terms, switch) = crate::seeded::C_PLANTED;
         let planted = Seeded::planted(Defect::CTwoTermsEarly);
         assert_eq!(planted.candidate(Coeff::C).terms, terms);
@@ -322,7 +386,8 @@ mod tests {
         // taken there, and only an infinite score keeps the exact arm from ever being chosen.
         let dir = corpus_dir()?;
         let series = Series::<D1>::load(&dir)?;
-        let Measured { samples, records } = samples(&dir, &series, Swept::Coeff(Coeff::B))?;
+        let Measured { samples, records } =
+            samples(&dir, &SeededArms(&series), Swept::Coeff(Coeff::B))?;
         let zero = samples.iter().position(|s| s.z == 0.0).ok_or("no z = 0")?;
         assert_eq!(records[zero].0, "theta:exact0");
         assert!(samples[zero].exact.value.is_infinite());
@@ -349,12 +414,159 @@ mod tests {
             .all(|r| r.stratum.starts_with("q:w0")));
         assert_eq!(records.iter().filter(w0).count(), 6);
         let series = Series::<D1>::load(&dir)?;
-        let m = samples(&dir, &series, Swept::R)?;
+        let m = samples(&dir, &SeededArms(&series), Swept::R)?;
         assert!(m.records.iter().all(|(s, _)| s.starts_with("theta:")));
         // `s = n²/w²` is `tan²(θ/2)`: from 0 at `theta:exact0` to `w ≈ 5e-13` at `theta:pi-1e-12`.
         let zs = m.samples.iter().map(|s| s.z);
         assert!(zs.clone().fold(f64::INFINITY, f64::min) == 0.0);
         assert!(zs.fold(0.0, f64::max) > 1e24);
+        Ok(())
+    }
+
+    /// Equal to the bit, but for the payload of a NaN, which Rust leaves unspecified.
+    fn same(a: f64, b: f64) -> bool {
+        a.to_bits() == b.to_bits() || (a.is_nan() && b.is_nan())
+    }
+
+    /// The records of `coeff_<id>` at `S`'s precision: the strata without the suffix at binary64,
+    /// the `@f32` ones at binary32.
+    fn records_at<S: Real>(dir: &Path, id: Swept) -> Result<Vec<Record>, String> {
+        let fn_id = format!("coeff_{}", id.name());
+        let entry = corpus::manifest(dir)?
+            .into_iter()
+            .find(|e| e.fn_id == fn_id);
+        let f32 = S::PRECISION == Precision::F32;
+        let all = corpus::read(dir, &entry.ok_or("no entry")?)?;
+        Ok(all
+            .into_iter()
+            .filter(|r| r.is_f32_stratum() == f32)
+            .collect())
+    }
+
+    /// The shipped arms are the seeded arms bit for bit, value and derivative, exact and every
+    /// series length, at every record of every stratum of every id, and there are that many.
+    fn the_shipped_arms_are_the_seeded_arms<S: Real + Into<f64>>() -> Result<usize, String> {
+        let dir = corpus_dir()?;
+        let series = Series::<Dual<S, 1>>::load(&dir)?;
+        let (seeded, mut n) = (SeededArms(&series), 0);
+        for id in Swept::ALL {
+            for rec in records_at::<S>(&dir, id)? {
+                let x = input::<S>(id, &rec).ok_or("no usable input")?.seed();
+                // `r` at `w = +0` (`q:w0`) has no series arm: the seeded kernel's mask sends every
+                // candidate to the exact arm there, and the shipped series arm is `2/w` times one.
+                let terms = if x.w.v.into() > 0.0 || id != Swept::R {
+                    TERMS
+                } else {
+                    0
+                };
+                let arms = std::iter::once((seeded.exact(id, x), HelicoidArms.exact(id, x))).chain(
+                    (1..=terms).map(|t| (seeded.series(id, x, t), HelicoidArms.series(id, x, t))),
+                );
+                for (arm, (a, b)) in arms.enumerate() {
+                    let (v, d) = (
+                        same(a.v.into(), b.v.into()),
+                        same(a.d[0].into(), b.d[0].into()),
+                    );
+                    assert!(v && d, "{id:?} {} {} arm {arm}", rec.stratum, rec.id);
+                    n += 1;
+                }
+            }
+        }
+        Ok(n)
+    }
+
+    #[test]
+    fn the_shipped_arms_are_the_seeded_arms_bit_for_bit() -> Result<(), String> {
+        // Eight ids, 3420 records per id split between the two precisions (`coeff_r`: 3426), and
+        // `TERMS` series lengths beside the exact arm.
+        let (wide, narrow) = (
+            the_shipped_arms_are_the_seeded_arms::<f64>()?,
+            the_shipped_arms_are_the_seeded_arms::<f32>()?,
+        );
+        // Nine arms of each record but the six `q:w0` records of `r`, which have the exact one.
+        assert_eq!(wide + narrow, (7 * 3420 + 3426) * 9 - 6 * 8);
+        Ok(())
+    }
+
+    /// The group of `id` at `x`, as the shipped kernel evaluates it.
+    fn shipped<S: Real>(id: Swept, x: Input<Dual<S, 1>>) -> Dual<S, 1> {
+        use helicoid::__sweep as k;
+        match id {
+            Swept::Coeff(Coeff::K) => k::exp_coeffs(x.z).0,
+            Swept::CosHalf => k::exp_coeffs(x.z).1,
+            Swept::Coeff(Coeff::A) => k::jr_coeffs(x.z).0,
+            Swept::Coeff(Coeff::B) => k::jr_coeffs(x.z).1,
+            Swept::Coeff(Coeff::C) => k::jr_inv_coeff(x.z),
+            Swept::Coeff(Coeff::D) => k::q_coeffs(x.z).1,
+            Swept::Coeff(Coeff::E) => k::q_coeffs(x.z).2,
+            Swept::R => k::log_ratio(x.z, x.w),
+        }
+    }
+
+    /// The shipped groups over the corpus: every record of every stratum finite in value and
+    /// derivative (the safe argument at `θ = 0`, subnormal, `π`, `w = +0`), and over the `theta:*`
+    /// strata the objective the sweep recorded for the switch it chose, to the bit.
+    fn the_shipped_groups_score_the_objective_the_sweep_chose<S: Real + Into<f64>>(
+    ) -> Result<(), String> {
+        let dir = corpus_dir()?;
+        let at = S::PRECISION;
+        for id in Swept::ALL {
+            let (mut value, mut deriv) = (0.0f64, 0.0f64);
+            for rec in records_at::<S>(&dir, id)? {
+                let x = input::<S>(id, &rec).ok_or("no usable input")?.seed();
+                let e = errors(&rec, shipped(id, x))?;
+                assert!(
+                    e.value.is_finite() && e.deriv.is_finite(),
+                    "{id:?} {}",
+                    rec.stratum
+                );
+                if rec.stratum.starts_with("theta:") {
+                    (value, deriv) = (value.max(e.value), deriv.max(e.deriv));
+                }
+            }
+            let (_, _, want_value, want_deriv) = committed_row(CSV_HELICOID, id, at)?;
+            let name = id.name();
+            assert_eq!(
+                value.to_bits(),
+                want_value.to_bits(),
+                "{name} {at:?}: value"
+            );
+            assert_eq!(
+                deriv.to_bits(),
+                want_deriv.to_bits(),
+                "{name} {at:?}: derivative"
+            );
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn the_shipped_groups_score_the_objective_the_sweep_chose_at_f64() -> Result<(), String> {
+        the_shipped_groups_score_the_objective_the_sweep_chose::<f64>()
+    }
+
+    #[test]
+    fn the_shipped_groups_score_the_objective_the_sweep_chose_at_f32() -> Result<(), String> {
+        the_shipped_groups_score_the_objective_the_sweep_chose::<f32>()
+    }
+
+    #[test]
+    fn b_is_the_same_in_both_groups_that_hold_it() -> Result<(), String> {
+        use helicoid::__sweep as k;
+        let dir = corpus_dir()?;
+        for rec in records_at::<f64>(&dir, Swept::Coeff(Coeff::B))? {
+            let z = input::<f64>(Swept::Coeff(Coeff::B), &rec)
+                .ok_or("no input")?
+                .seed()
+                .z;
+            let (jr, q) = (k::jr_coeffs(z).1, k::q_coeffs(z).0);
+            assert!(
+                same(jr.v, q.v) && same(jr.d[0], q.d[0]),
+                "{} {}",
+                rec.stratum,
+                rec.id
+            );
+        }
         Ok(())
     }
 }
