@@ -9,16 +9,31 @@
 use crate::real::{is_finite, Mask, Precision, Real};
 use crate::vector::{Vec3, Vector};
 
-/// `2^e` as an `f64`, for `-1022 <= e <= 0`; exact at both precisions while `e >= -126`.
+/// `2^e` as an `f64`.
+///
+/// # Domain
+///
+/// `-1022 <= e <= 0`, asserted; exact at both precisions while `e >= -126`. Outside it the shift
+/// would discard the sign-extended high bits and return an arbitrary finite float, so the assert
+/// stands rather than a `debug_assert!` (D11 governs release *checks*, and every caller evaluates
+/// this in a `const` block, where the assert is a compile error and costs nothing at run time).
 const fn pow2(e: i32) -> f64 {
+    assert!(
+        e >= -1022 && e <= 0,
+        "pow2: exponent outside the normal range"
+    );
     f64::from_bits(((1023 + e) as u64) << 52)
 }
 
-/// `2^ulps_log2` unit roundoffs: `2^(ulps_log2 - 53)` for `f64`, `2^(ulps_log2 - 24)` for `f32`.
-fn tol<S: Real>(ulps_log2: i32) -> S {
+/// `2^ULPS_LOG2` unit roundoffs: `2^(ULPS_LOG2 - 53)` for `f64`, `2^(ULPS_LOG2 - 24)` for `f32`.
+///
+/// `ULPS_LOG2` is a const parameter and each arm is a `const` block, so the value is a literal in
+/// the compiled code and `pow2`'s domain is checked when this instantiates, not per call.
+#[inline]
+fn tol<S: Real, const ULPS_LOG2: i32>() -> S {
     match S::PRECISION {
-        Precision::F64 => S::lit(pow2(ulps_log2 - 53)),
-        Precision::F32 => S::lit(pow2(ulps_log2 - 24)),
+        Precision::F64 => S::lit(const { pow2(ULPS_LOG2 - 53) }),
+        Precision::F32 => S::lit(const { pow2(ULPS_LOG2 - 24) }),
     }
 }
 
@@ -28,19 +43,34 @@ const NEAR_ZERO: i32 = 7;
 const DISCRIMINANT_BAND: i32 = 13;
 
 /// `max(x, y)` for finite arguments.
+#[inline]
 fn max<S: Real>(x: S, y: S) -> S {
     S::select(x.lt(y), y, x)
 }
 
-/// `pi`, correctly rounded at this precision by `atan2(+0, -1)`; a `Dual` sees a constant.
+/// `pi`, correctly rounded at this precision; a `Dual` sees a constant.
+///
+/// The literal per precision, not `atan2(+0, -1)`: that spelling is bit-equal at both precisions
+/// (`pi_and_acos_are_within_their_ulps` asserts it against `core::f64::consts::PI` and
+/// `core::f32::consts::PI`) but is a `libm` call for a compile-time constant, and `libm::atan2` is
+/// neither generic nor `#[inline]`, so without workspace LTO it cannot be folded away. `f32`'s
+/// value is widened exactly into `lit`'s `f64`, never the `f64` constant rounded down to `f32`,
+/// which would be a double rounding.
+#[inline]
 pub(crate) fn pi<S: Real>() -> S {
-    S::zero().atan2(-S::one())
+    match S::PRECISION {
+        Precision::F64 => S::lit(core::f64::consts::PI),
+        Precision::F32 => S::lit(core::f32::consts::PI as f64),
+    }
 }
 
 /// `acos x` for `x` in `[-1, 1]` or NaN: `atan2(sqrt((1 - x)(1 + x)), x)`, as `Real` has no `acos`
-/// (`0022` (draft)). Each factor is exact near the end of the interval where it is small, so the
+/// yet. `0022` decides it gains one, and this form goes with it: it costs 2.61x `libm::acos` and is
+/// marginally less accurate everywhere measured. Each factor is exact near the end of the interval
+/// where it is small, so the
 /// sine keeps full relative accuracy at a double root; the product is `>= 0` there, so `sqrt` sees
 /// a valid argument.
+#[inline]
 pub(crate) fn acos<S: Real>(x: S) -> S {
     ((S::one() - x) * (S::one() + x)).sqrt().atan2(x)
 }
@@ -138,12 +168,13 @@ pub fn solve_cubic<S: Real>(a: S, b: S, c: S, d: S) -> (Vec3<S>, [S::Mask; 3]) {
     let (zero, one) = (S::zero(), S::one());
     let (two, three) = (S::lit(2.0), S::lit(3.0));
 
-    let scale = max(max(a.abs(), b.abs()), max(c.abs(), d.abs()));
+    let abs_a = a.abs();
+    let scale = max(max(abs_a, b.abs()), max(c.abs(), d.abs()));
     let is_cubic = is_finite(a)
         .and(is_finite(b))
         .and(is_finite(c))
         .and(is_finite(d))
-        .and(a.abs().le(max(scale, one) * tol::<S>(NEAR_ZERO)).not());
+        .and(abs_a.le(max(scale, one) * tol::<S, NEAR_ZERO>()).not());
     // Where there is no cubic every lane evaluates `x^3 = 0`, so no arm sees a value it cannot take.
     let (a, b, c, d) = (
         S::select(is_cubic, a, one),
@@ -160,13 +191,24 @@ pub fn solve_cubic<S: Real>(a: S, b: S, c: S, d: S) -> (Vec3<S>, [S::Mask; 3]) {
     let term_q = q * q * S::lit(0.25);
     let term_p = p * p * p / S::lit(27.0);
     let disc = term_q + term_p;
-    let band = max(term_q.abs(), term_p.abs()) * tol::<S>(DISCRIMINANT_BAND);
+    let band = max(term_q, term_p.abs()) * tol::<S, DISCRIMINANT_BAND>();
     let p_scale = max(max(p.abs(), q.abs()), one);
 
     let one_root = band.lt(disc);
     let three_roots = one_root.not().and(disc.lt(-band).or(p.lt(zero)));
     let repeated = one_root.not().and(three_roots.not());
-    let triple = p.abs().le(p_scale * tol::<S>(NEAR_ZERO));
+    let triple = p.abs().le(p_scale * tol::<S, NEAR_ZERO>());
+    // The fourth arm is unreachable for coefficients that pass the floor, and this is where that
+    // claim is executable rather than prose: `repeated` forces `p >= 0`, so both summands of `disc`
+    // are non-negative and `fl(term_q + term_p) >= max(term_q, term_p)`, so `disc <= band` only
+    // when both are `+0`, which `triple` then takes. It holds *because* the floor bounds `|B|`,
+    // `|C|`, `|D|`, which keeps either summand from overflowing to `+inf` (there `band` is `+inf`
+    // too and nothing is `one_root` or `three_roots`). Lowering that floor is the change that would
+    // make the arm live again, and `0031` (draft) L3 recommends exactly that, so this fires first.
+    debug_assert!(
+        !repeated.and(triple.not()).any(),
+        "solve_cubic: the single-and-double-root arm became reachable; see `0031` (draft) L3"
+    );
 
     let t: [S; 3] = S::branch(
         one_root,
@@ -188,12 +230,13 @@ pub fn solve_cubic<S: Real>(a: S, b: S, c: S, d: S) -> (Vec3<S>, [S::Mask; 3]) {
                     let arg = (three * q) / (two * p * r);
                     let arg = S::select(arg.lt(-one), -one, arg);
                     let arg = S::select(one.lt(arg), one, arg);
-                    let theta = acos(arg);
-                    let two_pi = two * pi::<S>();
-                    core::array::from_fn(|k| {
-                        let phi = theta / three - two_pi * S::lit(k as f64) / three;
-                        two * r * phi.sin_cos().1
-                    })
+                    // `theta / three`, `2 pi / 3` and `2 r` are loop invariants. Hoisting them is
+                    // bit-identical: `2 pi k / 3` for `k = 0, 1` is unchanged, and for `k = 2` the
+                    // two spellings differ only by a factor of two, which rounding commutes with.
+                    let third = acos(arg) / three;
+                    let step = two * pi::<S>() / three;
+                    let two_r = two * r;
+                    core::array::from_fn(|k| two_r * (third - step * S::lit(k as f64)).sin_cos().1)
                 },
                 || {
                     S::branch(

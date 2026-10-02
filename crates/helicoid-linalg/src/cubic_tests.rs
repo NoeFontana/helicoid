@@ -808,6 +808,12 @@ fn a_repeated_root_can_be_dropped() {
 fn pi_and_acos_are_within_their_ulps() {
     assert_eq!(pi::<f64>().to_bits(), PI.to_bits());
     assert_eq!(pi::<f32>().to_bits(), core::f32::consts::PI.to_bits());
+    // `pi` is a literal now, so the two rows above are about `lit` and no longer witness the
+    // spelling they replaced. The twin stays (D6): the `atan2(+0, -1)` form this port shipped is
+    // bit-equal at both precisions, which is why swapping it was behaviour-preserving. If `libm`
+    // ever moves, this fails rather than the claim quietly becoming untrue.
+    assert_eq!(pi::<f64>().to_bits(), 0.0_f64.atan2(-1.0).to_bits());
+    assert_eq!(pi::<f32>().to_bits(), 0.0_f32.atan2(-1.0).to_bits());
     assert!(pi::<Dual<f64, 2>>().d.iter().all(|d| d.abs() <= 0.0));
     let grid = (0..=4096).map(|i| -1.0 + f64::from(i) / 2048.0);
     let ends = (1..53).flat_map(|k| [1.0 - 2f64.powi(-k), 2f64.powi(-k - 1) - 1.0, 2f64.powi(-k)]);

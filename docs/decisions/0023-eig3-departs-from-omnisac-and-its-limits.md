@@ -32,7 +32,9 @@ scratch harnesses that are not committed (`eig3_tests` says which).
    Every normalisation divides by the largest entry first. omnisac's Gram-Schmidt reaches an
    orthogonality error of `4e-7` over 10^6 matrices (`|V^T V - I|`; the port: `4.7 u`), and its
    `det` is `-1` half the time.
-3. **`acos` and `pi` are `0022`'s reading**, shared as `pub(crate)` items of `cubic.rs`; `cos` is
+3. **`acos` and `pi` were `0022`'s reading**, shared as `pub(crate)` items of `cubic.rs` — a
+   reading `0022` has since reversed: `Real` gains `acos` and `cos`, and `pi` is already a literal,
+   so these call sites move with its step 1 and `eig3`'s bounds are re-measured once. `cos` is
    `sin_cos(x).1` and `x / 3` replaces omnisac's `x * (1/3)`.
 4. **The limits are documented in `# Domain` and pinned, none fixed here.**
    - *A tie of the top pair.* Where `l2 - l1` is below about `2 sqrt(u) |A|`, equal eigenvalues
