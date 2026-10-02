@@ -1,6 +1,9 @@
 //! Seeded subjects (`docs/PHASE1.md` §10): the correct coefficient kernels and the planted
 //! defects, run over the `coeff_*` corpus ids as in-process subjects. Only `k, a, b, c, d, e`
-//! (`coeff_r` has no seeded kernel).
+//! (`coeff_r` has no coefficient kernel of its own: `Log` evaluates `r` inline).
+//!
+//! The correct subject also runs `Exp` and `Log` of SO(3) over `so3_exp` and `so3_log` (`so3`), on
+//! the generated `k`; the planted `Log` defects run over `so3_log` only.
 //!
 //! The correct kernel runs the **generated** switches of each coefficient: its series length,
 //! switch and series terms are `generated.rs`'s, which `cargo xtask thresholds` writes
@@ -18,6 +21,7 @@
 mod generated;
 mod kernel;
 mod series;
+mod so3;
 mod switch;
 
 use helicoid_linalg::Precision;
@@ -28,6 +32,7 @@ use generated::{A_F64, B_F64, C_F64, D_F64, E_F64, K_F64};
 use kernel::{b_no_series, k_sqrt_unsafe};
 pub(crate) use kernel::{coefficient, d12, Candidate, Coeff, D1};
 pub(crate) use series::{Series, FILE as SERIES_FILE};
+pub(crate) use so3::takes_series_arm;
 
 /// The planted `c` (`docs/PHASE1.md` §10): two terms below `z = 1e-16`, §10's `1e-8` read as `θ`
 /// (0014 (draft) question 14), which is the first point of the sweep's grid.
@@ -42,20 +47,29 @@ pub(crate) enum Defect {
     KSqrtUnsafe,
     /// `c` with switch `1e-8` and two terms ([`C_PLANTED`]).
     CTwoTermsEarly,
+    /// `Log` through `acos` of the trace (`so3::log_acos`).
+    LogAcos,
+    /// `Log` without the `w < 0` flip (`so3::log_no_flip`).
+    LogNoFlip,
 }
 
 impl Defect {
-    pub(crate) const ALL: [Defect; 3] = [
+    /// The defects of one coefficient, run over the `coeff_*` ids.
+    pub(crate) const COEFFICIENT: [Defect; 3] = [
         Defect::BNoSeries,
         Defect::KSqrtUnsafe,
         Defect::CTwoTermsEarly,
     ];
+    /// The defects of `Log`, run over `so3_log`.
+    pub(crate) const LOG: [Defect; 2] = [Defect::LogAcos, Defect::LogNoFlip];
 
     pub(crate) fn name(self) -> &'static str {
         match self {
             Defect::BNoSeries => "b-no-series",
             Defect::KSqrtUnsafe => "k-sqrt-unsafe",
             Defect::CTwoTermsEarly => "c-two-terms-1e-8",
+            Defect::LogAcos => "log-acos",
+            Defect::LogNoFlip => "log-no-flip",
         }
     }
 }
@@ -172,23 +186,59 @@ impl Subject for Seeded {
     }
 
     fn supports(&self, fn_id: &str) -> bool {
-        Coeff::of_fn(fn_id).is_some()
+        let coefficient = Coeff::of_fn(fn_id).is_some();
+        match self.defect {
+            None => coefficient || matches!(fn_id, "so3_exp" | "so3_log"),
+            Some(Defect::LogAcos | Defect::LogNoFlip) => fn_id == "so3_log",
+            Some(_) => coefficient,
+        }
     }
 
     /// `f32` is refused by the harness before any subject runs; an empty answer here is an error
     /// there, never a score.
     fn eval(&self, fn_id: &str, record: &Record, precision: Precision) -> Output {
-        let (Some(c), Precision::F64) = (Coeff::of_fn(fn_id), precision) else {
+        if precision != Precision::F64 {
+            return Output::new();
+        }
+        match (Coeff::of_fn(fn_id), fn_id) {
+            (Some(c), _) => {
+                let Some(&theta) = record.input("theta").and_then(<[f64]>::first) else {
+                    return Output::new();
+                };
+                let r = self.kernel(c, D1::variable(theta * theta, 0));
+                Output::from([
+                    ("value".to_string(), vec![r.v]),
+                    ("d_branch".to_string(), r.d.to_vec()),
+                ])
+            }
+            (None, "so3_exp") => self.exp(record),
+            (None, "so3_log") => self.log(record),
+            _ => Output::new(),
+        }
+    }
+}
+
+impl Seeded {
+    fn exp(&self, record: &Record) -> Output {
+        let Some(&[x, y, z]) = record.input("phi").and_then(|p| p.first_chunk::<3>()) else {
             return Output::new();
         };
-        let Some(&theta) = record.input("theta").and_then(<[f64]>::first) else {
+        let Arm { candidate, series } = &self.arms[Coeff::K.index()];
+        let phi = [x, y, z].map(D1::constant);
+        let q = so3::exp(phi, *candidate, series).map(|c| c.v);
+        Output::from([("q".to_string(), q.to_vec())])
+    }
+
+    fn log(&self, record: &Record) -> Output {
+        let Some(&q) = record.input("q").and_then(|q| q.first_chunk::<4>()) else {
             return Output::new();
         };
-        let r = self.kernel(c, D1::variable(theta * theta, 0));
-        Output::from([
-            ("value".to_string(), vec![r.v]),
-            ("d_branch".to_string(), r.d.to_vec()),
-        ])
+        let phi = match self.defect {
+            Some(Defect::LogAcos) => so3::log_acos(q),
+            Some(Defect::LogNoFlip) => so3::log_no_flip(q.map(D1::constant)).map(|c| c.v),
+            _ => so3::log(q.map(D1::constant)).map(|c| c.v),
+        };
+        Output::from([("phi".to_string(), phi.to_vec())])
     }
 }
 
@@ -196,7 +246,8 @@ impl Subject for Seeded {
 /// planted: a run that names no subject skips them.
 pub(crate) fn registry() -> Vec<Registered> {
     let mut all = vec![Seeded::generated().registered()];
-    all.extend(Defect::ALL.map(|d| Seeded::planted(d).registered()));
+    let defects = Defect::COEFFICIENT.into_iter().chain(Defect::LOG);
+    all.extend(defects.map(|d| Seeded::planted(d).registered()));
     all
 }
 
@@ -267,7 +318,7 @@ mod tests {
         ] {
             assert!(s.supports(id), "{id}");
         }
-        for id in ["coeff_r", "coeff_", "so3_exp", "coeff_series"] {
+        for id in ["coeff_r", "coeff_", "so3_act", "coeff_series"] {
             assert!(!s.supports(id), "{id}");
         }
         let rec = record(&[("theta", &[0.5])], &[])?;
@@ -288,6 +339,8 @@ mod tests {
             ("seeded:b-no-series", true),
             ("seeded:k-sqrt-unsafe", true),
             ("seeded:c-two-terms-1e-8", true),
+            ("seeded:log-acos", true),
+            ("seeded:log-no-flip", true),
         ];
         assert_eq!(names, want);
         assert!(all.iter().all(|r| r.version == "generated"));
@@ -308,5 +361,46 @@ mod tests {
         assert_eq!(C_PLANTED, (2, 1e-16));
         // Its series is the generated one, of which two terms are used.
         assert_eq!(planted.arms[Coeff::C.index()].series.len(), 8);
+    }
+
+    #[test]
+    fn so3_ids_belong_to_the_correct_subject_and_the_log_defects_take_so3_log_only(
+    ) -> Result<(), String> {
+        let ids = ["so3_exp", "so3_log", "coeff_k", "so3_act", "so3_jr"];
+        let supported = |s: &Seeded| ids.map(|id| s.supports(id));
+        assert_eq!(supported(&subject(None)), [true, true, true, false, false]);
+        for d in Defect::LOG {
+            assert_eq!(
+                supported(&subject(Some(d))),
+                [false, true, false, false, false]
+            );
+        }
+        for d in Defect::COEFFICIENT {
+            assert_eq!(
+                supported(&subject(Some(d))),
+                [false, false, true, false, false]
+            );
+        }
+        let s = subject(None);
+        let exp = s.eval(
+            "so3_exp",
+            &record(&[("phi", &[0.0, 0.0, 2.0])], &[])?,
+            Precision::F64,
+        );
+        let log = s.eval(
+            "so3_log",
+            &record(&[("q", &[1.0, 0.0, 0.0, 0.0])], &[])?,
+            Precision::F64,
+        );
+        assert_eq!(exp.keys().collect::<Vec<_>>(), ["q"]);
+        assert_eq!(log.keys().collect::<Vec<_>>(), ["phi"]);
+        assert_eq!((exp["q"].len(), log["phi"].len()), (4, 3));
+        // A record without its input, or at `f32`, is answered with nothing.
+        assert!(s
+            .eval("so3_exp", &record(&[], &[])?, Precision::F64)
+            .is_empty());
+        let unit = record(&[("q", &[1.0, 0.0, 0.0, 0.0])], &[])?;
+        assert!(s.eval("so3_log", &unit, Precision::F32).is_empty());
+        Ok(())
     }
 }
