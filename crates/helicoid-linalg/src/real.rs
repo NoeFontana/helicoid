@@ -124,6 +124,12 @@ pub trait Real:
     fn value_f64(self) -> f64;
 }
 
+/// Set iff `x` is finite: `x * 0` is `+-0` for a finite `x` and NaN for NaN and `+-inf`.
+#[inline]
+pub(crate) fn is_finite<S: Real>(x: S) -> S::Mask {
+    (x * S::zero()).le(S::zero())
+}
+
 /// A value type that a mask can select between, so [`Real::branch`] can return tuples of
 /// coefficients and whole group elements.
 pub trait Blend<S: Real>: Sized {

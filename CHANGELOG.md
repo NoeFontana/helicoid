@@ -401,6 +401,27 @@ defined by the status tables in `docs/`; they win over this file.
   about 4 ulp on the first derivative and 10 on the second, the value 0 ulp. **Breaks** an
   out-of-tree `impl Real`, which gains a required method (none is known; the in-tree ones are
   updated); nothing else breaks.
+- `helicoid-linalg`: `solve_cubic` (`docs/PHASE2.md` §6, step 2 of `0017`): the real roots of `a x³
+  + b x² + c x + d` as `(Vec3<S>, [S::Mask; 3])`, slot `k` reported as a root iff its mask is set, a
+  clear slot `+0`. omnisac's algorithm, generic over `S: Real` (Cardano, Viète's trigonometric form,
+  a discriminant band), every branch a `branch`/`select` at a safe argument, so it runs on `f64`,
+  `f32`, lanes and `Dual`. Differences from omnisac's `poly::solve_cubic`: the container (no
+  `ArrayVec`, no compaction); the tolerances, `1e-14` to `2^-46` (128 `u`, from 90 `u`) and `1e-12`
+  to `2^-40` (8192 `u`, from 9007 `u`) at `f64`, `2^-17` and `2^-11` at `f32`, the nearest
+  power-of-two multiples of `u` (a polynomial whose leading coefficient or discriminant lies in the
+  thin strip between old and new changes its root count); `acos` as `atan2(sqrt((1 - x)(1 + x)),
+  x)`, within 2 ulp of `libm::acos`, and `pi` as `atan2(+0, -1)`, a reading proposed by `0022`
+  (draft): the roots of the trigonometric arm move by up to about 11 `u` of the largest root, an
+  observed maximum and not a bound. Everything else agrees to the bit with omnisac (on `libm`) on
+  10^6 random and adversarial polynomials per seed (a scratch differential, not committed; `GOLDEN`
+  in the tests is 36 of its rows). Tested against omnisac's cases, an mpmath fixture, planted roots
+  against a measured error model, the slot order, the `Dual` derivative, two lanes and the mask.
+  Limits it inherits, in the rustdoc `# Domain` and `0022` (draft), fixed by none of this: the
+  one-real-root arm is not backward stable (`x^3 + p x - 1` is off by `4e-6` at `p` near `1e-5`,
+  `f64`, and its `Dual` derivative is `-inf` below `p = 1.3e-5`); a repeated root can be dropped
+  where `p` and `q` cancel; a cubic with one real root can read as three where `p^3` and `q^2`
+  underflow. `docs/API.md` R6 names `solve_cubic` beside `chol` as the functions that assert
+  nothing. New item: breaks nothing; omnisac's call sites need an adapter (`docs/PHASE2.md` §9).
 
 ### Changed
 
