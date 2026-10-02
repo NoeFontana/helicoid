@@ -362,6 +362,7 @@ row spells the composition and the proptest writes it inline
 | `SEn3Jac::mul`, `inverse` | dense product / Gauss–Jordan | 3 |
 | `SEn3Jac::apply`, `apply_transpose` | dense $J x$ and $J^\top x$ | 3 |
 | `SEn3Jac::sandwich` | dense $J\,\Sigma\,J^\top$; also the twin the `Gaussian` row below asks for | 3 |
+| `ProductJac::sandwich` | dense $J\,\Sigma\,J^\top$ of the block-diagonal $J$ | 3 |
 | `SE3::geodesic` (dual-quaternion power) | $X_0\,\mathrm{Exp}(t\,\mathrm{Log}(X_0^{-1}X_1))$ | 4 |
 | `geodesic_jacobians` | `Dual` through the reference geodesic | 4 |
 | `Gaussian::to_left` / `to_right` | dense $\mathrm{Ad}\,\Sigma\,\mathrm{Ad}^\top$: `reference::sen3jac_sandwich` with $J = \mathrm{Ad}$ | 5 |

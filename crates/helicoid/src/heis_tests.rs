@@ -15,7 +15,7 @@
 //! for `jac_dense_order`, 5.55 for `sandwich_matches_dense` and 0 for the rest; `f32` 4.08, 3.53,
 //! 3.95, 5.48, 4.09, 1.61 for `tangent_dense_order` and 0 for the rest.
 
-use crate::laws::{laws_for, Bounds, Sample};
+use crate::laws::{dense_bits, laws_for, Bounds, Sample};
 use crate::{Jac, LieGroup, Right, RnTangent, Side, Tangent};
 use core::any::TypeId;
 use core::array;
@@ -25,12 +25,12 @@ use std::vec::Vec;
 
 /// `(x1, x2, x3)`: the exponential coordinates of `[[1, x1, x3 + x1 x2 / 2], [0, 1, x2], [0, 0, 1]]`.
 #[derive(Clone, Copy, Debug)]
-struct Heis<S>(Vector<S, 3>);
+pub(crate) struct Heis<S>(pub(crate) Vector<S, 3>);
 
 /// A dense `3 x 3` Jacobian, inverted by its adjugate; it states no domain, since `probe` inverts
 /// NaN matrices.
 #[derive(Clone, Copy, Debug)]
-struct HJac<S>(Mat3<S>);
+pub(crate) struct HJac<S>(pub(crate) Mat3<S>);
 
 impl<S: Real> Heis<S> {
     // The cross term lives here so that clippy's `suspicious_arithmetic_impl` does not read the `-`
@@ -193,14 +193,24 @@ impl<S: Real> LieGroup<S> for Heis<S> {
 /// product in that order, which detects nothing when `a b = b a`. A circulant commutes with every
 /// circulant, and `I` plus a circulant is one, so with `M` alone a `mul` that multiplies its
 /// operands the wrong way round passed every law; `D M D' M'` and `D M' D M` differ.
-fn heis_jac<S: Sample>(v: &[f64; 3]) -> HJac<S> {
+///
+/// `lane` offsets the `Dual` variable each sample becomes. A fixture that holds this block beside
+/// others gives each one the lanes of its own place in the dense order, so no two blocks claim a
+/// lane while holding different values.
+pub(crate) fn heis_jac_at<S: Sample>(v: &[f64; 3], lane: usize) -> HJac<S> {
     let row = |r: usize| {
         let k = S::lit(0.25 / f64::from(1_u8 << r));
         Vector(array::from_fn(|c| {
-            k * S::sample(v[(c + 3 - r) % 3], (c + 3 - r) % 3)
+            let i = (c + 3 - r) % 3;
+            k * S::sample(v[i], lane + i)
         }))
     };
     HJac(Matrix::identity() + Matrix::from_rows([row(0), row(1), row(2)]))
+}
+
+/// [`heis_jac_at`] at lane `0`, the one-argument form `laws_for!` calls.
+fn heis_jac<S: Sample>(v: &[f64; 3]) -> HJac<S> {
+    heis_jac_at(v, 0)
 }
 
 const F64: Bounds = Bounds {
@@ -238,15 +248,11 @@ fn blend_selects_each_value_type() {
     let (ja, jb) = (heis_jac::<f64>(&[0.5; 3]), heis_jac::<f64>(&[-0.5; 3]));
     for (m, x, j) in [(true, a, ja), (false, b, jb)] {
         assert_eq!(bits(&Heis::blend(m, a, b).0 .0), bits(&x.0 .0));
-        assert_eq!(dense(&HJac::blend(m, ja, jb)), dense(&j));
+        assert_eq!(
+            dense_bits::<_, _, 3>(&HJac::blend(m, ja, jb)),
+            dense_bits::<_, _, 3>(&j)
+        );
     }
-}
-
-/// The dense matrix of `j` in column-major order, as bits.
-fn dense(j: &HJac<f64>) -> [[u64; 3]; 3] {
-    let mut buf = [[f64::NAN; 3]; 3];
-    j.write_dense(&mut StridedMut::col_major(buf.as_flattened_mut(), 3, 3));
-    buf.map(|c| c.map(f64::to_bits))
 }
 
 fn cols(m: [[f64; 3]; 3]) -> [[u64; 3]; 3] {
@@ -274,7 +280,7 @@ fn the_sides_differ() {
     let ad = cols([[0.0, 0.0, -5.0], [0.0, 0.0, 4.0], [0.0; 3]]);
     let jl = cols([[1.0, 0.0, -2.5], [0.0, 1.0, 2.0], [0.0, 0.0, 1.0]]);
     let jr = cols([[1.0, 0.0, 2.5], [0.0, 1.0, -2.0], [0.0, 0.0, 1.0]]);
-    assert_eq!(dense(&Heis::<f64>::ad(&tau)), ad);
-    assert_eq!(dense(&Heis::<f64>::jl(&tau)), jl);
-    assert_eq!(dense(&Heis::<f64>::jr(&tau)), jr);
+    assert_eq!(dense_bits::<_, _, 3>(&Heis::<f64>::ad(&tau)), ad);
+    assert_eq!(dense_bits::<_, _, 3>(&Heis::<f64>::jl(&tau)), jl);
+    assert_eq!(dense_bits::<_, _, 3>(&Heis::<f64>::jr(&tau)), jr);
 }

@@ -4,8 +4,9 @@
 //! [`Side`] with [`Left`] and [`Right`], the translation group [`Rn`], which proves the traits
 //! compile generically, the quaternion [`Quat`], the SE_N(3) tangent [`SEn3Tangent`] with its
 //! [`Twist`] converters, and the dual-matrix Jacobian [`SEn3Jac`] with its dense twins in
-//! [`mod@reference`]. Every group is written against the traits and generic over the scalar
-//! `S: Real` of `helicoid-linalg`.
+//! [`mod@reference`], and the products [`Product`] with the block-diagonal [`ProductJac`]. Every
+//! group is written against the traits and generic over the scalar `S: Real` of
+//! `helicoid-linalg`.
 //!
 //! # Conventions
 //!
@@ -29,6 +30,7 @@
 #![deny(missing_docs)]
 
 mod dualmat;
+mod product;
 mod quat;
 pub mod reference;
 mod rn;
@@ -37,6 +39,7 @@ mod side;
 mod traits;
 
 pub use dualmat::SEn3Jac;
+pub use product::{Product, ProductJac};
 pub use quat::Quat;
 pub use rn::{Rn, RnJac, RnTangent};
 pub use sen3::{SEn3Tangent, Twist};
@@ -53,6 +56,8 @@ mod dualmat_tests;
 mod heis_tests;
 #[cfg(test)]
 mod laws;
+#[cfg(test)]
+mod product_tests;
 #[cfg(test)]
 mod quat_tests;
 #[cfg(test)]

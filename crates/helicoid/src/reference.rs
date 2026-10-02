@@ -26,7 +26,8 @@
 //! ```
 
 use crate::dualmat::{dof, SEn3Jac};
-use crate::traits::Jac;
+use crate::product::ProductJac;
+use crate::traits::{Jac, Tangent};
 use helicoid_linalg::{Mask, Matrix, Real, StridedMut};
 
 /// The terms added left to right from the first, `+0` when there are none.
@@ -41,10 +42,29 @@ fn sum<S: Real>(mut terms: impl Iterator<Item = S>) -> S {
 ///
 /// The scratch is NaN-poisoned, so an entry `write_dense` leaves unwritten reaches the twin's
 /// result instead of passing as a structural zero.
-pub(crate) fn dense<S: Real, const N: usize, const D: usize>(j: &SEn3Jac<S, N>) -> [[S; D]; D] {
+pub(crate) fn dense<S: Real, T: Tangent<S>, J: Jac<S, T>, const D: usize>(j: &J) -> [[S; D]; D] {
     let mut m = [[S::zero() / S::zero(); D]; D];
     j.write_dense(&mut StridedMut::row_major(m.as_flattened_mut(), D, D));
     m
+}
+
+/// The dense `M Σ Mᵀ` of the row-major `m`, written to the `D x D` view `out`.
+///
+/// Entry `(i, k)` is `Σ_p Σ_q m_ip Σ_pq m_kq`: the inner sum over `q` left to right from its first
+/// term, then those `D` sums over `p` the same way. Every one of the `D⁴` products is formed,
+/// structural zeros included; `Σ` need not be symmetric and the result is not symmetrized. Every
+/// `sandwich` twin is this applied to its own dense image.
+fn sandwich_dense<S: Real, const D: usize>(
+    m: &[[S; D]; D],
+    cov: &Matrix<S, D, D>,
+    out: &mut StridedMut<'_, S>,
+) {
+    for (i, mi) in m.iter().enumerate() {
+        for (k, mk) in m.iter().enumerate() {
+            let row = |p: usize| sum((0..D).map(|q| mi[p] * cov.get(p, q) * mk[q]));
+            out.set(i, k, sum((0..D).map(row)));
+        }
+    }
 }
 
 /// The twin of [`SEn3Jac::mul`](Jac::mul): the dense product `dense(a) * dense(b)`, every one of
@@ -65,7 +85,7 @@ pub fn sen3jac_mul<S: Real, const N: usize, const D: usize>(
         out.rows() == D && out.cols() == D,
         "sen3jac_mul: the view is not D x D"
     );
-    let (x, y) = (dense::<S, N, D>(a), dense::<S, N, D>(b));
+    let (x, y) = (dense::<S, _, _, D>(a), dense::<S, _, _, D>(b));
     for (r, row) in x.iter().enumerate() {
         for c in 0..D {
             out.set(r, c, sum(row.iter().zip(&y).map(|(a, yk)| *a * yk[c])));
@@ -118,7 +138,7 @@ pub fn sen3jac_inverse<S: Real, const N: usize, const D: usize>(
         out.rows() == D && out.cols() == D,
         "sen3jac_inverse: the view is not D x D"
     );
-    let mut m = dense::<S, N, D>(j);
+    let mut m = dense::<S, _, _, D>(j);
     for r in 0..D {
         for c in 0..D {
             out.set(r, c, if r == c { S::one() } else { S::zero() });
@@ -185,7 +205,7 @@ pub fn sen3jac_apply<S: Real, const N: usize, const D: usize>(
         x.len() == D && out.len() == D,
         "sen3jac_apply: an operand is not D long"
     );
-    let m = dense::<S, N, D>(j);
+    let m = dense::<S, _, _, D>(j);
     for (o, row) in out.iter_mut().zip(&m) {
         *o = sum(row.iter().zip(x).map(|(a, b)| *a * *b));
     }
@@ -213,7 +233,7 @@ pub fn sen3jac_apply_transpose<S: Real, const N: usize, const D: usize>(
         x.len() == D && out.len() == D,
         "sen3jac_apply_transpose: an operand is not D long"
     );
-    let m = dense::<S, N, D>(j);
+    let m = dense::<S, _, _, D>(j);
     for (r, o) in (0..D).zip(out.iter_mut()) {
         *o = sum(m.iter().zip(x).map(|(row, b)| row[r] * *b));
     }
@@ -263,11 +283,57 @@ pub fn sen3jac_sandwich<S: Real, const N: usize, const D: usize>(
         out.rows() == D && out.cols() == D,
         "sen3jac_sandwich: the view is not D x D"
     );
-    let m = dense::<S, N, D>(j);
-    for (i, mi) in m.iter().enumerate() {
-        for (k, mk) in m.iter().enumerate() {
-            let row = |p: usize| sum((0..D).map(|q| mi[p] * cov.get(p, q) * mk[q]));
-            out.set(i, k, sum((0..D).map(row)));
-        }
-    }
+    sandwich_dense(&dense::<S, _, _, D>(j), cov, out);
+}
+
+/// The twin of [`ProductJac::sandwich`](Jac::sandwich): the dense `dense(j) Σ dense(j)ᵀ`, every
+/// one of the `D⁴` products formed and summed as [`sen3jac_sandwich`] forms and sums them. Writes
+/// it to the `D x D` view `out`.
+///
+/// The fast path never builds a dense `J`: it applies the factors' blocks to the columns of `Σ`
+/// and then to the rows of `J Σ`. It therefore associates its sums differently — a block product
+/// against one flat row of `D` terms — so the two agree to a few `u`, not to the bit.
+///
+/// # Domain
+///
+/// `D == DOF` (a build-time assertion) and `out` is `D x D`, checked by `debug_assert!`; a smaller
+/// view panics in the strided access, the one documented panic class (D11):
+///
+/// ```compile_fail,E0080
+/// use helicoid::{reference, Jac, ProductJac, RnJac};
+/// use helicoid_linalg::{Matrix, StridedMut};
+/// let j: ProductJac<RnJac<f64, 2>, RnJac<f64, 3>> = Jac::identity();
+/// let (mut out, cov) = ([0.0; 36], Matrix::<f64, 6, 6>::identity());
+/// let mut view = StridedMut::col_major(&mut out, 6, 6);
+/// reference::productjac_sandwich::<f64, _, _, _, _, 6>(&j, &cov, &mut view);
+/// ```
+///
+/// Positive control:
+///
+/// ```
+/// use helicoid::{reference, Jac, ProductJac, RnJac};
+/// use helicoid_linalg::{Matrix, StridedMut};
+/// let j: ProductJac<RnJac<f64, 2>, RnJac<f64, 3>> = Jac::identity();
+/// let (mut out, cov) = ([0.0; 25], Matrix::<f64, 5, 5>::identity());
+/// let mut view = StridedMut::col_major(&mut out, 5, 5);
+/// reference::productjac_sandwich::<f64, _, _, _, _, 5>(&j, &cov, &mut view);
+/// assert_eq!(out[0].to_bits(), 1.0_f64.to_bits());
+/// ```
+pub fn productjac_sandwich<S, TA, TB, JA, JB, const D: usize>(
+    j: &ProductJac<JA, JB>,
+    cov: &Matrix<S, D, D>,
+    out: &mut StridedMut<'_, S>,
+) where
+    S: Real,
+    TA: Tangent<S>,
+    TB: Tangent<S>,
+    JA: Jac<S, TA>,
+    JB: Jac<S, TB>,
+{
+    const { assert!(D == <(TA, TB) as Tangent<S>>::DOF) };
+    debug_assert!(
+        out.rows() == D && out.cols() == D,
+        "productjac_sandwich: the view is not D x D"
+    );
+    sandwich_dense(&dense::<S, (TA, TB), ProductJac<JA, JB>, D>(j), cov, out);
 }

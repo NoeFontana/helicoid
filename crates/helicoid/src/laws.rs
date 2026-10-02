@@ -88,7 +88,7 @@ fn den(v: &[f64]) -> f64 {
 }
 
 /// `‖a - b‖ / max(‖b‖, 1)` in units of `u`.
-fn e<S: Real>(a: &[f64], b: &[f64]) -> f64 {
+pub(crate) fn e<S: Real>(a: &[f64], b: &[f64]) -> f64 {
     let diff = a.iter().zip(b).map(|(x, y)| (x - y) * (x - y));
     diff.sum::<f64>().sqrt() / den(b) / unit::<S>()
 }
@@ -105,12 +105,26 @@ fn dt<S: Real, G: LieGroup<S>, const D: usize>(t: &G::Tangent) -> [f64; D] {
     buf.map(S::value_f64)
 }
 
-/// The dense matrix of `j`, column-major (`m[c][r]`), through a NaN-poisoned `StridedMut`.
-fn dj<S: Real, G: LieGroup<S>, const D: usize>(j: &G::Jac) -> [[f64; D]; D] {
-    const { assert!(D == G::DOF && D == <G::Tangent as Tangent<S>>::DOF) };
+/// The dense matrix of `j`, column-major (`m[c][r]`), through a NaN-poisoned `StridedMut` so that
+/// an entry `write_dense` leaves unwritten fails whatever reads it.
+///
+/// Generic over the `Jac` and not over a group, so a hand case can read a block of a composite
+/// Jacobian — a factor's — which belongs to no group of the composite's dimension.
+fn dense<S: Real, T: Tangent<S>, J: Jac<S, T>, const D: usize>(j: &J) -> [[S; D]; D] {
     let mut buf = [[nan::<S>(); D]; D];
     j.write_dense(&mut StridedMut::col_major(buf.as_flattened_mut(), D, D));
-    buf.map(|col| col.map(S::value_f64))
+    buf
+}
+
+/// [`dense`] as bits, so a hand case tells `+0` from `-0` and sees a NaN.
+pub(crate) fn dense_bits<T: Tangent<f64>, J: Jac<f64, T>, const D: usize>(j: &J) -> [[u64; D]; D] {
+    dense::<f64, T, J, D>(j).map(|c| c.map(f64::to_bits))
+}
+
+/// [`dense`] of a group's Jacobian as `f64`, with the dimension tie asserted.
+fn dj<S: Real, G: LieGroup<S>, const D: usize>(j: &G::Jac) -> [[f64; D]; D] {
+    const { assert!(D == G::DOF && D == <G::Tangent as Tangent<S>>::DOF) };
+    dense::<S, G::Tangent, G::Jac, D>(j).map(|col| col.map(S::value_f64))
 }
 
 fn terr<S: Real, G: LieGroup<S>, const D: usize>(a: &G::Tangent, b: &G::Tangent) -> f64 {
@@ -510,6 +524,26 @@ impl Rng {
     }
 }
 
+/// The covariance `sandwich_matches_dense` and a `sandwich` twin are measured on: column `k` is
+/// sample `k % 3` rotated down by `k / 3`.
+///
+/// `Σ` is not symmetric, so `sandwich` cannot pass with `J Σ Jᵀ` transposed. Cycling the three
+/// samples alone repeats a column every three: at `D = 5` columns 0 and 3 would be equal, and
+/// `sandwich` could read one where the other was meant. At `D = 3` the rotation is the identity,
+/// so the recorded bounds of the three-dimensional groups stand.
+pub(crate) fn cov<S: Sample, const D: usize>(
+    a: &[f64; D],
+    b: &[f64; D],
+    c: &[f64; D],
+) -> Matrix<S, D, D> {
+    let cols = [a, b, c];
+    Matrix::from_cols(array::from_fn(|k| {
+        helicoid_linalg::Vector(array::from_fn(|r| {
+            S::sample(cols[k % 3][(r + k / 3) % D], r)
+        }))
+    }))
+}
+
 /// Tangent samples with entries `m 2^e`, `|m| < 1`, `-6 <= e <= 0`.
 pub(crate) fn sample<const D: usize>() -> impl Strategy<Value = [f64; D]> {
     let entry = (-1.0_f64..1.0, -6_i32..=0).prop_map(|(m, e)| m * 2_f64.powi(e));
@@ -547,10 +581,8 @@ macro_rules! laws_for {
     (@case $m:ident, $S:ty, $B:ident, $G:ident, $jac:ident, $D:literal) => {
         mod $m {
             use super::*;
-            use $crate::laws::{self, sample, tangent, within, Sample};
+            use $crate::laws::{self, cov, sample, tangent, within, Sample};
             use $crate::LieGroup;
-            use core::array;
-            use helicoid_linalg::{Matrix, Vector};
             use proptest::prelude::*;
 
             type S = $S;
@@ -565,12 +597,6 @@ macro_rules! laws_for {
             }
             fn j(v: &[f64; D]) -> <Gp as LieGroup<S>>::Jac {
                 $jac::<S>(v)
-            }
-            fn cov(a: &[f64; D], b: &[f64; D], c: &[f64; D]) -> Matrix<S, D, D> {
-                let col = |v: &[f64; D]| Vector(array::from_fn(|i| S::sample(v[i], i)));
-                // Three independent columns cycled over `D`, so `Σ` is not symmetric and
-                // `sandwich` cannot pass with `J Σ Jᵀ` transposed.
-                Matrix::from_cols(array::from_fn(|i| col([a, b, c][i % 3])))
             }
 
             proptest! {
@@ -617,7 +643,8 @@ macro_rules! laws_for {
                 }
                 #[test]
                 fn sandwich_matches_dense(a in sample::<D>(), b in sample::<D>(), c in sample::<D>()) {
-                    within(laws::sandwich_matches_dense::<S, Gp, D>(&j(&a), &cov(&a, &b, &c)), $B.sandwich)?;
+                    let s = laws::sandwich_matches_dense::<S, Gp, D>(&j(&a), &cov::<S, D>(&a, &b, &c));
+                    within(s, $B.sandwich)?;
                 }
             }
         }
