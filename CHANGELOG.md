@@ -9,6 +9,19 @@ defined by the status tables in `docs/`; they win over this file.
 
 ### Added
 
+- `docs/decisions/0028` (draft): `SEn3Jac`'s `diag`/`col` are `pub` in `PHASE3.md` §5 and private
+  under `0025` decision 5, and `ProductJac` took the other reading; three options, their costs, and a
+  recommendation (narrow, the reversible direction). Nothing decided, no code change.
+- `docs/decisions/0029` (draft): `Product` has private fields and no constructor, so the tf2 pose
+  `Product<SO3, Rn<3>>` is reachable only through an `Exp`/`Log` round trip that is inexact, costs an
+  `atan2` and a `sin_cos`, and is worst-conditioned at a half turn; `from_parts`/`parts` proposed, to
+  land with the SO(3) PR. Nothing decided, no code change.
+- `just lint` runs `cargo clippy --workspace --all-targets --release -- -D warnings` as well as the
+  dev pass: `debug_assertions` is off in release, so the `cfg(not(debug_assertions))` test bodies that
+  only `just test`'s release run executes were never checked against the denied `unwrap_used`,
+  `expect_used`, `panic`, `todo`, `unimplemented` and `dbg_macro`. Clean today, so this closes a gap
+  rather than fixing a violation.
+
 - `docs/decisions/0025` (ready): the trait layer as built. Rⁿ's Jacobian is the structured `RnJac`,
   correcting `PHASE3.md` §7's `Jac = Mat<N>`, which cannot implement the exact `Jac::inverse` of
   `0005`; `Side` is sealed to `Left`/`Right` while the side selector stays with the SO(3) PR;
@@ -381,6 +394,52 @@ defined by the status tables in `docs/`; they win over this file.
   new dependency, no library code changes; breaks nothing.
 
 ### Changed
+
+- `SEn3Jac::sandwich` builds both halves with `from_cols`/`from_rows` instead of filling and then
+  overwriting two `D x D` scratch matrices: `M = J Σ` column by column, then `M Jᵀ` row by row, since
+  row `r` of `M Jᵀ` is `J` applied to row `r` of `M`. It therefore forms neither `Aᵀ` nor the `N`
+  transposes of `col`, reaches no entry through `Matrix::get`/`set`, and emits no `memset` where the
+  block form emitted two of `D²` scalars that it then fully overwrote. The private `zeros`, `block`
+  and `put` of `dualmat.rs` are deleted with it, which withdraws the `dualmat.rs` half of
+  `PROJECT.md` §5.1's gate on `Matrix::block`/`set_block`.
+  **Bit-identical**: every entry is the same products summed in the same order, because `Matrix`'s
+  `Mul` and `Mul<Vector>` associate identically and `B_i w_0` is added to `A w_{i+1}` in `apply`'s
+  order — checked over 150 000 random `(J, Σ)` at `f64`, `f32` and `Dual<f64, 3>` for `N = 1, 2, 3`
+  with not one differing entry, so D16 holds and the recorded bounds are unmoved rather than
+  re-measured. Release, x86_64, minimum of 7 runs of 200 000 calls: 545 → 48 ns (`f64`, `D = 6`),
+  2406 → 448 ns (`f64`, `D = 12`), 2301 → 606 ns (`f32`, `D = 12`), 1747 → 680 ns and 8078 → 2328 ns
+  (`Dual<f64, 3>`, `D = 6` and `12`). The result is fully packed: 162 `mulpd` and no `mulsd` for the
+  324 scalar products at `N = 1`. A middle variant that built each block's `Vector` and gathered it
+  was faster still on `f64`/`f32` (365 and 327 ns at `D = 12`) but 17% to 20% slower on `Dual`, and
+  `0006`'s per-precision no-regress bar refuses it. Values unchanged, so nothing breaks.
+- `SEn3Tangent::read_dense` and `write_dense` take one length test instead of one bounds check per
+  component, on the path `ProductJac::sandwich` crosses once per column and once per row of its
+  argument and again per nesting level. At `N = 3` in release on x86_64 the in-domain arm of
+  `read_dense` is one `cmp`/`jb` and twelve loads, and `write_dense`'s is one `cmp`/`jb` and a
+  `movups`-packed copy with no `memcpy` call — the copy vectorizes once the `Chain`/`FlatMap` of
+  `comps` is gone, which
+  `dot_acc` had already avoided for its own reason. Out-of-domain behaviour is unchanged and still
+  pinned by `out_of_domain_does_not_panic_in_release`: a short `write_dense` view takes the prefix
+  that fits, and `read_dense` poisons only the missing entries, never the present ones
+  (`0025` decision 4).
+- `dualmat_tests`' `kappa` takes `M⁻¹` from the closed form `A⁻¹ − ε A⁻¹ B_i A⁻¹` rather than from the
+  `sen3jac_inverse` twin. The twin `debug_assert!`s a nonzero pivot, so the `κ u <= 1e-3` filter was
+  computed from a call that panics on exactly the singular draws the filter exists to reject —
+  `inverse_twin::<f64, 1, 6>(&[0.0; 18])` panicked instead of returning `None`, and because proptest
+  shrinks toward `0`, that panic and not the bound violation is what a real regression would have
+  reported. `Mat3::inverse_adj` asserts nothing, so a singular `A` now yields a non-finite `κ` that
+  fails the filter like any other out-of-domain draw, and the case costs one 3x3 inverse instead of a
+  second `D³` elimination. All twelve recorded bounds reproduce from the documented `10^6`-case run.
+- `laws`' `Rng::vec` becomes `Rng::arr::<N>`, filling a caller-owned array with an explicit loop: the
+  `10^6`-case measurements no longer allocate once per draw-set per iteration, and the draw order is
+  a written loop rather than an unspecified visiting order, since that order is the stream every
+  recorded figure is reproducible from.
+- `laws`' dense reader is `reference::dense_oriented`, which `reference::dense` also calls: the
+  NaN-poisoned scratch had two definitions differing only in orientation, and the poison semantics
+  now have one place to be kept. `reference::sum`'s doc states what couples it to
+  `helicoid_linalg`'s `vector::sum` and which tests assert the two associate identically.
+- `zero3`, `put_view` and the `dualmat.rs` helpers that survive are `#[inline]`; the comment on
+  `sandwich`'s scratch no longer claims a saving it did not make.
 
 - `libm` is built with its `arch` feature (`0018`): `sqrt`, `sqrtf` (x86_64, aarch64), `fma`, `fmaf`
   and `rint`, `rintf` (aarch64; `fma` by `cpuid` on x86_64) run the target's instruction. All are exactly
