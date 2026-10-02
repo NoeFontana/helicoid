@@ -38,3 +38,8 @@ deny = [
 unknown-registry = "deny"
 unknown-git = "deny"
 allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+# The one oracle that is a git dependency: `runners/tf_tree_math`, at a pinned commit (`0010`). It is
+# outside the workspace, so `just oracle-tf-tree-math` audits it, and the workspace's own audit
+# never meets this source.
+allow-git = ["https://github.com/NoeFontana/tf_tree"]
+unused-allowed-source = "allow"

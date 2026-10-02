@@ -95,6 +95,7 @@ Single test: `cargo nextest run -p helicoid -- so3_exp_log_roundtrip`. The gener
 | `just corpus` / `corpus-check` | regenerate the mpmath corpus; check it is byte-identical to the committed one |
 | `just conformance` | run in-process subjects over the corpus → `conformance/results/`; `--self-test` runs the seeded defects |
 | `just thresholds` / `thresholds-check` | run the sweep, regenerate `coeffs/generated.rs`; check for drift |
+| `just oracle-tf-tree-math` | the `tf_tree_math` runner (workspace-excluded): its fmt, clippy, doc, deny, tests, then its rows over the corpus (`conformance --oracle`) |
 | `just oracles` | container-only: Sophus, manif, GTSAM runners; excluded-crate runners: `tf_tree_math`, sophus-rs |
 | `just envelope` | merge results, apply the domination and no-regress bars; `--bless` updates the baseline |
 | `just determinism` | compare output digests across x86_64, aarch64, wasm32 |

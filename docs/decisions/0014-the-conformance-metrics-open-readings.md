@@ -15,7 +15,8 @@ the threshold sweep (questions 8 to 11) and for the file it writes, `xtask/src/s
 (12, 13); the self-test (`PHASE1.md` §10) did for the planted `c` (14, 15) and for the seeded SO(3)
 subject and its `Log` defects (16 to 20), and for the seeded SE_N(3) subject and its defects (21
 to 25); `f32` scoring and the self-test's `f32` half did for the curve, its kernel and its floor
-(26 to 28); the `f32` sweep did for `r`'s branch variable, mask, domain and prior (29).
+(26 to 28); the `f32` sweep did for `r`'s branch variable, mask, domain and prior (29); the oracle runner did
+for the file protocol and for what a runner owes (31, 32).
 
 ## Decision
 
@@ -205,3 +206,20 @@ None until the open questions are resolved.
     prior on any stratum), or one maximum with the tie broken toward more terms, or is the
     measured result kept and the stratum bar of §8 the one to relax? Nothing is decided; the
     subject reports it and a test pins it.
+31. **The oracle file protocol** (§7 says "reads corpus JSONL … writes `{"id":…,"out":{…}}` with
+    hex-float outputs"). `xtask/src/conformance/oracle.rs` reads it as: `<runner> --version`
+    prints the pin on one line, the rows' `subject_version`; `<runner> --out DIR FILE.jsonl…`
+    writes `DIR/<fn>.jsonl` for each file whose function it answers; an answer's `id` is its line's,
+    a scalar may be a bare string, `nan`, `inf` and `-inf` spell a non-finite value; a missing,
+    extra or misnumbered record, a file of no corpus function and an owed function (`RUNNERS`) with
+    no file are errors; a non-finite answer is a recorded row, not a failed run (§7: "oracles may
+    be wrong"), where 6 fails an in-process subject on it. The three container runners will
+    implement this in C++. Amend §7 with it, or take another shape?
+32. **What `tf_tree_math` answers beyond §7's list** (exp, log, `a, b, c` via `V`/`V⁻¹`, `slerp`,
+    ScLERP). At the pin the runner answers `so3_exp`, `so3_log`, `sen3_exp_n1` and `sen3_log_n1`.
+    `coeff_*` and the Jacobians are not exported (`v_coeffs`, `vinv_c3` are private). Three exported
+    functions have corpus ids and are not answered: `Iso3::adjoint` (`sen3_ad_n1`, `Ad(T)` on the
+    six basis twists), `Quat::rotate` (`so3_act`, which assumes a unit `q`, so `q:nonunit` and
+    `q:w0` would score that assumption) and `quat_from_rot3` (`so3_from_matrix`, checked for shape
+    and finiteness only). For those ids `0010`'s "dominate on every paired stratum" pairs nothing.
+    Answer them, with which strata, or leave the ids to sophus-rs and the containers?
