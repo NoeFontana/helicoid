@@ -63,7 +63,7 @@ pub(crate) fn unit<S: Real>() -> f64 {
 }
 
 /// The larger error; NaN wins.
-fn worst(a: f64, b: f64) -> f64 {
+pub(crate) fn worst(a: f64, b: f64) -> f64 {
     if a.is_nan() || b.is_nan() {
         f64::NAN
     } else {
@@ -71,7 +71,7 @@ fn worst(a: f64, b: f64) -> f64 {
     }
 }
 
-fn norm(v: &[f64]) -> f64 {
+pub(crate) fn norm(v: &[f64]) -> f64 {
     v.iter().map(|x| x * x).sum::<f64>().sqrt()
 }
 
@@ -485,6 +485,29 @@ pub(crate) struct Bounds {
     pub(crate) tangent_order: f64,
     pub(crate) jac_order: f64,
     pub(crate) sandwich: f64,
+}
+
+/// splitmix64, seeded; `unif` is uniform on `[-1, 1)`.
+///
+/// The stream every measurement draws from, so no method may change: the figures the bounds are
+/// recorded from would stop being reproducible. A measurement that gains a law gives it a stream
+/// of its own rather than drawing from one the others already use.
+pub(crate) struct Rng(pub(crate) u64);
+
+impl Rng {
+    pub(crate) fn next(&mut self) -> u64 {
+        self.0 = self.0.wrapping_add(0x9E37_79B9_7F4A_7C15);
+        let mut z = self.0;
+        z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+        z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+        z ^ (z >> 31)
+    }
+    pub(crate) fn unif(&mut self) -> f64 {
+        (self.next() >> 11) as f64 / 2_f64.powi(52) - 1.0
+    }
+    pub(crate) fn vec(&mut self, n: usize) -> Vec<f64> {
+        (0..n).map(|_| self.unif()).collect()
+    }
 }
 
 /// Tangent samples with entries `m 2^e`, `|m| < 1`, `-6 <= e <= 0`.

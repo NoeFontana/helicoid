@@ -177,6 +177,7 @@ scheduled; adding a row is not a decision, removing one is.
 | `helicoid-spline` | [`PHASE7.md`](./PHASE7.md), [`0011`](./decisions/0011-continuous-time-waits-for-a-consumer.md) | A consumer record: locus-calib camera–IMU, locus_fusion continuous time, or `tf_tree` Phase 6 |
 | SIMD `Real` impl | [`0013`](./decisions/0013-simd-lanes-owe-a-measurement.md) (draft) | A consumer gate win that pays for its dependency cost; `tf_tree` 0016's evidence is the bar to beat |
 | Closed-form Γ directional Jacobians | [`PHASE5.md`](./PHASE5.md) §4 | A bench showing the `Dual` path is a consumer bottleneck |
+| `Matrix::block` / `set_block` (`helicoid-linalg`) | [`PHASE2.md`](./PHASE2.md) §4; the private `block`/`put` of `dualmat.rs` | A consumer outside `helicoid` (both `Gaussian` and the ambient Jacobians are in `helicoid`, so `pub(crate)` reaches them), or a bench showing `Matrix::get`/`set` costs on the `sandwich` path |
 | `helicoid-py` | no record | locus-calib's Python tooling asks for batched NumPy access |
 | The small dense LM (omnisac's LM core) | [`0009`](./decisions/0009-what-helicoid-does-not-own.md) | Not here: solver tier. Listed so the request has somewhere to be refused |
 

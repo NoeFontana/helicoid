@@ -9,9 +9,11 @@ default:
 build:
     cargo build --workspace --all-targets
 
-# Unit + integration tests (nextest), then doctests.
+# Unit + integration tests (nextest) in the dev profile, then in release, where `debug_assert!` is
+# compiled out and the out-of-domain behaviour the docs state is what is tested; then doctests.
 test:
     cargo nextest run --workspace --no-tests=pass
+    cargo nextest run --workspace --release --no-tests=pass
     cargo test --doc --workspace
     cargo nextest run -p helicoid-linalg --features mint
     cargo test --doc -p helicoid-linalg --features mint
