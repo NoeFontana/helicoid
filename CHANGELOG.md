@@ -31,6 +31,18 @@ defined by the status tables in `docs/`; they win over this file.
 
 ### Added
 
+- `docs/decisions/0032` (draft): `so3_log`'s 8 domination failures are not an algorithm. `Log` is the
+  same program in `helicoid` and both oracles (D5, the quaternion `atan2`); the gap is the `libm`
+  crate's `atan2` against the host's glibc, which D16 buys and `error-analysis.md` EA.13(d)
+  predicted ("a domination failure there can be the library's and not the algorithm's", `libm`'s
+  nu 1.96 on `atan2` against glibc's <= 1.00). Measured over the corpus with one variable changed:
+  the two `atan2`s disagree on 692 of 4994 records, the `libm` column reproduces the harness's
+  `seeded:correct` on 8 of 8 losing strata and the glibc column reproduces sophus-rs's on 7 of 8,
+  and `tf_tree_math` -- also on the `libm` crate -- is bit-identical to `helicoid` on all 30 strata.
+  D16's price is at most 0.74 u (ratios 1.08 to 1.45). Proposes a third `libm-bound` verdict so the
+  bar stops charging the candidate for choosing reproducibility; notes the other 67 failures are
+  *not* explained by this, since `Exp` goes through `sin_cos` where the penalty is ~1.1x not ~2x.
+  Four open questions, no code change.
 - `docs/decisions/0030` (draft): `chol` factorises 2.6 to 3.4x slower than `nalgebra`'s at `N = 6`
   and 1.3 to 1.5x at `N = 3, 8`, measured advisorily beside the two solves `locus-tag` runs today;
   `chol_solve` is at parity and the residual favours `chol`. The attribution did not settle: a
