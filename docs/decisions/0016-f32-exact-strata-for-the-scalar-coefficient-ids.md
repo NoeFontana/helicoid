@@ -16,11 +16,14 @@ the current corpus (`docs/maths/coefficients.md`, `docs/decisions/0015` gap on `
 
 ## Decision
 
-1. For every scalar-θ coefficient id (`coeff_k`, `coeff_a` … `coeff_e`; `coeff_r` when its
-   sweep is specified) the generator emits, beside each existing stratum `S`, a stratum `S@f32`:
+1. For every scalar-θ coefficient id (`coeff_k`, `coeff_a` … `coeff_e`, `coeff_cos_half`,
+   `coeff_r`) the generator emits, beside each existing stratum `S`, a stratum `S@f32`:
    its inputs are the corresponding binary64 inputs **rounded to nearest-even `f32`** (hence exactly
-   representable in both precisions) and the references (`value`, `d_branch`) are computed from
-   their definitions **at those rounded inputs**, at 120 digits, like every other record.
+   representable in both precisions; `coeff_r`: `n` and `w` each) and the references (`value`,
+   `d_branch`) are computed from their definitions **at those rounded inputs**, at 120 digits, like
+   every other record. `coeff_cos_half` is cos(θ/2), the series arm of `Exp` that `NUMERICS.md`
+   §3.1 generates alongside `k`, a corpus id with a `coeff_series` row (`PHASE1.md` §4.3); the sweep
+   of `coeff_r` waits until it is specified.
 2. The harness scores `Precision::F64` on strata without the suffix and `Precision::F32` on the
    `@f32` strata only; `u = 2^-24` for `f32`. An `f32` subject receives the inputs converted to
    `f32` exactly (a lossless cast by construction). No other id has an `@f32` stratum until a

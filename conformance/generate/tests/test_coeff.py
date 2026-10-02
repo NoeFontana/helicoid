@@ -6,7 +6,7 @@ from mpmath import mp, mpf
 
 from gen import coeff, precision
 from gen import series as gen_series
-from gen.strata import R_STRATA
+from gen.strata import COEFF_R_STRATA, R_STRATA
 
 precision.setup()
 
@@ -131,6 +131,44 @@ class CoefficientTest(unittest.TestCase):
         self.assertLess(abs(near_pi["w"] - 5e-4), 1e-10)
         for rec in coeff.r_inputs(by_name["theta:subnormal"]):
             self.assertTrue(0 < rec["n"] < 2.2250738585072014e-308 and rec["w"] == 1.0)
+
+
+class CosHalfTest(unittest.TestCase):
+    def test_value_and_derivative_are_those_of_the_cosine(self):
+        """d/dx cos(sqrt(x) / 2) = -sin(sqrt(x) / 2) / (4 sqrt(x)), -1/8 at 0, by calculus."""
+        for theta in (0.0, 1e-310, 1e-12, 1e-4, 0.3, 1.0, 3.141592653589793, 6.0):
+            out = coeff.evaluator("cos_half")({"theta": theta})
+            with mp.workdps(400):
+                t = mpf(theta)
+                value = mp.cos(t / 2)
+                deriv = -mpf(1) / 8 if theta == 0 else -mp.sin(t / 2) / (4 * t)
+            self.assertLess(abs(out["value"] - value), REL * abs(value), theta)
+            self.assertLess(abs(out["d_branch"] - deriv), REL * abs(deriv), theta)
+
+
+class F32InputsTest(unittest.TestCase):
+    """An `@f32` record's inputs are binary32 values, and its reference is at those inputs."""
+
+    def test_the_reference_is_the_definition_at_the_rounded_input(self):
+        theta32 = precision.to_f32(0.1)
+        at32 = coeff.evaluator("b")({"theta": theta32})
+        with mp.workdps(1200):
+            want = (mpf(theta32) - mp.sin(mpf(theta32))) / mpf(theta32) ** 3
+        self.assertLess(abs(at32["value"] - want), REL * abs(want))
+        at64 = coeff.evaluator("b")({"theta": 0.1})
+        self.assertGreater(abs(at32["value"] - at64["value"]), 1e-12)  # not the binary64 one
+
+    def test_r_rounds_n_and_w_each_and_q_w0_keeps_w_zero(self):
+        by_name = {s.name: s for s in COEFF_R_STRATA}
+        for name in ("theta:1e-3", "theta:1e0", "theta:pi-1e-9", "theta:exact0", "q:w0"):
+            wide, narrow = coeff.r_inputs(by_name[name]), coeff.r_inputs(by_name[name + "@f32"])
+            self.assertEqual(
+                narrow, [{k: precision.to_f32(v) for k, v in a.items()} for a in wide], name
+            )
+        second = coeff.r_inputs(by_name["q:w0@f32"])[1]
+        self.assertEqual(second, {"n": precision.to_f32(1e-3), "w": 0.0})
+        for rec in coeff.r_inputs(by_name["theta:subnormal@f32"]):  # from the binary32 decade
+            self.assertTrue(0 < rec["n"] < 2.0**-126 and rec["w"] == 1.0, rec)
 
 
 if __name__ == "__main__":

@@ -5,7 +5,14 @@ from mpmath import mp, mpf
 
 from gen import precision
 from gen.rng import stream, unit_quaternion_s3
-from gen.strata import QUAT_STRATA, R_STRATA
+from gen.strata import (
+    COEFF_R_STRATA,
+    COEFF_STRATA,
+    QUAT_STRATA,
+    R_STRATA,
+    SCALAR_F32_STRATA,
+    f32_twin,
+)
 from gen.strata import SCALAR_THETA_STRATA as STRATA
 
 precision.setup()
@@ -139,6 +146,58 @@ class StrataTest(unittest.TestCase):
                 with mp.workdps(dps):
                     self.assertEqual((s.thetas(), s.axes(4)), expected, (name, dps))
             self.assertEqual(mp.dps, precision.DPS)
+
+
+F32_BY_NAME = {s.name: s for s in SCALAR_F32_STRATA}
+
+
+class F32StrataTest(unittest.TestCase):
+    """0016 item 1: beside every stratum S of a scalar id, `S@f32`, appended after all of them."""
+
+    def test_catalogue_appends_every_twin_in_the_order_of_its_source(self):
+        twins = [f"{s.name}@f32" for s in STRATA]
+        self.assertEqual([s.name for s in COEFF_STRATA], [*(s.name for s in STRATA), *twins])
+        self.assertEqual(
+            [s.name for s in COEFF_R_STRATA], [*(s.name for s in R_STRATA), *twins, "q:w0@f32"]
+        )
+        self.assertEqual(sum(s.count for s in COEFF_STRATA), 2 * 1710)
+        self.assertEqual(sum(s.count for s in COEFF_R_STRATA), 2 * 1713)
+        self.assertFalse(any(s.f32 for s in (*STRATA, *R_STRATA, *QUAT_STRATA)))
+
+    def test_a_twin_is_its_source_rounded_to_nearest_even_binary32(self):
+        for s in SCALAR_F32_STRATA:
+            thetas = s.thetas()
+            self.assertEqual(len(thetas), s.count, s.name)
+            self.assertTrue(all(precision.is_binary32(t) for t in thetas), s.name)
+            if s.name != "theta:subnormal@f32":
+                base = BY_NAME[s.name[: -len("@f32")]]
+                self.assertEqual(thetas, [precision.to_f32(t) for t in base.thetas()], s.name)
+        self.assertEqual(F32_BY_NAME["theta:exact0@f32"].thetas(), [0.0])
+        xs = F32_BY_NAME["theta:dense@f32"].thetas()
+        self.assertTrue(len(xs) == 801 and all(a < b for a, b in zip(xs, xs[1:], strict=False)))
+
+    def test_subnormal_is_a_binary32_subnormal_decade_not_the_rounding_of_the_binary64_one(self):
+        literal = {precision.to_f32(t) for t in BY_NAME["theta:subnormal"].thetas()}
+        self.assertEqual(literal, {0.0})  # rounding [1e-310, 1e-309) is 64 zeros
+        xs = F32_BY_NAME["theta:subnormal@f32"].thetas()
+        self.assertTrue(all(1e-40 * (1 - 1e-4) < x < 1e-39 * (1 + 1e-4) for x in xs))
+        self.assertTrue(all(x < 2.0**-126 for x in xs))  # below the smallest normal binary32
+        self.assertGreater(len(set(xs)), 60)
+        self.assertTrue(all(precision.to_f32(x * x) == 0.0 for x in xs))  # theta^2 underflows
+        self.assertTrue(all(1 / x > 3.4028234663852886e38 for x in xs))  # 1 / theta overflows
+
+    def test_several_pi_strata_round_to_one_binary32_and_every_record_is_kept(self):
+        values = {k: F32_BY_NAME[f"theta:pi-1e-{k}@f32"].thetas() for k in range(1, 13)}
+        self.assertEqual(len({v[0] for v in values.values()}), 8)  # k = 1..7, and 8..12 as one
+        self.assertEqual({v[0] for k, v in values.items() if k >= 8}, {precision.to_f32(math.pi)})
+        self.assertGreater(values[8][0], math.pi)  # the binary32 nearest pi is above pi
+
+    def test_a_twin_is_named_by_the_suffix_and_draws_at_any_ambient_precision(self):
+        twin = f32_twin(BY_NAME["theta:1e-8"])
+        self.assertEqual((twin.name, twin.source), ("theta:1e-8@f32", BY_NAME["theta:1e-8"]))
+        for s in (twin, F32_BY_NAME["theta:subnormal@f32"]):
+            with mp.workdps(400):
+                self.assertEqual(s.thetas(), F32_BY_NAME[s.name].thetas(), s.name)
 
 
 if __name__ == "__main__":

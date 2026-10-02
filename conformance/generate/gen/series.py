@@ -3,7 +3,9 @@
 The committed series come from mpmath's Taylor expansion of the raw definitions
 (docs/decisions/0004). Each coefficient is rationalized, reconstructed to 110 digits, and must
 equal an independent exact derivation from the Maclaurin series of sin, cos and atan. The leading
-four terms of the catalogue are asserted here, never used to produce data.
+four terms of the catalogue are asserted here, never used to produce data. `cos_half`, cos(theta/2),
+is the eighth row: docs/NUMERICS.md section 3.1 asks for its series "generated alongside k", and
+the catalogue lists none, so it is held to the exact derivation alone.
 """
 
 from fractions import Fraction
@@ -19,11 +21,11 @@ MAX_DEN = 10**50  # denominators reach ~2e43 at 16 terms; no wrong rational matc
 RECONSTRUCT_DIGITS = 110
 EXACT_TERMS = 232  # 1e-130 at x <= pi^2, even for `c` (radius of convergence 4 pi^2)
 
-NAMES = ("k", "a", "b", "c", "d", "e", "r")
+NAMES = ("k", "a", "b", "c", "d", "e", "r", "cos_half")
 BRANCH = {"r": "n^2/w^2"}  # every other coefficient: theta^2
 PREFACTOR = {"r": "2/w"}  # every other coefficient: 1
 
-# docs/NUMERICS.md section 4, "Series (leading four)".
+# docs/NUMERICS.md section 4, "Series (leading four)"; `cos_half` is not in that table.
 DOC_LEADING = {
     "k": ("1/2", "-1/48", "1/3840", "-1/645120"),
     "a": ("1/2", "-1/24", "1/720", "-1/40320"),
@@ -92,6 +94,7 @@ def exact() -> dict[str, tuple[Fraction, ...]]:
         "e": tuple(v / 2 for v in num["e"][2 : n + 2]),
         "c": tuple(_quotient(num["c"][1:], [2 * s for s in sinc], n)),
         "r": tuple(Fraction((-1) ** j, 2 * j + 1) for j in range(n)),  # atan(t) / t
+        "cos_half": tuple(cos[j] / 4**j for j in range(n)),  # cos(t / 2)
     }
     return out
 
@@ -109,7 +112,7 @@ def taylor(name: str) -> tuple[Fraction, ...]:
     for j, (got, want) in enumerate(zip(series, exact()[name], strict=False)):
         if got != want:
             raise SeriesError(f"{name}: term {j} is {got} from mpmath, {want} by exact algebra")
-    if series[:4] != tuple(Fraction(t) for t in DOC_LEADING[name]):
+    if name in DOC_LEADING and series[:4] != tuple(Fraction(t) for t in DOC_LEADING[name]):
         raise SeriesError(f"{name}: leading terms differ from docs/NUMERICS.md section 4")
     return series
 

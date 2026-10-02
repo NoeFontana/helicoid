@@ -2,7 +2,8 @@
 
 Computes the conformance corpus from **definitions** with mpmath at 120 digits, never from the
 closed forms in `docs/NUMERICS.md` (`docs/PHASE1.md` §2, §4; `docs/decisions/0006`). Inputs are exact
-binary64 values; the corpus in `../corpus/` is committed and regenerates byte-identically.
+binary64 values (exactly binary32 ones in the `@f32` strata below); the corpus in `../corpus/` is
+committed and regenerates byte-identically.
 
 ```
 just corpus         # regenerate ../corpus, deleting a stale *.jsonl   (python -m gen all --out DIR [--jobs N])
@@ -16,7 +17,7 @@ uv run --frozen python -m gen list
 | Path | Role |
 |---|---|
 | `pyproject.toml`, `uv.lock`, `.python-version` | CPython 3.12, `mpmath` pinned exactly; no numpy, no gmpy2 (`setup` refuses a non-Python backend) |
-| `gen/precision.py` | the only place `mp.dps` is set (120; rechecks at 150); `to_f64` |
+| `gen/precision.py` | the only place `mp.dps` is set (120; rechecks at 150); `to_f64`, `to_f32` |
 | `gen/rng.py` | splitmix64, per-stratum streams, log-uniform, uniform on S² |
 | `gen/strata.py` | the strata; `gen/registry.py` the function ids; `gen/coeff.py`, `gen/so3.py`, `gen/sen3.py`, `gen/so2.py`, `gen/se2.py` their definitions |
 | `gen/series.py`, `gen/check.py`, `gen/check_sen3.py`, `gen/check_se2.py` | the exact Taylor series (`coeff_series`); the per-record cross-checks |
@@ -53,6 +54,27 @@ One JSONL file per function id, one record per line, compact JSON with sorted ke
 | `theta:subnormal` | log-uniform in [10⁻³¹⁰, 10⁻³⁰⁹), below the smallest normal | 64 |
 | `theta:pi-1e-k`, k = 1…12 | the single value fl(π − 10⁻ᵏ) | 1 each |
 | `theta:dense` | 10^(j/200 − 4), j = 0…800, rounded: a grid, no randomness | 801 |
+| `<S>@f32`, S each of the above | S's values rounded to nearest-even binary32 (`theta:subnormal@f32`: below) | as S |
+
+`@f32` strata (`docs/decisions/0016`) belong to the coefficient ids (`coeff_k`, `a`…`e`, `cos_half`,
+`r`) and follow every stratum of the ids they belong to, in the order of the strata they twin: no
+id, stratum name or record of the binary64 corpus moves. Each input is exactly a binary32, so a
+binary32 subject receives it by a lossless cast, and the reference is the function at that rounded
+input, at 120 digits (`to_f32` is integer arithmetic, and `corpus.require_binary32` asserts every
+input round-trips through the platform's binary32 at generation). Readings:
+
+- `theta:subnormal@f32` is log-uniform in [10⁻⁴⁰, 10⁻³⁹), rounded, from its own stream: rounding
+  the binary64 decade [10⁻³¹⁰, 10⁻³⁰⁹) gives 64 zeros. Each decade lies below the smallest normal
+  of its type, where θ² underflows and 1/θ overflows.
+- `theta:pi-1e-k@f32`: fl(π − 10⁻ᵏ) rounded, for k = 8…12 the one binary32 `0x1.921fb6p+1`, which is
+  above π by 8.7·10⁻⁸ (cos(θ/2) < 0 there). The records are kept, none deduplicated: five strata of
+  the same input and reference in every θ id; `coeff_r` rounds n and w, which differ.
+- `theta:exact0@f32` is `theta:exact0`'s record under its own name. A decade's rounded values may
+  lie half a binary32 unit outside it.
+- `coeff_r`: n and w of the binary64 quaternion each rounded (`q:w0@f32`: n ∈ {1, fl32(10⁻³), 10³},
+  w = +0). `theta:subnormal@f32` is the quaternion of that stratum's unrounded draw, n and w each
+  rounded, not of the rounded θ the θ ids score at the same index: n is half that θ in 29 of 64
+  records.
 
 A scalar id sees each fixed-θ stratum once. A vector id (`so3_*`) gives every θ an axis
 (`Stratum.samples`), uniform on S² (z uniform, then φ uniform, from the stratum's `axis` stream):
@@ -199,18 +221,22 @@ tangent's order, `"shape":[3,3]`.
 
 ## Coefficients
 
-`coeff_k`, `coeff_a`…`coeff_e` take θ; `coeff_r` takes `(n, w)`. Each is the **raw** definition of
-`docs/NUMERICS.md` §4, never a rewrite (`a = (1 − cos θ)/θ²`, `b = (θ − sin θ)/θ³`,
-`c = 1/θ² − (1 + cos θ)/(2θ sin θ)`, `d = (θ² + 2 cos θ − 2)/(2θ⁴)`,
-`e = (2θ − 3 sin θ + θ cos θ)/(2θ⁵)`, `r = 2 atan2(n, w)/n`), extended analytically at its removable
-singularity. `out.value` is the coefficient at the exact binary64 input. `out.d_branch` is its
-derivative with respect to the **branch variable** by `mp.diff` at 120 digits, taken at the exact
-real θ² (not fl(θ·θ); the subject's own rounding of θ² is part of what is measured), or n² at fixed
-w for `r`. The threshold sweep (`docs/PHASE1.md` §6) compares `Dual<S, 1>` seeded on the branch
-variable against it.
+`coeff_k`, `coeff_a`…`coeff_e`, `coeff_cos_half` take θ; `coeff_r` takes `(n, w)`. Each is the
+**raw** definition of `docs/NUMERICS.md` §4, never a rewrite (`a = (1 − cos θ)/θ²`,
+`b = (θ − sin θ)/θ³`, `c = 1/θ² − (1 + cos θ)/(2θ sin θ)`, `d = (θ² + 2 cos θ − 2)/(2θ⁴)`,
+`e = (2θ − 3 sin θ + θ cos θ)/(2θ⁵)`, `r = 2 atan2(n, w)/n`), extended analytically at its
+removable singularity. `cos_half = cos(θ/2)`, the other half of `Exp`'s quaternion, is in no table
+of `NUMERICS.md`; §3.1 has the series arm generate it alongside `k`, and `docs/decisions/0016`
+item 1 names the id. It is the one of the three ids `docs/decisions/0015` (draft) P1.5 recommends
+that is added (α and β are not). `out.value` is the coefficient at the exact input (binary64; binary32
+in an `@f32` stratum). `out.d_branch` is its derivative with respect to the **branch variable** by
+`mp.diff` at 120 digits, taken at the exact real θ² (not fl(θ·θ); the subject's own rounding of θ²
+is part of what is measured), or n² at fixed w for `r`. The threshold sweep (`docs/PHASE1.md` §6)
+compares `Dual<S, 1>` seeded on the branch variable against it.
 
-`coeff_r` sees the θ strata as the unit quaternion of that angle, `(n, w) = (sin θ/2, cos θ/2)`
-rounded to binary64, so n²/w² = tan²(θ/2) spans the decades θ² does (2.6e-25 … 4e24, and
+Every coefficient id is 3420 records (`coeff_r` 3426): the binary64 strata, then their `@f32`
+twins. `coeff_r` sees the θ strata as the unit quaternion of that angle,
+`(n, w) = (sin θ/2, cos θ/2)` rounded to binary64, so n²/w² = tan²(θ/2) spans the decades θ² does (2.6e-25 … 4e24, and
 2.5e-621 … 2.4e-619 in `theta:subnormal`): w > 0 throughout, w → 0 in `theta:pi-1e-k` (down to
 5e-13; n is exactly 1 from k = 8, so those strata differ only in w), n = 0 in `theta:exact0`,
 subnormal n in `theta:subnormal`. One stratum is its own: `q:w0`, `(n, +0)` for n = 1, 1e-3, 1e3
@@ -221,8 +247,8 @@ the norms exercise the 1/n and n⁻³ scalings. w < 0 is not sampled: `Log` flip
 
 ## `coeff_series`
 
-One record per coefficient (`k a b c d e r`, in that order), the committed Taylor series the sweep
-and `helicoid::coeffs` are generated from (`docs/decisions/0004`):
+One record per coefficient (`k a b c d e r cos_half`, in that order), the committed Taylor series
+the sweep and `helicoid::coeffs` are generated from (`docs/decisions/0004`):
 
 ```json
 {"branch":"theta^2","coeff":"a","id":1,"prefactor":"1","series":["1/2","-1/24","1/720", …]}
@@ -236,7 +262,9 @@ expansion of the definition at 120 digits (`mp.taylor`), rationalized
 (`Fraction.limit_denominator(10⁵⁰)`), reconstructed to 110 digits, and must equal an independent
 exact derivation by power-series arithmetic on the Maclaurin series of sin, cos and atan
 (`series.exact`), term by term; the leading four terms of `NUMERICS.md` §4 are asserted, never used
-to produce data. `verified` counts the series so verified; this file has no 150-digit recheck.
+to produce data. `cos_half` (branch θ², prefactor 1) is in no table of `NUMERICS.md`: it is held to
+the exact derivation alone. `verified` counts the series so verified; this file has no 150-digit
+recheck.
 
 ## Cross-checks
 
@@ -244,8 +272,9 @@ Every `coeff_*` record is compared, at generation, to 100 digits, with (`check.p
 
 - the committed rational series where the branch variable is ≤ `check.SMALL`, derived from
   `series.TERMS` (1e-8 for 16 terms) so that truncation stays 20 digits under the 100;
-- a second formulation at 240 digits everywhere: `series.exact` summed (`k`, `a`…`e`); a closed form
-  and its calculus derivative (`r`, n > 0).
+- a second formulation at 240 digits everywhere: `series.exact` summed (`k`, `a`…`e`, `cos_half`); a
+  closed form and its calculus derivative (`r`, n > 0). An `@f32` record meets these at its rounded
+  input, like any other.
 
 Neither shares code with `mp.diff` on the definition. The 150-digit recheck still applies.
 
@@ -291,13 +320,13 @@ algorithm that produced it (`check.py`):
   `pyproject.toml`, `uv.lock`, `.python-version` and `gen/**/*.py`, not a git revision, which would
   change with every commit and cannot appear inside the commit it names. Any edit to those files
   changes the manifest, so the corpus is regenerated in the same PR.
-- **Tests.** The unit tests regenerate a three-stratum subset (`exact0`, `1e-6`, `q:w0`) serially
-  and with two workers and compare it with the committed records: the worker count cannot change a
+- **Tests.** The unit tests regenerate a subset (`exact0`, `1e-6`, `q:w0` and their `@f32` twins)
+  serially and with two workers and compare it with the committed records: the worker count cannot change a
   byte. The whole corpus is regenerated once, and compared to the committed one byte for byte,
   manifest included, by `just corpus-check`; a second full regeneration inside the tests would
-  only double its 17 CPU-minutes.
+  only double its 18 CPU-minutes.
 - **Parallel.** One task per (id, stratum), joined in catalogue order, so the bytes are those of a
-  serial run whatever `--jobs` (`build_all`; default every core). `just corpus` is 17 CPU-minutes
+  serial run whatever `--jobs` (`build_all`; default every core). `just corpus` is 18 CPU-minutes
   (`so3_log` and the SE_N(3) Jacobians the most, N = 3 at 80 CPU-seconds a file); the wall time
   is that over the free cores, and `just corpus-check` adds the generator's unit tests.
 

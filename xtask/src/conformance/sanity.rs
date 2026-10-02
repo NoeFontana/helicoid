@@ -100,6 +100,14 @@ fn the_neighbouring_ulp_scores_above_one_half_and_at_most_three_on_every_scalar_
 }
 
 #[test]
+fn a_binary64_run_scores_the_binary64_strata_only() -> Result<(), String> {
+    let rows = rows(Perfect::exact(), |id| id == "coeff_cos_half")?;
+    assert!(rows.iter().all(|r| !r.stratum.ends_with("@f32")));
+    assert_eq!(rows.iter().map(|r| r.n).sum::<usize>(), 1710);
+    Ok(())
+}
+
+#[test]
 fn a_perfectly_rounded_subject_is_finite_and_within_two_u_on_every_forward_id() -> Result<(), String>
 {
     let rows = rows(Perfect::exact(), |_| true)?;
@@ -114,10 +122,15 @@ fn a_perfectly_rounded_subject_is_finite_and_within_two_u_on_every_forward_id() 
             r.max_u
         );
     }
-    // Every record reaches an aggregate, and a backward-only id scores nothing but is counted.
+    // Every binary64 record reaches an aggregate (`@f32` strata are `f32`'s), and a backward-only
+    // id scores nothing but is counted.
     for e in corpus::manifest(&corpus_dir()?)? {
+        let binary64 = corpus::read(&corpus_dir()?, &e)?
+            .iter()
+            .filter(|r| !r.is_f32_stratum())
+            .count();
         let mine = rows.iter().filter(|r| r.fn_id == e.fn_id);
-        assert_eq!(mine.map(|r| r.n).sum::<usize>(), e.records, "{}", e.fn_id);
+        assert_eq!(mine.map(|r| r.n).sum::<usize>(), binary64, "{}", e.fn_id);
     }
     let unscored = |r: &&Row| r.fn_id == "so3_from_matrix";
     assert!(rows.iter().filter(unscored).count() > 5);

@@ -46,8 +46,9 @@
 //! | `next_objective` | the smallest grid objective above the chosen one; empty when none |
 //!
 //! Numbers are shortest round-trip decimals (`{:e}`). Not swept: `r` (its branch variable
-//! `n²/w²` and `w ≤ 0` domain are open, `docs/maths/coefficients.md` CO.16), `f32` (no
-//! `f32`-exact corpus inputs), SE(2)'s `α`, `β` and `cos θ/2` (no corpus id), a switch shared by a
+//! `n²/w²` and `w ≤ 0` domain are open, `docs/maths/coefficients.md` CO.16), `f32` (its `@f32`
+//! strata exist and this sweep skips them: `docs/decisions/0016` item 3), SE(2)'s `α`, `β` (no
+//! corpus id) and `cos θ/2` (`coeff_cos_half` exists, no seeded kernel), a switch shared by a
 //! call-site group (CO.18), and `crates/helicoid/src/coeffs/generated.rs` (Phase 3).
 
 mod emit;

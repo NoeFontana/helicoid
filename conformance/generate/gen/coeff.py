@@ -3,7 +3,12 @@
 `value` is the coefficient at the exact binary64 input. `d_branch` is its derivative with respect to
 the branch variable (theta^2; n^2 at fixed w for `r`), taken by `mp.diff` at the exact real branch
 value (not fl(theta * theta)). The definitions are the raw ones of the catalogue, never its
-cancellation-free rewrites; a removable singularity takes its analytic extension.
+cancellation-free rewrites; a removable singularity takes its analytic extension. `cos_half` is
+cos(theta / 2), the other half of `Exp`'s `(cos(theta / 2), k phi)` (section 3.1), which the
+catalogue does not list.
+
+An `@f32` stratum (0016) hands these functions inputs that are exactly binary32 (and so exactly
+binary64); nothing here knows the difference: the reference is the definition at those inputs.
 """
 
 from mpmath import mp, mpf
@@ -22,6 +27,11 @@ def r_inputs(stratum: Stratum) -> list[dict]:
     `q:w0` is a quaternion angle of exactly pi, which no binary64 theta is: (n, +0) at the norms
     of `Q_W0_NORMS`, since `Log` is scale-invariant (docs/NUMERICS.md section 3.2).
     """
+    if stratum.f32:  # each component of the binary64 quaternion, rounded to binary32
+        return [
+            {key: precision.to_f32(x) for key, x in inputs.items()}
+            for inputs in r_inputs(stratum.binary64())
+        ]
     if stratum.name == "q:w0":
         return [{"n": n, "w": 0.0} for n in Q_W0_NORMS]
     return [
@@ -85,6 +95,11 @@ def _branch(g):
     return f
 
 
+def _cos_half(x):
+    """cos(theta / 2) as a function of x = theta^2: entire in x, nothing removable."""
+    return mp.cos(mp.sqrt(x) / 2)
+
+
 # The raw definitions of docs/NUMERICS.md section 4, one per coefficient (`k` is above).
 DEFINITIONS = {
     "a": lambda t: (1 - mp.cos(t)) / t**2,
@@ -93,7 +108,11 @@ DEFINITIONS = {
     "d": lambda t: (t**2 + 2 * mp.cos(t) - 2) / (2 * t**4),
     "e": lambda t: (2 * t - 3 * mp.sin(t) + t * mp.cos(t)) / (2 * t**5),
 }
-BRANCH = {"k": _k, **{name: _branch(g) for name, g in DEFINITIONS.items()}}
+BRANCH = {
+    "k": _k,
+    "cos_half": _cos_half,
+    **{name: _branch(g) for name, g in DEFINITIONS.items()},
+}
 
 
 def evaluator(name: str):
