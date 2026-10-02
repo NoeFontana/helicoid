@@ -77,6 +77,12 @@ const COEFF: &[FieldRule] = &[
     field("value", Floor::Tiny, SignRule::Fixed),
     field("d_branch", Floor::Tiny, SignRule::Fixed),
 ];
+/// One output of a coefficient on its own: the curve of a defect is a field's, not the record's
+/// maximum. `b`'s value errs by `θ^-2` and its derivative through `Dual` by `θ^-4`
+/// (`docs/maths/coefficients.md` CO.6, CO.14).
+pub(crate) static COEFF_VALUE: Rule = Forward(&[field("value", Floor::Tiny, SignRule::Fixed)]);
+pub(crate) static COEFF_D_BRANCH: Rule =
+    Forward(&[field("d_branch", Floor::Tiny, SignRule::Fixed)]);
 const JAC: &[FieldRule] = &[field("J", Floor::Unit, SignRule::Fixed)];
 const AD: &[FieldRule] = &[field("Ad", Floor::Unit, SignRule::Fixed)];
 const TANGENT: &[FieldRule] = &[field("tau", Floor::Tiny, SignRule::Fixed)];

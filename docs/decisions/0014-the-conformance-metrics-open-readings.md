@@ -47,3 +47,8 @@ None until the open questions are resolved.
    blocks together) for `sen3_exp.x` and `se2_exp.t`. §11 says "‖ρ‖-scale".
 6. **Overflow.** An `F` past binary64 (a gross error against a zero reference) counts as non-finite
    and fails the run. Is that the intended gate, or a failing score of its own?
+7. **The field of the `b` defect's curve** (`PHASE1.md` §10, not §11). The self-test fits the `value`
+   field's per-stratum `max_u` over `theta:1e-8`…`theta:1e-2` (`p` = 1.937). Through `Dual` the
+   exact arm's derivative errs by θ⁻⁴, so a record's maximum over `value` and `d_branch`, which is
+   what a results row holds, fits `p` = 3.98 and misses the window. Score the field, or widen the
+   window and score the record?
