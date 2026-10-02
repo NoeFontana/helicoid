@@ -192,6 +192,16 @@ defined by the status tables in `docs/`; they win over this file.
 - `just test` also runs the workspace tests in the release profile, where `debug_assert!` is
   compiled out: the tests of the documented out-of-domain behaviour are `cfg(not(debug_assertions))`
   and the dev profile skipped them. Nothing breaks.
+- `helicoid`: `Product<A, B>` and `ProductJac<JA, JB>` (`docs/PHASE3.md` §7): the product group
+  with every `LieGroup` method the factors' method componentwise, tangent `(A::Tangent, B::Tangent)`
+  (a `Tangent` impl for a pair, dense order `A` then `B`, `dot_acc` threaded so that `dot` stays
+  the one flat index-order sum, `0025`), `DOF = A::DOF + B::DOF`, and the block-diagonal Jacobian as
+  a `Jac` (`sandwich` from the factors' `apply`). Nests. Neither type has a public field, as §7 and
+  `0025` decision 5 state, so a `Product` is built and read through `exp`/`log` and
+  `write_dense`/`read_dense`. `helicoid::reference::productjac_sandwich` is its dense twin, with
+  `productjac_sandwich_matches_reference`. Tested by the generic laws on `Product<Rn<3>, Rn<2>>`,
+  `Product<Rn<2>, Heis>`, `Product<Heis, Rn<2>>` and a nested product with two Heisenberg factors
+  (test-only, the one non-abelian factor until SO(3)). New public API, nothing breaks.
 
 ### Changed
 

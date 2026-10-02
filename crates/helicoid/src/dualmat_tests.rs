@@ -139,7 +139,7 @@ fn mul_twin<S: Lanes, const N: usize, const D: usize>(v: &[f64]) -> f64 {
         &b,
         &mut StridedMut::row_major(twin.as_flattened_mut(), D, D),
     );
-    let fast = dense::<S, N, D>(&a.mul(&b));
+    let fast = dense::<S, _, _, D>(&a.mul(&b));
     worst_lane(diffs(&fast, &twin), norms(&twin).map(|n| n.max(1.0)))
 }
 
@@ -163,7 +163,7 @@ fn kappa<S: Lanes, const N: usize, const D: usize>(j: &SEn3Jac<S, N>) -> f64 {
         &j64,
         &mut StridedMut::row_major(inv.as_flattened_mut(), D, D),
     );
-    norm(dense::<f64, N, D>(&j64).as_flattened()) * norm(inv.as_flattened())
+    norm(dense::<f64, _, _, D>(&j64).as_flattened()) * norm(inv.as_flattened())
 }
 
 /// The error of `inverse` against the twin over `κ u`, or `None` where `κ u > 1e-3`. The value
@@ -181,7 +181,7 @@ fn inverse_twin<S: Lanes, const N: usize, const D: usize>(v: &[f64]) -> Option<f
         &j,
         &mut StridedMut::row_major(twin.as_flattened_mut(), D, D),
     );
-    let (fast, m) = (dense::<S, N, D>(&j.inverse()), dense::<S, N, D>(&j));
+    let (fast, m) = (dense::<S, _, _, D>(&j.inverse()), dense::<S, _, _, D>(&j));
     let (inv, dm) = (norms(&twin)[0], norms(&m));
     let scale = array::from_fn(|l| k * inv * if l == 0 { 1.0 } else { inv * dm[l] });
     Some(worst_lane(diffs(&fast, &twin), scale))
@@ -259,11 +259,12 @@ fn neg_and_blend_carry_lanes<S: Lanes, const N: usize, const D: usize>(v: &[f64]
     let w = 9 * (N + 1);
     let (a, b) = (jac::<S, N>(&v[..w]), jac::<S, N>(&v[w..]));
     let (yes, no) = (S::zero().lt(S::one()), S::one().lt(S::zero()));
-    let minus = dense::<S, N, D>(&a).map(|row| row.map(|x| -x));
-    lane_bits(&dense::<S, N, D>(&SEn3Jac::blend(yes, a, b))) == lane_bits(&dense::<S, N, D>(&a))
-        && lane_bits(&dense::<S, N, D>(&SEn3Jac::blend(no, a, b)))
-            == lane_bits(&dense::<S, N, D>(&b))
-        && lane_bits(&dense::<S, N, D>(&a.neg())) == lane_bits(&minus)
+    let minus = dense::<S, _, _, D>(&a).map(|row| row.map(|x| -x));
+    lane_bits(&dense::<S, _, _, D>(&SEn3Jac::blend(yes, a, b)))
+        == lane_bits(&dense::<S, _, _, D>(&a))
+        && lane_bits(&dense::<S, _, _, D>(&SEn3Jac::blend(no, a, b)))
+            == lane_bits(&dense::<S, _, _, D>(&b))
+        && lane_bits(&dense::<S, _, _, D>(&a.neg())) == lane_bits(&minus)
 }
 
 fn entries(n: usize) -> impl Strategy<Value = Vec<f64>> {
@@ -399,11 +400,17 @@ fn write_dense_is_the_matrix_of_numerics_2_2() {
         [27.0, 28.0, 29.0, 0.0, 0.0, 0.0, 7.0, 8.0, 9.0],
     ];
     let bits = |m: &[[f64; 6]; 6]| m.map(|r| r.map(f64::to_bits));
-    assert_eq!(canon_dense(&dense::<f64, 1, 6>(&ints())), bits(&n1));
+    assert_eq!(
+        canon_dense(&dense::<f64, _, _, 6>(&ints::<f64, 1>())),
+        bits(&n1)
+    );
     let bits = |m: &[[f64; 9]; 9]| m.map(|r| r.map(f64::to_bits));
-    assert_eq!(canon_dense(&dense::<f64, 2, 9>(&ints())), bits(&n2));
+    assert_eq!(
+        canon_dense(&dense::<f64, _, _, 9>(&ints::<f64, 2>())),
+        bits(&n2)
+    );
     // `N = 3`: `B_3` (entries 31 to 39) alone fills block row 3 of block column 0.
-    let d = lane(&dense::<f64, 3, 12>(&ints()), 0);
+    let d = lane(&dense::<f64, _, _, 12>(&ints::<f64, 3>()), 0);
     for (r, c) in [(9, 0), (11, 2), (10, 1)] {
         assert_eq!(
             d[r][c].to_bits(),
@@ -428,7 +435,7 @@ fn write_dense_fills_the_view_and_only_the_view() {
     j.write_dense(&mut StridedMut::with_strides(&mut padded, 6, 6, 1, 8));
     let mut rowmajor = [f64::NAN; 36];
     j.write_dense(&mut StridedMut::row_major(&mut rowmajor, 6, 6));
-    let want = dense::<f64, 1, 6>(&j);
+    let want = dense::<f64, _, _, 6>(&j);
     for (i, v) in padded.iter().enumerate() {
         let (r, c) = (i % 8, i / 8);
         assert!(if r < 6 {
@@ -478,7 +485,7 @@ fn integer_products_and_inverses_are_exact() {
             diag: rows3([[1.0, 0.0, 0.0], [5.0, 1.0, 0.0], [-2.0, 3.0, 1.0]]),
             ..b
         };
-        let d = |j: &SEn3Jac<f64, N>| canon_dense(&dense::<f64, N, D>(j));
+        let d = |j: &SEn3Jac<f64, N>| canon_dense(&dense::<f64, _, _, D>(j));
         // Closure and the product formula: the dense product has the structure and the values.
         for (x, y) in [(a, b), (b, a), (a, c), (b, b)] {
             let mut twin = [[0.0; D]; D];
@@ -496,7 +503,7 @@ fn integer_products_and_inverses_are_exact() {
             (eye(), eye())
         );
         assert_eq!(d(&a.inverse().inverse()), d(&a));
-        let minus = dense::<f64, N, D>(&b).map(|row| row.map(|x| -x));
+        let minus = dense::<f64, _, _, D>(&b).map(|row| row.map(|x| -x));
         assert_eq!(d(&b.neg()), canon_dense(&minus));
     }
     run::<1, 6>();
@@ -532,7 +539,7 @@ fn the_inverses_of_a_permutation_are_the_hand_inverse() {
     let gap = (0..36).map(|i| (twin[i / 6][i % 6] - want[i / 6][i % 6]).abs());
     assert!(gap.fold(0.0, f64::max) <= 8.0 * f64::EPSILON / 2.0);
     let want = want.map(|r| r.map(f64::to_bits));
-    assert_eq!(canon_dense(&dense::<f64, 1, 6>(&j.inverse())), want);
+    assert_eq!(canon_dense(&dense::<f64, _, _, 6>(&j.inverse())), want);
 }
 
 /// The same for `sandwich`: on integers it is its twin entry for entry.
@@ -691,7 +698,7 @@ fn probe<S: Lanes, const N: usize, const D: usize>(
         jac_of::<S, N>(&v[w..2 * w], mk),
     );
     let t = SEn3Tangent::<S, N>::read_dense(&array::from_fn::<S, D, _>(|i| mk(v[2 * w + i], i)));
-    let db = dense::<S, N, D>(&b);
+    let db = dense::<S, _, _, D>(&b);
     let cov =
         Matrix::<S, D, D>::from_cols(array::from_fn(|c| Vector(array::from_fn(|r| db[r][c]))));
     let s = j_sandwich(&a, &cov);
@@ -701,7 +708,7 @@ fn probe<S: Lanes, const N: usize, const D: usize>(
     let mut out: Vec<u64> = [a.mul(&b), a.inverse(), a.neg()]
         .iter()
         .flat_map(|j| {
-            dense::<S, N, D>(j)
+            dense::<S, _, _, D>(j)
                 .as_flattened()
                 .iter()
                 .map(|e| e.lanes()[0].to_bits())
@@ -801,10 +808,10 @@ mod out_of_domain {
 #[cfg(not(debug_assertions))]
 #[test]
 fn out_of_domain_does_not_panic_in_release() {
-    let wrong = dense::<f64, 1, 6>(&overflowing().inverse());
+    let wrong = dense::<f64, _, _, 6>(&overflowing().inverse());
     assert!(wrong.as_flattened().iter().all(|&x| x == 0.0));
     let j = singular();
-    let fast = dense::<f64, 1, 6>(&j.inverse());
+    let fast = dense::<f64, _, _, 6>(&j.inverse());
     let mut twin = [[0.0; 6]; 6];
     sen3jac_inverse::<f64, 1, 6>(
         &j,
