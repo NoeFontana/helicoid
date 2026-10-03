@@ -128,9 +128,14 @@ nothing to average it against.
 
 ## Implementation plan
 
-1. The partition above, as a reproducible analysis over `conformance/results/*.csv` — the three-CSV
-   comparison is four lines of Python today and should be a `cargo xtask envelope` column so a
-   reader sees *which* oracle won without writing a script. **Owed.**
+1. The partition above, reported by the envelope itself: each runner declares where its
+   transcendentals come from (`conformance::Backend`), every domination failure says whether a
+   `libm`-crate oracle also beats it, and the summary counts both classes — verified by
+   `a_domination_failure_says_whether_a_same_backend_oracle_also_won` and
+   `every_runner_declares_where_its_transcendentals_come_from`. **Landed.** The classification asks
+   whether **any** same-backend oracle beats the candidate, not whether the best one does: a
+   same-backend oracle winning at all rules out D16's cost whatever a glibc-backed oracle does, and
+   the two questions differ here by 30 against 26.
 2. The one-variable test for `sen3_jl_n1` and `sen3_jr_n1`, the shape `0032` used: swap only the
    transcendental and see whether the gap closes. **Owed.**
 3. `NUMERICS.md` §5.1's application form, when this record is `ready`, with `0014` question 25

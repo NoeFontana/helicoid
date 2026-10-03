@@ -28,8 +28,11 @@
 //!   oracle over another corpus, and a baseline stratum no row answers or one over more records
 //!   than the candidate's, which D7 forbids.
 //! - **`--check`** compares the page without the columns the oracle runners fill in
-//!   ([`evidence::candidate_view`]): they are measured on the host's `libm`, which D16 does not
-//!   cover (`docs/maths/error-analysis.md` EA.13(d)), and the baseline exactly.
+//!   ([`evidence::candidate_view`]), and the baseline exactly. A runner's numbers depend on its own
+//!   resolved dependencies, and a runner on the host's `std` on the host's system library too, which
+//!   D16 does not cover (`docs/maths/error-analysis.md` EA.13(d)). Not every runner is host-bound:
+//!   `tf_tree_math` routes through the `libm` crate as we do, which is what makes it the control in
+//!   `0032` (draft) and what the domination split reports (`conformance::Backend`).
 //! - **The CSVs read** are `results_path`'s for the named subjects, so a stale `--fn` run's file
 //!   or a planted defect's is never merged.
 
@@ -198,9 +201,20 @@ fn summary(c: &Subject, oracles: &[Subject], v: &bars::Verdict, has_baseline: bo
         ),
         false => format!("no baseline: {} scored rows are not judged", v.scored),
     };
+    // The split by backend is the first thing to know about a domination failure: an oracle on the
+    // `libm` crate computes the same transcendentals we do, so a stratum it wins is the program's
+    // (`0036`, draft).
+    let split = match v.dominated_same_backend + v.dominated_host_std {
+        0 => String::new(),
+        _ => format!(
+            "\n  domination failures: {} where an oracle on the `libm` crate won (the program's), \
+             {} where only a host-`std` oracle did (D16 is a candidate)",
+            v.dominated_same_backend, v.dominated_host_std
+        ),
+    };
     format!(
         "envelope: candidate `{name}` ({}), {} rows; oracles: {}\n  \
-         domination: {} strata paired with an oracle, {} with none\n  \
+         domination: {} strata paired with an oracle, {} with none{split}\n  \
          no-regress: {no_regress}\n  \
          not scored: {} rows\n",
         c.version,

@@ -88,6 +88,11 @@ pub(super) struct Verdict {
     pub(super) unscored: usize,
     /// Scored rows strictly under their baseline: the baseline is stale, not the candidate wrong.
     pub(super) improved: usize,
+    /// Domination failures where the winning oracle shares our transcendental backend, so the
+    /// difference is in the program and not in `libm` (`0036`, draft).
+    pub(super) dominated_same_backend: usize,
+    /// Domination failures where only a host-`std` oracle won, which D16 may account for.
+    pub(super) dominated_host_std: usize,
 }
 
 enum Status {
@@ -141,6 +146,21 @@ impl<'a> Index<'a> {
             }
         }
         best
+    }
+
+    /// Whether any oracle on the `libm` crate scored `key` on `n` records and beat `max`.
+    ///
+    /// Not "is the best oracle on the `libm` crate": if a same-backend oracle beats the candidate at
+    /// all, the gap is in the program whatever a glibc-backed oracle does, and the two questions
+    /// disagree — on this corpus, 30 strata against 26 (`0036`, draft).
+    pub(super) fn beaten_by_libm_crate(&self, key: &Key, n: usize, max: f64) -> bool {
+        self.0.iter().any(|(o, rows)| {
+            crate::conformance::oracle_backend(&o.name)
+                == Some(crate::conformance::Backend::LibmCrate)
+                && rows.get(key).is_some_and(|theirs| {
+                    theirs.n == n && matches!(status(theirs), Status::Scored(m) if m < max)
+                })
+        })
     }
 }
 
@@ -199,8 +219,24 @@ pub(super) fn judge(
             Some((o, m)) => {
                 v.paired += 1;
                 if max > m {
+                    // Which oracle won decides what the failure can mean, so it is said here and
+                    // not left to a reader with a script (`0036`, draft).
+                    // An oracle whose backend is not declared is left unclassified: saying
+                    // "only a host-`std` oracle beats this" of it would be a claim with nothing
+                    // behind it.
+                    let why = if index.beaten_by_libm_crate(&key, r.n, max) {
+                        v.dominated_same_backend += 1;
+                        " [a `libm`-crate oracle also beats this: not D16's cost]"
+                    } else if crate::conformance::oracle_backend(&o.name)
+                        == Some(crate::conformance::Backend::HostStd)
+                    {
+                        v.dominated_host_std += 1;
+                        " [only a host-`std` oracle beats this: D16 is a candidate, `0032` draft]"
+                    } else {
+                        ""
+                    };
                     let text = format!(
-                        "{key}: {max:e} u, over `{}` ({}) at {m:e} u",
+                        "{key}: {max:e} u, over `{}` ({}) at {m:e} u{why}",
                         o.name, o.version
                     );
                     v.failures.push(Failure::new(Bar::Domination, text));
@@ -259,6 +295,59 @@ mod tests {
 
     fn bars(v: &Verdict) -> Vec<&str> {
         v.failures.iter().map(|f| f.bar.name()).collect()
+    }
+
+    /// A failure is classified by whether **any** `libm`-crate oracle beats the candidate, not by
+    /// whether the best one does: a same-backend oracle winning at all rules out D16's cost, and the
+    /// two questions disagree on the real corpus by 30 against 26 (`0036`, draft).
+    #[test]
+    fn a_domination_failure_says_whether_a_same_backend_oracle_also_won() {
+        let (c, base) = (one("c", 3.0), baseline(9.0));
+        // sophus-rs is best, but `tf_tree_math` is on the `libm` crate and also beats us.
+        let v = judge(
+            &c,
+            &[one("tf_tree_math", 2.0), one("sophus_rs", 1.0)],
+            Some(&base),
+        );
+        assert_eq!(bars(&v), ["domination"]);
+        assert_eq!(
+            (v.dominated_same_backend, v.dominated_host_std),
+            (1, 0),
+            "{:?}",
+            v.failures.iter().map(|f| &f.text).collect::<Vec<_>>()
+        );
+        assert!(
+            v.failures[0].text.contains("not D16's cost"),
+            "{:?}",
+            v.failures[0].text
+        );
+
+        // The same best oracle, but now the `libm`-crate one does not beat us.
+        let v = judge(
+            &c,
+            &[one("tf_tree_math", 4.0), one("sophus_rs", 1.0)],
+            Some(&base),
+        );
+        assert_eq!((v.dominated_same_backend, v.dominated_host_std), (0, 1));
+        assert!(
+            v.failures[0].text.contains("D16 is a candidate"),
+            "{:?}",
+            v.failures[0].text
+        );
+
+        // An oracle with no declared backend is classified as neither, and says nothing.
+        let v = judge(&c, &[one("someone_else", 1.0)], Some(&base));
+        assert_eq!((v.dominated_same_backend, v.dominated_host_std), (0, 0));
+        assert!(
+            !v.failures[0].text.contains('['),
+            "{:?}",
+            v.failures[0].text
+        );
+
+        // No failure, no classification.
+        let v = judge(&one("c", 0.5), &[one("tf_tree_math", 2.0)], Some(&base));
+        assert!(v.failures.is_empty());
+        assert_eq!((v.dominated_same_backend, v.dominated_host_std), (0, 0));
     }
 
     #[test]

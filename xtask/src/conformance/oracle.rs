@@ -39,17 +39,40 @@ struct Runner {
     /// The function ids it must answer: the list its own `--out` advertises, held again here so
     /// that an id it stops answering fails the run instead of dropping out of the results.
     answers: &'static [&'static str],
+    /// Where its transcendentals come from: see [`Backend`].
+    backend: Backend,
+}
+
+/// Where a runner's transcendentals come from, which decides what a domination failure can mean.
+///
+/// A runner on the **`libm` crate** computes the same `sin`, `cos` and `atan2` we do, so a stratum
+/// it wins cannot be D16's cost and the difference is in the program.
+/// [`0032`](../../../docs/decisions/0032-domination-charges-helicoid-for-d16.md) (draft) measured
+/// `tf_tree_math` bit-identical to `helicoid` on all 30 `so3_log` strata, the clean control. A
+/// runner on the **host's `std`** gets glibc on Linux, whose `atan2` is nearly correctly rounded
+/// where `libm`'s is 1.96 u, so a stratum only such a runner wins may cost nothing but D16
+/// (`error-analysis.md` EA.13(d)).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Backend {
+    /// The `libm` crate, as `helicoid` does (D16).
+    LibmCrate,
+    /// The host's `std`, so its system library.
+    HostStd,
 }
 
 const RUNNERS: &[Runner] = &[
     Runner {
         name: "tf_tree_math",
         dir: "runners/tf_tree_math",
+        // `tf_tree_math`'s manifest declares `libm.workspace = true`.
+        backend: Backend::LibmCrate,
         answers: &["so3_exp", "so3_log", "sen3_exp_n1", "sen3_log_n1"],
     },
     Runner {
         name: "sophus_rs",
         dir: "runners/sophus_rs",
+        // sophus-rs is Rust `std`, so the host's library.
+        backend: Backend::HostStd,
         answers: &[
             "so3_exp",
             "so3_log",
@@ -69,6 +92,11 @@ const RUNNERS: &[Runner] = &[
 
 pub(super) fn names() -> Vec<&'static str> {
     RUNNERS.iter().map(|r| r.name).collect()
+}
+
+/// Where `name`'s transcendentals come from, or `None` if it is not a registered runner.
+pub(crate) fn backend(name: &str) -> Option<Backend> {
+    RUNNERS.iter().find(|r| r.name == name).map(|r| r.backend)
 }
 
 /// A runner's answers, read back from its files.
@@ -523,10 +551,23 @@ mod tests {
         assert_eq!(command.get_current_dir(), Some(Path::new("/r")));
     }
 
+    /// Each registered runner's backend, and an unregistered name answering `None`.
+    ///
+    /// `tf_tree_math` declares `libm.workspace = true`; sophus-rs is Rust `std`. The domination
+    /// split reads this, so a wrong entry would silently mislabel a failure (`0036`, draft).
+    #[test]
+    fn every_runner_declares_where_its_transcendentals_come_from() {
+        assert_eq!(backend("tf_tree_math"), Some(Backend::LibmCrate));
+        assert_eq!(backend("sophus_rs"), Some(Backend::HostStd));
+        assert_eq!(backend("not_a_runner"), None);
+        assert_eq!(names().len(), RUNNERS.len());
+    }
+
     /// The runner `stub`, answering `so2_exp`; `script` is the `sh` that stands in for it.
     const STUB: Runner = Runner {
         name: "stub",
         dir: "",
+        backend: Backend::HostStd,
         answers: &["so2_exp"],
     };
 

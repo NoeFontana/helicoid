@@ -127,6 +127,8 @@ pub(crate) fn oracle_names() -> Vec<&'static str> {
     oracle::names()
 }
 
+pub(crate) use oracle::{backend as oracle_backend, Backend};
+
 pub(crate) fn root() -> Result<PathBuf, String> {
     let manifest = Path::new(env!("CARGO_MANIFEST_DIR"));
     manifest
