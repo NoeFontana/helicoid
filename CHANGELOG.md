@@ -127,6 +127,14 @@ defined by the status tables in `docs/`; they win over this file.
   `expect_used`, `panic`, `todo`, `unimplemented` and `dbg_macro`. Clean today, so this closes a gap
   rather than fixing a violation.
 
+||||||| parent of 02e5b6e (docs(decisions): 0026 (draft) write_dense pays for zeros, not for checks)
+- `docs/decisions/0026` (draft): `Jac::write_dense` pays for its structural zeros, not for its
+  per-entry bounds checks. The 81 branches and 81 panic calls at `DOF = 9` are never-taken, cold
+  branches and the loop already runs at about one store per cycle; two check-removing designs
+  measured 53% to 326% slower, while bulk-zeroing the view and writing only the non-zeros wins
+  36% to 63% at `DOF` 6 and 9 on a column-major destination and loses at `DOF` 3 and on
+  row-major. No API change: the path is instrumented first, and adoption is deferred to the
+  Jacobians a solver actually calls. Documentation only, plus one rustdoc line.
 - `docs/decisions/0025` (ready): the trait layer as built. Rⁿ's Jacobian is the structured `RnJac`,
   correcting `PHASE3.md` §7's `Jac = Mat<N>`, which cannot implement the exact `Jac::inverse` of
   `0005`; `Side` is sealed to `Left`/`Right` while the side selector stays with the SO(3) PR;
