@@ -9,6 +9,17 @@ defined by the status tables in `docs/`; they win over this file.
 
 ### Changed
 
+- `cargo xtask envelope` reports **which kind of oracle** beat the candidate. Each runner declares
+  where its transcendentals come from (`conformance::Backend`): `tf_tree_math` is on the `libm` crate
+  (`libm.workspace = true`), sophus-rs is Rust `std` and so the host's library. Every domination
+  failure now says whether a `libm`-crate oracle also beats it -- in which case the gap is the
+  program's and not D16's -- and the summary counts both classes, which on the current corpus reads
+  30 and 45 of 75 (`0036`, draft, plan step 1). The test is whether **any** same-backend oracle beats
+  the candidate, not whether the best one does; those questions differ here by 30 against 26. An
+  oracle with no declared backend is left unclassified rather than assumed.
+  Also corrects the envelope's module doc, which said the oracle runners "are measured on the host's
+  `libm`": true of sophus-rs, false of `tf_tree_math`, and that difference is what makes it `0032`'s
+  control.
 - **`bench-gate --against` runs its replicate loop outermost**, a full pass of all 60 benchmarks per
   replicate. Measured: with it innermost, a benchmark's six candidate pairs were all taken inside
   about 30 s, so they were not independent, and **2 of 60** identical-code benchmarks failed with a
