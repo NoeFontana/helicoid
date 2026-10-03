@@ -258,6 +258,38 @@ not a usage distribution; a consumer holding mostly near-identity poses gains mo
 mostly large rotations less. The term counts are exact; the shares and the nanoseconds are
 corpus-weighted.
 
+### Implementing it found the blocker, which is the corpus and not the sweep
+
+Plan step 1 was built and **reverted**. The grid span, the `π²` refusal, the lowest-point failure
+and the feasibility header all work, both targets regenerate, and the accuracy is what the
+measurements above predict — at binary64 `e` 7.2×, `d` 2.4×, `k` 2.1×, the other five byte-identical.
+At **binary32**, which the measurements above did not cover and where **six of seven** switches sat
+on the old ceiling rather than two, it is far larger: `e` **283×** (4429 u → 15.65 u), `d` **80×**,
+`c` **33×**, `b` 7.6×, `k` 6.1×, `a` 4.6×, and the catalogue's worst binary32 row goes
+**4429 u → 49.01 u**. Per stratum, binary64 7 rows move, **7 better and 0 worse**; binary32 24 move,
+**22 better and 2 worse** (`d`/`theta:pi-1e-1@f32` 5.307 → 10.40 u). Domination **75 → 72**, three
+fixed and none broken.
+
+**It does not ship, because `branch_continuity` fails and this corpus cannot say whether it should.**
+`coefficients.md` CO.12 bounds the jump between the arms at a switch by the sum of their errors
+there. At the new switches the measured jumps are `k` 1.084 u against 1.077 (0.70% over), `k` at
+binary32 1.553 against 1.498 (3.69%), and **`d` 22.10 u against 6.30 u — 3.5×**. The bound's
+right-hand side is sampled at the two corpus records that bracket the switch, which that test's own
+doc already calls "a sample and not a bound", and the samples are now far from the switch:
+
+**`k`, `d` and `e` move to `θ` = 1.38, 1.24 and 1.29, and `theta:dense` — the stratum whose stated
+purpose in `PHASE1.md` §4.4 is "switch-point continuity" — spans `θ ∈ [10⁻⁴, 1]`.** Above it the
+only records are `theta:1e0`'s 64 over `[1, π − 0.1)`: **21 of `coeff_d`'s 1710 binary64 records**
+lie in `θ ∈ [1.0, 1.4]`. So all three switches that moved land outside the instrument built to
+validate a switch, and whether `d`'s 22 u jump is a low sample or a real step is **not decidable
+from this corpus**. `0006` is literal — a routine without a corpus stratum is unverified and does
+not ship — and a 22 u discontinuity at a switch is exactly what `theta:dense` exists to catch.
+
+Loosening the test was considered and rejected: the slack needed is 3.5×, which would leave it
+unable to fail anything CO.12 cares about. The blocker is neither the sweep nor the maths. It is
+that lifting the grid moves switches out of the corpus's dense region, and `theta:dense` has to
+follow them.
+
 ## Decision
 
 Settled under `0040` item 5; the measurements above are its basis.
@@ -362,14 +394,31 @@ the same change seen properly.
   it has no baseline yet (`PHASE3.md` §10), so nothing today stops a sweep from buying its objective
   with other strata. This is `0038`'s finding arriving by a third route.
 
-## Implementation plan
+The two limits are split because only one of them is free. **The grid lift alone is strictly
+dominating at binary64**: an input between the old and the new switch moves from the exact arm
+(8.07–11.46 ns) onto the 8-term series (2.41 ns) and every other input keeps its arm and term count,
+so no input gets slower and three coefficients get 2.1–7.2× more accurate. **The term cap is not
+free** — it is what costs 2.8× at near-identity — and the second arm is what pays for it, so they
+land together or not at all. And step 0 comes first, because step 1 moves switches out of the
+stratum that validates them.
 
-1. §6's grid span, the extended construction, and the boundary check of item 2 — verified by the
-   existing `the_grid_has_64_points_per_decade_and_both_ends` extended to the new end, and by a new
-   test that a chosen end-point switch fails the run. **Owed, blocked on open question 1.**
-2. Both sweep targets regenerated, with the objectives above as the expected result, and
-   `just thresholds-check` green. **Owed, after 1.**
-3. The `m ≤ 8` cap measured the same way, for `c`. **Owed.**
+0. **`PHASE1.md` §4.4's `theta:dense` covers the region a switch can be in**: `θ ∈ [10⁻⁴, π]`
+   rather than `[10⁻⁴, 1]`, corpus regenerated, `just corpus-check` green. Without it step 1's
+   switches sit where nothing samples them and `branch_continuity` cannot be read — measured, see
+   above. Verified by `branch_continuity_f64` and `_f32` passing at the lifted switches against the
+   recorded at-switch errors, **with no slack added**. **Owed, and it blocks step 1.**
+1. **§6's grid span and selection rule, `m ≤ 8` unchanged**: the grid spans `z ∈ [10⁻¹⁶, 10]` by the
+   same integer root (decision 7), a switch at or above `π²` is not a candidate, a choice on the
+   grid's lowest point fails the run (decision 8), and `generated.rs`'s header carries the grid span
+   and the term cap beside its objective (decision 9). Both targets regenerated. Verified by
+   `the_grid_has_64_points_per_decade_and_both_ends` extended to the new end and the domain bound,
+   `everything_tied_has_no_next_objective_and_an_empty_grid_is_an_error`,
+   `the_committed_rows_are_the_documented_columns`, `a_constant_has_the_documented_shape`, the
+   prior-comparison test and `just thresholds-check`. **Built once and reverted; owed after step 0.**
+2. **The term cap to the corpus's series length, and `Switch`'s second arm, together** (decisions 6
+   and 10): stage 2 after today's search, the arm chosen by corpus-weighted term count. This is the
+   78–437× and the 2.08×, and it changes the generated file's shape and the shipped kernel's branch.
+   **Owed, after step 1.**
 
 ## Open questions
 
@@ -378,6 +427,10 @@ None. Decisions 1–11 depend on no unresolved question; what the measurements s
 
 ## Further work
 
+0. **`branch_continuity`'s right-hand side samples where it should bound.** It takes each arm's
+   error at the two corpus records bracketing the switch; a bound would be the arms' maxima over the
+   stratum holding it, which the sweep does not record. Step 0 makes the sample adequate by making
+   the stratum dense there, which is the cheaper fix and not the principled one.
 1. **Does `PHASE1.md` §4.3's series length need to grow?** `c` takes all sixteen terms the corpus
    holds and is the corpus's worst row at 94.5 u; the catalogue's other seven are at 1.8–37 u. What
    the generator costs at, say, twenty-four terms is unmeasured. The Decision caps at the corpus's
