@@ -64,3 +64,4 @@
 - [0032: Domination charges `helicoid` for D16 (draft)](decisions/0032-domination-charges-helicoid-for-d16.md)
 - [0033: A latency floor is measured beside the comparison (draft)](decisions/0033-a-latency-floor-is-measured-beside-the-comparison.md)
 - [0034: A second transcendental backend owes a measurement (draft)](decisions/0034-a-second-transcendental-backend-owes-a-measurement.md)
+- [0035: Validation has three layers, and one of them needs a quiet machine (draft)](decisions/0035-validation-has-three-layers-and-one-needs-a-quiet-machine.md)
