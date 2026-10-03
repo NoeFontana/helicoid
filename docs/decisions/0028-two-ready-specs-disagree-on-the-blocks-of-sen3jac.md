@@ -1,8 +1,8 @@
 # 0028: two ready specs disagree on the blocks of `SEn3Jac`
 
-**Status:** ready
+**Status:** implemented
 **Owner:** @NoeFontana
-**Implementation:** the narrowing and the `PHASE3.md` §5 correction (`0040` plan step 2).
+**Implementation:** #78, the narrowing and the `PHASE3.md` §5 correction (`0040` plan step 2).
 
 ## Context
 
