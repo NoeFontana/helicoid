@@ -89,6 +89,12 @@ pub trait Jac<S: Real, T: Tangent<S>>: Copy + Blend<S> {
     /// Writes the dense `DOF x DOF` matrix into `out`: row `r` and column `c` are indices of the
     /// dense order of `T`, and every entry is written, structural zeros included.
     ///
+    /// Every impl stores entry by entry through [`StridedMut::set`], and the per-entry bounds
+    /// checks are **measured to be free**: the panic branches are never taken and are laid out
+    /// cold, and the loop already runs at about one store per cycle. The cost is the structural
+    /// zeros, not the checks. Two designs that remove the checks were measured slower everywhere,
+    /// by 53% to 326% (`0026` (draft)); do not "fix" this loop from its instruction count.
+    ///
     /// # Domain
     ///
     /// `out` is `DOF x DOF`, checked by `debug_assert!`. A smaller view panics in the strided

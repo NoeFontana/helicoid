@@ -9,6 +9,13 @@ defined by the status tables in `docs/`; they win over this file.
 
 ### Changed
 
+- `cargo xtask lint` fails on an **untracked, non-ignored file**. Every other check reads
+  `git ls-files --cached`, so a file written and not yet added is invisible to all of them -- and
+  every new decision record is untracked at the moment it is written. Measured here: a citation of
+  `0033` (draft) in `docs/PHASE1.md` §0.0 was accepted by `cargo xtask lint` *and* `just lint`, and
+  became a `drafts` violation the moment `git add` made the record visible, after the commit that
+  claimed the lint was clean. `.gitignore` still excludes what it should.
+
 - `solve_cubic` internals, every one bit-identical (`bits_are_omnisacs` and the planted-root suite
   are unmoved): `pi` is a per-precision literal rather than `atan2(+0, -1)`, which was a `libm` call
   for a compile-time constant that no workspace LTO could fold — `eig3` paid it per call too; `tol`
@@ -120,6 +127,14 @@ defined by the status tables in `docs/`; they win over this file.
   `expect_used`, `panic`, `todo`, `unimplemented` and `dbg_macro`. Clean today, so this closes a gap
   rather than fixing a violation.
 
+||||||| parent of 02e5b6e (docs(decisions): 0026 (draft) write_dense pays for zeros, not for checks)
+- `docs/decisions/0026` (draft): `Jac::write_dense` pays for its structural zeros, not for its
+  per-entry bounds checks. The 81 branches and 81 panic calls at `DOF = 9` are never-taken, cold
+  branches and the loop already runs at about one store per cycle; two check-removing designs
+  measured 53% to 326% slower, while bulk-zeroing the view and writing only the non-zeros wins
+  36% to 63% at `DOF` 6 and 9 on a column-major destination and loses at `DOF` 3 and on
+  row-major. No API change: the path is instrumented first, and adoption is deferred to the
+  Jacobians a solver actually calls. Documentation only, plus one rustdoc line.
 - `docs/decisions/0025` (ready): the trait layer as built. Rⁿ's Jacobian is the structured `RnJac`,
   correcting `PHASE3.md` §7's `Jac = Mat<N>`, which cannot implement the exact `Jac::inverse` of
   `0005`; `Side` is sealed to `Left`/`Right` while the side selector stays with the SO(3) PR;
