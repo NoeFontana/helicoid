@@ -2,7 +2,7 @@
 
 **Status:** ready
 **Owner:** @NoeFontana
-**Implementation:** —
+**Implementation:** the narrowing and the `PHASE3.md` §5 correction (`0040` plan step 2).
 
 ## Context
 

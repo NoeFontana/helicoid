@@ -34,9 +34,14 @@ use helicoid_linalg::{Blend, Mask, Mat3, Matrix, Real, StridedMut, Vector};
 #[derive(Clone, Copy, Debug)]
 pub struct SEn3Jac<S, const N: usize> {
     /// `A`, the diagonal block, repeated `N + 1` times on the dense diagonal.
-    pub diag: Mat3<S>,
+    ///
+    /// Crate-private: a block is a representation of the dual matrix, not a value of it, so it is
+    /// reached from outside through `write_dense` and `apply` (`0025` decision 5, `0028` option A).
+    pub(crate) diag: Mat3<S>,
     /// `B₁, …, B_N`: `col[i]` is the dense block at block row `i + 1`, block column `0`.
-    pub col: [Mat3<S>; N],
+    ///
+    /// Crate-private, as [`Self::diag`] is.
+    pub(crate) col: [Mat3<S>; N],
 }
 
 impl<S: Real, const N: usize> Blend<S> for SEn3Jac<S, N> {
