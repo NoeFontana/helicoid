@@ -68,3 +68,4 @@
 - [0036: The silence in §5.1 costs twenty domination failures (draft)](decisions/0036-the-silence-in-5-1-costs-twenty-domination-failures.md)
 - [0037: Six records cannot answer a one-variable question (draft)](decisions/0037-six-records-cannot-answer-a-one-variable-question.md)
 - [0038: A program comparison is not a bar (draft)](decisions/0038-a-program-comparison-is-not-a-bar.md)
+- [0039: The sweep's grid stops below its own optimum (draft)](decisions/0039-the-sweeps-grid-stops-below-its-own-optimum.md)
