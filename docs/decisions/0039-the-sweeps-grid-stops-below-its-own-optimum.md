@@ -279,16 +279,40 @@ doc already calls "a sample and not a bound", and the samples are now far from t
 
 **`k`, `d` and `e` move to `θ` = 1.38, 1.24 and 1.29, and `theta:dense` — the stratum whose stated
 purpose in `PHASE1.md` §4.4 is "switch-point continuity" — spans `θ ∈ [10⁻⁴, 1]`.** Above it the
-only records are `theta:1e0`'s 64 over `[1, π − 0.1)`: **21 of `coeff_d`'s 1710 binary64 records**
-lie in `θ ∈ [1.0, 1.4]`. So all three switches that moved land outside the instrument built to
-validate a switch, and whether `d`'s 22 u jump is a low sample or a real step is **not decidable
-from this corpus**. `0006` is literal — a routine without a corpus stratum is unverified and does
-not ship — and a 22 u discontinuity at a switch is exactly what `theta:dense` exists to catch.
+only records are `theta:1e0`'s 64 over `[1, π − 0.1)`: 21 of `coeff_d`'s 1710 binary64 records lie
+in `θ ∈ [1.0, 1.4]`. Densifying that region is the obvious fix, and measuring it first showed it is
+the wrong one.
 
-Loosening the test was considered and rejected: the slack needed is 3.5×, which would leave it
-unable to fail anything CO.12 cares about. The blocker is neither the sweep nor the maths. It is
-that lifting the grid moves switches out of the corpus's dense region, and `theta:dense` has to
-follow them.
+### CO.12 holds at the lifted switch, and its right-hand side cannot be sampled
+
+`d`'s two arms at the lifted switch against a 60-digit reference, each evaluated exactly as
+`coeffs/kernel.rs` writes it:
+
+| at `z` = | exact arm | series arm | sum | the jump |
+|---|---|---|---|---|
+| 1.5399 (lifted) | **19.178 u** | 2.926 u | **22.104 u** | **22.104 u** |
+| 1.0 (committed) | 1.766 u | 0.215 u | 1.981 u | 1.551 u |
+
+**The jump equals the sum of the arms' true errors to three decimals: CO.12 is satisfied exactly and
+the lifted kernel is correct.** What failed is the test's estimate of the right-hand side, by 3.5×.
+
+Sampling more finely cannot fix it, because the exact arm's error is a **sawtooth**. Over `θ` within
+±0.4% of the lifted switch, 81 points, it swings from 0.098 u to 19.178 u — a factor of **195** —
+and around the committed switch from 0.264 u to 23.913 u, a factor of **90**. The numerator
+`θ² − 4 sin²(θ/2)` is a cancelling difference, so its rounding turns on where the operands' bits
+fall and not smoothly on `θ`. A two-record sample of that is not a bound at 64 points per decade,
+at 200, or at 2000.
+
+**So `branch_continuity` passes at the committed switches by luck rather than by construction** —
+`θ = 1` sits near the low end of a 90× range and the brackets happened to sample above it. That is
+true today, before this record changes anything.
+
+The blocker is therefore neither the corpus nor the maths: CO.12's right-hand side is a point sample
+of an oscillating quantity. A sound one needs no new generation — each arm's **maximum over the
+stratum containing the switch**, which the sweep already computes per record and per arm. A maximum
+over 64 to 801 records of a sawtooth is not a proof either, but it is the difference between 6.30 u
+and something at or above 19.178 u. Loosening the test instead was considered and rejected: the
+slack needed is 3.5×, which would leave it unable to fail anything CO.12 cares about.
 
 ## Decision
 
@@ -402,11 +426,15 @@ free** — it is what costs 2.8× at near-identity — and the second arm is wha
 land together or not at all. And step 0 comes first, because step 1 moves switches out of the
 stratum that validates them.
 
-0. **`PHASE1.md` §4.4's `theta:dense` covers the region a switch can be in**: `θ ∈ [10⁻⁴, π]`
-   rather than `[10⁻⁴, 1]`, corpus regenerated, `just corpus-check` green. Without it step 1's
-   switches sit where nothing samples them and `branch_continuity` cannot be read — measured, see
-   above. Verified by `branch_continuity_f64` and `_f32` passing at the lifted switches against the
-   recorded at-switch errors, **with no slack added**. **Owed, and it blocks step 1.**
+0. **`branch_continuity`'s right-hand side bounds instead of sampling.** The sweep records each
+   arm's maximum over the stratum that holds the chosen switch, beside the four `at_switch_*`
+   columns it already writes, and the test reads those; `PHASE1.md` §6's CSV schema gains the line.
+   No corpus change and no new generation: the sweep already scores every record on both arms.
+   Verified by `branch_continuity_f64` and `_f32` passing at the lifted switches **with no slack
+   added**, and by the sampled columns staying in the CSV, so the gap between a sample and a bound
+   stays visible. **Owed, and it blocks step 1.** Densifying `theta:dense` was this step's first
+   reading and is refuted above — the quantity oscillates 195× over 0.8% of `θ`, so no density makes
+   a point sample a bound.
 1. **§6's grid span and selection rule, `m ≤ 8` unchanged**: the grid spans `z ∈ [10⁻¹⁶, 10]` by the
    same integer root (decision 7), a switch at or above `π²` is not a candidate, a choice on the
    grid's lowest point fails the run (decision 8), and `generated.rs`'s header carries the grid span
@@ -427,10 +455,14 @@ None. Decisions 1–11 depend on no unresolved question; what the measurements s
 
 ## Further work
 
-0. **`branch_continuity`'s right-hand side samples where it should bound.** It takes each arm's
-   error at the two corpus records bracketing the switch; a bound would be the arms' maxima over the
-   stratum holding it, which the sweep does not record. Step 0 makes the sample adequate by making
-   the stratum dense there, which is the cheaper fix and not the principled one.
+0. **Is a per-stratum maximum enough, or does CO.12 need a reference at the switch?** Step 0 takes
+   the maximum because it is sound enough and free. The exact answer is each arm's error *at* the
+   switch, which needs a high-precision reference there; the corpus has none, and adding one is
+   circular, since the switch is generated from the corpus. Whether `conformance/generate` should
+   emit a per-switch reference as a derived artifact, the way it emits `coeff_series`, is open.
+1. **Does any other generated switch sit near a sawtooth peak?** The committed `θ = 1` sits near the
+   low end of a 90× range, which is luck. Nothing checks it, and the sweep's objective cannot: it is
+   a maximum over records, not a value at the switch.
 1. **Does `PHASE1.md` §4.3's series length need to grow?** `c` takes all sixteen terms the corpus
    holds and is the corpus's worst row at 94.5 u; the catalogue's other seven are at 1.8–37 u. What
    the generator costs at, say, twenty-four terms is unmeasured. The Decision caps at the corpus's
