@@ -51,4 +51,4 @@ proptest = { version = "1", default-features = false, features = ["std"] }
 # Dev only: the bench harness of `PHASE1.md` §9, pinned exactly as it says. `default-features =
 # false` drops the HTML report (plotters, a template engine): `cargo xtask bench-gate` reads the
 # raw samples under `target/criterion`, not the report. Never in a library crate's normal closure.
-criterion = { version = "=0.5.1", default-features = false, features = ["cargo_bench_support"] }
+criterion = { version = "=0.8.2", default-features = false, features = ["cargo_bench_support"] }
