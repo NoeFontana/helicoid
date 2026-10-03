@@ -87,7 +87,7 @@ Single test: `cargo nextest run -p helicoid -- so3_exp_log_roundtrip`. The gener
 | Recipe | Purpose |
 |---|---|
 | `just build` / `test` | build; nextest (dev and release profiles) + doctests |
-| `just lint` | fmt, clippy `-D warnings`, `cargo xtask lint` (line citations, draft citations, generated-file headers, dependency closure, `__sweep`; twin table owed), `cargo deny` |
+| `just lint` | fmt, clippy `-D warnings`, `cargo xtask lint` (line citations, draft citations, generated-file headers, dependency closure, `__sweep`, untracked files, `libm::` only in D16's kernel, no fused multiply-add; twin table owed), `cargo deny` |
 | `just doc` | rustdoc, warnings denied |
 | `just msrv` | build at `rust-version` |
 | `just no-std` | build for `thumbv7em-none-eabihf` (no `std`, no `alloc`) |

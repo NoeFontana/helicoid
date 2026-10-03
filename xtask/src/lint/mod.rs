@@ -6,6 +6,7 @@ mod citations;
 mod closure;
 mod comments;
 mod drafts;
+mod fused;
 mod generated;
 mod kernel;
 mod metadata;
@@ -66,6 +67,7 @@ const CHECKS: &[Check] = &[
     citations::check,
     drafts::check,
     generated::check_registry,
+    fused::check,
     kernel::check,
 ];
 
