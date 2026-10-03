@@ -62,3 +62,5 @@
 - [0030: A consumer comparison is a trigger `0021` does not list (draft)](decisions/0030-a-consumer-comparison-is-a-trigger-0021-does-not-list.md)
 - [0031: What the cubic port inherits from omnisac (draft)](decisions/0031-what-the-cubic-port-inherits-from-omnisac.md)
 - [0032: Domination charges `helicoid` for D16 (draft)](decisions/0032-domination-charges-helicoid-for-d16.md)
+- [0033: A latency floor is measured beside the comparison (draft)](decisions/0033-a-latency-floor-is-measured-beside-the-comparison.md)
+- [0034: A second transcendental backend owes a measurement (draft)](decisions/0034-a-second-transcendental-backend-owes-a-measurement.md)

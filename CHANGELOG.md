@@ -46,6 +46,16 @@ defined by the status tables in `docs/`; they win over this file.
 
 ### Added
 
+- `docs/decisions/0034` (draft): D16 states an implementation and claims a property, and the property
+  holds only per *resolved* `libm` version -- the workspace declares `libm = "0.2"`, correctly for a
+  library, so a patch release may legally move bits, and nothing records which version produced a
+  committed baseline. The seam D16 names already exists (six `libm::` sites in `helicoid-linalg`'s
+  `float.rs`, none in `Dual`, `sincos` so there is one range reduction), so what is proposed is a
+  three-clause reword, a containment lint, a recorded version, and a trigger for a second backend:
+  end-to-end speedup is `1/(1 - f + f/k)`, which is 1.08x at `f = 0.15`, `k = 2` -- below the bar
+  tf_tree's `0016` used to reject a 12% gain -- and the only profile in the stack shows no `libm` row.
+  Build the guard, not the knob. A bit change is a minor-version bump, by the owner's call, which is
+  what makes a faster portable kernel available as a step at all.
 - The bench harness and `cargo xtask bench-gate` (`docs/PHASE1.md` §9, `docs/PHASE3.md` §11's
   owed-first row), which did not exist: `criterion` pinned at `=0.8.2` in `crates/helicoid/benches`
   over the shipped coefficient kernel through `__sweep` (so the code timed is the code that ships),
