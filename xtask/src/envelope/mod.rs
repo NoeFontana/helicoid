@@ -204,12 +204,21 @@ fn summary(c: &Subject, oracles: &[Subject], v: &bars::Verdict, has_baseline: bo
     // The split by backend is the first thing to know about a domination failure: an oracle on the
     // `libm` crate computes the same transcendentals we do, so a stratum it wins is the program's
     // (`0036`, draft).
-    let split = match v.dominated_same_backend + v.dominated_host_std {
+    let classified = v.dominated_same_backend
+        + v.dominated_libm_bound
+        + v.dominated_unexplained
+        + v.dominated_host_std;
+    let split = match classified {
         0 => String::new(),
         _ => format!(
-            "\n  domination failures: {} where an oracle on the `libm` crate won (the program's), \
-             {} where only a host-`std` oracle did (D16 is a candidate)",
-            v.dominated_same_backend, v.dominated_host_std
+            "\n  domination failures: {} the program's (an oracle on the `libm` crate won), \
+             {} D16's (`{}` closes the gap), {} neither (it does not), {} unattributed (no twin \
+             row)",
+            v.dominated_same_backend,
+            v.dominated_libm_bound,
+            crate::seeded::TWIN,
+            v.dominated_unexplained,
+            v.dominated_host_std
         ),
     };
     format!(
@@ -279,10 +288,16 @@ fn execute(root: &Path, options: &Options) -> Result<Report, String> {
         Some(_) => read_oracles(root, options)?,
         None => Vec::new(),
     };
+    // The twin is optional and never an oracle: it attributes a failure, it does not score one
+    // (`0037`, draft). Absent, the failures it would explain are reported unattributed.
+    let twin = match candidate {
+        Some(_) => read_subject(root, crate::seeded::TWIN)?.filter(|s| !s.rows.is_empty()),
+        None => None,
+    };
 
     let mut failures = cover.failures;
     let verdict = match &candidate {
-        Some(c) => bars::judge(c, &oracles, baseline.as_ref()),
+        Some(c) => bars::judge_with(c, &oracles, baseline.as_ref(), twin.as_ref()),
         None => bars::Verdict::default(),
     };
     let registered = options.registered.iter().any(|r| r == name);

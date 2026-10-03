@@ -53,6 +53,10 @@ pub(crate) use kernel::{branch_variable, d12, evaluate, Candidate, Coeff, Input,
 pub(crate) use series::{Series, FILE as SERIES_FILE};
 pub(crate) use so3::takes_series_arm;
 
+/// The one-variable twin's subject name (`0037`, draft): `seeded:correct`'s program on the host's
+/// transcendentals, which the envelope reads to attribute a domination failure.
+pub(crate) const TWIN: &str = host::NAME;
+
 /// The planted `c` (`docs/PHASE1.md` §10): two terms below `z = 1e-16`, §10's `1e-8` read as `θ`
 /// (0014 (draft) question 14), which is the first point of the sweep's grid.
 pub(crate) const C_PLANTED: (usize, f64) = (2, 1e-16);

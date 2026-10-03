@@ -114,6 +114,14 @@ oracle-sophus-rs:
     cargo nextest run --manifest-path runners/sophus_rs/Cargo.toml --locked
     cargo xtask conformance --oracle sophus_rs
 
+# The one-variable twin (`0037`, draft): `seeded:correct`'s program at a scalar whose
+# transcendentals are the host's `std` instead of the `libm` crate, into
+# conformance/results/seeded-host-std.csv. It is a planted subject, so a plain `conformance` run
+# skips it; `envelope` reads its rows to say whether a domination failure no `libm`-crate oracle
+# wins is D16's cost or is not explained by D16 either. 3.6 s over the whole corpus.
+conformance-twin:
+    cargo xtask conformance --subject seeded:host-std
+
 # The bars of `docs/PHASE1.md` §8 over conformance/results: domination over the best oracle and exact
 # no-regress against conformance/baseline, per (fn, stratum, precision) on the max, then coverage of
 # the corpus. It first reruns the in-process subjects, so the candidate's rows are current; the
@@ -123,8 +131,9 @@ oracle-sophus-rs:
 # domination, coverage or a dropped stratum fails (`--dry-run`: says what it would write). While the
 # `helicoid` subject is not registered (Phase 3) it has no rows to judge: the run says so and checks
 # coverage only; once it is, no rows fails. `--candidate seeded:correct` reads the seeded kernel as
-# a stand-in, read-only in practice.
-envelope *args: conformance
+# a stand-in, read-only in practice. It also reruns `conformance-twin`, so the attribution of a
+# domination failure is never read from a stale twin.
+envelope *args: conformance conformance-twin
     cargo xtask envelope {{args}}
 
 # The bench gate (`docs/PHASE1.md` §9): criterion over the shipped coefficient kernel, then the
