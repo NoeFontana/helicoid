@@ -61,6 +61,17 @@ defined by the status tables in `docs/`; they win over this file.
 
 ### Added
 
+- `docs/decisions/0036` (draft): partitions the envelope's 75 domination failures by *which* oracle
+  won, which turns 67 unexplained into 30 worth an experiment and 45 worth a confirmation.
+  `tf_tree_math` routes through the `libm` crate as we do, so the 30 it beats us on cannot be D16's
+  cost; sophus-rs is glibc, so the 45 it alone beats us on are `0032`'s class. 29 of the 30 are
+  `sen3_exp_n1`, and the cause is that `NUMERICS.md` §5.1 does not say how `J_l(φ) ρ` is *applied*:
+  forming `I + aW + bW·W` as a matrix costs 36 failures, two cross products cost 16, and the
+  `W² = φφᵀ − θ²I` identity costs 19, with every other id untouched in all three runs. No form
+  dominates -- cross products win away from π (worst 1.5087 u against 2.1517) and lose near it
+  (4.6856 against 3.2855) -- so the record proposes the §5.1 addition and leaves the choice between
+  accepting the trade and sweeping the regime. Measured on the seeded stand-in, whose readings differ
+  from the shipped kernel's in documented ways; `PHASE3.md` §10 owes the real subject.
 - `cargo xtask bench-gate --against <binary> --record <dir>` and `--replay <dir>`, which split the
   gate's twenty-minute measurement from the arithmetic it feeds. The decision rule -- median, paired
   bootstrap CI, swap-invariant `δ`, every-pair-above-the-floor -- is a pure, seeded function of

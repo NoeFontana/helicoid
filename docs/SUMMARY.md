@@ -65,3 +65,4 @@
 - [0033: A latency floor is measured beside the comparison (draft)](decisions/0033-a-latency-floor-is-measured-beside-the-comparison.md)
 - [0034: A second transcendental backend owes a measurement (draft)](decisions/0034-a-second-transcendental-backend-owes-a-measurement.md)
 - [0035: Validation has three layers, and one of them needs a quiet machine (draft)](decisions/0035-validation-has-three-layers-and-one-needs-a-quiet-machine.md)
+- [0036: The silence in §5.1 costs twenty domination failures (draft)](decisions/0036-the-silence-in-5-1-costs-twenty-domination-failures.md)
