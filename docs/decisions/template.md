@@ -23,4 +23,8 @@ Ordered steps, each one PR, each with a verification (test name, recipe, stratum
 1. <step> — verified by <check>
 
 ## Open questions
-Resolved before `draft` becomes `ready`; a `ready` doc has none.
+The ones the *Decision* depends on. Resolved before `draft` becomes `ready`; a `ready` doc has none.
+
+## Further work
+What the record suggests next and the Decision does not depend on. Does not block `ready`
+(`0040`).
