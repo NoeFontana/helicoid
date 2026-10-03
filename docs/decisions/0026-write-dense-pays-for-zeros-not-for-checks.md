@@ -1,6 +1,6 @@
 # 0026: `write_dense` pays for zeros, not for checks
 
-**Status:** draft
+**Status:** ready
 **Owner:** @NoeFontana
 **Implementation:** —
 

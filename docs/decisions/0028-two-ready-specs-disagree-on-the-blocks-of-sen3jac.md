@@ -1,6 +1,6 @@
 # 0028: two ready specs disagree on the blocks of `SEn3Jac`
 
-**Status:** draft
+**Status:** ready
 **Owner:** @NoeFontana
 **Implementation:** —
 
@@ -49,10 +49,14 @@ question only.
 
 ## Decision
 
-**Nothing is decided. A draft authorises nothing** — the code is unchanged by this record, and
-`SEn3Jac`'s fields stay `pub` until the owner picks an option.
+**Option A: `SEn3Jac`'s block fields narrow to `pub(crate)`, and `PHASE3.md` §5's declaration is
+corrected to match.** Decided under `0040` item 5, on reversibility: A is the only option that can
+be undone without a breaking change, no external consumer reads `j.diag` today, and `0005`'s
+successor Jacobians — `SO3Jac`, `Sim3Jac`, the Phase 6 ambient ones — are all unwritten, so the rule
+is settled before they copy a precedent rather than after. `0025` decision 5 and its rustdoc's "no
+`Add`" guarantee both stand unchanged, which B would have had to break.
 
-The three options, with what each costs:
+The three options as they were weighed, with what each costs:
 
 **A. Narrow to `pub(crate)` and correct `PHASE3.md` §5.** The reversible direction, and the one
 `ProductJac` already took. `Gaussian` and the ambient Jacobians are inside `helicoid`, so
@@ -70,9 +74,9 @@ public, since `k I` is no more a representation than `A + εB` is. It would also
 and the most expensive later: the next structured Jacobian has no rule to follow, and the question
 returns with `SO3Jac`, `Sim3Jac` and the Phase 6 ambient Jacobians.
 
-The recommendation is **A**, on reversibility alone: it is the only option that can be undone
-without a breaking change, and `0005`'s successor Jacobians are all still unwritten, so the rule
-should be settled before they copy a precedent rather than after.
+**A is taken**, on reversibility alone: it is the only option that can be undone without a breaking
+change, and `0005`'s successor Jacobians are all still unwritten, so the rule should be settled
+before they copy a precedent rather than after.
 
 ## Rationale
 

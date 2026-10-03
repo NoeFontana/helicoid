@@ -1,6 +1,6 @@
 # 0029: a `Product` needs a way to be built from its factors
 
-**Status:** draft
+**Status:** ready
 **Owner:** @NoeFontana
 **Implementation:** —
 
@@ -43,9 +43,13 @@ rotation back out except through `log`.
 
 ## Decision
 
-**Nothing is decided. A draft authorises nothing** — no constructor is added by this record.
+**Option A: `Product` gains `from_parts` and `parts`, landing with the SO(3) PR.** Decided under
+`0040` item 5: A is additive, it keeps `0025` decision 5 and `PHASE3.md` §7 both intact, it names
+the operation so that `from_parts` reads as the move it is, and it agrees with `SE3::from_rt` one
+level down so the two surfaces read alike. It lands with SO(3) rather than before it, because SO(3)
+is what makes `Product<SO3, Rn<3>>` constructible at all and so the PR where the gap becomes real.
 
-A new public item is governed by [`API.md`](../API.md) §6, so the options are stated as surface:
+A new public item is governed by [`API.md`](../API.md) §6, so the options were stated as surface:
 
 **A. A named pair of accessors, fields staying private.**
 
@@ -71,7 +75,7 @@ direction, which is why the implementation chose `pub(crate)` in the first place
 nothing today because no consumer exists; it costs a release if `Product` ships `0.1` without it and
 the idiom `exp(log(..))` has to stay supported afterwards.
 
-The recommendation is **A**, and that it land with the `SO3` PR rather than before it: `SO3` is what
+**A is taken**, and it lands with the `SO3` PR rather than before it: `SO3` is what
 makes `Product<SO3, Rn<3>>` constructible at all, so it is the PR where the gap becomes real and
 where the accessors can be tested against something that is not abelian.
 

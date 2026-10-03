@@ -1,6 +1,6 @@
 # 0039: The sweep's grid stops below its own optimum
 
-**Status:** draft
+**Status:** ready
 **Owner:** @NoeFontana
 **Implementation:** records a measurement and proposes a `PHASE1.md` §6 amendment; no code change here.
 
@@ -260,7 +260,7 @@ corpus-weighted.
 
 ## Decision
 
-Proposed, not settled.
+Settled under `0040` item 5; the measurements above are its basis.
 
 1. **`PHASE1.md` §6's grid should span the domain and stop strictly below it**, not
    `[10⁻⁸, 1]`. The branch variable's range is what `NUMERICS.md` §12 allows, `z ∈ [0, π²]`; a grid
@@ -294,6 +294,30 @@ Proposed, not settled.
    stage 2 is the cheapest arm that holds stage 1's objective, `O(m · n)` over a prefix maximum. §6
    should say so, since a joint search returns a degenerate answer and a reader would read that as
    "a second switch buys nothing".
+7. **The grid keeps its decade structure and the domain bound moves into the selection rule.** The
+   grid spans `z ∈ [10⁻¹⁶, 10]` by the same integer root at 64 points per decade, and the sweep
+   **refuses** a switch at or above `π²`. A grid is a geometric object and a domain is a semantic
+   constraint; putting the bound in the rule keeps
+   `the_grid_has_64_points_per_decade_and_both_ends` intact and means a later domain change does not
+   reshape the grid. Measured as "stop the grid at 9.66"; the same selection, better factored.
+8. **A boundary optimum is an error at a grid end and a reported fact at the domain bound.** A
+   choice on the grid's first or last point means the search space is too small and fails the run
+   (item 2); a choice on the last point below `π²` is the domain binding, which `k`, `b` and `d` do
+   under config E, and is printed rather than failed.
+9. **`generated.rs` reports its feasibility, not only its objective**: the grid span, the term cap,
+   and whether the choice touched either. The objective alone is what let eight switches sit on a
+   wall for the file's whole existence.
+10. **A second arm belongs to `Switch`, and stage 2 minimises the corpus-weighted term count.** The
+    generated object stays one per coefficient, because `0004` makes `generated.rs` the single source
+    and a hand-nested branch would be typed structure around generated numbers. The cost model is
+    **one term, one unit** — linear, which the measured 0.33–0.50 ns per term supports — and the
+    weighting is the corpus's own records. A *timed* cost model would make the generated file a
+    function of the host and break D16; a term count keeps it a function of the corpus, as `0004`
+    requires. The 90% share above is how the result was described, not the rule.
+11. **The exact arm is not retired near `π`** (config D is not taken). It is the only reading that
+    worsens rows — 89 of them — and the case for it rests on group *maxima*, which `0038` establishes
+    must not be read from domination counts. Config E is strictly better on every measure available
+    and is reversible; D waits for the paired comparison `0038` proposes.
 
 ## Rationale
 
@@ -349,33 +373,25 @@ the same change seen properly.
 
 ## Open questions
 
-1. ~~Where exactly should the grid stop?~~ **Measured: just below `π²`.** Stopping above it
-   (config D) retires the exact arm and makes 89 rows worse. Open: whether the bound is written as
-   "the largest grid point below `π²`" or by extending the decade structure and refusing the points
-   above — the first is what was measured, the second keeps the existing construction's test.
-2. ~~Is a switch above `π²` allowed to stand?~~ **No, on this corpus.** But config D's SE_N(3)
-   Jacobian improvement (1.9–2.6×) is real and is the only thing that moves a group maximum, so
-   **should the exact arm be retired near `π` anyway?** That is the one live trade here: 15 broken
-   domination verdicts, all within 2.7 u absolute, for a halving of the Jacobian maxima.
-3. ~~Does the `m ≤ 8` cap bind for `c`?~~ **Yes, and it binds jointly with the ceiling.** Open: `c`
-   now chooses all sixteen terms the corpus holds, so does `PHASE1.md` §4.3's series length need to
-   grow, and what does the generator cost at, say, 24 terms?
-4. **Is a boundary optimum against the *domain* an error?** Decision item 2 says a choice on a grid
-   end has not searched, but under config E three of eight switches sit on the last point below
-   `π²` — a bound that is physical, not arbitrary. The check must exempt it, which means it has to
-   distinguish the two ends.
-5. Should the sweep report its *feasibility* as well as its objective — the grid span, the term cap,
-   and whether the choice touched either? `generated.rs` carries the objective alone today, which is
-   what let this stand.
-6. ~~Does retiring a coefficient's exact arm change its cost?~~ **Measured above: it is cheaper
-   where it replaces an exact arm and dearer where it lengthens a series arm**, and a second switch
-   removes the second half at identical accuracy, 2.08× over the catalogue. ~~And what does a
-   two-switch search cost?~~ **Nothing: it is `O(m · n)` after stage 1, not `m₀ × m₁ × grid²`.**
-   Open: does `Switch` gain a second arm or does `coeffs` nest two branches, and what share does
-   stage 2 target — 90% of records is a corpus weighting, and the right answer is a consumer's
-   distribution, which no record states.
-7. Do the arm timings hold for the shipped **groups**? `exp_coeffs` evaluates several coefficients
-   in one `S::branch` and takes the exact closure as soon as one member passes its switch, so a
-   group's switch is the smallest of its members' and a second switch changes which closure runs for
-   a whole group. `benches/coeffs.rs` is the instrument and the comparison needs the regenerated
-   file.
+None. Decisions 1–11 depend on no unresolved question; what the measurements suggest next is below
+(`0040` item 2).
+
+## Further work
+
+1. **Does `PHASE1.md` §4.3's series length need to grow?** `c` takes all sixteen terms the corpus
+   holds and is the corpus's worst row at 94.5 u; the catalogue's other seven are at 1.8–37 u. What
+   the generator costs at, say, twenty-four terms is unmeasured. The Decision caps at the corpus's
+   length, whatever it is, so it does not depend on this.
+2. **Should the exact arm be retired near `π` after all?** Decision 11 says not now. The case is
+   config D's 1.9–2.6× on the SE_N(3) Jacobian maxima, the only thing that moves a group maximum,
+   against 15 broken verdicts all within 2.7 u absolute. Reopening it needs `0038`'s paired
+   comparison, not another bar reading.
+3. **Do the arm timings hold for the shipped groups?** `exp_coeffs` evaluates several coefficients in
+   one `S::branch` and takes the exact closure as soon as one member passes its switch, so a group's
+   switch is the smallest of its members' and a second switch changes which closure runs for a whole
+   group. `benches/coeffs.rs` is the instrument and the comparison needs the regenerated file.
+4. **What weighting should stage 2 use when a consumer supplies one?** Decision 10 takes the
+   corpus's records, which `error-analysis.md` EA.21 made log-uniform across decades on purpose and
+   which is a stand-in for a usage distribution, not one. locus-tag is the first consumer
+   (`PHASE5.md` owns that migration) and
+   a pose stream's `θ` distribution is nothing like flat.

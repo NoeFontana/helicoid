@@ -93,7 +93,7 @@ pub trait Jac<S: Real, T: Tangent<S>>: Copy + Blend<S> {
     /// checks are **measured to be free**: the panic branches are never taken and are laid out
     /// cold, and the loop already runs at about one store per cycle. The cost is the structural
     /// zeros, not the checks. Two designs that remove the checks were measured slower everywhere,
-    /// by 53% to 326% (`0026` (draft)); do not "fix" this loop from its instruction count.
+    /// by 53% to 326% (`0026`); do not "fix" this loop from its instruction count.
     ///
     /// # Domain
     ///
