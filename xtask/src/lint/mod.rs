@@ -9,6 +9,7 @@ mod drafts;
 mod generated;
 mod metadata;
 mod sweep;
+mod untracked;
 
 use std::fmt;
 use std::io::ErrorKind;
@@ -93,12 +94,14 @@ pub(crate) fn run() -> Result<Vec<Violation>, String> {
 fn check_root(root: &Path) -> Result<Vec<Violation>, String> {
     let mut all = check_all(&load_tree(root)?);
     all.extend(check_manifests(&metadata::load(&root.join("Cargo.toml"))?));
+    all.extend(untracked::check(&untracked::load(root)?));
     all.sort();
     Ok(all)
 }
 
-/// Tracked regular files as text (`git add` is the precondition, so untracked scratch files never
-/// fail the lint). Symlinks, submodules, binary and deleted files are skipped.
+/// Tracked regular files as text (`git add` is the precondition; `untracked` is the check that an
+/// unadded file is unchecked, so the precondition cannot pass silently). Symlinks, submodules,
+/// binary and deleted files are skipped.
 pub(crate) fn load_tree(root: &Path) -> Result<Vec<File>, String> {
     let out = Command::new("git")
         .arg("-C")
@@ -193,6 +196,54 @@ mod tests {
         for tag in ["[closure]", "[sweep]"] {
             assert!(out.iter().any(|l| l.contains(tag)), "{tag}: {out:?}");
         }
+    }
+
+    /// `check_root` runs the untracked check: a file left unadded comes back from it, which is the
+    /// case that let a `drafts` violation through before this check existed.
+    #[test]
+    fn check_root_reports_an_untracked_file() -> Result<(), String> {
+        let ok = "[dependencies]\nlibm = { path = \"../libm\" }\n";
+        let helicoid = format!("{ok}helicoid-linalg = {{ path = \"../helicoid-linalg\" }}\n");
+        let crates = [
+            ("libm", ""),
+            ("helicoid-linalg", ok),
+            ("helicoid", helicoid.as_str()),
+        ];
+        let manifest = metadata::tests::workspace("untracked-root", &crates)?;
+        let root = manifest.parent().ok_or("no parent")?;
+        let git = |args: &[&str]| {
+            let out = Command::new("git").arg("-C").arg(root).args(args).output();
+            out.map_err(|e| e.to_string()).and_then(|o| {
+                o.status
+                    .success()
+                    .then_some(())
+                    .ok_or(format!("git {args:?}"))
+            })
+        };
+        for stub in generated::stubs() {
+            let path = root.join(&stub.path);
+            let dir = path.parent().ok_or("no parent")?;
+            std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+            std::fs::write(&path, &stub.text).map_err(|e| e.to_string())?;
+        }
+        let out = git(&["init", "-q"])
+            .and_then(|()| git(&["add", "."]))
+            .and_then(|()| {
+                // Written after `git add`, exactly as a new decision record is.
+                let dir = root.join("docs").join("decisions");
+                std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+                std::fs::write(dir.join("0034-later.md"), "**Status:** draft\n")
+                    .map_err(|e| e.to_string())
+            })
+            .and_then(|()| check_root(root));
+        let _ = std::fs::remove_dir_all(root);
+        let out: Vec<String> = out?.iter().map(ToString::to_string).collect();
+        assert_eq!(out.len(), 1, "{out:?}");
+        assert!(
+            out[0].starts_with("docs/decisions/0034-later.md:1: [untracked]"),
+            "{out:?}"
+        );
+        Ok(())
     }
 
     /// `check_root`, the gate itself, runs the manifest checks: a planted `nalgebra` in a tracked
