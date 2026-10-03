@@ -203,6 +203,7 @@ impl Subject for Twin {
                 &kernels_of(&self.arms),
                 se3::Order::RotationFirst,
                 0.5,
+                se3::W2::Product,
             ),
         }
     }
