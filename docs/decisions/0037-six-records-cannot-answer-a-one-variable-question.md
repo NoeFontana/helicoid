@@ -100,6 +100,69 @@ and to $\lVert y \rVert$ either way. It recovers ≈6.2 MB, enough to take every
 6 records to about 12 and leave the corpus near today's size. **Dropping the repeated diagonal
 blocks does change the field the metric norms**, so it is a §11 question and not free.
 
+### What six draws resolve, measured
+
+Open question 2 asked what count a per-stratum maximum needs. It is answerable without changing
+anything: regenerate one id at a higher count and compare.
+
+`sen3_jl_n1` was regenerated at **64 records per stratum** with the committed generator, one
+constant changed (`gen/strata.py`'s `SEN3_SAMPLES`), 2 min 40 s, 4.95 MB against 0.46 MB. The draw
+is **nested**: record 0 of the 64 is byte-identical to the committed record 0, reference included,
+so the committed 6 are a prefix of the 64 and the two maxima are comparable rather than two
+designs.
+
+**At 64 records the maximum rises on 47 of 52 strata** — median **1.266×**, p90 1.624×, up to
+**2.008×** (`theta:1e-1`, 0.4728 u to 0.9491 u). The other 5 tie, which is what a nested draw
+means. So a 6-record stratum understates its own maximum by about a quarter, and the understatement
+is not uniform.
+
+The variance matters more than the bias, because domination is a comparison. Resampling the 64
+records of each stratum, the maximum over `m` draws:
+
+| `m` | median 64-record max / median `m`-draw max | p95/p5 spread of the `m`-draw max | P(two designs differ by > 1.13×) |
+|---|---|---|---|
+| **6** | 1.230 | **1.59×** | **0.525** |
+| 12 | 1.135 | 1.37× | 0.391 |
+| 16 | 1.095 | 1.31× | 0.342 |
+| 20 | 1.061 | 1.28× | 0.305 |
+| 24 | 1.061 | 1.21× | 0.239 |
+| 32 | 1.000 | 1.16× | 0.127 |
+| 48 | 1.000 | 1.10× | 0.018 |
+
+1.13× is the **median observed domination gap** of the 45 failures in this class (p90 1.746, max
+2.361; the 30 algorithmic ones are median 1.306, max 2.304). So **at six records, two designs of
+the same stratum, the same subject and the same library disagree by more than the median measured
+signal in 52.5% of trials.** Every one of the 75 gaps is under 2.86×, and 2.86× is the p95 ratio
+between two 6-draw designs on the 64-record strata the whole corpus offers for this check.
+
+That does not make the gaps false — the comparison is paired, both sides see the same six records,
+and a correlated design cancels part of the noise. It makes them **unresolved at this count**, which
+is a different and worse thing than wrong: no amount of reasoning about `libm` or about assembly
+forms can be checked against a number whose own design variance is larger than the effect.
+
+### What the budget can buy
+
+Exact byte accounting over the fifteen block ids, three schemas, same records:
+
+| reference schema | SE_N(3) family | corpus | records/stratum within 50 MB | with a 15% reserve |
+|---|---|---|---|---|
+| today | 17.50 MB | 32.98 MB | 11.8 | 10.1 |
+| an exactly-zero entry written `0` | 10.83 MB | 26.31 MB | 19.1 | 16.2 |
+| a dual matrix written as one | **7.66 MB** | 23.14 MB | **27.1** | 23.0 |
+
+Sixty-four records would be 178 MB, which is §4.4's 190 MB estimate confirmed. **Nothing inside the
+50 MB cap reaches the count at which the design noise falls below the signal**: writing a dual
+matrix as a dual matrix buys 24 records, where two designs still disagree by more than 1.13× in 24%
+of trials. The count that would settle these 37 failures is near 48, and it does not fit.
+
+So the resolution question is not only a byte question. At a fixed budget, the instrument's power is
+a property of the **statistic** as much as of the sample size, and a maximum over six records uses
+one record and discards five. Under exchangeable paired errors, "the candidate is worse on every one
+of the six records" has a false-positive rate of $2^{-6} = 1.6\%$ against the 52.5% above — a 33×
+reduction at the same records, and no new bytes. `0006` chose the max over the mean to stop a mean
+hiding a bad case, which it does; a paired rule is neither, and `0033` already reached for exactly
+this shape (a paired statistic, swap-invariant) for latency while accuracy stayed at a bare max.
+
 ## Decision
 
 Proposed, not settled.
@@ -111,8 +174,12 @@ Proposed, not settled.
    list should say so. A twin is not a candidate; the envelope comparing `helicoid` with a
    differently-rounded copy of itself would measure nothing.
 2. **A stratum's record count is part of the instrument, so §4.4 should state what each count
-   resolves.** Six records is six draws of a maximum, and §4.4 justifies the number in bytes alone.
-   Where the bar is per stratum on the max, the stratum size *is* the bar's resolution.
+   resolves**, not only what it costs. Six records is six draws of a maximum, and at six draws the
+   design noise exceeds the median measured signal more often than not. Where the bar is per
+   stratum on the max, the stratum size *is* the bar's resolution.
+   **And raising the count alone cannot fix it inside the cap**, so the bar's statistic is in scope
+   too: a paired rule over the records of a stratum costs no bytes and cuts the false-positive rate
+   by 33× at six records. That is `0006`'s to decide, and this record asks it (open question 6).
 3. **Spend the digits of zero on records.** §4.2 should write an exactly-zero reference entry as
    `0`, and §4.4 should spend what that recovers on the SE_N(3) record count.
 
@@ -178,15 +245,24 @@ sought, it is what the measurement found when it came back empty, and the chain 
 1. Is `0` still "a decimal string with 30 significant digits" (§4.2), or does the sentence need the
    exception written out? The generator, the parser and the metric all read it as the same value;
    only the prose is at issue.
-2. **What count does a per-stratum maximum need?** Twelve is what the zeros pay for, not an answer.
-   The question is what resolution `0006`'s bar requires of a maximum, and it has never been asked
-   of any stratum family — `coeff_*` at 64 and `so3_log` at 128 were not chosen by it either.
-3. Should the repeated diagonal blocks go too? It is 8.56 MB more and a further doubling, but it
-   changes the field `NUMERICS.md` §11 norms, so it needs §11 to say what a dual matrix's field is.
-   `0014` (draft) question 25's sibling, and not asked there.
+2. ~~What count does a per-stratum maximum need?~~ **Measured above.** Below about 48 records two
+   designs of one stratum disagree by more than the median observed signal too often to read a
+   1.1–2.4× gap, and 48 does not fit the cap under any of the three schemas. What is *not* settled
+   is the count to adopt given that — 24 (the dual-matrix schema's ceiling with a reserve) buys a
+   2.1× reduction in false positives for a full corpus regeneration, and does not make the bar
+   sound on its own.
+3. **Should a dual matrix's reference be written as a dual matrix?** It is the difference between 19
+   and 27 records per stratum, so it is now load-bearing rather than an extra. It needs
+   `NUMERICS.md` §11 to say what field the metric norms; `0014` (draft) question 25's sibling, and
+   not asked there. Note the zeros alone are metric-neutral and this is not.
 4. Should a twin ever be an *oracle* rather than a diagnostic? It is the only "oracle" that is
    `libm`-neutral by construction, which is `0032` open question 3 in a sharper form; it is also the
    candidate's own program, so domination against it is not a comparison with anyone else's
    algorithm.
 5. Is there a second twin worth keeping — the three application forms `0036` measured, as subjects
    rather than as a branch that was reverted? Same mechanism, same validation shape.
+6. **Does `0006`'s bar need a statistic that uses more than one record of a small stratum?** The
+   max is 1 of 6; a paired rule is 6 of 6 and costs nothing. `0006` says "on the max, never a mean",
+   and a paired per-record rule is neither — `0033` took that route for latency. This record raises
+   it; `0006`'s to answer, and until it does, the 37 failures in this class should be read as
+   unresolved and not as an algorithm to chase.
