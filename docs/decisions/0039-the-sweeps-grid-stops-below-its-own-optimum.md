@@ -308,11 +308,28 @@ at 200, or at 2000.
 true today, before this record changes anything.
 
 The blocker is therefore neither the corpus nor the maths: CO.12's right-hand side is a point sample
-of an oscillating quantity. A sound one needs no new generation — each arm's **maximum over the
-stratum containing the switch**, which the sweep already computes per record and per arm. A maximum
-over 64 to 801 records of a sawtooth is not a proof either, but it is the difference between 6.30 u
-and something at or above 19.178 u. Loosening the test instead was considered and rejected: the
-slack needed is 3.5×, which would leave it unable to fail anything CO.12 cares about.
+of an oscillating quantity. Loosening the test instead was considered and rejected — the slack needed
+is 3.5×, which would leave it unable to fail anything CO.12 cares about.
+
+**A per-stratum maximum was the next reading and it fails on both arms**, which measuring it
+settled too:
+
+| | at the switch | max over the stratum, the arm's own side |
+|---|---|---|
+| series arm | 2.926 u | **6.3 × 10⁶ u** (at `θ = 3.04`, where the 8-term series has diverged) |
+| exact arm | 19.178 u | 19.722 u (over `θ ∈ [1, 1.241)`, a **2.8%** margin) |
+
+The series arm's is vacuous: a bound of 6.3 million `u` cannot fail anything. The exact arm's covers
+the switch by 2.8%, which is the same luck in a thinner form — the sawtooth peak near `θ = 1`
+happens to sit just above the value at the switch, and nothing makes it so.
+
+**What is sound is a reference at the switch**, and it is not circular. `conformance/sweeps/thresholds.csv`
+already carries the chosen switch as a decimal, so the chain runs sweep → switch → reference →
+test, and the sweep never reads the reference. A generator artifact holding each coefficient's value
+and derivative at its committed switch, to 30 digits, the way `coeff_series` holds its series, lets
+`branch_continuity` compute both arms there and compare each against the truth — no sampling, no
+window, no slack. That is the measurement this section is made of: done by hand in mpmath at 60
+digits, it gives 19.178 + 2.926 = 22.104 against a jump of 22.104.
 
 ## Decision
 
@@ -426,15 +443,20 @@ free** — it is what costs 2.8× at near-identity — and the second arm is wha
 land together or not at all. And step 0 comes first, because step 1 moves switches out of the
 stratum that validates them.
 
-0. **`branch_continuity`'s right-hand side bounds instead of sampling.** The sweep records each
-   arm's maximum over the stratum that holds the chosen switch, beside the four `at_switch_*`
-   columns it already writes, and the test reads those; `PHASE1.md` §6's CSV schema gains the line.
-   No corpus change and no new generation: the sweep already scores every record on both arms.
-   Verified by `branch_continuity_f64` and `_f32` passing at the lifted switches **with no slack
-   added**, and by the sampled columns staying in the CSV, so the gap between a sample and a bound
-   stays visible. **Owed, and it blocks step 1.** Densifying `theta:dense` was this step's first
-   reading and is refuted above — the quantity oscillates 195× over 0.8% of `θ`, so no density makes
-   a point sample a bound.
+0. **A reference at each switch, and `branch_continuity` reads it.**
+   `conformance/generate` emits one record per `(coefficient, precision)` holding the value and the
+   derivative at the switch `conformance/sweeps/thresholds.csv` names, at 30 digits — a derived
+   artifact beside `coeff_series`, with its own `kind` in `MANIFEST.json` (`PHASE1.md` §4.2, §4.3).
+   `branch_continuity` then evaluates both arms at the switch and compares each against the truth,
+   so CO.12 is checked as stated: no sampling, no window, no slack. Verified by `branch_continuity`
+   passing at the lifted switches with the recorded errors and no tolerance, and by the two numbers
+   it prints matching this record's 19.178 u and 2.926 u. The four `at_switch_*` CSV columns stay,
+   so the gap between a sample and the truth stays visible. **Owed, and it blocks step 1.**
+
+   Two cheaper readings of this step were tried and refuted above, each by measuring it before
+   building it: densifying `theta:dense` (the quantity oscillates 195× over 0.8% of `θ`, so no
+   density makes a point sample a bound) and a per-stratum maximum (vacuous for the series arm at
+   `6.3 × 10⁶ u`, and a 2.8% margin for the exact one).
 1. **§6's grid span and selection rule, `m ≤ 8` unchanged**: the grid spans `z ∈ [10⁻¹⁶, 10]` by the
    same integer root (decision 7), a switch at or above `π²` is not a candidate, a choice on the
    grid's lowest point fails the run (decision 8), and `generated.rs`'s header carries the grid span
@@ -455,11 +477,10 @@ None. Decisions 1–11 depend on no unresolved question; what the measurements s
 
 ## Further work
 
-0. **Is a per-stratum maximum enough, or does CO.12 need a reference at the switch?** Step 0 takes
-   the maximum because it is sound enough and free. The exact answer is each arm's error *at* the
-   switch, which needs a high-precision reference there; the corpus has none, and adding one is
-   circular, since the switch is generated from the corpus. Whether `conformance/generate` should
-   emit a per-switch reference as a derived artifact, the way it emits `coeff_series`, is open.
+0. **Should the per-switch reference be a corpus file or a sweep column?** Step 0 makes it a
+   generator artifact, because the value is a function of the switch and the definition and nothing
+   else. The alternative is the sweep writing it, which puts a 30-digit reference in a CSV the sweep
+   also reads, and `0004` wants the generated file a function of the corpus alone.
 1. **Does any other generated switch sit near a sawtooth peak?** The committed `θ = 1` sits near the
    low end of a 90× range, which is luck. Nothing checks it, and the sweep's objective cannot: it is
    a maximum over records, not a value at the switch.
