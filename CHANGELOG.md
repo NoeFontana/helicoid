@@ -9,6 +9,13 @@ defined by the status tables in `docs/`; they win over this file.
 
 ### Changed
 
+- `cargo xtask lint` fails on an **untracked, non-ignored file**. Every other check reads
+  `git ls-files --cached`, so a file written and not yet added is invisible to all of them -- and
+  every new decision record is untracked at the moment it is written. Measured here: a citation of
+  `0033` (draft) in `docs/PHASE1.md` §0.0 was accepted by `cargo xtask lint` *and* `just lint`, and
+  became a `drafts` violation the moment `git add` made the record visible, after the commit that
+  claimed the lint was clean. `.gitignore` still excludes what it should.
+
 - `solve_cubic` internals, every one bit-identical (`bits_are_omnisacs` and the planted-root suite
   are unmoved): `pi` is a per-precision literal rather than `atan2(+0, -1)`, which was a `libm` call
   for a compile-time constant that no workspace LTO could fold — `eig3` paid it per call too; `tol`
