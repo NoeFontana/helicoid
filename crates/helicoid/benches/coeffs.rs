@@ -24,7 +24,9 @@
 
 use core::time::Duration;
 
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use core::hint::black_box;
+
+use criterion::{criterion_group, criterion_main, Criterion};
 use helicoid::__sweep as k;
 
 /// `(name, θ)`: §9's three strata, then the two switch neighbourhoods.

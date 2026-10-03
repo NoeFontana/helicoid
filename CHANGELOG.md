@@ -9,6 +9,14 @@ defined by the status tables in `docs/`; they win over this file.
 
 ### Changed
 
+- `criterion` moves from `=0.5.1` to `=0.8.2`, `sha2` to 0.11 and `num-bigint` to 0.5 (dependabot).
+  The pin stays exact: §9 pins it so the harness's behaviour is a deliberate choice, and 0.8.2 was
+  checked against what `bench-gate` actually depends on -- `--save-baseline` slots persist,
+  `--list`/`--exact` are unchanged, and `sample.json` still carries `iters`/`times`/`sampling_mode`
+  with 100 Linear samples. `criterion::black_box` is deprecated there, so the benches take
+  `core::hint::black_box`. The corpus digests are byte-identical under `sha2` 0.11. The new `alloca`
+  -> `cc` chain is criterion's, so a C toolchain is needed to build the benches and nothing else:
+  dev-dependencies do not reach a consumer or `just build`.
 - `cargo xtask lint` fails on an **untracked, non-ignored file**. Every other check reads
   `git ls-files --cached`, so a file written and not yet added is invisible to all of them -- and
   every new decision record is untracked at the moment it is written. Measured here: a citation of
@@ -39,7 +47,7 @@ defined by the status tables in `docs/`; they win over this file.
 ### Added
 
 - The bench harness and `cargo xtask bench-gate` (`docs/PHASE1.md` §9, `docs/PHASE3.md` §11's
-  owed-first row), which did not exist: `criterion` pinned at `=0.5.1` in `crates/helicoid/benches`
+  owed-first row), which did not exist: `criterion` pinned at `=0.8.2` in `crates/helicoid/benches`
   over the shipped coefficient kernel through `__sweep` (so the code timed is the code that ships),
   60 benchmarks by stratum -- §9's near-identity, generic and near-π plus the two switch
   neighbourhoods, since a group's cost is which arm ran. `just bench` runs it: `--against` gates,
