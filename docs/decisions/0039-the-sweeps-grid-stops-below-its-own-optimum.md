@@ -158,6 +158,46 @@ Choosing between them is a decision and this record does not make it.
 the corpus's worst row. Sixteen is also what `coeff_series.jsonl` holds (`PHASE1.md` §4.3), so the
 next constraint is the corpus's own series length, not the sweep's.
 
+### What it costs, which is the question the accuracy numbers above do not answer
+
+Open question 6 asked whether retiring a coefficient's exact arm changes its cost. Measured with
+criterion on this host, the same shape as `benches/coeffs.rs` (one call per iteration, `black_box`
+on the input), on stand-in arms rather than the shipped groups:
+
+| | ns | | | ns |
+|---|---|---|---|---|
+| series, 4 terms | 1.22 | | `sqrt` alone | 2.33 |
+| series, 5 terms | 1.41 | | `sincos` alone | **7.02** |
+| series, 8 terms | 2.41 | | one divide | 1.11 |
+| series, 12 terms | 4.20 | | exact `a` (`sqrt`, `sincos`, 2 mul) | 8.07 |
+| series, 16 terms | **6.43** | | exact `e` (`sqrt`, `sincos`, 8 flops, divide) | 11.46 |
+
+**A sixteen-term Horner is cheaper than one `sincos`**, so on this host no exact arm can beat a
+full-length series arm: 6.43 ns against a 7.02 ns floor. The accuracy the search space was hiding is
+not paid for in latency — where it moves an input from the exact arm to the series.
+
+Where it *doesn't* move the input, it is paid for. One switch against two, per regime:
+
+| at `z` = | committed, 8 terms below 1 | config E, 16 terms below 9.66 | two switches, 5 then 16 |
+|---|---|---|---|
+| `5.6e-15` (near identity) | 2.39 ns | **6.70 ns** (2.81× slower) | **1.71 ns** (1.39× *faster*) |
+| `0.81` | 2.38 ns | 6.65 ns (2.79× slower) | 6.75 ns |
+| `9.0` (above every switch) | **11.64 ns** | **6.64 ns** (1.75× faster) | 6.76 ns |
+
+So config E is **1.75× faster at large θ and 2.8× slower at small θ** — and small θ is exactly where
+`PHASE3.md` §11 puts the priority ("`exp` at near-identity `θ` from `7.5e-8` to `1` first").
+
+**That regression is avoidable for free.** A series arm's term count is set by the largest `z` it
+serves and paid by the smallest; a second switch decouples them. Five terms below `z = 10⁻²` is
+**1.39× faster than the committed kernel** at near-identity and truncates at about `0.004 u` there,
+while the sixteen-term arm still serves the hard band. The extra branch costs 0.1 ns when taken.
+Two switches are faster than today at both ends and never worse than config E.
+
+**These are arms, not the shipped groups.** `helicoid::coeffs` evaluates a group inside one
+`S::branch` and takes the exact closure as soon as one member passes its switch, so a group's cost
+is which arm ran; the direction transfers and the magnitudes are the arms'. `benches/coeffs.rs`
+measures the real thing and the real comparison needs the regenerated file.
+
 ## Decision
 
 Proposed, not settled.
@@ -177,10 +217,17 @@ Proposed, not settled.
    alone reaches below 1846 u; together they reach 94.5 u. The cap's natural value is the corpus's
    series length, sixteen (`PHASE1.md` §4.3), which is then the binding limit for `c` and the next
    thing to measure.
-4. **Config E is the recommended reading** — `z < π²`, `m ≤ 16` — because it is the only one that
-   improves without a trade: five domination failures fixed, none broken, no row above 100 u, 67
-   rows better against 14 worse at `p = 1.9 × 10⁻⁹`. Config D's extra 1.9–2.6× on the SE_N(3)
-   Jacobians costs 15 broken verdicts and is a separate decision.
+4. **Config E is the recommended reading of the two limits** — `z < π²`, `m ≤ 16` — because it is
+   the only one that improves accuracy without a trade: five domination failures fixed, none broken,
+   no row above 100 u, 67 rows better against 14 worse at `p = 1.9 × 10⁻⁹`. Config D's extra 1.9–2.6×
+   on the SE_N(3) Jacobians costs 15 broken verdicts and is a separate decision.
+5. **And §6 should search two switches, not one**, because a one-switch config E is 2.8× slower at
+   near-identity `θ` — `PHASE3.md` §11's stated priority — while two switches are **faster than the
+   committed kernel at both ends** (1.39× at near-identity, 1.72× above every switch) and cost one
+   branch of 0.1 ns. The term count a series arm needs is set by the largest `z` it serves and paid
+   by the smallest; one switch makes every input pay the hardest one's price. This is the third way
+   the search space is too small, after the ceiling and the cap, and it is the one that changes the
+   generated file's *shape* rather than its numbers.
 
 ## Rationale
 
@@ -254,8 +301,14 @@ the same change seen properly.
 5. Should the sweep report its *feasibility* as well as its objective — the grid span, the term cap,
    and whether the choice touched either? `generated.rs` carries the objective alone today, which is
    what let this stand.
-6. Does retiring a coefficient's exact arm change its **cost**? Under config E the series arm runs
-   for almost every input and calls no transcendental, where the exact arm calls `sqrt` and
-   `sin_cos`; the series is longer. §6 says the series arm is the cheaper one and nothing here
-   measured it. `PHASE1.md` §9's gate is what would, and `coeffs.rs`'s `straddle-0.9` fixture
-   straddles `a` and `b`, whose switches both move under E.
+6. ~~Does retiring a coefficient's exact arm change its cost?~~ **Measured above: it is cheaper
+   where it replaces an exact arm and dearer where it lengthens a series arm**, and a second switch
+   removes the second half. Open: what does a two-switch search cost the sweep (its candidate space
+   is `m₀ × m₁ × grid²`, about 1.8 × 10⁸ against today's 1.7 × 10⁴, so the exhaustive loop in
+   `search::search` does not survive it), and does `Switch` gain a second arm or does `coeffs`
+   nest two?
+7. Do the arm timings hold for the shipped **groups**? `exp_coeffs` evaluates several coefficients
+   in one `S::branch` and takes the exact closure as soon as one member passes its switch, so a
+   group's switch is the smallest of its members' and a second switch changes which closure runs for
+   a whole group. `benches/coeffs.rs` is the instrument and the comparison needs the regenerated
+   file.
