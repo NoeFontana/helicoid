@@ -27,5 +27,18 @@ __sweep = []
 helicoid-linalg.workspace = true
 libm.workspace = true
 
+# `cargo bench` would otherwise run the lib's own test harness, which does not understand
+# criterion's arguments; the proptests are `just test`'s.
+[lib]
+bench = false
+
 [dev-dependencies]
+criterion.workspace = true
 proptest.workspace = true
+
+# `harness = false`: criterion supplies its own `main`. The bench reads the shipped kernel through
+# the hidden `__sweep` feature, requested on the command line by `just bench` and never in a
+# manifest, so `cargo xtask lint`'s check 5 still holds (only `xtask` may request it).
+[[bench]]
+name = "coeffs"
+harness = false

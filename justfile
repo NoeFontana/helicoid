@@ -127,6 +127,17 @@ oracle-sophus-rs:
 envelope *args: conformance
     cargo xtask envelope {{args}}
 
+# The bench gate (`docs/PHASE1.md` §9): criterion over the shipped coefficient kernel, then the
+# paired bootstrap 95% CI of the ratio per benchmark, failed when the whole CI lies above `1 + δ`.
+# `just bench --against <bench-binary>` is the gate: it runs each benchmark as baseline, candidate,
+# baseline, so `δ` is an A/A control measured beside the comparison and not read from a file.
+# `just bench --aa --bless` logs what this host's A/A noise has shown into baseline/HOST.md, which
+# says whether the machine is quiet enough to bother; it is a log and not the allowance, because the
+# same protocol measured 0.0161 one session and 0.6864 the next (`docs/decisions/0033`, draft).
+# Pin a core (`taskset -c N just bench ...`) and run it on a quiet machine.
+bench *args:
+    cargo xtask bench-gate {{args}}
+
 # The threshold sweep of the seeded kernels over the corpus (`docs/PHASE1.md` §6): writes
 # conformance/sweeps/thresholds.csv and xtask/src/seeded/generated.rs. `coeffs/generated.rs`
 # joins them with Phase 3. The second is compiled into xtask: a hand edit that no longer compiles

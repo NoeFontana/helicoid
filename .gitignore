@@ -3,6 +3,12 @@
 /target*/
 **/*.rs.bk
 
+# The bench gate's blessed samples (`docs/PHASE1.md` §9). `baseline/HOST.md` IS committed -- it
+# names the host its floors were measured on -- but the samples are not: an accuracy maximum is a
+# function of the source and the corpus alone (D16), so it travels; a timing is a property of one
+# core under one load and does not. `cargo xtask bench-gate --bless` rewrites them in minutes.
+/baseline/bench/
+
 # Conformance run output (`docs/PHASE1.md` §1); the corpus, sweeps and baseline are committed.
 /conformance/results/
 

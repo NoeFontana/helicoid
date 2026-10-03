@@ -12,6 +12,7 @@ const REGISTRY: &[(&str, &str)] = &[
     ("xtask/src/seeded/generated.rs", "thresholds"),
     ("crates/helicoid/src/coeffs/generated.rs", "thresholds"),
     ("docs/evidence/ENVELOPE.md", "envelope"),
+    ("baseline/HOST.md", "bench-gate"),
 ];
 
 pub(crate) fn check_registry(files: &[File]) -> Vec<Violation> {
@@ -123,6 +124,7 @@ mod tests {
                 ("xtask/src/seeded/generated.rs", "thresholds"),
                 ("crates/helicoid/src/coeffs/generated.rs", "thresholds"),
                 ("docs/evidence/ENVELOPE.md", "envelope"),
+                ("baseline/HOST.md", "bench-gate"),
             ]
         );
         // The header the generator writes, from its first line, is the one the check parses.
@@ -136,7 +138,7 @@ mod tests {
             ),
             File::new(REGISTRY[1].0, &header("conformance/sweeps/thresholds.csv")),
         ];
-        // Every registered file but `ENVELOPE.md` is present, so exactly that one is reported.
+        // Only the two `thresholds` files are present, so every other entry is reported.
         assert_eq!(check_registry(&files).len(), REGISTRY.len() - files.len());
         assert_eq!(check_registry(&stubs()).len(), 0);
         assert_eq!(check_registry(&[]).len(), REGISTRY.len());
