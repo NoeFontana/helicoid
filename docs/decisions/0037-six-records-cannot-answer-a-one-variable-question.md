@@ -162,7 +162,12 @@ sought, it is what the measurement found when it came back empty, and the chain 
    `the_swap_has_no_power_on_the_strata_near_pi` and
    `the_scalar_differs_from_the_libm_crate_in_the_transcendentals_only`. **Landed.**
 2. The envelope reads the twin's rows and each domination failure says which of the three it is:
-   beaten by a same-backend oracle, closed by the swap, or unexplained. **Owed.**
+   beaten by a same-backend oracle, closed by the swap, or unexplained — verified by
+   `the_twin_says_whether_the_swap_closes_a_failure_only_glibc_won`, and by the run itself, which
+   now reports **30 the program's, 8 D16's, 37 neither**, the partition this record measured.
+   `just envelope` reruns `conformance-twin` so the attribution is never read from a stale twin;
+   with no twin rows a failure is reported unattributed and no claim about D16 is made.
+   **Landed.**
 3. §4.2's exactly-zero entry, with `just corpus` regenerating and `just corpus-check` the byte
    comparison. **Owed, blocked on open question 1.**
 4. §4.4's SE_N(3) record count, once step 3 has paid for it, with every affected baseline re-blessed
