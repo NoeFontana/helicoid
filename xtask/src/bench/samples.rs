@@ -70,6 +70,15 @@ fn key(group: &Path, bench: &Path) -> Result<String, String> {
     Ok(format!("{}/{}", part(group)?, part(bench)?))
 }
 
+/// One criterion `sample.json`, as `read_all` reads it.
+///
+/// Exposed so a recording can be replayed through exactly this parser: a recording is a byte copy
+/// of criterion's own file, so the division and the validation below are replayed too, and not
+/// merely trusted (`0035`, draft).
+pub(super) fn read_file(file: &Path) -> Result<Samples, String> {
+    read_one(&file.to_path_buf())
+}
+
 fn read_one(file: &PathBuf) -> Result<Samples, String> {
     let text = std::fs::read_to_string(file).map_err(|e| format!("{}: {e}", file.display()))?;
     let raw: RawSample =

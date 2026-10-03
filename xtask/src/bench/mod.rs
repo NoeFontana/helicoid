@@ -29,11 +29,19 @@
 //! allowance at 68% permanently. Sixty draws estimate an extreme; one does not; and no number
 //! measured last Tuesday describes this minute.
 //!
-//! **A regression has to appear in every pair.** Each benchmark yields `REPLICATES` × 2 candidate
-//! pairs — both brackets of each replicate — and the gate fails only when every one of them puts
-//! its whole CI above `1 + floor`. §9's rule is the per-pair test; requiring all of them is what
-//! an isolated disturbance cannot satisfy, and isolated disturbances are what every false verdict
-//! in this module's history has been.
+//! **A regression has to appear in every pair, and the pairs are spread over the whole run.** Each
+//! benchmark yields `REPLICATES` × 2 candidate pairs — both brackets of each triplet — and the gate
+//! fails only when every one puts its whole CI above `1 + floor`. §9's rule is the per-pair test;
+//! requiring all of them is what a *short* disturbance cannot satisfy. It is not enough on its own:
+//! with the replicate loop innermost, a benchmark's six pairs were taken inside about 30 s and so
+//! were not independent, and 2 of 60 identical-code benchmarks failed with a quiet control. The
+//! replicate loop is therefore the outer one, which puts a benchmark's three triplets a pass apart
+//! — about 20 min here — at no extra cost, while keeping the three windows of a triplet contiguous.
+//!
+//! A middle-window bias was the first explanation and the data refused it: over 60 benchmarks the
+//! median candidate-to-baseline ratio is 0.9994 and 0.9989 under two `criterion` versions, with 24
+//! and 18 of 60 above 1.0. The candidate always runs second of three, so a position effect would
+//! have shown as a systematic offset, and there is none.
 //!
 //! **`--against <binary>` gates; the committed-baseline comparison reports and never gates.** §9's
 //! "interleaved baseline/candidate runs" needs the two *binaries* present at once, so that a
@@ -98,7 +106,8 @@ const BRACKET_SLOT: &str = "aa-3";
 /// Where `--bless` keeps the committed samples the gate compares against.
 const BASELINE: &str = "baseline/bench";
 
-/// How many adjacent pairs a benchmark measures. The **least disturbed** one carries the verdict.
+/// How many adjacent pairs a benchmark measures. In `--aa` the **least disturbed** one carries the
+/// verdict; in `--against` every triplet's pairs must agree, and the triplets are a pass apart.
 ///
 /// One pair is not enough, and the reason is measured. The median removes contamination *within* a
 /// window, but it cannot tell a uniformly slow window from slower code — the interquartile spread
@@ -124,10 +133,14 @@ struct Options {
     dry_run: bool,
     /// A prebuilt baseline bench binary to alternate with this tree's, per benchmark.
     against: Option<PathBuf>,
+    /// Where to persist every window `--against` measures, so the rule can be replayed from it.
+    record: Option<PathBuf>,
+    /// A recording to run the rule over, executing no benchmark.
+    replay: Option<PathBuf>,
 }
 
-const USAGE: &str =
-    "usage: cargo xtask bench-gate [--aa] [--bless] [--dry-run] [--against <bench-binary>]";
+const USAGE: &str = "usage: cargo xtask bench-gate [--aa] [--bless] [--dry-run] \
+                     [--against <bench-binary> [--record <dir>]] [--replay <dir>]";
 
 fn parse_args(args: &[String]) -> Result<Options, String> {
     let mut o = Options {
@@ -135,6 +148,8 @@ fn parse_args(args: &[String]) -> Result<Options, String> {
         bless: false,
         dry_run: false,
         against: None,
+        record: None,
+        replay: None,
     };
     let mut rest = args.iter();
     while let Some(a) = rest.next() {
@@ -148,12 +163,36 @@ fn parse_args(args: &[String]) -> Result<Options, String> {
                     .ok_or_else(|| format!("`--against` takes a path; {USAGE}"))?;
                 o.against = Some(PathBuf::from(path));
             }
+            "--record" => {
+                let path = rest
+                    .next()
+                    .ok_or_else(|| format!("`--record` takes a directory; {USAGE}"))?;
+                o.record = Some(PathBuf::from(path));
+            }
+            "--replay" => {
+                let path = rest
+                    .next()
+                    .ok_or_else(|| format!("`--replay` takes a directory; {USAGE}"))?;
+                o.replay = Some(PathBuf::from(path));
+            }
             _ => return Err(format!("unknown argument `{a}`; {USAGE}")),
         }
     }
     if o.aa && o.against.is_some() {
         return Err(
             "`--aa` measures one binary against itself; `--against` is the other mode".to_string(),
+        );
+    }
+    if o.replay.is_some() && (o.aa || o.against.is_some() || o.bless) {
+        return Err(
+            "`--replay` runs the rule over a recording and measures nothing, so it takes no other \
+             mode"
+                .to_string(),
+        );
+    }
+    if o.record.is_some() && o.against.is_none() {
+        return Err(
+            "`--record` persists what `--against` measures; pass `--against` too".to_string(),
         );
     }
     Ok(o)
@@ -163,6 +202,11 @@ pub(crate) fn run(args: &[String]) -> Result<(), String> {
     let o = parse_args(args)?;
     let root = crate::conformance::root()?;
     let criterion = root.join("target").join("criterion");
+    // Before `list` and `build_bench`: a replay runs no benchmark, so it must not need one built.
+    if let Some(dir) = &o.replay {
+        let mode = format!("--replay {}", dir.display());
+        return verdict(&read_recording(dir)?, Some(&root), &mode);
+    }
     let ids = list(&root)?;
     let mine = build_bench(&root)?;
     eprintln!("bench-gate: {} benchmarks", ids.len());
@@ -206,7 +250,14 @@ pub(crate) fn run(args: &[String]) -> Result<(), String> {
     }
 
     if let Some(baseline) = o.against {
-        return against(&root, &criterion, &ids, &baseline, &mine);
+        return against(
+            &root,
+            &criterion,
+            &ids,
+            &baseline,
+            &mine,
+            o.record.as_deref(),
+        );
     }
 
     bench(&root, &mine, AA_SLOTS.1, None)?;
@@ -280,69 +331,42 @@ fn against(
     ids: &[String],
     baseline: &Path,
     mine: &Path,
+    recording: Option<&Path>,
 ) -> Result<(), String> {
     if !baseline.is_file() {
         return Err(format!("{}: not a bench binary", baseline.display()));
     }
-    let mut verdicts = Vec::with_capacity(ids.len());
-    for (i, id) in ids.iter().enumerate() {
-        eprintln!("bench-gate --against: {}/{} {id}", i + 1, ids.len());
-        verdicts.push(bracketed(root, criterion, id, baseline, mine)?);
+    // **The replicate loop is the outer one.** Measured: with it inside, a benchmark's six pairs are
+    // all taken inside about 30 s, so they are not independent and a disturbance outlasting that span
+    // defeats the all-pairs rule — 2 of 60 identical-code benchmarks failed that way, both with a
+    // quiet control. Outside, a benchmark's three triplets are a whole pass apart, about 20 min here,
+    // so such a disturbance can spoil one triplet of three and never all six pairs. The windows
+    // within a triplet stay contiguous, which is the adjacency the pairing needs.
+    let mut windows = Vec::with_capacity(REPLICATES * ids.len());
+    for rep in 0..REPLICATES {
+        for (i, id) in ids.iter().enumerate() {
+            eprintln!(
+                "bench-gate --against: replicate {}/{REPLICATES}, {}/{} {id}",
+                rep + 1,
+                i + 1,
+                ids.len()
+            );
+            let w = measure(root, criterion, id, baseline, mine)?;
+            if let Some(dir) = recording {
+                record(dir, criterion, rep + 1, &w.name)?;
+            }
+            windows.push(w);
+        }
     }
-    eprintln!("{}", table(&verdicts));
-
-    // What this run could resolve at all, which is a property of the machine it ran on and not of
-    // the candidate. Printed whatever the verdict: a pass under a loose floor and a pass under a
-    // tight one are not the same statement.
-    let floors: Vec<f64> = verdicts.iter().map(|v| v.floor).collect();
-    let worst = floors.iter().copied().fold(0.0_f64, f64::max);
-    let median = bootstrap::median(&floors);
-    eprintln!(
-        "bench-gate --against: concurrent A/A floor, median {:.4} ({:.2}%), worst {:.4} ({:.2}%) \
-         over {} benchmarks. Nothing smaller than a benchmark's own floor is resolvable by this \
-         run.",
-        median,
-        median * 100.0,
-        worst,
-        worst * 100.0,
-        verdicts.len()
-    );
-    if let Ok(recorded) = read_host(&root.join(HOST)) {
+    if let Some(dir) = recording {
         eprintln!(
-            "bench-gate --against: {HOST} records {:.4} over {} A/A run(s); it is not the \
-             allowance — this run's own control is.",
-            last_max(&recorded),
-            recorded.len()
+            "bench-gate --against: recorded {} triplets under {}; `--replay` re-runs the rule over \
+             them and measures nothing",
+            windows.len(),
+            dir.display()
         );
     }
-
-    let failed: Vec<&Verdict> = verdicts.iter().filter(|v| v.fails()).collect();
-    if failed.is_empty() {
-        eprintln!(
-            "bench-gate --against: {} benchmarks, none above its own concurrent floor in all {} \
-             pairs.",
-            verdicts.len(),
-            2 * REPLICATES
-        );
-        return Ok(());
-    }
-    Err(format!(
-        "bench-gate --against: {} of {} benchmark(s) regressed past the floor measured beside \
-         them:\n{}",
-        failed.len(),
-        verdicts.len(),
-        failed
-            .iter()
-            .map(|v| format!(
-                "  {} at least {:.4} in every one of {} pairs (floor {:.4})",
-                v.name,
-                v.claim(),
-                v.pairs.len(),
-                v.floor
-            ))
-            .collect::<Vec<_>>()
-            .join("\n")
-    ))
+    verdict(&windows, Some(root), "--against")
 }
 
 /// One benchmark's `--against` verdict: the floor measured beside it, and every candidate pair.
@@ -402,38 +426,152 @@ fn table(verdicts: &[Verdict]) -> String {
     out
 }
 
-/// `b1 c b2`, `REPLICATES` times: the candidate bracketed by the baseline it is judged against.
-fn bracketed(
+/// One `b1 c b2` triplet: the control's `δ` and the candidate's two pairs, adjacent in time.
+///
+/// One triplet, not `REPLICATES` of them, because the replicate loop is the **outer** one — see
+/// `against`. Within a triplet the three windows are contiguous, which is what makes the pairing
+/// cancel drift at all.
+struct Triplet {
+    name: String,
+    floor: f64,
+    pairs: [Interval; 2],
+}
+
+/// One triplet's three windows, before any statistic touches them.
+///
+/// **This is the seam.** Measuring is slow and needs a quiet machine; the rule that turns these
+/// three vectors into a verdict is a pure, seeded function and needs neither. Keeping them apart is
+/// what lets `--replay` answer in milliseconds what `--against` answers in twenty minutes
+/// (`0035`, draft).
+#[derive(Debug, Clone, PartialEq)]
+struct Windows {
+    name: String,
+    /// The baseline window before the candidate.
+    first: Vec<f64>,
+    candidate: Vec<f64>,
+    /// The baseline window after it, which is what makes the control span the comparison.
+    second: Vec<f64>,
+}
+
+/// The rule, over one triplet. Pure: no process, no clock, no filesystem.
+fn triplet_of(w: &Windows) -> Result<Triplet, String> {
+    let control = ratio_ci(&w.first, &w.second, SEED)
+        .ok_or_else(|| format!("{}: the control windows do not pair", w.name))?;
+    let pair = |base: &[f64]| {
+        ratio_ci(base, &w.candidate, SEED)
+            .ok_or_else(|| format!("{}: the candidate windows do not pair", w.name))
+    };
+    Ok(Triplet {
+        name: w.name.clone(),
+        floor: delta(&control),
+        pairs: [pair(&w.first)?, pair(&w.second)?],
+    })
+}
+
+/// Measure one triplet: `b1 c b2`, contiguous.
+fn measure(
     root: &Path,
     criterion: &Path,
     id: &str,
     baseline: &Path,
     mine: &Path,
-) -> Result<Verdict, String> {
+) -> Result<Windows, String> {
     let mut name = String::new();
-    let mut floor = 0.0_f64;
-    let mut pairs = Vec::with_capacity(2 * REPLICATES);
-    for _ in 0..REPLICATES {
-        // The slots persist, and `read_all` reads every benchmark that has one, so without this
-        // each replicate would re-read the previous one's samples as extra rows.
-        clear_slots(criterion)?;
-        bench(root, baseline, AA_SLOTS.0, Some(id))?;
-        bench(root, mine, AA_SLOTS.1, Some(id))?;
-        bench(root, baseline, BRACKET_SLOT, Some(id))?;
-        let first = one(criterion, AA_SLOTS.0, id, &mut name)?;
-        let candidate = one(criterion, AA_SLOTS.1, id, &mut name)?;
-        let second = one(criterion, BRACKET_SLOT, id, &mut name)?;
-        let control = ratio_ci(&first, &second, SEED)
-            .ok_or_else(|| format!("{id}: the control windows do not pair"))?;
-        floor = floor.max(delta(&control));
-        for base in [&first, &second] {
-            pairs.push(
-                ratio_ci(base, &candidate, SEED)
-                    .ok_or_else(|| format!("{id}: the candidate windows do not pair"))?,
+    // The slots persist, and `read_all` reads every benchmark that has one, so without this each
+    // triplet would re-read the previous one's samples as extra rows.
+    clear_slots(criterion)?;
+    bench(root, baseline, AA_SLOTS.0, Some(id))?;
+    bench(root, mine, AA_SLOTS.1, Some(id))?;
+    bench(root, baseline, BRACKET_SLOT, Some(id))?;
+    let first = one(criterion, AA_SLOTS.0, id, &mut name)?;
+    let candidate = one(criterion, AA_SLOTS.1, id, &mut name)?;
+    let second = one(criterion, BRACKET_SLOT, id, &mut name)?;
+    Ok(Windows {
+        name,
+        first,
+        candidate,
+        second,
+    })
+}
+
+/// Accumulate triplets into one verdict per benchmark: the floor is the noisiest control, and every
+/// pair of every triplet must agree before the gate fails.
+fn accumulate(windows: &[Windows]) -> Result<Vec<Verdict>, String> {
+    let mut acc: BTreeMap<String, Verdict> = BTreeMap::new();
+    for w in windows {
+        let t = triplet_of(w)?;
+        let v = acc.entry(t.name.clone()).or_insert_with(|| Verdict {
+            name: t.name.clone(),
+            floor: 0.0,
+            pairs: Vec::with_capacity(2 * REPLICATES),
+        });
+        v.floor = v.floor.max(t.floor);
+        v.pairs.extend_from_slice(&t.pairs);
+    }
+    Ok(acc.into_values().collect())
+}
+
+/// The report and the exit verdict, shared by `--against` and `--replay` so that a replay cannot
+/// drift from the gate it stands in for.
+fn verdict(windows: &[Windows], root: Option<&Path>, mode: &str) -> Result<(), String> {
+    let verdicts = accumulate(windows)?;
+    if verdicts.is_empty() {
+        return Err(format!("bench-gate {mode}: no windows"));
+    }
+    eprintln!("{}", table(&verdicts));
+
+    // What this run could resolve at all, which is a property of the machine it ran on and not of
+    // the candidate. Printed whatever the verdict: a pass under a loose floor and a pass under a
+    // tight one are not the same statement.
+    let floors: Vec<f64> = verdicts.iter().map(|v| v.floor).collect();
+    let worst = floors.iter().copied().fold(0.0_f64, f64::max);
+    let median = bootstrap::median(&floors);
+    eprintln!(
+        "bench-gate {mode}: concurrent A/A floor, median {:.4} ({:.2}%), worst {:.4} ({:.2}%) over \
+         {} benchmarks. Nothing smaller than a benchmark's own floor is resolvable by this run.",
+        median,
+        median * 100.0,
+        worst,
+        worst * 100.0,
+        verdicts.len()
+    );
+    if let Some(root) = root {
+        if let Ok(recorded) = read_host(&root.join(HOST)) {
+            eprintln!(
+                "bench-gate {mode}: {HOST} records {:.4} over {} A/A run(s); it is not the \
+                 allowance — this run's own control is.",
+                last_max(&recorded),
+                recorded.len()
             );
         }
     }
-    Ok(Verdict { name, floor, pairs })
+
+    let failed: Vec<&Verdict> = verdicts.iter().filter(|v| v.fails()).collect();
+    if failed.is_empty() {
+        eprintln!(
+            "bench-gate {mode}: {} benchmarks, none above its own concurrent floor in all {} pairs.",
+            verdicts.len(),
+            2 * REPLICATES
+        );
+        return Ok(());
+    }
+    Err(format!(
+        "bench-gate {mode}: {} of {} benchmark(s) regressed past the floor measured beside \
+         them:\n{}",
+        failed.len(),
+        verdicts.len(),
+        failed
+            .iter()
+            .map(|v| format!(
+                "  {} at least {:.4} in every one of {} pairs (floor {:.4})",
+                v.name,
+                v.claim(),
+                v.pairs.len(),
+                v.floor
+            ))
+            .collect::<Vec<_>>()
+            .join("\n")
+    ))
 }
 
 /// The one benchmark a `--exact` filtered run wrote to `slot`, and its name.
@@ -451,6 +589,94 @@ fn one(criterion: &Path, slot: &str, id: &str, name: &mut String) -> Result<Vec<
         out.extend_from_slice(&s.per_iter);
     }
     Ok(out)
+}
+
+/// Criterion's filename for a run's raw samples.
+const SAMPLE: &str = "sample.json";
+
+/// The slots a triplet writes, in the order they are measured.
+const TRIPLET_SLOTS: [&str; 3] = [AA_SLOTS.0, AA_SLOTS.1, BRACKET_SLOT];
+
+/// Persist one triplet, so a slow run stops deleting its evidence.
+///
+/// **The recording is criterion's own `sample.json`, copied byte for byte.** That is the right
+/// format for this data and the reasoning is fidelity, not size: a copy is lossless by
+/// construction, it needs no second parser, it can be diffed against a live `target/criterion`
+/// tree, and replaying it goes through `samples::read_file` — so the `times`/`iters` division and
+/// its validation are replayed rather than assumed. Storing the derived per-iteration quotients
+/// instead, which was the first design, would bake today's derivation into the recording and make
+/// exactly that step unreplayable. `iters` is redundant under criterion's `Linear` mode, an
+/// arithmetic sequence expressible in three numbers, and is kept anyway: dropping it would end the
+/// byte-copy property for a few kilobytes (`0035`, draft).
+fn record(dir: &Path, criterion: &Path, rep: usize, name: &str) -> Result<(), String> {
+    for slot in TRIPLET_SLOTS {
+        let from = criterion.join(name).join(slot).join(SAMPLE);
+        let into = dir.join(name).join(format!("rep{rep}")).join(slot);
+        std::fs::create_dir_all(&into).map_err(|e| format!("{}: {e}", into.display()))?;
+        let to = into.join(SAMPLE);
+        std::fs::copy(&from, &to)
+            .map_err(|e| format!("{} -> {}: {e}", from.display(), to.display()))?;
+    }
+    Ok(())
+}
+
+/// Read a recording: `<group>/<bench>/rep<N>/<slot>/sample.json`, in path order, so that a replay
+/// is a function of the directory alone.
+fn read_recording(dir: &Path) -> Result<Vec<Windows>, String> {
+    let mut found: BTreeMap<(String, String), PathBuf> = BTreeMap::new();
+    collect(dir, dir, &mut found)?;
+    let mut out = Vec::with_capacity(found.len());
+    for ((name, _rep), at) in &found {
+        let window = |slot: &str| -> Result<Vec<f64>, String> {
+            Ok(samples::read_file(&at.join(slot).join(SAMPLE))?.per_iter)
+        };
+        out.push(Windows {
+            name: name.clone(),
+            first: window(TRIPLET_SLOTS[0])?,
+            candidate: window(TRIPLET_SLOTS[1])?,
+            second: window(TRIPLET_SLOTS[2])?,
+        });
+    }
+    if out.is_empty() {
+        return Err(format!(
+            "{}: no recorded triplets; `--against <binary> --record <dir>` writes them",
+            dir.display()
+        ));
+    }
+    Ok(out)
+}
+
+/// Every `rep<N>` directory under `root`, keyed by the `<group>/<bench>` path above it and by the
+/// replicate, so the map's order is the path order.
+fn collect(
+    root: &Path,
+    at: &Path,
+    out: &mut BTreeMap<(String, String), PathBuf>,
+) -> Result<(), String> {
+    for e in std::fs::read_dir(at).map_err(|e| format!("{}: {e}", at.display()))? {
+        let path = e.map_err(|e| e.to_string())?.path();
+        if !path.is_dir() {
+            continue;
+        }
+        let leaf = path
+            .file_name()
+            .and_then(|s| s.to_str())
+            .ok_or_else(|| format!("{}: not a readable directory name", path.display()))?;
+        if let Some(rep) = leaf.strip_prefix("rep") {
+            let relative = path
+                .parent()
+                .and_then(|p| p.strip_prefix(root).ok())
+                .ok_or_else(|| format!("{}: not under the recording root", path.display()))?;
+            let name = relative
+                .to_str()
+                .ok_or_else(|| format!("{}: not a readable path", relative.display()))?
+                .replace(std::path::MAIN_SEPARATOR, "/");
+            out.insert((name, rep.to_string()), path.clone());
+        } else {
+            collect(root, &path, out)?;
+        }
+    }
+    Ok(())
 }
 
 /// One benchmark's verdict: `REPLICATES` alternations, the least disturbed pair reported.
@@ -931,7 +1157,7 @@ mod tests {
     /// artifacts by mode — the floor with `--aa`, the committed samples without — so it is valid
     /// either way.
     #[test]
-    fn arguments_are_refused_unless_they_are_the_four() -> Result<(), String> {
+    fn arguments_are_refused_unless_the_mode_combination_is_meaningful() -> Result<(), String> {
         let o = parse_args(&args(&["--aa", "--bless", "--dry-run"]))?;
         assert!(o.aa && o.bless && o.dry_run && o.against.is_none());
         let o = parse_args(&args(&["--bless"]))?;
@@ -945,6 +1171,18 @@ mod tests {
         // against itself, so a second binary has no role in it.
         assert!(parse_args(&args(&["--against"])).is_err());
         assert!(parse_args(&args(&["--aa", "--against", "/tmp/c"])).is_err());
+        // `--record` persists what a measurement produced, so it needs one; `--replay` measures
+        // nothing, so it takes no other mode.
+        let o = parse_args(&args(&["--against", "/tmp/c", "--record", "/tmp/r"]))?;
+        assert_eq!(o.record, Some(PathBuf::from("/tmp/r")));
+        let o = parse_args(&args(&["--replay", "/tmp/r"]))?;
+        assert_eq!(o.replay, Some(PathBuf::from("/tmp/r")));
+        assert!(parse_args(&args(&["--record", "/tmp/r"])).is_err());
+        assert!(parse_args(&args(&["--record"])).is_err());
+        assert!(parse_args(&args(&["--replay"])).is_err());
+        assert!(parse_args(&args(&["--replay", "/tmp/r", "--aa"])).is_err());
+        assert!(parse_args(&args(&["--replay", "/tmp/r", "--bless"])).is_err());
+        assert!(parse_args(&args(&["--replay", "/tmp/r", "--against", "/tmp/c"])).is_err());
         Ok(())
     }
 
@@ -1143,6 +1381,129 @@ mod tests {
         // Faster is never a failure, and no pair is never a verdict.
         assert!(!v(0.01, vec![ci(0.80, 0.85, 0.90)]).fails());
         assert!(!v(0.01, vec![]).fails());
+    }
+
+    /// A clean A/A triplet: deterministic jitter, the candidate scaled by `scale`.
+    fn synthetic(name: &str, seed: usize, scale: f64) -> Windows {
+        let jitter = |k: usize| 10.0 + f64::from(u8::try_from((k + seed) % 7).unwrap_or(0)) / 100.0;
+        let window = |o: usize| (0..100).map(|i| jitter(i + o)).collect::<Vec<f64>>();
+        Windows {
+            name: name.to_string(),
+            first: window(0),
+            candidate: window(1).iter().map(|x| x * scale).collect(),
+            second: window(2),
+        }
+    }
+
+    /// `REPLICATES` triplets of one benchmark, each replicate's candidate scaled by its own factor.
+    fn run_of(scales: &[f64]) -> Vec<Windows> {
+        scales
+            .iter()
+            .enumerate()
+            .map(|(r, &s)| synthetic("coeffs_f64/exp_coeffs_generic-1", r, s))
+            .collect()
+    }
+
+    /// The seam: a recording in criterion's own format replays to the verdict a measurement gave.
+    ///
+    /// This is what makes `0035`'s (draft) first layer possible — the rule is a function of these
+    /// vectors, so it is exercised without a quiet machine and without a twenty-minute run. The
+    /// fixture is written the way criterion writes it, so `samples::read_file`'s division and
+    /// validation are on the replay path and not merely trusted.
+    #[test]
+    fn a_recording_round_trips_and_replays_to_the_same_verdict() -> Result<(), String> {
+        let dir = std::env::temp_dir().join("helicoid-bench-recording");
+        let _ = std::fs::remove_dir_all(&dir);
+        let windows = run_of(&[1.0, 1.0, 1.0]);
+        for (r, w) in windows.iter().enumerate() {
+            let slots = [&w.first, &w.candidate, &w.second];
+            for (slot, per_iter) in TRIPLET_SLOTS.iter().zip(slots) {
+                let into = dir.join(&w.name).join(format!("rep{}", r + 1)).join(slot);
+                std::fs::create_dir_all(&into).map_err(|e| e.to_string())?;
+                // `iters` integral and `times` their product, so the parser's quotient returns the
+                // per-iteration time this triplet stands for.
+                let iters: Vec<f64> = (1..=per_iter.len())
+                    .map(|i| f64::from(u32::try_from(i * 1000).unwrap_or(u32::MAX)))
+                    .collect();
+                let times: Vec<f64> = iters.iter().zip(per_iter).map(|(n, p)| n * p).collect();
+                let body = format!(
+                    "{{\"sampling_mode\":\"Linear\",\"iters\":{iters:?},\"times\":{times:?}}}"
+                );
+                std::fs::write(into.join(SAMPLE), body).map_err(|e| e.to_string())?;
+            }
+        }
+        let back = read_recording(&dir)?;
+        assert_eq!(back.len(), windows.len(), "{back:?}");
+        let replayed = accumulate(&back)?;
+        assert_eq!(replayed.len(), 1);
+        assert_eq!(replayed[0].pairs.len(), 2 * REPLICATES);
+        assert_eq!(replayed[0].name, "coeffs_f64/exp_coeffs_generic-1");
+        assert!(!replayed[0].fails(), "identical code must not fail");
+        // An empty directory is an error that says how to make a recording.
+        let empty = std::env::temp_dir().join("helicoid-bench-recording-empty");
+        let _ = std::fs::remove_dir_all(&empty);
+        std::fs::create_dir_all(&empty).map_err(|e| e.to_string())?;
+        let e = read_recording(&empty).err().unwrap_or_default();
+        assert!(e.contains("--record"), "{e}");
+        Ok(())
+    }
+
+    /// One disturbed window of nine is not a verdict: the other triplets disagree.
+    ///
+    /// `0033` (draft) paid a twenty-minute run to find this class of thing. It is now arithmetic.
+    #[test]
+    fn one_disturbed_window_is_not_a_verdict() -> Result<(), String> {
+        let mut windows = run_of(&[1.0, 1.0, 1.0]);
+        for x in windows[0].candidate.iter_mut() {
+            *x *= 1.60;
+        }
+        let v = accumulate(&windows)?;
+        assert!(!v[0].fails(), "{:?} floor {}", v[0].pairs, v[0].floor);
+        Ok(())
+    }
+
+    /// A disturbance covering one whole triplet is not a verdict either, and this is the case the
+    /// replicate loop's order exists for: when a benchmark's triplets ran consecutively, one such
+    /// span covered all six of its pairs and 2 of 60 identical-code benchmarks failed.
+    #[test]
+    fn a_disturbance_spanning_one_triplet_is_not_a_verdict() -> Result<(), String> {
+        let mut windows = run_of(&[1.0, 1.0, 1.0]);
+        for x in windows[0].candidate.iter_mut() {
+            *x *= 1.30;
+        }
+        let v = accumulate(&windows)?;
+        assert!(!v[0].fails(), "{:?} floor {}", v[0].pairs, v[0].floor);
+        Ok(())
+    }
+
+    /// Drift is separated from a regression, which is what bracketing buys: every window of every
+    /// triplet slow by 30% is a slow machine, and the ratios stay at 1.
+    #[test]
+    fn a_uniformly_slow_run_is_drift_and_not_a_regression() -> Result<(), String> {
+        let mut windows = run_of(&[1.0, 1.0, 1.0]);
+        for w in windows.iter_mut() {
+            for v in [&mut w.first, &mut w.candidate, &mut w.second] {
+                for x in v.iter_mut() {
+                    *x *= 1.30;
+                }
+            }
+        }
+        let v = accumulate(&windows)?;
+        assert!(!v[0].fails(), "{:?} floor {}", v[0].pairs, v[0].floor);
+        Ok(())
+    }
+
+    /// A slowdown present in every triplet is a verdict: that is the gate's whole purpose.
+    ///
+    /// It is also the rule's limit, stated here because nothing in the data separates the two: a
+    /// disturbance confined to the candidate's windows in *every* triplet has this same shape. The
+    /// floor's own size is the only report of that, which is why `--against` prints it every run.
+    #[test]
+    fn a_slowdown_in_every_triplet_is_a_verdict() -> Result<(), String> {
+        let v = accumulate(&run_of(&[1.05, 1.05, 1.05]))?;
+        assert!(v[0].fails(), "{:?} floor {}", v[0].pairs, v[0].floor);
+        assert!(v[0].claim() > 1.0);
+        Ok(())
     }
 
     /// The report orders by the middle pair's ratio, so the noisiest single window cannot put a

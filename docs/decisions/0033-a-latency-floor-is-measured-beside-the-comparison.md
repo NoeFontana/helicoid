@@ -62,7 +62,32 @@ large events. A median over 100 samples and a selection over 3 windows together 
 events but cannot abolish them; what survives lands on whichever benchmarks were unlucky, and never
 the same ones twice.
 
-### The measurement that decides it
+### What the positive control exposed, after the first fix
+
+The bracketed control passed its positive control once (60 benchmarks, 0 failures) and then failed
+it: **2 of 60** on a later session, both `log_ratio` at binary32, each claiming at least 1.0109 and
+1.0155 in *every one of six pairs* while its own concurrent control was quiet (floors 0.0040 and
+0.0033). Identical binary on both sides.
+
+The first hypothesis was a position effect — the candidate always runs second of three, so anything
+specific to the middle window is invisible to a control measured between windows one and three. The
+data refuses it. Over 60 benchmarks the median candidate-to-baseline ratio is **0.9994** under
+`criterion` 0.5.1 and **0.9989** under 0.8.2, with 24 and 18 of 60 above 1.0: no systematic offset,
+in either direction, under either version.
+
+What remains is an independence failure. With the replicate loop *inside* the benchmark loop, a
+benchmark's three triplets ran consecutively, so all six of its pairs were taken inside about 30 s.
+The all-pairs rule survives one disturbed window; it does not survive a disturbance that outlasts the
+whole span, and such a disturbance leaves the control quiet because it covers the control's two
+windows equally. So the rule as first stated — "an isolated disturbance cannot satisfy it" — was
+true of a window and false of a span.
+
+The fix costs nothing: run the replicate loop **outermost**, a full pass of all 60 benchmarks per
+replicate. A benchmark's triplets are then about 20 min apart here, the windows within a triplet stay
+contiguous (which the adjacency measurement above requires), and a 30-second disturbance can spoil at
+most one triplet of three. The same total windows are measured.
+
+### The measurement that decides the floor
 
 Four A/A runs of the same protocol, same binary, same machine, same flags, over one day:
 
@@ -116,10 +141,12 @@ answered.
    gate does not read it. §9's *substance* — "a measured floor, not an asserted percentage" — is
    what the concurrent control serves, and the stored floor as literally specified is the one thing
    the measurement rules out.
-3. **A regression must appear in every pair.** Each benchmark yields `REPLICATES` × 2 candidate
-   pairs, and the gate fails only when every one puts its whole CI above $1 + \text{floor}$. §9's
-   rule is the per-pair test; requiring all of them is what an isolated disturbance cannot satisfy,
-   and isolated disturbances are what every false verdict here has been.
+3. **A regression must appear in every pair, and the pairs must be spread over the run.** Each
+   benchmark yields `REPLICATES` × 2 candidate pairs, and the gate fails only when every one puts
+   its whole CI above $1 + \text{floor}$. §9's rule is the per-pair test; requiring all of them is
+   what a *short* disturbance cannot satisfy. That is not sufficient on its own, and the correction
+   is in the Measurement below: the **replicate loop is the outer one**, so a benchmark's three
+   triplets are a whole pass apart rather than consecutive, at no extra cost.
 4. **The gate reports its own resolution, every run.** A pass under a 0.3% floor and a pass under a
    30% floor are not the same statement, so `--against` prints the median and worst concurrent
    floor beside the verdict. An effect smaller than a benchmark's own floor is reported as "below
@@ -179,6 +206,8 @@ candidate suffers is not in the control. The order is the whole point.
    directly — verified by `xtask/src/bench/`'s tests and by `HOST.md`'s recorded runs. **Landed.**
 2. The bracketed concurrent control and the every-pair rule — verified by
    `a_regression_must_appear_in_every_pair` and `the_report_orders_by_the_middle_pair`. **Landed.**
+2a. The replicate loop outermost, so a benchmark's triplets are a pass apart. **Landed**; its own
+   re-validation is step 3's, re-run.
 3. Positive control: the identical binary as its own baseline, through the whole `--against` path.
    **Landed: 60 benchmarks, 0 failures**, on a session whose worst concurrent floor was 0.5909 —
    the condition under which every stored floor produced false verdicts.

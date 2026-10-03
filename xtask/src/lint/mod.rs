@@ -7,6 +7,7 @@ mod closure;
 mod comments;
 mod drafts;
 mod generated;
+mod kernel;
 mod metadata;
 mod sweep;
 mod untracked;
@@ -61,7 +62,12 @@ impl fmt::Display for Violation {
 type Check = fn(&[File]) -> Vec<Violation>;
 
 /// Independent checks; add a line here and nothing else.
-const CHECKS: &[Check] = &[citations::check, drafts::check, generated::check_registry];
+const CHECKS: &[Check] = &[
+    citations::check,
+    drafts::check,
+    generated::check_registry,
+    kernel::check,
+];
 
 /// Checks over the parsed `cargo metadata` of the workspace.
 type ManifestCheck = fn(&Metadata) -> Vec<Violation>;

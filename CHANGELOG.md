@@ -9,6 +9,21 @@ defined by the status tables in `docs/`; they win over this file.
 
 ### Changed
 
+- **`bench-gate --against` runs its replicate loop outermost**, a full pass of all 60 benchmarks per
+  replicate. Measured: with it innermost, a benchmark's six candidate pairs were all taken inside
+  about 30 s, so they were not independent, and **2 of 60** identical-code benchmarks failed with a
+  quiet concurrent control -- the all-pairs rule survives one disturbed window but not a disturbance
+  outlasting the whole span, which leaves the control quiet because it covers both control windows
+  equally. A middle-window bias was the first explanation and the data refused it: over 60 benchmarks
+  the median candidate-to-baseline ratio is 0.9994 and 0.9989 under two `criterion` versions. The
+  windows within a triplet stay contiguous, the same total windows are measured, and a benchmark's
+  three triplets are now about 20 min apart (`0033`, draft).
+- `cargo xtask lint` checks that `libm::` appears only in `helicoid-linalg`'s `float.rs`, the one
+  private kernel D16 routes every transcendental through. It holds today by construction -- six calls
+  there, none in `Dual`, which inherits through `Real` -- and `no_std` enforced only half of it, since
+  removing `std` makes `f64::sin` as an inherent method vanish but stops nobody adding a second call
+  site on purpose. Tests and doc comments are exempt: a test pinning `Real::atan2` against
+  `libm::atan2` is the twin comparison D6 asks for (`0034`, draft, plan step 1).
 - `criterion` moves from `=0.5.1` to `=0.8.2`, `sha2` to 0.11 and `num-bigint` to 0.5 (dependabot).
   The pin stays exact: §9 pins it so the harness's behaviour is a deliberate choice, and 0.8.2 was
   checked against what `bench-gate` actually depends on -- `--save-baseline` slots persist,
@@ -46,6 +61,17 @@ defined by the status tables in `docs/`; they win over this file.
 
 ### Added
 
+- `cargo xtask bench-gate --against <binary> --record <dir>` and `--replay <dir>`, which split the
+  gate's twenty-minute measurement from the arithmetic it feeds. The decision rule -- median, paired
+  bootstrap CI, swap-invariant `δ`, every-pair-above-the-floor -- is a pure, seeded function of
+  sample vectors, so validating it never needed a quiet machine; it needed data. `--record` copies
+  every window criterion writes, `--replay` runs the identical rule and report over a recording and
+  measures nothing, and the contamination properties are now ordinary tests: one disturbed window, a
+  disturbance spanning one triplet, uniform drift, and a real slowdown. The 30-second independence
+  failure that cost a twenty-minute run to find is four lines (`0035`, draft).
+  The stored format is criterion's own `sample.json`, copied byte for byte: lossless by construction,
+  no second parser, diffable against `target/criterion`, and a replay goes through
+  `samples::read_file` so the `times`/`iters` division is replayed rather than assumed.
 - `docs/decisions/0034` (draft): D16 states an implementation and claims a property, and the property
   holds only per *resolved* `libm` version -- the workspace declares `libm = "0.2"`, correctly for a
   library, so a patch release may legally move bits, and nothing records which version produced a

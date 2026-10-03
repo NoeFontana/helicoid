@@ -138,6 +138,12 @@ envelope *args: conformance
 bench *args:
     cargo xtask bench-gate {{args}}
 
+# Re-run the gate's decision rule over a recording, measuring nothing (`docs/decisions/0035`, draft).
+# `just bench --against <binary> --record <dir>` writes one; this replays it in milliseconds, so the
+# statistic can be changed and re-judged without paying for a quiet machine twice.
+bench-replay dir:
+    cargo xtask bench-gate --replay {{dir}}
+
 # The threshold sweep of the seeded kernels over the corpus (`docs/PHASE1.md` §6): writes
 # conformance/sweeps/thresholds.csv and xtask/src/seeded/generated.rs. `coeffs/generated.rs`
 # joins them with Phase 3. The second is compiled into xtask: a hand edit that no longer compiles
