@@ -3,6 +3,7 @@
 
 #![allow(clippy::print_stderr)]
 
+mod bench;
 mod conformance;
 mod envelope;
 mod lint;
@@ -13,7 +14,13 @@ mod thresholds;
 use std::process::ExitCode;
 
 /// Every implemented task; the usage line and the unknown-task error read this list.
-const TASKS: &[&str] = &["lint", "conformance", "thresholds", "envelope"];
+const TASKS: &[&str] = &[
+    "lint",
+    "conformance",
+    "thresholds",
+    "envelope",
+    "bench-gate",
+];
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -23,6 +30,7 @@ fn main() -> ExitCode {
         conformance::run,
         thresholds::run,
         envelope::run,
+        bench::run,
     ) {
         ExitCode::SUCCESS
     } else {
@@ -39,6 +47,7 @@ fn dispatch(
     conformance: impl FnOnce(&[String]) -> Result<(), String>,
     thresholds: impl FnOnce(&[String]) -> Result<(), String>,
     envelope: impl FnOnce(&[String]) -> Result<(), String>,
+    bench_gate: impl FnOnce(&[String]) -> Result<(), String>,
 ) -> bool {
     match args.first().map(String::as_str) {
         Some("lint") => match lint() {
@@ -76,6 +85,13 @@ fn dispatch(
                 false
             }
         },
+        Some("bench-gate") => match bench_gate(&args[1..]) {
+            Ok(()) => true,
+            Err(e) => {
+                eprintln!("xtask bench-gate: {e}");
+                false
+            }
+        },
         Some(task) => {
             eprintln!("xtask: `{task}` is not implemented (docs/PHASE1.md §0.0); have: {TASKS:?}");
             false
@@ -104,6 +120,7 @@ mod tests {
                 |_| conf,
                 |_| Err("unused".into()),
                 |_| Err("unused".into()),
+                |_| Err("unused".into()),
             )
         };
         assert!(run(&["lint"], Ok(vec![]), Ok(())));
@@ -130,6 +147,7 @@ mod tests {
                 |_| Ok(()),
                 check,
                 |_| Err("unused".into()),
+                |_| Err("unused".into()),
             )
         };
         assert!(thr(&["thresholds", "--check"]) && !thr(&["thresholds"]));
@@ -146,6 +164,7 @@ mod tests {
                     assert_eq!(rest, ["--check"]);
                     out
                 },
+                unused,
             )
         };
         assert!(env(&["envelope", "--check"], Ok(())));
@@ -165,6 +184,7 @@ mod tests {
                 seen.borrow_mut().extend(rest.iter().cloned());
                 Ok(())
             },
+            |_| Err("unused".into()),
             |_| Err("unused".into()),
             |_| Err("unused".into()),
         );

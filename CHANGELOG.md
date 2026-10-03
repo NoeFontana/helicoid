@@ -31,6 +31,44 @@ defined by the status tables in `docs/`; they win over this file.
 
 ### Added
 
+- The bench harness and `cargo xtask bench-gate` (`docs/PHASE1.md` §9, `docs/PHASE3.md` §11's
+  owed-first row), which did not exist: `criterion` pinned at `=0.5.1` in `crates/helicoid/benches`
+  over the shipped coefficient kernel through `__sweep` (so the code timed is the code that ships),
+  60 benchmarks by stratum -- §9's near-identity, generic and near-π plus the two switch
+  neighbourhoods, since a group's cost is which arm ran. `just bench` runs it: `--against` gates,
+  `--aa` measures this host's A/A noise, `--bless` writes what each mode measured, and the bare
+  form reports against the committed samples.
+- `cargo xtask bench-gate --against <bench-binary>`: §9's gate. Each benchmark runs **baseline,
+  candidate, baseline**, three times, so the A/A floor is a control measured *beside* the
+  comparison, on the same benchmark, in the same invocation -- and a benchmark fails only when all
+  six candidate pairs put their whole CI above `1 + floor`. Validated by both controls: the
+  identical binary as its own baseline gives **0 of 60** failures, and slowing
+  `coeffs::kernel::exact_a` fails **5 of the 5** benchmarks that evaluate it at 1.38x to 1.57x.
+- `baseline/HOST.md`: a **log** of what this host's A/A noise has shown, written by `--aa --bless`.
+  It is not the gate's allowance, and `--against` does not read it. The samples under
+  `baseline/bench/` are *not* committed (`.gitignore`): an accuracy maximum is a function of the
+  source and the corpus alone (D16) and travels, a timing is one core under one load and does not.
+- `docs/decisions/0033` (draft): the estimator choices §9 leaves open, each settled by a
+  measurement that refuted the first guess, and the §9 deviation the gate now carries -- §9 records
+  `δ` in `HOST.md`, and this host says a stored `δ` cannot be an allowance.
+
+### Changed
+
+- **A stored noise floor is not an allowance on this host, and the gate no longer uses one.** The
+  same `--aa` protocol, the same binary against itself, measured a worst `δ` of 0.0161 in one
+  session and **0.6864** a few hours later -- 23 of 60 benchmarks above 2% where the first run had
+  none. A floor from the quiet session fails identical code (8 of 60); one from the noisy session
+  would pass a 50% regression. Nothing in the protocol changed between them, so what moved is the
+  machine. Per-benchmark floors, and an accumulated maximum over runs, were both implemented and
+  both refuted by measurement before the concurrent control replaced them (`0033`, draft).
+- **The cross-run comparison against committed samples is reported, never gated.** A stored
+  baseline is not adjacent in time by construction: identical code against samples blessed earlier
+  the same day read 0.49x to 2.04x, 27 of 60 past their floor. `--against` is what gates.
+- **A gate failure says the two binaries differ at that benchmark, not that the change caused it.**
+  The negative control also failed four `exp_coeffs` benchmarks at 1.016x to 1.041x, which have no
+  path to `exact_a` -- it has one caller. Between the two binaries 2 of 3192 text symbols changed
+  size, `.text` grew 64 bytes and 2997 symbols kept an identical size at a different address:
+  byte-identical code, relocated. Source locality does not survive to machine level.
 - `docs/decisions/0032` (draft): `so3_log`'s 8 domination failures are not an algorithm. `Log` is the
   same program in `helicoid` and both oracles (D5, the quaternion `atan2`); the gap is the `libm`
   crate's `atan2` against the host's glibc, which D16 buys and `error-analysis.md` EA.13(d)
