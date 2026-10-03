@@ -198,6 +198,66 @@ Two switches are faster than today at both ends and never worse than config E.
 is which arm ran; the direction transfers and the magnitudes are the arms'. `benches/coeffs.rs`
 measures the real thing and the real comparison needs the regenerated file.
 
+### The second switch is free to search, because it is not part of the accuracy problem
+
+Open question 6 asked what a two-switch search costs the sweep, and guessed `m₀ × m₁ × grid²`.
+That is the wrong shape. Run as a joint minimisation over the sweep's own per-sample arm errors, the
+two-switch search returns a **degenerate** answer on seven of eight coefficients — `m₀ = 1`,
+`z₀ = 0`, the low arm serving nothing — for a structural reason:
+
+**A second switch cannot improve the objective.** `Score::objective` is a maximum over the records,
+and the long arm already attains it wherever it is selected; adding a shorter arm underneath can
+only raise a record's error, never lower the maximum. So the second switch is not an accuracy
+degree of freedom at all. It is a *cost* degree of freedom, and the search is two stages, not one:
+
+1. minimise the objective with one switch — exactly today's search, unchanged;
+2. then find the cheapest arm that **holds** that objective: the smallest `m₀` whose prefix maximum
+   stays at or below it, and the largest `z₀` it reaches.
+
+Stage 2 is `O(m · n)` over a prefix maximum per term count. There is no `grid²`.
+
+### What stage 2 finds, at identical accuracy
+
+For each coefficient, the term count that holds the one-switch objective over a given share of the
+corpus's records, and the record-weighted cost of serving 90% from the short arm and the rest from
+the long one (arm costs as measured above, interpolated for the lengths not benched):
+
+| coefficient | objective | terms for 100% | 50% | 90% | 99% | two switches | one switch | |
+|---|---|---|---|---|---|---|---|---|
+| `k` | 2.201 u | 11 | 4 | **7** | 10 | 2.24 ns | 3.70 ns | 1.65× |
+| `a` | 2.564 u | 14 | 4 | **7** | 12 | 2.40 ns | 5.34 ns | 2.22× |
+| `b` | 1.998 u | 14 | 4 | **7** | 12 | 2.40 ns | 5.34 ns | 2.22× |
+| `c` | 94.48 u | 16 | 3 | **7** | 14 | 2.51 ns | 6.43 ns | 2.56× |
+| `d` | 1.873 u | 13 | 4 | **7** | 12 | 2.35 ns | 4.77 ns | 2.03× |
+| `e` | 2.65 u | 14 | 4 | **7** | 12 | 2.40 ns | 5.34 ns | 2.22× |
+| `cos θ/2` | 1.779 u | 10 | 4 | **7** | 10 | 2.19 ns | 3.20 ns | 1.46× |
+| `r` | 36.64 u | 15 | 4 | 8 | 14 | 2.76 ns | 5.88 ns | 2.13× |
+| **catalogue** | | | | | | **19.25 ns** | **40.00 ns** | **2.08×** |
+
+**Seven terms hold the full objective for 90% of the records of every coefficient but `r`**, and the
+last 10% is what drives the count to 10–16. One switch makes that 90% pay the last 10%'s price. The
+ladder for `e`, at its 2.65 u:
+
+| terms | holds 2.65 u for | share of records | ns |
+|---|---|---|---|
+| 2 | `z < 7.1e-15` | 22.2% | 0.80 |
+| 3 | `z < 4.7e-7` | 46.7% | 1.01 |
+| 4 | `z < 3.1e-4` | 68.5% | 1.22 |
+| 5 | `z < 8.1e-3` | 79.3% | 1.41 |
+| 8 | `z < 0.676` | 94.1% | 2.41 |
+| 12 | `z < 7.862` | 99.0% | 4.20 |
+| 14 | everywhere | 100.0% | 5.34 |
+
+So `e`'s fourteenth term exists for **the last 1% of the domain**. A two-switch kernel at 8 and 14
+costs 2.41 ns on 94% of records and 5.34 ns on 6% — **at parity with the committed kernel's
+near-identity latency, and 3278× more accurate**.
+
+**The weighting is the corpus's, not a consumer's.** Records are log-uniform across decades of `θ`
+by design (`error-analysis.md` EA.21), so "90% of records" is 90% of a deliberately flat sample and
+not a usage distribution; a consumer holding mostly near-identity poses gains more, one holding
+mostly large rotations less. The term counts are exact; the shares and the nanoseconds are
+corpus-weighted.
+
 ## Decision
 
 Proposed, not settled.
@@ -225,9 +285,15 @@ Proposed, not settled.
    near-identity `θ` — `PHASE3.md` §11's stated priority — while two switches are **faster than the
    committed kernel at both ends** (1.39× at near-identity, 1.72× above every switch) and cost one
    branch of 0.1 ns. The term count a series arm needs is set by the largest `z` it serves and paid
-   by the smallest; one switch makes every input pay the hardest one's price. This is the third way
-   the search space is too small, after the ceiling and the cap, and it is the one that changes the
-   generated file's *shape* rather than its numbers.
+   by the smallest; one switch makes every input pay the hardest one's price, and at identical
+   accuracy that price is **2.08× over the catalogue**. This is the third way the search space is
+   too small, after the ceiling and the cap, and it is the one that changes the generated file's
+   *shape* rather than its numbers.
+6. **The second switch is searched after the objective, not with it**, because it cannot change the
+   objective (the maximum is already attained by the long arm). Stage 1 is today's search unchanged;
+   stage 2 is the cheapest arm that holds stage 1's objective, `O(m · n)` over a prefix maximum. §6
+   should say so, since a joint search returns a degenerate answer and a reader would read that as
+   "a second switch buys nothing".
 
 ## Rationale
 
@@ -303,10 +369,11 @@ the same change seen properly.
    what let this stand.
 6. ~~Does retiring a coefficient's exact arm change its cost?~~ **Measured above: it is cheaper
    where it replaces an exact arm and dearer where it lengthens a series arm**, and a second switch
-   removes the second half. Open: what does a two-switch search cost the sweep (its candidate space
-   is `m₀ × m₁ × grid²`, about 1.8 × 10⁸ against today's 1.7 × 10⁴, so the exhaustive loop in
-   `search::search` does not survive it), and does `Switch` gain a second arm or does `coeffs`
-   nest two?
+   removes the second half at identical accuracy, 2.08× over the catalogue. ~~And what does a
+   two-switch search cost?~~ **Nothing: it is `O(m · n)` after stage 1, not `m₀ × m₁ × grid²`.**
+   Open: does `Switch` gain a second arm or does `coeffs` nest two branches, and what share does
+   stage 2 target — 90% of records is a corpus weighting, and the right answer is a consumer's
+   distribution, which no record states.
 7. Do the arm timings hold for the shipped **groups**? `exp_coeffs` evaluates several coefficients
    in one `S::branch` and takes the exact closure as soon as one member passes its switch, so a
    group's switch is the smallest of its members' and a second switch changes which closure runs for
