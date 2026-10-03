@@ -15,7 +15,9 @@
 //!   question 19).
 //! - **Products** are 3×3 matrix products, entry `(r, c)` summed `(t₀ + t₁) + t₂`, each word of §5.3
 //!   associated left to right as it is written, and `J_l(φ) = I + aW + bW²` is formed as a matrix
-//!   (`W²` is `W·W`, not `φφᵀ − θ²I`) before it multiplies `ρ_i` (question 25).
+//!   before it multiplies `ρ_i` (question 25). `W²` is [`W2::Product`] here; [`W2::Identity`] is
+//!   the same matrix by `φφᵀ − θ²I` and is the twin of 0037 (draft). `Q`'s own `W·W` is a product
+//!   under both: the variable is the `b W²` term of `J_l` alone.
 //! - **`J_r(τ)` is `J_l(−τ)`** (`docs/maths/se3.md` SE.9(a)): §5.3's `Q(−ρ_i, −φ)` and
 //!   `J_r(φ) = J_l(−φ)`, so the two sides share every operation and differ by the sign of the
 //!   tangent, which is exact.
@@ -110,9 +112,36 @@ fn scale<S: Real>(s: S, a: &Mat<S>) -> Mat<S> {
     a.map(|row| row.map(|x| s * x))
 }
 
-/// `J_l(φ) = I + a W + b W²` (`NUMERICS.md` §3.5), `W = φ^`.
-fn jl_so3<S: Real>(w: &Mat<S>, a: S, b: S) -> Mat<S> {
-    add(&add(&identity(), &scale(a, w)), &scale(b, &mul(w, w)))
+/// How the `b W²` term of `J_l` is formed. One variable, and `NUMERICS.md` §3.5 fixes neither
+/// (0014 (draft) question 25 names both; 0037 (draft) is the twin that measures it).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum W2 {
+    /// `W·W`, a matrix product: `seeded:correct`'s reading. Entry `(r, c)` is a three-term
+    /// row-by-column sum, and the diagonal ones are `φ_r² − θ²` reached that way.
+    Product,
+    /// `φφᵀ − θ²I`, the algebraic identity. Off the diagonal an entry is one product; on it, one
+    /// subtraction of like-sized quantities.
+    Identity,
+}
+
+/// `W² = (φ^)²`, by `form`. The two agree exactly in real arithmetic
+/// (`the_two_w2_forms_are_one_matrix_to_rounding`); they do not agree in the bits.
+fn w2<S: Real>(form: W2, w: &Mat<S>, phi: [S; 3], z: S) -> Mat<S> {
+    match form {
+        W2::Product => mul(w, w),
+        W2::Identity => std::array::from_fn(|r| {
+            std::array::from_fn(|c| match r == c {
+                true => phi[r] * phi[c] - z,
+                false => phi[r] * phi[c],
+            })
+        }),
+    }
+}
+
+/// `J_l(φ) = I + a W + b W²` (`NUMERICS.md` §3.5), `W = φ^`, with `W²` by `form`.
+fn jl_so3<S: Real>(w: &Mat<S>, a: S, b: S, form: W2, phi: [S; 3], z: S) -> Mat<S> {
+    let square = w2(form, w, phi, z);
+    add(&add(&identity(), &scale(a, w)), &scale(b, &square))
 }
 
 /// `Q(ρ, φ)` of `NUMERICS.md` §5.3 with `half` for its `½` (`±½`: the planted defect).
@@ -146,12 +175,14 @@ pub(crate) fn exp<S: Real>(
     tau: &[S],
     kernels: &Kernels<S>,
     order: Order,
+    form: W2,
 ) -> Option<([S; 4], Vec<S>)> {
     let (phi, rho) = split(tau, order)?;
     let (candidate, series) = kernels.arms[Coeff::K.index()];
     let q = so3::exp(phi, candidate, series);
     let z = norm_sq(phi);
-    let j = jl_so3(&hat(phi), kernels.at(Coeff::A, z), kernels.at(Coeff::B, z));
+    let (a, b) = (kernels.at(Coeff::A, z), kernels.at(Coeff::B, z));
+    let j = jl_so3(&hat(phi), a, b, form, phi, z);
     Some((q, rho.iter().flat_map(|&r| apply(&j, r)).collect()))
 }
 
@@ -162,13 +193,14 @@ pub(crate) fn jacobian<S: Real>(
     right: bool,
     kernels: &Kernels<S>,
     half: S,
+    form: W2,
 ) -> Option<Vec<S>> {
     let signed: Vec<S> = tau.iter().map(|&t| if right { -t } else { t }).collect();
     let (phi, rho) = split(&signed, Order::RotationFirst)?;
     let z = norm_sq(phi);
     let [a, b, d, e] = [Coeff::A, Coeff::B, Coeff::D, Coeff::E].map(|c| kernels.at(c, z));
     let w = hat(phi);
-    let diagonal = jl_so3(&w, a, b);
+    let diagonal = jl_so3(&w, a, b, form, phi, z);
     let m = 3 + 3 * rho.len();
     let mut dense = vec![S::zero(); m * m];
     let mut put = |block: (usize, usize), values: &Mat<S>| {
@@ -201,17 +233,76 @@ mod tests {
         v.iter().map(|c| c.v).collect()
     }
 
-    fn exp64(tau: &[f64], order: Order) -> Result<([f64; 4], Vec<f64>), String> {
+    fn exp_form(tau: &[f64], order: Order, form: W2) -> Result<([f64; 4], Vec<f64>), String> {
         let kernels = Seeded::generated();
-        let (q, x) = exp(&constants(tau), &kernels.kernels(), order).ok_or(BAD_LENGTH)?;
+        let (q, x) = exp(&constants(tau), &kernels.kernels(), order, form).ok_or(BAD_LENGTH)?;
         Ok((q.map(|c| c.v), values(&x)))
     }
 
-    fn jac64(tau: &[f64], right: bool, half: f64) -> Result<Vec<f64>, String> {
+    fn exp64(tau: &[f64], order: Order) -> Result<([f64; 4], Vec<f64>), String> {
+        exp_form(tau, order, W2::Product)
+    }
+
+    fn jac_form(tau: &[f64], right: bool, half: f64, form: W2) -> Result<Vec<f64>, String> {
         let generated = Seeded::generated();
         let half = D1::constant(half);
-        let j = jacobian(&constants(tau), right, &generated.kernels(), half);
+        let j = jacobian(&constants(tau), right, &generated.kernels(), half, form);
         Ok(values(&j.ok_or(BAD_LENGTH)?))
+    }
+
+    fn jac64(tau: &[f64], right: bool, half: f64) -> Result<Vec<f64>, String> {
+        jac_form(tau, right, half, W2::Product)
+    }
+
+    /// The twin's control. `W·W` and `φφᵀ − θ²I` are one matrix in real arithmetic, so the two
+    /// subjects must agree to rounding everywhere and differ only in the bits: a form twin has no
+    /// published column to reproduce, and this identity is what stands in for one (0037, draft).
+    #[test]
+    fn the_two_w2_forms_are_one_matrix_to_rounding() -> Result<(), String> {
+        let mut differed = 0usize;
+        for theta in [1e-9, 1e-3, 0.5, 0.95, 1.4, 2.6, std::f64::consts::PI - 1e-6] {
+            let tau = tangent(theta);
+            for (right, half) in [(false, 0.5), (true, 0.5)] {
+                let p = jac_form(&tau, right, half, W2::Product)?;
+                let i = jac_form(&tau, right, half, W2::Identity)?;
+                // `θ²` is the scale of `W²`, so a few ulp of it is the whole disagreement.
+                let tol = 8.0 * f64::EPSILON * (1.0 + theta * theta);
+                close(&p, &i, tol);
+                let bits = |v: &[f64]| v.iter().map(|x| x.to_bits()).collect::<Vec<_>>();
+                differed += usize::from(bits(&p) != bits(&i));
+            }
+            let e = (
+                exp_form(&tau, Order::RotationFirst, W2::Product)?,
+                exp_form(&tau, Order::RotationFirst, W2::Identity)?,
+            );
+            close(
+                &e.0 .1,
+                &e.1 .1,
+                8.0 * f64::EPSILON * (1.0 + theta * theta).max(1.0) * 2.0,
+            );
+        }
+        // And they are not one program. The variable is `W²`, so it is probed there: the assembled
+        // `J` can swallow the difference, which `differed` records rather than asserts — at
+        // θ = 1e-9 the `b W²` term is 1e-19 against the identity's 1.0 and the addition annihilates
+        // it, and at this one fixed direction the larger θ happen to agree.
+        let mut state = 0x243F_6A88_85A3_08D3u64;
+        let mut next = || {
+            state = state
+                .wrapping_mul(6_364_136_223_846_793_005)
+                .wrapping_add(1_442_695_040_888_963_407);
+            (state >> 11) as f64 / (1u64 << 53) as f64
+        };
+        let mut w2_differed = 0usize;
+        for _ in 0..2000 {
+            let phi = [next() - 0.5, next() - 0.5, next() - 0.5].map(|c| 6.0 * c);
+            let (w, z) = (hat(phi), norm_sq(phi));
+            let bits = |m: Mat<f64>| m.map(|r| r.map(f64::to_bits));
+            let (p, i) = (w2(W2::Product, &w, phi, z), w2(W2::Identity, &w, phi, z));
+            w2_differed += usize::from(bits(p) != bits(i));
+        }
+        assert!(w2_differed > 100, "{w2_differed} of 2000 directions");
+        assert_eq!(differed, 0, "one fixed direction, seven θ");
+        Ok(())
     }
 
     /// `[φ; ρ₁; ρ₂]` with `|φ| = theta`.

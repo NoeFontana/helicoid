@@ -67,3 +67,4 @@
 - [0035: Validation has three layers, and one of them needs a quiet machine (draft)](decisions/0035-validation-has-three-layers-and-one-needs-a-quiet-machine.md)
 - [0036: The silence in §5.1 costs twenty domination failures (draft)](decisions/0036-the-silence-in-5-1-costs-twenty-domination-failures.md)
 - [0037: Six records cannot answer a one-variable question (draft)](decisions/0037-six-records-cannot-answer-a-one-variable-question.md)
+- [0038: A program comparison is not a bar (draft)](decisions/0038-a-program-comparison-is-not-a-bar.md)

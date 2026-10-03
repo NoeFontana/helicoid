@@ -57,6 +57,10 @@ pub(crate) use so3::takes_series_arm;
 /// transcendentals, which the envelope reads to attribute a domination failure.
 pub(crate) const TWIN: &str = host::NAME;
 
+/// The assembly-form twin's subject name (`0037`, draft): `seeded:correct` with `J_l`'s `W²` by
+/// `φφᵀ − θ²I` instead of `W·W`, and nothing else changed.
+pub(crate) const TWIN_W2: &str = "seeded:w2-identity";
+
 /// The planted `c` (`docs/PHASE1.md` §10): two terms below `z = 1e-16`, §10's `1e-8` read as `θ`
 /// (0014 (draft) question 14), which is the first point of the sweep's grid.
 pub(crate) const C_PLANTED: (usize, f64) = (2, 1e-16);
@@ -157,6 +161,9 @@ pub(crate) struct Seeded {
     name: String,
     version: String,
     defect: Option<Defect>,
+    /// How the `b W²` term of `J_l` is formed. `seeded:correct` and every defect run
+    /// `W2::Product`; the twin of 0037 (draft) runs `W2::Identity` and changes nothing else.
+    form: se3::W2,
     /// By [`Swept::index`].
     arms: [Arm<D1>; 8],
     /// By [`Swept::index`], at `f32`, or why the subject has none.
@@ -190,8 +197,26 @@ impl Seeded {
             name: "seeded:correct".to_string(),
             version: "generated".to_string(),
             defect: None,
+            form: se3::W2::Product,
             arms: switches.map(Arm::generated),
             arms32: Ok(switches32.map(Arm::generated)),
+        }
+    }
+
+    /// The correct kernels with `J_l`'s `W²` by the algebraic identity: the one-variable twin of
+    /// 0037 (draft) for an assembly form, as `host::Twin` is for a library. Planted, so no plain
+    /// run and no bar reads it.
+    pub(crate) fn w2_identity() -> Self {
+        Self {
+            name: TWIN_W2.to_string(),
+            version: "generated@w2-identity".to_string(),
+            form: se3::W2::Identity,
+            arms32: Err(
+                "the `W²` form twin is a binary64 subject; the `@f32` strata are the \
+                         coefficient ids' own"
+                    .to_string(),
+            ),
+            ..Self::generated()
         }
     }
 
@@ -203,6 +228,7 @@ impl Seeded {
             name: "seeded:correct".to_string(),
             version: format!("{}terms-z{}", candidate.terms, candidate.switch_z.v),
             defect: None,
+            form: se3::W2::Product,
             arms: Swept::ALL.map(|id| Arm {
                 candidate,
                 series: series.swept(id).to_vec(),
@@ -283,7 +309,7 @@ impl Seeded {
             version: self.version.clone(),
             version_f32: self.version.clone(),
             no_f32: self.arms32.as_ref().err().cloned(),
-            planted: self.defect.is_some(),
+            planted: self.defect.is_some() || self.form != se3::W2::Product,
             subject: Box::new(self),
         }
     }
@@ -394,6 +420,7 @@ fn sen3_at<S: Real + Into<f64> + From<f64>>(
     kernels: &se3::Kernels<'_, Dual<S, 1>>,
     order: se3::Order,
     half: f64,
+    form: se3::W2,
 ) -> Output {
     let (Some((op, n)), Some(tau)) = (se3::parse(fn_id), record.input("tau")) else {
         return Output::new();
@@ -405,14 +432,14 @@ fn sen3_at<S: Real + Into<f64> + From<f64>>(
     let value = |v: &[Dual<S, 1>]| v.iter().map(|c| c.v.into()).collect::<Vec<f64>>();
     match op {
         se3::Op::Exp => {
-            let Some((q, x)) = se3::exp(&tau, kernels, order) else {
+            let Some((q, x)) = se3::exp(&tau, kernels, order, form) else {
                 return Output::new();
             };
             Output::from([("q".to_string(), value(&q)), ("x".to_string(), value(&x))])
         }
         se3::Op::Jr | se3::Op::Jl => {
             let half = Dual::constant(S::from(half));
-            let j = se3::jacobian(&tau, op == se3::Op::Jr, kernels, half);
+            let j = se3::jacobian(&tau, op == se3::Op::Jr, kernels, half, form);
             j.map_or_else(Output::new, |j| {
                 Output::from([("J".to_string(), value(&j))])
             })
@@ -448,7 +475,7 @@ impl Seeded {
         } else {
             0.5
         };
-        sen3_at(fn_id, record, &self.kernels(), order, half)
+        sen3_at(fn_id, record, &self.kernels(), order, half, self.form)
     }
 
     fn log(&self, record: &Record) -> Output {
@@ -475,6 +502,7 @@ pub(crate) fn registry() -> Vec<Registered> {
         .chain(Defect::SE3);
     all.extend(defects.map(|d| Seeded::planted(d).registered()));
     all.push(host::Twin::registered());
+    all.push(Seeded::w2_identity().registered());
     all
 }
 
@@ -611,21 +639,32 @@ mod tests {
             ("seeded:se3-exp-translation-first", true),
             ("seeded:q-minus-half", true),
             ("seeded:host-std", true),
+            ("seeded:w2-identity", true),
         ];
         assert_eq!(names, want);
-        // Every subject runs the generated kernels; the twin says in its version which library
-        // evaluated them, since that is the only thing it changes (`0037`, draft).
+        // Every subject runs the generated kernels; a twin says in its version what it changed,
+        // since that is the only thing it changes (`0037`, draft; `0038`, draft).
         let kernels: Vec<&str> = all.iter().map(|r| r.version.as_str()).collect();
         assert_eq!(kernels[..8], ["generated"; 8]);
-        assert_eq!(kernels[8], "generated@host-std");
+        assert_eq!(
+            kernels[8..],
+            ["generated@host-std", "generated@w2-identity"]
+        );
         assert!(all
             .iter()
             .all(|r| r.version_at(Precision::F32) == r.version));
-        // Two subjects have no `f32` kernel: the planted `c`, a candidate of the binary64 sweep,
-        // and the twin, whose subject is the host's binary64 transcendentals.
+        // Three subjects have no `f32` kernel: the planted `c`, a candidate of the binary64 sweep,
+        // and the two twins, whose subjects are binary64 readings.
         let none = all.iter().filter(|r| r.no_f32.is_some());
         let none: Vec<&str> = none.map(|r| r.subject.name()).collect();
-        assert_eq!(none, ["seeded:c-two-terms-1e-8", "seeded:host-std"]);
+        assert_eq!(
+            none,
+            [
+                "seeded:c-two-terms-1e-8",
+                "seeded:host-std",
+                "seeded:w2-identity"
+            ]
+        );
     }
 
     #[test]
