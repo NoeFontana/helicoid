@@ -32,6 +32,7 @@
 //! (`the_dual_value_path_is_the_plain_value`).
 
 mod generated;
+mod host;
 mod kernel;
 pub(crate) mod se3;
 mod series;
@@ -270,12 +271,7 @@ impl Seeded {
     /// The generated kernels of all six coefficients, as `se3` reads them: the correct subject's,
     /// a coefficient defect being planted by `kernel`, which no `sen3_*` id reaches (`supports`).
     fn kernels(&self) -> se3::Kernels<'_, D1> {
-        se3::Kernels {
-            arms: std::array::from_fn(|i| {
-                let Arm { candidate, series } = &self.arms[i];
-                (*candidate, series.as_slice())
-            }),
-        }
+        kernels_of(&self.arms)
     }
 
     pub(crate) fn registered(self) -> Registered {
@@ -364,50 +360,91 @@ fn answer<S: Real + Into<f64>>(
     ])
 }
 
+/// `so3_exp` at the scalar `S`: `q` of one evaluation on the generated `k` of `arm`.
+fn exp_at<S: Real + Into<f64> + From<f64>>(record: &Record, arm: &Arm<Dual<S, 1>>) -> Output {
+    let Some(&[x, y, z]) = record.input("phi").and_then(|p| p.first_chunk::<3>()) else {
+        return Output::new();
+    };
+    let Arm { candidate, series } = arm;
+    let phi = [x, y, z].map(|c| Dual::constant(S::from(c)));
+    let q: [f64; 4] = so3::exp(phi, *candidate, series).map(|c| c.v.into());
+    Output::from([("q".to_string(), q.to_vec())])
+}
+
+/// `so3_log` at the scalar `S`: `phi` of `so3::log`, the quaternion `atan2` (D5).
+fn log_at<S: Real + Into<f64> + From<f64>>(record: &Record) -> Output {
+    let Some(&q) = record.input("q").and_then(|q| q.first_chunk::<4>()) else {
+        return Output::new();
+    };
+    let q: [Dual<S, 1>; 4] = q.map(|c| Dual::constant(S::from(c)));
+    let phi: [f64; 3] = so3::log(q).map(|c| c.v.into());
+    Output::from([("phi".to_string(), phi.to_vec())])
+}
+
+/// `sen3_{exp,jr,jl}_n<N>` at the scalar `S`: `q` and `x`, or the dense `J`, of the value of one
+/// `Dual<S, 1>` evaluation. `order` and `half` carry the two planted SE(3) defects; the correct
+/// kernel and the twin pass `NUMERICS.md`'s values.
+fn sen3_at<S: Real + Into<f64> + From<f64>>(
+    fn_id: &str,
+    record: &Record,
+    kernels: &se3::Kernels<'_, Dual<S, 1>>,
+    order: se3::Order,
+    half: f64,
+) -> Output {
+    let (Some((op, n)), Some(tau)) = (se3::parse(fn_id), record.input("tau")) else {
+        return Output::new();
+    };
+    if tau.len() != 3 + 3 * n {
+        return Output::new();
+    }
+    let tau: Vec<Dual<S, 1>> = tau.iter().map(|&t| Dual::constant(S::from(t))).collect();
+    let value = |v: &[Dual<S, 1>]| v.iter().map(|c| c.v.into()).collect::<Vec<f64>>();
+    match op {
+        se3::Op::Exp => {
+            let Some((q, x)) = se3::exp(&tau, kernels, order) else {
+                return Output::new();
+            };
+            Output::from([("q".to_string(), value(&q)), ("x".to_string(), value(&x))])
+        }
+        se3::Op::Jr | se3::Op::Jl => {
+            let half = Dual::constant(S::from(half));
+            let j = se3::jacobian(&tau, op == se3::Op::Jr, kernels, half);
+            j.map_or_else(Output::new, |j| {
+                Output::from([("J".to_string(), value(&j))])
+            })
+        }
+    }
+}
+
+/// The six coefficient kernels of `arms`, as `se3` reads them: [`Swept`] orders the coefficients
+/// first, so the first six are `Coeff::ALL` by [`Coeff::index`].
+fn kernels_of<S: Real>(arms: &[Arm<Dual<S, 1>>; 8]) -> se3::Kernels<'_, Dual<S, 1>> {
+    se3::Kernels {
+        arms: std::array::from_fn(|i| {
+            let Arm { candidate, series } = &arms[i];
+            (*candidate, series.as_slice())
+        }),
+    }
+}
+
 impl Seeded {
     fn exp(&self, record: &Record) -> Output {
-        let Some(&[x, y, z]) = record.input("phi").and_then(|p| p.first_chunk::<3>()) else {
-            return Output::new();
-        };
-        let Arm { candidate, series } = &self.arms[Coeff::K.index()];
-        let phi = [x, y, z].map(D1::constant);
-        let q = so3::exp(phi, *candidate, series).map(|c| c.v);
-        Output::from([("q".to_string(), q.to_vec())])
+        exp_at(record, &self.arms[Coeff::K.index()])
     }
 
-    /// `sen3_{exp,jr,jl}_n<N>`: `q`, `x` or the dense `J`, of the value of one `D1` evaluation.
+    /// `sen3_{exp,jr,jl}_n<N>`, with this subject's two planted SE(3) defects as the arguments of
+    /// [`sen3_at`]: the tangent order of `Exp`, and the sign of `Q`'s `½`.
     fn sen3(&self, fn_id: &str, record: &Record) -> Output {
-        let (Some((op, n)), Some(tau)) = (se3::parse(fn_id), record.input("tau")) else {
-            return Output::new();
+        let order = match self.defect {
+            Some(Defect::Se3ExpTranslationFirst) => se3::Order::TranslationFirst,
+            _ => se3::Order::RotationFirst,
         };
-        if tau.len() != 3 + 3 * n {
-            return Output::new();
-        }
-        let tau: Vec<D1> = tau.iter().map(|&t| D1::constant(t)).collect();
-        let (kernels, value) = (self.kernels(), |v: &[D1]| v.iter().map(|c| c.v).collect());
-        match op {
-            se3::Op::Exp => {
-                let order = match self.defect {
-                    Some(Defect::Se3ExpTranslationFirst) => se3::Order::TranslationFirst,
-                    _ => se3::Order::RotationFirst,
-                };
-                let Some((q, x)) = se3::exp(&tau, &kernels, order) else {
-                    return Output::new();
-                };
-                Output::from([("q".to_string(), value(&q)), ("x".to_string(), value(&x))])
-            }
-            se3::Op::Jr | se3::Op::Jl => {
-                let sign = if self.defect == Some(Defect::QMinusHalf) {
-                    -0.5
-                } else {
-                    0.5
-                };
-                let j = se3::jacobian(&tau, op == se3::Op::Jr, &kernels, D1::constant(sign));
-                j.map_or_else(Output::new, |j| {
-                    Output::from([("J".to_string(), value(&j))])
-                })
-            }
-        }
+        let half = if self.defect == Some(Defect::QMinusHalf) {
+            -0.5
+        } else {
+            0.5
+        };
+        sen3_at(fn_id, record, &self.kernels(), order, half)
     }
 
     fn log(&self, record: &Record) -> Output {
@@ -417,14 +454,15 @@ impl Seeded {
         let phi = match self.defect {
             Some(Defect::LogAcos) => so3::log_acos(q),
             Some(Defect::LogNoFlip) => so3::log_no_flip(q.map(D1::constant)).map(|c| c.v),
-            _ => so3::log(q.map(D1::constant)).map(|c| c.v),
+            _ => return log_at::<f64>(record),
         };
         Output::from([("phi".to_string(), phi.to_vec())])
     }
 }
 
-/// The subjects `just conformance` knows: the correct kernels and every defect. The defects are
-/// planted: a run that names no subject skips them.
+/// The subjects `just conformance` knows: the correct kernels, every defect, and the host-`std`
+/// twin ([`host`]). Everything but the correct kernels is planted: a run that names no subject
+/// skips them.
 pub(crate) fn registry() -> Vec<Registered> {
     let mut all = vec![Seeded::generated().registered()];
     let defects = Defect::COEFFICIENT
@@ -432,6 +470,7 @@ pub(crate) fn registry() -> Vec<Registered> {
         .chain(Defect::LOG)
         .chain(Defect::SE3);
     all.extend(defects.map(|d| Seeded::planted(d).registered()));
+    all.push(host::Twin::registered());
     all
 }
 
@@ -567,16 +606,22 @@ mod tests {
             ("seeded:log-no-flip", true),
             ("seeded:se3-exp-translation-first", true),
             ("seeded:q-minus-half", true),
+            ("seeded:host-std", true),
         ];
         assert_eq!(names, want);
-        assert!(all.iter().all(|r| r.version == "generated"));
-        // The planted `c`, a candidate of the binary64 sweep, is the one subject with no `f32` kernel.
+        // Every subject runs the generated kernels; the twin says in its version which library
+        // evaluated them, since that is the only thing it changes (`0037`, draft).
+        let kernels: Vec<&str> = all.iter().map(|r| r.version.as_str()).collect();
+        assert_eq!(kernels[..8], ["generated"; 8]);
+        assert_eq!(kernels[8], "generated@host-std");
         assert!(all
             .iter()
-            .all(|r| r.version_at(Precision::F32) == "generated"));
+            .all(|r| r.version_at(Precision::F32) == r.version));
+        // Two subjects have no `f32` kernel: the planted `c`, a candidate of the binary64 sweep,
+        // and the twin, whose subject is the host's binary64 transcendentals.
         let none = all.iter().filter(|r| r.no_f32.is_some());
         let none: Vec<&str> = none.map(|r| r.subject.name()).collect();
-        assert_eq!(none, ["seeded:c-two-terms-1e-8"]);
+        assert_eq!(none, ["seeded:c-two-terms-1e-8", "seeded:host-std"]);
     }
 
     #[test]
