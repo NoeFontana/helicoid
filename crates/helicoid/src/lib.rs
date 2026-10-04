@@ -4,7 +4,8 @@
 //! [`Side`] with [`Left`] and [`Right`], the translation group [`Rn`], which proves the traits
 //! compile generically, the quaternion [`Quat`], the SE_N(3) tangent [`SEn3Tangent`] with its
 //! [`Twist`] converters, and the dual-matrix Jacobian [`SEn3Jac`] with its dense twins in
-//! [`mod@reference`], and the products [`Product`] with the block-diagonal [`ProductJac`]. Every
+//! [`mod@reference`], the rotation group [`SO3`] with its tangent [`SO3Tangent`] and `Mat3`
+//! Jacobian, and the products [`Product`] with the block-diagonal [`ProductJac`]. Every
 //! group is written against the traits and generic over the scalar `S: Real` of
 //! `helicoid-linalg`.
 //!
@@ -29,10 +30,9 @@
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
 
-// The kernel has no consumer until SO(3) lands (`docs/PHASE3.md` §0.0): it is built for the tests
-// and the sweep, so a default build carries no dead code. The SO(3) PR drops the `cfg`; what only
-// the tests and the sweep call is gated inside, and `just lint` builds a default `helicoid` to see.
-#[cfg(any(test, feature = "__sweep"))]
+// SO(3) is the kernel's first consumer (`exp_coeffs`, `jr_coeffs`, `jr_inv_coeff`, `log_ratio`),
+// so the `cfg` the module carried until this point is gone: a default build reaches every grouped
+// entry point through `SO3`. `q_coeffs` is SE_N(3)'s and stays gated inside until §5 lands.
 mod coeffs;
 mod dualmat;
 mod product;
@@ -41,6 +41,9 @@ pub mod reference;
 mod rn;
 mod sen3;
 mod side;
+mod so3;
+#[cfg(test)]
+mod so3_tests;
 mod traits;
 
 #[cfg(feature = "__sweep")]
@@ -52,6 +55,7 @@ pub use quat::Quat;
 pub use rn::{Rn, RnJac, RnTangent};
 pub use sen3::{SEn3Tangent, Twist};
 pub use side::{Left, Right, Side};
+pub use so3::{SO3Tangent, SO3};
 pub use traits::{Jac, LieGroup, Tangent};
 
 // `proptest` and the `Vec` the tests collect into need `std`; the library itself stays `no_std`.

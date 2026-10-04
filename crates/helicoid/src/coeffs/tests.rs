@@ -757,9 +757,14 @@ fn a_group_below_its_smallest_switch_runs_no_exact_arm_f32() {
 
 /// Above the switches the exact arms of a group run once and share what they can: `Exp` one `sqrt` and
 /// one `sin_cos` (`NUMERICS.md` §3.1) from `cos θ/2`'s switch up, `b` and `e` one `sin_cos` of `θ`.
+///
+/// **Every group now takes one `sqrt`.** `jr` took two until `exact_a_b` shared `θ` between `a`
+/// and `b` — this counting scalar is what measured it, and the row below is the regression test:
+/// `(2, 2, 0)` would say the sharing was lost. Its two `sin_cos` stay, because `sin θ` from
+/// `sin(θ/2)` is a rounding change and owes a measurement (`0006`).
 fn a_group_runs_each_exact_arm_once<const F32: bool>() {
     // (sqrt, sin_cos, atan2) of `exp`, `jr`, `jr_inv`, `q`, `log`.
-    let above = [(1, 1, 0), (2, 2, 0), (1, 1, 0), (1, 2, 0), (1, 0, 1)];
+    let above = [(1, 1, 0), (1, 2, 0), (1, 1, 0), (1, 2, 0), (1, 0, 1)];
     for z in [2.0, 6.0, 9.8] {
         assert_eq!(calls::<F32>(z), above, "z = {z}");
     }
@@ -767,7 +772,7 @@ fn a_group_runs_each_exact_arm_once<const F32: bool>() {
     assert_eq!(calls::<F32>(1e-3)[0], (1, 1, 0));
     if !F32 {
         // The one `sin_cos` for nothing (`super`): `b` on its series arm, `a` not, and `d` likewise.
-        assert_eq!(calls::<false>(0.8)[1], (2, 2, 0));
+        assert_eq!(calls::<false>(0.8)[1], (1, 2, 0));
         assert_eq!(calls::<false>(0.97)[3], (1, 2, 0));
     }
 }
@@ -784,7 +789,20 @@ fn a_group_runs_each_exact_arm_once_f32() {
 
 #[cfg(debug_assertions)]
 #[test]
-#[should_panic(expected = "the branch variable is not >= 0")]
+#[should_panic(expected = "the branch variable is negative")]
 fn a_negative_branch_variable_is_refused_in_debug() {
     let _ = exp_coeffs(-1.0_f64);
+}
+
+/// A NaN branch variable is **not** refused: the assert catches a sign error upstream, and `θ²`
+/// NaN is a NaN tangent, whose coefficients are NaN — the answer a value function owes, not a
+/// panic. `laws::dual_value_is_plain_value` reaches this through `SO3::exp` over `f64::ANY`.
+#[test]
+fn a_nan_branch_variable_is_answered_with_nan_not_a_panic() {
+    let (k, cos_half) = exp_coeffs(f64::NAN);
+    assert!(k.is_nan() && cos_half.is_nan());
+    let (a, b) = jr_coeffs(f64::NAN);
+    assert!(a.is_nan() && b.is_nan());
+    assert!(jr_inv_coeff(f64::NAN).is_nan());
+    assert!(log_ratio(f64::NAN, 1.0).is_nan());
 }

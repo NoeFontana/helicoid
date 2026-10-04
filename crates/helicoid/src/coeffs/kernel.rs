@@ -84,9 +84,13 @@ fn table<S: Real, T>(wide: T, narrow: T) -> T {
 }
 
 fn nonnegative<S: Real>(z: S) {
+    // Written as "no lane is negative", not "every lane is `>= 0`": the two differ only on NaN,
+    // which this assert is not here to reject. `θ²` and `n²` are dot products, so a *negative*
+    // branch variable is a sign error upstream and worth a panic; a NaN one is a NaN input, and
+    // every arm below returns NaN for it, which is the answer a value function owes its caller.
     debug_assert!(
-        S::zero().le(z).all(),
-        "coeffs: the branch variable is not >= 0"
+        !z.lt(S::zero()).any(),
+        "coeffs: the branch variable is negative"
     );
 }
 
@@ -127,8 +131,23 @@ pub(crate) fn exp_coeffs<S: Real>(z: S) -> (S, S) {
 /// `(a, b)` at `θ² = z`: `J = I ∓ aW + bW²` (`NUMERICS.md` §3.5).
 pub(crate) fn jr_coeffs<S: Real>(z: S) -> (S, S) {
     let arms = table::<S, _>([A_F64.arm(), B_F64.arm()], [A_F32.arm(), B_F32.arm()]);
-    let [a, b] = grouped(arms, |x| [exact_a(x), exact_b(x)], z);
+    let [a, b] = grouped(arms, exact_a_b, z);
     (a, b)
+}
+
+/// `(a, b)` sharing one `θ = sqrt z`, which is what `grouped`'s contract asks of an exact arm and
+/// what `exact_b_d_e` and `exact_k_cos_half` already do. `exact_a(z)` and `exact_b(z)` each take
+/// their own root, so the pair cost two; sharing it is a common subexpression on the same `z` and
+/// changes no bit. `libm::sqrt` is one instruction only where the target maps it to hardware, so
+/// `just no-std` (`thumbv7em-none-eabihf`) and `just wasm` were paying two software roots per
+/// `SO3::jr` call.
+///
+/// The two `sin_cos` are **not** collapsed: `sin θ = 2 sin(θ/2) cos(θ/2)` is a different rounding
+/// and so owes a measurement (`0006`), where sharing the root owes none.
+fn exact_a_b<S: Real>(z: S) -> [S; 2] {
+    let th = z.sqrt();
+    let k = half_angle(th).0 / th;
+    [S::lit(2.0) * k * k, b_from(th, th.sin_cos().0)]
 }
 
 /// `c` at `θ² = z`: `J⁻¹ = I ± W/2 + cW²` (`NUMERICS.md` §3.5).
@@ -144,6 +163,10 @@ pub(crate) fn jr_inv_coeff<S: Real>(z: S) -> S {
 }
 
 /// `(b, d, e)` at `θ² = z`: Barfoot's `Q` block (`NUMERICS.md` §5.3).
+// SO(3) reaches every other grouped entry point; this one is SE_N(3)'s alone and has no consumer
+// until `PHASE3.md` §5 lands. Allowed rather than `cfg`'d, because a `cfg` would take `exact_b_d_e`
+// and its `d_from`/`e_from` with it and split the kernel's exact arms across two builds.
+#[allow(dead_code)]
 pub(crate) fn q_coeffs<S: Real>(z: S) -> (S, S, S) {
     let arms = table::<S, _>(
         [B_F64.arm(), D_F64.arm(), E_F64.arm()],
@@ -178,6 +201,9 @@ fn half_angle<S: Real>(th: S) -> (S, S) {
     (S::lit(0.5) * th).sin_cos()
 }
 
+// The per-coefficient arms the sweep and the tests scan one at a time; the shipped groups take
+// `exact_a_b`, `exact_k_cos_half` and `exact_b_d_e`, which share what their members share.
+#[cfg(any(test, feature = "__sweep"))]
 pub(super) fn exact_k<S: Real>(z: S) -> S {
     let th = z.sqrt();
     half_angle(th).0 / th
@@ -191,11 +217,13 @@ fn exact_k_cos_half<S: Real>(z: S) -> [S; 2] {
 }
 
 /// `2k²`, exact where `(1 - cos θ)/θ²` is not (`NUMERICS.md` §4).
+#[cfg(any(test, feature = "__sweep"))]
 pub(super) fn exact_a<S: Real>(z: S) -> S {
     let k = exact_k(z);
     S::lit(2.0) * k * k
 }
 
+#[cfg(any(test, feature = "__sweep"))]
 pub(super) fn exact_b<S: Real>(z: S) -> S {
     let th = z.sqrt();
     b_from(th, th.sin_cos().0)

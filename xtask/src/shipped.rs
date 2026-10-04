@@ -17,7 +17,8 @@
 //! `subject_version` is the workspace version: there is no other version of the shipped kernel.
 
 use helicoid::__sweep as k;
-use helicoid_linalg::{Dual, Precision, Real};
+use helicoid::{Jac, LieGroup, Quat, Tangent, SO3};
+use helicoid_linalg::{Dual, Mat3, Matrix, Precision, Real, StridedMut, Vector};
 
 use crate::conformance::corpus::Record;
 use crate::conformance::subject::{Output, Registered, Subject};
@@ -35,6 +36,147 @@ pub(crate) fn shipped<S: Real>(id: Swept, x: Input<Dual<S, 1>>) -> Dual<S, 1> {
         Swept::Coeff(Coeff::E) => k::q_coeffs(x.z).2,
         Swept::R => k::log_ratio(x.z, x.w),
     }
+}
+
+/// An `so3_*` id this subject answers.
+///
+/// An enum with an exhaustive `answer`, not a `&str` match with a `_` arm. The `&str` form had two
+/// levels of catch-all: an id added to the supported list without its own arm fell through `eval`
+/// into the Jacobian helper and through *that* into `jl_inv`, so the harness would write a scored,
+/// committed conformance row labelled with the new id and holding `J_l⁻¹` — no error, no empty
+/// output, nothing to notice. Here the same mistake is a non-exhaustive `match`.
+#[derive(Clone, Copy)]
+enum So3 {
+    Exp,
+    Log,
+    Act,
+    FromMatrix,
+    Jr,
+    Jl,
+    JrInv,
+    JlInv,
+}
+
+impl So3 {
+    /// Every `so3_*` id the corpus holds (`PHASE1.md` §4.3), with its name.
+    const ALL: [(&'static str, So3); 8] = [
+        ("so3_exp", So3::Exp),
+        ("so3_log", So3::Log),
+        ("so3_act", So3::Act),
+        ("so3_from_matrix", So3::FromMatrix),
+        ("so3_jr", So3::Jr),
+        ("so3_jl", So3::Jl),
+        ("so3_jr_inv", So3::JrInv),
+        ("so3_jl_inv", So3::JlInv),
+    ];
+
+    fn of_fn(fn_id: &str) -> Option<Self> {
+        Self::ALL
+            .iter()
+            .find(|(name, _)| *name == fn_id)
+            .map(|&(_, id)| id)
+    }
+
+    /// The shipped answer at `S`; nothing when the record holds no usable input.
+    ///
+    /// `f64` only, by the `From<f64>` bound: no vector id has an `@f32` stratum until a record
+    /// extends `0016`, and that bound — which `f32` does not implement — makes the `f32`
+    /// instantiation statically unreachable, as it does for the seeded subject's `so3_*` arms.
+    fn answer<S: Real + Into<f64> + From<f64>>(self, record: &Record) -> Output {
+        match self {
+            So3::Exp => {
+                let Some(phi) = vec3_of::<S>(record, "phi") else {
+                    return Output::new();
+                };
+                // Through `read_dense`, so the dense order the corpus writes is the one §1 states
+                // and not this file's reading of it (`API.md` R3).
+                let tau = <SO3<S> as LieGroup<S>>::Tangent::read_dense(&phi.0);
+                let q = SO3::<S>::exp(&tau).quat();
+                quat_out(&q)
+            }
+            So3::Log => {
+                let Some(q) = quat_of::<S>(record, "q") else {
+                    return Output::new();
+                };
+                let mut phi = [S::zero(); 3];
+                SO3::from_quat_unchecked(q).log().write_dense(&mut phi);
+                Output::from([("phi".to_string(), phi.map(Into::into).to_vec())])
+            }
+            So3::Act => {
+                let (Some(q), Some(p)) = (quat_of::<S>(record, "q"), vec3_of::<S>(record, "p"))
+                else {
+                    return Output::new();
+                };
+                // §3.3 as written, so a non-unit `q` gives the scaled rotation §1 defines rather
+                // than its normalization; `SO3::act`'s *Domain* has the measured gap.
+                let rp = SO3::from_quat_unchecked(q).act(p);
+                Output::from([("Rp".to_string(), rp.0.map(Into::into).to_vec())])
+            }
+            So3::FromMatrix => {
+                let Some(&m) = record.input("R").and_then(|r| r.first_chunk::<9>()) else {
+                    return Output::new();
+                };
+                // Column-major, as the record's sibling `shape` says (`PHASE1.md` §4.3).
+                let cols = core::array::from_fn(|c| {
+                    Vector(core::array::from_fn(|r| S::from(m[c * 3 + r])))
+                });
+                quat_out(&SO3::<S>::from_matrix(&Matrix::from_cols(cols)).quat())
+            }
+            So3::Jr | So3::Jl | So3::JrInv | So3::JlInv => {
+                let Some(phi) = vec3_of::<S>(record, "phi") else {
+                    return Output::new();
+                };
+                let tau = <SO3<S> as LieGroup<S>>::Tangent::read_dense(&phi.0);
+                let j = match self {
+                    So3::Jr => SO3::<S>::jr(&tau),
+                    So3::Jl => SO3::<S>::jl(&tau),
+                    So3::JrInv => SO3::<S>::jr_inv(&tau),
+                    _ => SO3::<S>::jl_inv(&tau),
+                };
+                jac_out(&j)
+            }
+        }
+    }
+}
+
+/// The quaternion a record holds under `key`, built from its fields.
+///
+/// Not through `Quat::from_wxyz_unchecked`, whose `debug_assert!` would reject the `q:nonunit` and
+/// `q:w0` strata that `so3_log` and `so3_act` carry on purpose, and would make the scale
+/// invariance §3.2 states unreachable from the corpus.
+fn quat_of<S: Real + From<f64>>(record: &Record, key: &str) -> Option<Quat<S>> {
+    let &[w, x, y, z] = record.input(key)?.first_chunk::<4>()?;
+    Some(Quat {
+        w: S::from(w),
+        x: S::from(x),
+        y: S::from(y),
+        z: S::from(z),
+    })
+}
+
+/// A `3`-vector a record holds under `key`.
+fn vec3_of<S: Real + From<f64>>(record: &Record, key: &str) -> Option<Vector<S, 3>> {
+    let &[a, b, c] = record.input(key)?.first_chunk::<3>()?;
+    Some(Vector([a, b, c].map(S::from)))
+}
+
+/// `q` as the corpus holds it, `w` first (`NUMERICS.md` §1).
+fn quat_out<S: Real + Into<f64>>(q: &Quat<S>) -> Output {
+    Output::from([(
+        "q".to_string(),
+        [q.w, q.x, q.y, q.z].map(Into::into).to_vec(),
+    )])
+}
+
+/// `J` as the corpus holds it: the dense `3 x 3`, column-major (`PHASE1.md` §4.3), through
+/// `Jac::write_dense` -- the shipped path a consumer takes, structural zeros included.
+fn jac_out<S: Real + Into<f64>>(j: &Mat3<S>) -> Output {
+    let mut buf = [S::zero(); 9];
+    Jac::<S, <SO3<S> as LieGroup<S>>::Tangent>::write_dense(
+        j,
+        &mut StridedMut::col_major(&mut buf, 3, 3),
+    );
+    Output::from([("J".to_string(), buf.map(Into::into).to_vec())])
 }
 
 /// The subject's answer at `S`: the value and `d/dz`, widened exactly to binary64; nothing when the
@@ -58,10 +200,18 @@ impl Subject for Helicoid {
     }
 
     fn supports(&self, fn_id: &str) -> bool {
-        Swept::of_fn(fn_id).is_some()
+        Swept::of_fn(fn_id).is_some() || So3::of_fn(fn_id).is_some()
     }
 
     fn eval(&self, fn_id: &str, record: &Record, precision: Precision) -> Output {
+        if let Some(id) = So3::of_fn(fn_id) {
+            // A plain `f32` run skips every `so3_*` id; asking for one by name at `f32` is the
+            // harness's error, not this subject's (`So3::answer` says why).
+            return match precision {
+                Precision::F64 => id.answer::<f64>(record),
+                Precision::F32 => Output::new(),
+            };
+        }
         let Some(id) = Swept::of_fn(fn_id) else {
             return Output::new();
         };
@@ -163,21 +313,33 @@ mod tests {
     }
 
     #[test]
-    fn helicoid_supports_the_eight_coefficient_ids_and_answers_nothing_it_cannot(
+    fn helicoid_supports_the_coefficient_and_so3_ids_and_answers_nothing_it_cannot(
     ) -> Result<(), String> {
         for id in Swept::ALL {
             assert!(Helicoid.supports(&format!("coeff_{}", id.name())), "{id:?}");
+        }
+        // Every `so3_*` id the corpus holds; SE_N(3)'s wait for §5.
+        for (id, _) in So3::ALL {
+            assert!(Helicoid.supports(id), "{id}");
         }
         for id in [
             "coeff_",
             "coeff_f",
             "coeff_series",
-            "so3_exp",
+            "so3_jl_jr",
             "sen3_exp_n1",
         ] {
             assert!(!Helicoid.supports(id), "{id}");
             let rec = record(&[("theta", &[0.5]), ("n", &[0.5]), ("w", &[1.0])], &[])?;
             assert!(Helicoid.eval(id, &rec, Precision::F64).is_empty(), "{id}");
+        }
+        // An `so3_*` id reads `phi`, `q`, `p` or `R`; a record without them is answered with
+        // nothing, and every one of them is answered with nothing at `f32`, where no `@f32`
+        // stratum exists for a vector id.
+        let empty = record(&[("theta", &[0.5])], &[])?;
+        for (id, _) in So3::ALL {
+            assert!(Helicoid.eval(id, &empty, Precision::F64).is_empty(), "{id}");
+            assert!(Helicoid.eval(id, &empty, Precision::F32).is_empty(), "{id}");
         }
         // `r` reads `n` and `w`, the others `theta`; a record without them is answered with nothing.
         let theta = record(&[("theta", &[0.5])], &[])?;

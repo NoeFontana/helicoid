@@ -47,6 +47,36 @@ use helicoid_linalg::{Blend, Matrix, Real, StridedMut, Vector};
 #[derive(Clone, Copy, Debug)]
 pub struct Product<A, B>(pub(crate) A, pub(crate) B);
 
+impl<A, B> Product<A, B> {
+    /// The product of two factors, in the order the type parameters are
+    /// ([`0029`](../../../docs/decisions/0029-a-product-needs-a-way-to-be-built-from-its-factors.md)
+    /// option A).
+    ///
+    /// `Product<SO3<S>, Rn<S, 3>>` is the tf2 pose, and before this the only way to build one was
+    /// an `Exp`/`Log` round trip through both factors — for SO(3) neither exact nor cheap, and
+    /// worst-conditioned at a half turn. The fields stay private (`0025` decision 5), so this and
+    /// [`parts`](Product::parts) are the whole of the surface.
+    ///
+    /// ```
+    /// use helicoid::{LieGroup, Product, Rn, SO3, SO3Tangent};
+    /// use helicoid_linalg::Vector;
+    /// let r = SO3::<f64>::exp(&SO3Tangent { phi: Vector([0.0, 0.0, 0.3]) });
+    /// let t = Rn(Vector([1.0, 2.0, 3.0]));
+    /// let pose = Product::from_parts(r, t);
+    /// assert_eq!(pose.parts().1 .0 .0, [1.0, 2.0, 3.0]);
+    /// ```
+    #[inline]
+    pub fn from_parts(a: A, b: B) -> Self {
+        Self(a, b)
+    }
+
+    /// The two factors, in the order the type parameters are.
+    #[inline]
+    pub fn parts(&self) -> (&A, &B) {
+        (&self.0, &self.1)
+    }
+}
+
 /// A Jacobian of a [`Product`]: the block-diagonal matrix `diag(J_A, J_B)`.
 ///
 /// It is closed under [`mul`](Jac::mul), [`inverse`](Jac::inverse) and [`neg`](Jac::neg) because
