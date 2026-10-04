@@ -20,6 +20,7 @@
 - [Geodesics: invariance, Jacobians, the dual-quaternion power](maths/geodesics.md)
 - [Charts: retractions, the SE(3) charts, S²](maths/charts.md)
 - [Γ functions and Gaussians: IMU increments, `Gaussian`, the side conversion](maths/gamma-gaussian.md)
+- [Ambient Jacobians: `PlusJacobian` and `MinusJacobian` of the quaternion and SE(3) charts](maths/ambient-jacobians.md)
 
 # Specifications
 - [Phase 1: skeleton and the instrument](PHASE1.md)

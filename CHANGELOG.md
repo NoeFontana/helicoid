@@ -359,6 +359,13 @@ defined by the status tables in `docs/`; they win over this file.
   composition, the Mahalanobis distance; what `chol`'s mask certifies and the rounding of `d²`, both set by the correlation matrix's smallest eigenvalue; `Ad` of SE(3) at a large
   translation (its conditioning by the unit-free correlation matrix, the round-trip loss), and seven misread covariances quantified). Documentation only; no code, no formula change, no normative document changed. Four open items for the normative
   documents are added in the maths index and one extended.
+- `docs/maths/ambient-jacobians.md`: `PHASE6.md` §1 (over-parameterized storage and the ambient Jacobians of a chart, `PlusJacobian` = `D ret(0)` and `MinusJacobian` = `D loc(x)`; the quaternion's `P` (4×3) and
+  `M` (3×4) derived from the Hamilton product, the first-order `Exp` and the scale invariance of `Log`; `MP = ‖q‖²I`, `PM = ‖q‖²I − qqᵀ`, the orthogonal projector onto the tangent space of the unit sphere for unit `q`,
+  `M = 4Pᵀ = P⁺`; what a non-unit stored `q` does (`P` exact, `M` off by `η`, three readings of a reference, the drift of `η`: a random walk for independent steps, linear for a repeated one, the double cover); SE(3) as `(q, t)`: `diag(P, R)` and `diag(M, Rᵀ)` for `Screw` and
+  `Decoupled`, proved equal to first order, the dependence on `R`, `WorldTranslation` and the left chart; Ceres' `QuaternionManifold` shown to be the left chart in half-angle coordinates, exactly (`P_C = 2PRᵀ`,
+  `M_C = ½RM`; its `Minus` does not flip the sign), checked against the real library through `pyceres`; GTSAM's retraction on storage (default and option-off modes) and why it needs no ambient Jacobian; conditioning and rounding; a sign audit with
+  exact gaps). Documentation only; no code, no formula change, no normative document changed, and no phase status table advances. One open item for the normative documents is added in the maths index (`PHASE6.md`
+  §1, §7: the non-unit domain, the corpus reading, the missing `MinusJacobian` id and §14 twin row, the Ceres convention, the implementing types) and two are extended.
 - `cargo xtask lint`, run by `just lint`: no line citations in markdown or comments, no draft
   decision record cited as settled (status-table rows, Rust comments, amendment banners; not
   prose elsewhere), and `@generated` files registered with their owning task and header. Owed:
