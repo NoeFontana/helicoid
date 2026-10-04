@@ -366,6 +366,10 @@ defined by the status tables in `docs/`; they win over this file.
   `M_C = ½RM`; its `Minus` does not flip the sign), checked against the real library through `pyceres`; GTSAM's retraction on storage (default and option-off modes) and why it needs no ambient Jacobian; conditioning and rounding; a sign audit with
   exact gaps). Documentation only; no code, no formula change, no normative document changed, and no phase status table advances. One open item for the normative documents is added in the maths index (`PHASE6.md`
   §1, §7: the non-unit domain, the corpus reading, the missing `MinusJacobian` id and §14 twin row, the Ceres convention, the implementing types) and two are extended.
+- `docs/maths/sim3.md`: Sim(3) (`NUMERICS.md` §9, owed). `Exp`, `Log`, the adjoints, the dense `7×7` `J_l`, `J_r` and the action Jacobians, derived; the coefficients of `𝖵 = v₀I + v₁W + v₂W²` in closed form
+  (denominator `Δ = σ² + θ²`), as a two-variable series and as an exact split into functions of `σ` alone; the rounding at the joint limit, the overflow onsets and a scaled arrangement that holds to `ln MAX`.
+  The page's own Results table carries the numbers. Every formula §9 does not state is marked proposed, to be adopted by a record; `PHASE5.md` §3 does not start before that. Documentation only; no code, no
+  formula change, no normative document changed, and no phase status table advances. The open items it raises for the normative documents are in the maths index.
 - `cargo xtask lint`, run by `just lint`: no line citations in markdown or comments, no draft
   decision record cited as settled (status-table rows, Rust comments, amendment banners; not
   prose elsewhere), and `@generated` files registered with their owning task and header. Owed:
