@@ -53,6 +53,12 @@ pub trait Side: sealed::Sealed + Copy + 'static {
     /// the emitted code — a `TypeId` compare is a runtime call on a 16-byte value that LLVM folds
     /// only after inlining, and it needs the `'static` bound to stay. A group that reads the same
     /// Jacobian on both sides, such as `Rn`, never mentions it.
+    ///
+    /// A `bool` is enough only because the trait is sealed: `false` *means* [`Left`], and no third
+    /// side can appear to make that reading wrong. Swapping the two values is caught, not assumed:
+    /// `laws::jacobian_rows` compares `compose_jacobians::<Right>` against `(Ad_Y⁻¹, I)` and
+    /// `::<Left>` against `(I, Ad_X)`, and holds at exactly `0 u` for `SO3`, whose `Ad_Y⁻¹` is not
+    /// `I`.
     const IS_RIGHT: bool;
     /// `x ⊕ τ`: [`LieGroup::rplus`] for `Right`, [`LieGroup::lplus`] for `Left`.
     fn plus<S: Real, G: LieGroup<S>>(x: &G, tau: &G::Tangent) -> G;
