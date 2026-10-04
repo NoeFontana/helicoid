@@ -42,6 +42,11 @@ $$
 in ambient coordinates: Ceres' $D_2\mathrm{Plus}(x, 0)$ and $D_1\mathrm{Minus}(x, x)$. Both depend on $x$ alone, like the chart frozen at $x$ (CH.1), so `write_plus_jacobian(&self, ..)` of `AmbientChart` reads the base
 it was frozen at.
 
+*Storage.* Every $P$ and $M$ below is printed as a display matrix, $m\times d$ and $d\times m$. This page fixes no layout: `write_plus_jacobian` and `write_minus_jacobian` write through a `StridedMut`, whose
+constructor carries it (`col_major`, `row_major`, `with_strides`, `PHASE2.md` §5), and the corpus reference is column-major with a sibling `shape` (`PHASE1.md` §4.3). The distinction is load-bearing here as on no other
+page, because $M = 4P^\top$ (AJ.3): a $4\times3$ $P$ written row-major and read column-major *is* a $3\times4$ matrix with $M$'s pattern, so $MP = I_d$ (AJ.2(a)), $\kappa_2 = 1$ (AJ.9(b)) and every row of AJ.10's sign
+audit still hold. What catches it is the corpus id — `so3_plus_jacobian` and `se3_plus_jacobian` for $P$, and nothing for $M$, which has no id at all (index, open item (iii)).
+
 **Proposition AJ.2.**
 
 - (a) $M_xP_x = I_d$, for every extension of $\mathrm{loc}_x$ off $\mathcal M$.
@@ -239,12 +244,14 @@ The options-off modes of (a) and the coupling of the two options are read from `
 - (c) *The product.* $J_{\mathrm{tan}} = J_{\mathrm{amb}}P$ is a length-$4$ inner product per entry, one factor exact but every product $J_{\mathrm{amb}}\cdot\frac12q_i$ rounding: $\lvert\mathrm{fl}(J_{\mathrm{amb}}P) - J_{\mathrm{amb}}P\rvert \le \gamma_4\lvert J_{\mathrm{amb}}\rvert\lvert P\rvert$ ([Higham], ch. 3), $\gamma_4 = 4u/(1 - 4u)$, and it halves an error
   in $J_{\mathrm{amb}}$ ($\lVert P\rVert_2 = \frac12$). It inherits the ambient Jacobian's own error (for a `Dual` Jacobian, the derivative of the shipped code). The bound is componentwise in $\lvert J_{\mathrm{amb}}\rvert$, so it depends on the extension: a radial part $aq^\top$ of $\mathrm Df$ (AJ.2(c), the example) cancels in exact
   arithmetic ($q^\top P = 0$) but not in floating point, and adds $\gamma_4\lvert a\rvert\lvert q\rvert^\top\lvert P\rvert$ to the error of $J_{\mathrm{tan}}$, whatever its size: an extension whose radial derivative is small keeps the error at the size of $J_{\mathrm{tan}}$.
-- (d) *Drift.* For a non-unit stored $q$ the pair is exact but $MP = \lVert q\rVert^2I$ (AJ.5): in the model of AJ.5(b), $\lvert\eta\rvert$ is $\approx1.1\sqrt n\,u$ (rms; a fit over $n \le 10^5$) after $n$ independent retractions and grows linearly, $\approx0.7u$ per retraction, for a repeated step; a consumer that needs $MP = I$ to rounding renormalizes (`renormalize`, `NUMERICS.md` §3.6) at a fixed cadence
-  set by the linear case (about $10^4$ retractions from the bound of `from_wxyz_unchecked` in `f64`, a few hundred in `f32`), not by the random walk.
+- (d) *Drift.* For a non-unit stored $q$ the pair is exact but $MP = \lVert q\rVert^2I$ (AJ.5): in the model of AJ.5(b), $\lvert\eta\rvert$ is $\approx1.1\sqrt n\,u$ (rms; a fit over $n \le 10^5$) after $n$ independent retractions and grows linearly, $\approx0.7u$ per retraction, for a repeated step; a consumer that needs the stored $q$ to stay inside `from_wxyz_unchecked`'s domain ($\lvert\eta\rvert \le 2^{-40}$ in `f64`, $2^{-16}$ in `f32`; `NUMERICS.md` §3.6) renormalizes (`renormalize`) at a fixed cadence
+  set by the linear case — about $10^4$ retractions in `f64` ($2^{-40} = 8192u$, so $8192/0.7 = 1.2\times10^4$), a few hundred in `f32` ($2^{-16} = 256u_{32}$, $366$) — not by the random walk. $MP = I$ *to rounding* is a
+  stricter requirement and this cadence does not meet it: $10^4$ retractions leave $\lvert\eta\rvert \approx 7000u = 2^{-40.2}$, which is the domain bound and what AJ.5(c) calls *not* to rounding. A consumer that needs
+  $MP = I$ to rounding renormalizes after every retraction, one step costing $\approx0.7u$ and `renormalize` reaching below $u$ only from $2^{-40}$ (SO.14).
 
 *Proof.* (a), (b) AJ.3, AJ.4, AJ.6. (c) The inner-product bound of [Higham], ch. 3, and $\lVert P\rVert_2 = \frac12$. (d) AJ.5. $\square$
 
-**Checked:** (a)–(b) are AJ.3, AJ.4, AJ.6 (singular values to $10^{-100}$); the bit-exactness of $P_C$ is the $0$ difference of AJ.7's `pyceres` run. (c): no run (the bound, and the radial term it gives, are [Higham]'s). (d) AJ.5. **Permanent:** none specified.
+**Checked:** (a)–(b) are AJ.3, AJ.4, AJ.6 (singular values to $10^{-100}$); the bit-exactness of $P_C$ is the $0$ difference of AJ.7's `pyceres` run. (c): no run (the bound, and the radial term it gives, are [Higham]'s). (d) AJ.5; the two cadences are arithmetic on AJ.5(b)'s $0.7u$ per step and §3.6's domain bounds ($8192/0.7 = 1.2\times10^4$, $256/0.7 = 366$), and the storage clause of AJ.1 is a reading of `PHASE1.md` §4.3 and `PHASE2.md` §5, not a run. **Permanent:** none specified.
 
 ## 6. Sign audit
 
