@@ -12,10 +12,10 @@ mod sealed {
 /// are expressed in that side's convention (`NUMERICS.md` §2.3).
 ///
 /// **Sealed: [`Right`] and [`Left`] are the only implementations** (`0025`). A group reads its side
-/// row by comparing `TypeId`s, which is only sound because this set is closed: an outside impl
-/// would get its own `plus`/`minus` and the *`Left`* row of `compose_jacobians`, with no compile
-/// error and no runtime signal. Sealing also keeps the choice between `TypeId` and a first-class
-/// selector an internal one, which is why `PHASE3.md` §2 can still leave it to the SO(3) PR.
+/// row from [`IS_RIGHT`](Side::IS_RIGHT), which is only sound because this set is closed: an
+/// outside impl would get its own `plus`/`minus` and whichever row its const named, with no
+/// compile error and no runtime signal. Sealing is also what let the choice between a `TypeId`
+/// comparison and this const stay internal until the SO(3) PR made it.
 ///
 /// A downstream implementation does not compile; the delegation below is otherwise complete, so
 /// the only error is the unsatisfied supertrait:
@@ -47,7 +47,7 @@ pub trait Side: sealed::Sealed + Copy + 'static {
     /// `true` for [`Right`], `false` for [`Left`]: how a group reads its side row of
     /// `NUMERICS.md` §2.3 where the two differ (`SO3::compose_jacobians`).
     ///
-    /// This is the "first-class selector" the trait docs weigh against a `TypeId` comparison, and
+    /// This is the "first-class selector" the trait weighed against a `TypeId` comparison, and
     /// the SO(3) PR took it (`PHASE3.md` §2 left the choice here). It is an associated **const**,
     /// so `match Sd::IS_RIGHT` is resolved at monomorphization and neither branch survives into
     /// the emitted code — a `TypeId` compare is a runtime call on a 16-byte value that LLVM folds

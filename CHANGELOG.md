@@ -91,6 +91,12 @@ defined by the status tables in `docs/`; they win over this file.
   Fields stay private (`0025` decision 5); before this the only route was an `Exp`/`Log` round trip
   through both factors, which for SO(3) is neither exact nor cheap and is worst-conditioned at a
   half turn.
+- `helicoid`: `act_many` gains the `*_matches_reference` proptest D6 requires of its
+  `NUMERICS.md` §14 twin — and it found **§14's `3 u` for that row is too tight**: the per-point
+  `act` and `act_many` diverge by up to 7.587 `u` near `π`, 4.873 at `θ ~ 1` and 3.379 at
+  `θ ~ 1e-6`. §3.3 prescribes forming `R(q)` once, so the nine entries round before any point is
+  touched while `act` rounds a sandwich per point; the gap is the two algorithms, not a defect.
+  Raising §14's figure is a normative edit and a record, recorded as owed in `PHASE3.md` §0.0.
 - `cargo xtask conformance`: the `helicoid` subject answers **every `so3_*` corpus id** — `so3_exp`,
   `so3_log`, `so3_act`, `so3_from_matrix`, `so3_jr`, `so3_jl`, `so3_jr_inv`, `so3_jl_inv`, six of
   which no subject scored before. `f64`, no non-finite output, worst `max_u`: `so3_exp` 2.743
@@ -102,6 +108,27 @@ defined by the status tables in `docs/`; they win over this file.
 
 ### Changed
 
+- `helicoid::coeffs`: `jr_coeffs`'s exact arm shares one `θ = sqrt z` between `a` and `b`
+  (`exact_a_b`), which is what `grouped`'s contract asks and what `exact_k_cos_half` and
+  `exact_b_d_e` already did. It was taking **two** square roots per call — the counting scalar of
+  `a_group_runs_each_exact_arm_once` recorded `(2, 2, 0)` for the group and now records
+  `(1, 2, 0)`, so every group takes one root. A common subexpression on the same `z`, so not one
+  bit of any score moves; `libm::sqrt` is a single instruction only where the target maps it to
+  hardware, so `just no-std` and `just wasm` were paying two software roots per `SO3::jr`.
+- `helicoid`: `SO3::{rminus_jacobians, lminus_jacobians}` answer both §2.3 rows from **one**
+  `jr_inv` and a transpose. `J_l(φ) = J_r(φ)ᵗ` and `J_l⁻¹(φ) = J_r⁻¹(φ)ᵗ` hold *bit for bit* —
+  `hat(−φ)` is exactly `hat(φ)ᵗ`, `a` and `b` are functions of `θ²`, and `W²` as `Matrix::mul`
+  forms it is exactly symmetric — pinned by `jl_is_jr_transposed_to_the_bit` over 4 000 samples.
+  Each call had been paying a second `norm_sq`, a second grouped coefficient `branch` (two `sqrt`
+  and two `sin_cos` on the exact arm), a second `hat` and a second 27-multiply 3×3 product for a
+  matrix a transpose already held, on the crate's hottest Jacobian path.
+- `helicoid`: `SO3::from_matrix` no longer panics out of domain, in debug or release, and reads
+  each matrix entry once through `Matrix::get` rather than building and discarding a `Vec3` per
+  scalar (the diagonal was read four times over). A matrix whose pivot candidate overflows, or an
+  all-NaN one, gives a non-finite quaternion as `Quat::from_wxyz_unchecked` does; the
+  normalization is written out so `Quat::from_wxyz_normalized`'s `debug_assert!` cannot turn such
+  input into a panic. That matters because the method exists for locus-tag's degenerate
+  near-singular matrices, and `from_matrix_does_not_panic_out_of_domain` pins it.
 - `docs/maths/index.md`: the reading `so3_act` takes off the unit sphere is **measured**, not just
   listed. `SO3::act`, which is §3.3 as written, scores 510.3 `u` at the `q:nonunit` stratum and
   `to_matrix()` × v, the scaled rotation of §1, scores 257.8 — exactly `2·2^-45/u` and `2^-45/u` at

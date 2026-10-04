@@ -101,16 +101,24 @@ impl<S: Real> SO3<S> {
     /// # Domain
     ///
     /// `r` is a rotation matrix. For anything else this returns the nearest quaternion its pivot
-    /// admits, which is not a projection onto SO(3); §3.4 says project with `svd3` first.
+    /// admits, which is not a projection onto SO(3); §3.4 says project with `svd3` first. It does
+    /// not panic, in debug or release: an entry large enough to overflow a pivot candidate gives a
+    /// non-finite or NaN quaternion, as `Quat::from_wxyz_unchecked` does -- garbage in, garbage
+    /// out. That is why the normalization below is written out rather than taken from
+    /// `Quat::from_wxyz_normalized`, whose `debug_assert!` would turn such a matrix, and an
+    /// all-NaN one, into a panic. `SO3::exp` and `coeffs`'s `nonnegative` read NaN the same way.
+    #[inline]
     pub fn from_matrix(r: &Mat3<S>) -> Self {
-        let m = |i: usize, j: usize| r.row(i).0[j];
+        // `get` per entry, each read once: `row(i)` builds and discards a whole `Vec3` per scalar,
+        // and the diagonal is wanted four times over (the trace and the three axis candidates).
+        let (d0, d1, d2) = (r.get(0, 0), r.get(1, 1), r.get(2, 2));
         let (two, half) = (S::lit(2.0), S::lit(0.5));
-        let trace = (m(0, 0) + m(1, 1)) + m(2, 2);
+        let trace = (d0 + d1) + d2;
         let c = [
             S::one() + trace,
-            (S::one() + m(0, 0) - m(1, 1)) - m(2, 2),
-            (S::one() - m(0, 0) + m(1, 1)) - m(2, 2),
-            (S::one() - m(0, 0) - m(1, 1)) + m(2, 2),
+            (S::one() + d0 - d1) - d2,
+            (S::one() - d0 + d1) - d2,
+            (S::one() - d0 - d1) + d2,
         ];
         // `lt` only: `b.lt(a)` is `a > b`, and `Real` has no `PartialOrd` (`0003`).
         let best01 = c[1].lt(c[0]);
@@ -123,8 +131,11 @@ impl<S: Real> SO3<S> {
             first.not().and(best23.not()),
         ];
         // The three off-diagonal differences and sums every arm reads.
-        let (dx, dy, dz) = (m(2, 1) - m(1, 2), m(0, 2) - m(2, 0), m(1, 0) - m(0, 1));
-        let (sx, sy, sz) = (m(0, 1) + m(1, 0), m(0, 2) + m(2, 0), m(1, 2) + m(2, 1));
+        let (m01, m10) = (r.get(0, 1), r.get(1, 0));
+        let (m02, m20) = (r.get(0, 2), r.get(2, 0));
+        let (m12, m21) = (r.get(1, 2), r.get(2, 1));
+        let (dx, dy, dz) = (m21 - m12, m02 - m20, m10 - m01);
+        let (sx, sy, sz) = (m01 + m10, m02 + m20, m12 + m21);
         // `d >= 1` when selected and exactly `1` when not, so `two * d` never divides by zero.
         let arm = |i: usize| {
             let d = S::select(pick[i], c[i], S::one()).sqrt();
@@ -159,9 +170,23 @@ impl<S: Real> SO3<S> {
                 )
             },
         );
-        // `from_wxyz_normalized` takes the four raw scalars, so the un-normalized pivot result
-        // never passes through `from_wxyz_unchecked`'s unit `debug_assert!`.
-        Self(Quat::from_wxyz_normalized(q[0], q[1], q[2], q[3]))
+        // The same four divisions `Quat::from_wxyz_normalized` performs, in the same order and on
+        // the same `norm_sq`, so an in-domain matrix gives the identical quaternion -- without its
+        // `debug_assert!`, for the reason the *Domain* note gives.
+        let n = Quat {
+            w: q[0],
+            x: q[1],
+            y: q[2],
+            z: q[3],
+        }
+        .norm_sq()
+        .sqrt();
+        Self(Quat {
+            w: q[0] / n,
+            x: q[1] / n,
+            y: q[2] / n,
+            z: q[3] / n,
+        })
     }
 
     /// `R v` by the quaternion sandwich (`NUMERICS.md` §3.3):
@@ -185,9 +210,12 @@ impl<S: Real> SO3<S> {
         (v + uv.scale(two * self.0.w)) + u.cross(uv).scale(two)
     }
 
-    /// `R` applied to every point in place, forming `R(q)` once (`NUMERICS.md` §3.3). Its
-    /// reference twin is the per-point [`act`](SO3::act), which the law tests compare it against;
-    /// the two are *not* bit-identical, because `R(q)` rounds the matrix entries first.
+    /// `R` applied to every point in place, forming `R(q)` once (`NUMERICS.md` §3.3).
+    ///
+    /// Its reference twin is the per-point [`act`](SO3::act) (`NUMERICS.md` §14, tolerance `3 u`),
+    /// compared against it by `act_many_matches_reference` as D6 requires. The two are *not*
+    /// bit-identical: `R(q)` rounds the nine matrix entries before any point is touched, where
+    /// `act` rounds the sandwich per point.
     #[inline]
     pub fn act_many(&self, pts: &mut [Vec3<S>]) {
         let r = self.to_matrix();
@@ -439,6 +467,13 @@ impl<S: Real> LieGroup<S> for SO3<S> {
     fn jr(tau: &SO3Tangent<S>) -> Mat3<S> {
         let w = hat(tau.phi);
         let (a, b) = jr_coeffs(norm_sq(tau.phi));
+        // `W²` through the generic product, not the closed `φφᵗ − θ²I`. The closed form costs 6
+        // multiplies against 27 and lowers `so3_jr`'s worst row from 4.097 to 3.439 `u`, but it is
+        // a different rounding (13.8% of entries differ over 20 000 samples) and the corpus says
+        // it is worse where it is not better: 6 of 28 `so3_jr` strata regress, up to 1.34x, and
+        // `so3_jr_inv` keeps its 2.112 maximum while **12 of 28** strata regress, up to 1.39x.
+        // Nothing has asked for the arithmetic yet — `PHASE3.md` §11's benches are owed — so the
+        // trade is not taken, and `0006` says the bar is the max, per stratum, never a mean.
         (Matrix::identity() + w.scale(-a)) + (w * w).scale(b)
     }
     /// `J_r⁻¹ = I + W/2 + cW²` (`NUMERICS.md` §3.5).
@@ -464,17 +499,30 @@ impl<S: Real> LieGroup<S> for SO3<S> {
     fn lplus_jacobians(&self, tau: &SO3Tangent<S>) -> (Mat3<S>, Mat3<S>) {
         (Self::exp(tau).to_matrix(), Self::jl(tau))
     }
-    /// `(J_r⁻¹(τ), −J_l⁻¹(τ))` at `τ = self ⊖_R base` (`NUMERICS.md` §2.3).
+    /// `(J_r⁻¹(τ), −J_l⁻¹(τ))` at `τ = self ⊖_R base` (`NUMERICS.md` §2.3), from **one**
+    /// `jr_inv` and a transpose.
+    ///
+    /// `J_l(φ) = J_r(φ)ᵗ` and `J_l⁻¹(φ) = J_r⁻¹(φ)ᵗ` **bit for bit**, not just mathematically:
+    /// `J_r = I − aW + bW²` with `Wᵗ = −W` gives `J_rᵗ = I + aW + bW²`, and in floating point
+    /// `hat(−φ)` is exactly `hat(φ)ᵗ`, `a` and `b` are functions of `θ²` alone, and `W²` as
+    /// `Matrix::mul` forms it is exactly symmetric (its `(i, j)` and `(j, i)` sums are the same
+    /// products in the same index order). Pinned by `jl_is_jr_transposed_to_the_bit`.
+    ///
+    /// This row and `lminus_jacobians` are the crate's hottest Jacobian path — one per residual
+    /// per solver iteration — and computing both inverses independently paid a second `norm_sq`,
+    /// a second grouped coefficient `branch` (two `sqrt` and two `sin_cos` on the exact arm), a
+    /// second `hat` and a second 27-multiply `3 x 3` product for a matrix a transpose already has.
     #[inline]
     fn rminus_jacobians(&self, base: &Self) -> (Mat3<S>, Mat3<S>) {
-        let tau = self.rminus(base);
-        (Self::jr_inv(&tau), -Self::jl_inv(&tau))
+        let jri = Self::jr_inv(&self.rminus(base));
+        (jri, -jri.transpose())
     }
-    /// `(J_l⁻¹(τ), −J_r⁻¹(τ))` at `τ = self ⊖_L base` (`NUMERICS.md` §2.3).
+    /// `(J_l⁻¹(τ), −J_r⁻¹(τ))` at `τ = self ⊖_L base` (`NUMERICS.md` §2.3), from one `jr_inv`
+    /// and a transpose; see [`rminus_jacobians`](SO3::rminus_jacobians) for why that is exact.
     #[inline]
     fn lminus_jacobians(&self, base: &Self) -> (Mat3<S>, Mat3<S>) {
-        let tau = self.lminus(base);
-        (Self::jl_inv(&tau), -Self::jr_inv(&tau))
+        let jri = Self::jr_inv(&self.lminus(base));
+        (jri.transpose(), -jri)
     }
     /// Right `(Ad_Y⁻¹, I)`, left `(I, Ad_X)` (`NUMERICS.md` §2.3), selected by `Sd::IS_RIGHT` at
     /// compile time.

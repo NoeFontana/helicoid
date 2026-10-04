@@ -757,9 +757,14 @@ fn a_group_below_its_smallest_switch_runs_no_exact_arm_f32() {
 
 /// Above the switches the exact arms of a group run once and share what they can: `Exp` one `sqrt` and
 /// one `sin_cos` (`NUMERICS.md` §3.1) from `cos θ/2`'s switch up, `b` and `e` one `sin_cos` of `θ`.
+///
+/// **Every group now takes one `sqrt`.** `jr` took two until `exact_a_b` shared `θ` between `a`
+/// and `b` — this counting scalar is what measured it, and the row below is the regression test:
+/// `(2, 2, 0)` would say the sharing was lost. Its two `sin_cos` stay, because `sin θ` from
+/// `sin(θ/2)` is a rounding change and owes a measurement (`0006`).
 fn a_group_runs_each_exact_arm_once<const F32: bool>() {
     // (sqrt, sin_cos, atan2) of `exp`, `jr`, `jr_inv`, `q`, `log`.
-    let above = [(1, 1, 0), (2, 2, 0), (1, 1, 0), (1, 2, 0), (1, 0, 1)];
+    let above = [(1, 1, 0), (1, 2, 0), (1, 1, 0), (1, 2, 0), (1, 0, 1)];
     for z in [2.0, 6.0, 9.8] {
         assert_eq!(calls::<F32>(z), above, "z = {z}");
     }
@@ -767,7 +772,7 @@ fn a_group_runs_each_exact_arm_once<const F32: bool>() {
     assert_eq!(calls::<F32>(1e-3)[0], (1, 1, 0));
     if !F32 {
         // The one `sin_cos` for nothing (`super`): `b` on its series arm, `a` not, and `d` likewise.
-        assert_eq!(calls::<false>(0.8)[1], (2, 2, 0));
+        assert_eq!(calls::<false>(0.8)[1], (1, 2, 0));
         assert_eq!(calls::<false>(0.97)[3], (1, 2, 0));
     }
 }
