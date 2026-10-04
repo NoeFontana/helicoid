@@ -784,7 +784,20 @@ fn a_group_runs_each_exact_arm_once_f32() {
 
 #[cfg(debug_assertions)]
 #[test]
-#[should_panic(expected = "the branch variable is not >= 0")]
+#[should_panic(expected = "the branch variable is negative")]
 fn a_negative_branch_variable_is_refused_in_debug() {
     let _ = exp_coeffs(-1.0_f64);
+}
+
+/// A NaN branch variable is **not** refused: the assert catches a sign error upstream, and `θ²`
+/// NaN is a NaN tangent, whose coefficients are NaN — the answer a value function owes, not a
+/// panic. `laws::dual_value_is_plain_value` reaches this through `SO3::exp` over `f64::ANY`.
+#[test]
+fn a_nan_branch_variable_is_answered_with_nan_not_a_panic() {
+    let (k, cos_half) = exp_coeffs(f64::NAN);
+    assert!(k.is_nan() && cos_half.is_nan());
+    let (a, b) = jr_coeffs(f64::NAN);
+    assert!(a.is_nan() && b.is_nan());
+    assert!(jr_inv_coeff(f64::NAN).is_nan());
+    assert!(log_ratio(f64::NAN, 1.0).is_nan());
 }

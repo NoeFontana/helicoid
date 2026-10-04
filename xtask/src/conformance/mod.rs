@@ -575,7 +575,15 @@ mod tests {
             "sen3_jr_n1",
             "sen3_jr_n2",
             "sen3_jr_n3",
+            // Every `so3_*` id the `helicoid` subject answers. None has an `@f32` stratum until a
+            // record extends `0016`, so a plain `f32` run names them all and runs none.
+            "so3_act",
             "so3_exp",
+            "so3_from_matrix",
+            "so3_jl",
+            "so3_jl_inv",
+            "so3_jr",
+            "so3_jr_inv",
             "so3_log",
         ];
         assert_eq!(split(&plain)?.1, want);

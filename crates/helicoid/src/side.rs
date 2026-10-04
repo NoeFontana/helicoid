@@ -28,6 +28,7 @@ mod sealed {
 /// struct MyRight;
 ///
 /// impl Side for MyRight {
+///     const IS_RIGHT: bool = true;
 ///     fn plus<S: Real, G: LieGroup<S>>(x: &G, tau: &G::Tangent) -> G {
 ///         x.rplus(tau)
 ///     }
@@ -43,6 +44,16 @@ mod sealed {
 /// }
 /// ```
 pub trait Side: sealed::Sealed + Copy + 'static {
+    /// `true` for [`Right`], `false` for [`Left`]: how a group reads its side row of
+    /// `NUMERICS.md` §2.3 where the two differ (`SO3::compose_jacobians`).
+    ///
+    /// This is the "first-class selector" the trait docs weigh against a `TypeId` comparison, and
+    /// the SO(3) PR took it (`PHASE3.md` §2 left the choice here). It is an associated **const**,
+    /// so `match Sd::IS_RIGHT` is resolved at monomorphization and neither branch survives into
+    /// the emitted code — a `TypeId` compare is a runtime call on a 16-byte value that LLVM folds
+    /// only after inlining, and it needs the `'static` bound to stay. A group that reads the same
+    /// Jacobian on both sides, such as `Rn`, never mentions it.
+    const IS_RIGHT: bool;
     /// `x ⊕ τ`: [`LieGroup::rplus`] for `Right`, [`LieGroup::lplus`] for `Left`.
     fn plus<S: Real, G: LieGroup<S>>(x: &G, tau: &G::Tangent) -> G;
     /// `y ⊖ x`: [`LieGroup::rminus`] for `Right`, [`LieGroup::lminus`] for `Left`.
@@ -65,6 +76,7 @@ impl sealed::Sealed for Right {}
 impl sealed::Sealed for Left {}
 
 impl Side for Right {
+    const IS_RIGHT: bool = true;
     fn plus<S: Real, G: LieGroup<S>>(x: &G, tau: &G::Tangent) -> G {
         x.rplus(tau)
     }
@@ -80,6 +92,7 @@ impl Side for Right {
 }
 
 impl Side for Left {
+    const IS_RIGHT: bool = false;
     fn plus<S: Real, G: LieGroup<S>>(x: &G, tau: &G::Tangent) -> G {
         x.lplus(tau)
     }

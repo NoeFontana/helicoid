@@ -72,6 +72,50 @@ defined by the status tables in `docs/`; they win over this file.
 
 ### Added
 
+- `helicoid`: **`SO3<S>` and `SO3Tangent<S>`** (`docs/PHASE3.md` §4), the first group with a
+  non-trivial `Exp`, and the coefficient kernel's first consumer — so `mod coeffs` loses the
+  `cfg(any(test, feature = "__sweep"))` it carried and a default build reaches `exp_coeffs`,
+  `jr_coeffs`, `jr_inv_coeff` and `log_ratio` through it. `exp`/`log` are `NUMERICS.md` §3.1–§3.2
+  (the grouped `(k, cos θ/2)` branch, the `copysign` flip, the swept `r` switch); `act`, `act_many`,
+  `to_matrix`, `from_matrix` (Shepperd, §3.4, four nested `branch`es each at a safe `sqrt`
+  argument), `renormalize`, `Mul`, `inverse`, `adjoint = R`, `ad = W`, `jr`, `jr_inv`, and every
+  `NUMERICS.md` §2.3 row. `Jac = Mat3<S>`: SO(3)'s adjoint *is* a rotation matrix, so there is no
+  structure below a dense `3 x 3`. `jl`/`jl_inv` are not overridden — the provided `jr(−τ)` is
+  `I + aW + bW²` to the bit — so there is one code path and §14's twin stays the provided body.
+- `helicoid`: `Side::IS_RIGHT`, the side selector `docs/PHASE3.md` §2 left to the SO(3) PR, taken
+  as an associated **const** over a `TypeId` comparison: `match Sd::IS_RIGHT` resolves at
+  monomorphization, so neither arm survives into the emitted code and the `'static` bound earns
+  nothing. `SO3` is the first group whose two sides differ at all.
+- `helicoid`: `Product::{from_parts, parts}` (`0029` option A, which specified them to land with
+  this PR because SO(3) is what makes `Product<SO3, Rn<3>>` — the tf2 pose — constructible).
+  Fields stay private (`0025` decision 5); before this the only route was an `Exp`/`Log` round trip
+  through both factors, which for SO(3) is neither exact nor cheap and is worst-conditioned at a
+  half turn.
+- `cargo xtask conformance`: the `helicoid` subject answers **every `so3_*` corpus id** — `so3_exp`,
+  `so3_log`, `so3_act`, `so3_from_matrix`, `so3_jr`, `so3_jl`, `so3_jr_inv`, `so3_jl_inv`, six of
+  which no subject scored before. `f64`, no non-finite output, worst `max_u`: `so3_exp` 2.743
+  (`theta:pi-1e-9`, equal to the seeded subject's), `so3_log` 2.627 (`theta:1e-4`), `so3_jr` and
+  `so3_jl` 4.097 (`theta:pi-1e-8`), `so3_jr_inv` and `so3_jl_inv` 2.112 (`theta:dense`), `so3_act`
+  4.899 (`theta:pi-1e-5`); `so3_from_matrix` is shape and finiteness only (its `max_u` is NaN by
+  design). On `theta:dense` the shipped `log_ratio` scores **2.465 against the seeded reading's
+  2.901**: the swept `r` switch on `s = n²/w²` beats the seeded `n² = 0` one.
+
+### Changed
+
+- `docs/maths/index.md`: the reading `so3_act` takes off the unit sphere is **measured**, not just
+  listed. `SO3::act`, which is §3.3 as written, scores 510.3 `u` at the `q:nonunit` stratum and
+  `to_matrix()` × v, the scaled rotation of §1, scores 257.8 — exactly `2·2^-45/u` and `2^-45/u` at
+  that stratum's `η`, so the corpus reference is the **normalized** reading and neither shipped
+  form is it. Adopting it would be a §3.3 edit and a record; until then the stratum is outside
+  `act`'s unit-`q` domain and that row is the open question, not a defect.
+- `helicoid::coeffs`: `nonnegative` now reads "no lane is negative" rather than "every lane is
+  `>= 0`". The two differ only on NaN, which the assert is not there to reject — a *negative* `θ²`
+  is a sign error worth a panic, a NaN one is a NaN input, and every arm returns NaN for it, which
+  is the answer a value function owes. Reached by `laws::dual_value_is_plain_value`, which drives
+  `SO3::exp` over `f64::ANY`. `SO3::exp` likewise builds its quaternion field by field instead of
+  through `Quat::from_wxyz_unchecked`, whose `debug_assert!` is for a caller *claiming* unit and
+  would turn a NaN tangent into a panic; `Exp`'s output is unit by construction.
+
 - `docs/decisions/0036` (draft): partitions the envelope's 75 domination failures by *which* oracle
   won, which turns 67 unexplained into 30 worth an experiment and 45 worth a confirmation.
   `tf_tree_math` routes through the `libm` crate as we do, so the 30 it beats us on cannot be D16's

@@ -84,9 +84,13 @@ fn table<S: Real, T>(wide: T, narrow: T) -> T {
 }
 
 fn nonnegative<S: Real>(z: S) {
+    // Written as "no lane is negative", not "every lane is `>= 0`": the two differ only on NaN,
+    // which this assert is not here to reject. `θ²` and `n²` are dot products, so a *negative*
+    // branch variable is a sign error upstream and worth a panic; a NaN one is a NaN input, and
+    // every arm below returns NaN for it, which is the answer a value function owes its caller.
     debug_assert!(
-        S::zero().le(z).all(),
-        "coeffs: the branch variable is not >= 0"
+        !z.lt(S::zero()).any(),
+        "coeffs: the branch variable is negative"
     );
 }
 
@@ -144,6 +148,10 @@ pub(crate) fn jr_inv_coeff<S: Real>(z: S) -> S {
 }
 
 /// `(b, d, e)` at `θ² = z`: Barfoot's `Q` block (`NUMERICS.md` §5.3).
+// SO(3) reaches every other grouped entry point; this one is SE_N(3)'s alone and has no consumer
+// until `PHASE3.md` §5 lands. Allowed rather than `cfg`'d, because a `cfg` would take `exact_b_d_e`
+// and its `d_from`/`e_from` with it and split the kernel's exact arms across two builds.
+#[allow(dead_code)]
 pub(crate) fn q_coeffs<S: Real>(z: S) -> (S, S, S) {
     let arms = table::<S, _>(
         [B_F64.arm(), D_F64.arm(), E_F64.arm()],
