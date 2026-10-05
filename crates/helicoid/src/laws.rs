@@ -244,6 +244,58 @@ pub(crate) fn plus_minus<S: Real, G: LieGroup<S>, const D: usize>(
     .fold(0.0, worst)
 }
 
+/// `PHASE4.md` §1 and §3's invariances on one fixture: the endpoints, GE.2(c)'s symmetry, the
+/// velocity, and GE.4's left and right invariance.
+///
+/// `x1` is `x0 ⊕_R d` and not a second draw, so `θ(d)` is the drawn tangent's and the curve stays
+/// inside [`LieGroup::geodesic`]'s domain: two independent draws of `[-1, 1)^D` compose to a
+/// relative rotation of up to `2√3 > π`, where the answer is the quaternion sign's and the law
+/// would be measuring GE.13(d)'s conditioning instead of the identity. It is also how
+/// `geo:consecutive` builds its records, for the same reason.
+///
+/// Right invariance holds for **every** group, not only SE(3): `γ(x0 h, x1 h, t) = γ(x0, x1, t) h`
+/// follows from `Log(h⁻¹ Δ h) = Ad_{h⁻¹} d` and `h Exp(Ad_{h⁻¹} ξ) = Exp(ξ) h`, with no
+/// commutativity used. `Product<SO3, R3>`'s famous failure is against the **SE(3) reading** of
+/// `(R, t)`, a different composition from `Product`'s own `Mul`, which `PHASE4.md` §3 asserts
+/// separately (`0045` item 4).
+///
+/// # Domain
+///
+/// `θ(d) < π`, and `θ(Ad_{h⁻¹} d) < π`, which is the same angle on every group that ships.
+pub(crate) fn geodesic<S: Real, G: LieGroup<S>, const D: usize>(
+    x0: &G,
+    d: &G::Tangent,
+    h: &G,
+    t: S,
+) -> f64 {
+    geodesic_legs::<S, G, D>(x0, d, h, t)
+        .into_iter()
+        .fold(0.0, worst)
+}
+
+/// [`geodesic`]'s six legs apart, in the order [`GEODESIC_LEGS`] names them: the measurement
+/// prints them per group so the bound says which identity set it, and the law folds them.
+pub(crate) const GEODESIC_LEGS: [&str; 6] = ["t=0", "t=1", "symmetry", "velocity", "left", "right"];
+
+pub(crate) fn geodesic_legs<S: Real, G: LieGroup<S>, const D: usize>(
+    x0: &G,
+    d: &G::Tangent,
+    h: &G,
+    t: S,
+) -> [f64; 6] {
+    let x1 = x0.rplus(d);
+    let at = |a: &G, b: &G, s: S| G::geodesic(a, b, s);
+    let one = S::one();
+    [
+        gerr::<S, G, D>(&at(x0, &x1, S::zero()), x0),
+        gerr::<S, G, D>(&at(x0, &x1, one), &x1),
+        gerr::<S, G, D>(&at(x0, &x1, t), &at(&x1, x0, one - t)),
+        terr::<S, G, D>(&G::geodesic_velocity(x0, &x1), &x1.rminus(x0)),
+        gerr::<S, G, D>(&at(&(*h * *x0), &(*h * x1), t), &(*h * at(x0, &x1, t))),
+        gerr::<S, G, D>(&at(&(*x0 * *h), &(x1 * *h), t), &(at(x0, &x1, t) * *h)),
+    ]
+}
+
 /// The rows of `NUMERICS.md` §2.3, each against `Ad`, `J_r`, `J_l` and their inverses: `⊕`, `⊖`,
 /// `X Y` and `X⁻¹`, both sides. The rows are not compared with `Dual` differentiation here
 /// (`docs/PHASE3.md` §8).
@@ -608,6 +660,8 @@ pub(crate) struct Bounds {
     pub(crate) sandwich: f64,
     /// [`jacobians_match_dual`]'s bound, `PHASE3.md` §8's second check.
     pub(crate) dual_rows: f64,
+    /// [`geodesic`]'s bound, `PHASE4.md` §1 and §3.
+    pub(crate) geodesic: f64,
 }
 
 /// splitmix64, seeded; `unif` is uniform on `[-1, 1)`.
@@ -765,6 +819,35 @@ macro_rules! laws_for {
                     let s = laws::sandwich_matches_dense::<S, Gp, D>(&j(&a), &cov::<S, D>(&a, &b, &c));
                     within(s, $B.sandwich)?;
                 }
+                #[test]
+                fn geodesic(a in sample::<D>(), b in sample::<D>(), c in sample::<D>()) {
+                    let at = S::sample(c[0], 0);
+                    within(laws::geodesic::<S, Gp, D>(&g(&a), &t(&b), &g(&c), at), $B.geodesic)?;
+                }
+            }
+
+            /// The worst error of the geodesic laws over 10^6 seeded cases, the figures
+            /// `Bounds::geodesic` is recorded from. Its own stream, so adding it left every other
+            /// law's recorded figure reproducible (`laws::Rng`).
+            #[test]
+            #[ignore = "measurement: prints the figures the bounds are recorded from"]
+            #[allow(clippy::print_stdout)]
+            fn measure_geodesic() {
+                let mut rng = $crate::laws::Rng(0x6765_6F64_6573_6963);
+                let mut w = [0.0_f64; 6];
+                for _ in 0..1_000_000 {
+                    let (a, b, c) = (rng.arr::<D>(), rng.arr::<D>(), rng.arr::<D>());
+                    let s = S::sample(rng.unif(), 0);
+                    let legs = laws::geodesic_legs::<S, Gp, D>(&g(&a), &t(&b), &g(&c), s);
+                    for (acc, v) in w.iter_mut().zip(legs) {
+                        *acc = laws::worst(*acc, v);
+                    }
+                }
+                std::print!("{} geodesic", module_path!());
+                for (n, v) in laws::GEODESIC_LEGS.iter().zip(w) {
+                    std::print!("  {n} {v:.3}");
+                }
+                std::println!();
             }
         }
     };

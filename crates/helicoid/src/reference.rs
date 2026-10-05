@@ -27,7 +27,7 @@
 
 use crate::dualmat::{dof, SEn3Jac};
 use crate::product::ProductJac;
-use crate::traits::{Jac, Tangent};
+use crate::traits::{Jac, LieGroup, Tangent};
 use helicoid_linalg::{Mask, Matrix, Real, StridedMut};
 
 /// The terms added left to right from the first, `+0` when there are none.
@@ -44,6 +44,20 @@ fn sum<S: Real>(mut terms: impl Iterator<Item = S>) -> S {
         Some(first) => terms.fold(first, |acc, t| acc + t),
         None => S::zero(),
     }
+}
+
+/// The group geodesic, the definition: `x0 ⊕_R ((x1 ⊖_R x0) · t)` (`NUMERICS.md` §10).
+///
+/// `LieGroup::geodesic`'s provided body is a call to this, so the two are one expression
+/// (`PHASE4.md` §1.1) and a group's fast twin has something to be compared against that its own
+/// override cannot shadow. The only twin here that is not dense: a geodesic is a group element,
+/// so `API.md` R5 does not apply.
+///
+/// # Domain
+///
+/// [`LieGroup::geodesic`]'s.
+pub fn geodesic<S: Real, G: LieGroup<S>>(x0: &G, x1: &G, t: S) -> G {
+    x0.rplus(&x1.rminus(x0).scale(t))
 }
 
 /// The dense image of `j` in a `D x D` scratch, through the public [`Jac::write_dense`].

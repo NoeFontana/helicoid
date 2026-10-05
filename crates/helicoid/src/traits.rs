@@ -186,6 +186,30 @@ pub trait LieGroup<S: Real>: Copy + Blend<S> + Mul<Output = Self> {
     fn lminus(&self, base: &Self) -> Self::Tangent {
         (*self * base.inverse()).log()
     }
+    /// The group geodesic `γ(x0, x1, t) = x0 · Exp(t · (x1 ⊖_R x0))` (`NUMERICS.md` §10).
+    ///
+    /// The provided body **is** [`reference::geodesic`](crate::reference::geodesic) and calls it,
+    /// so a group that overrides this with a fast twin is proptested against the one expression
+    /// this returns and the two cannot drift apart (`PHASE4.md` §1.1, D6).
+    ///
+    /// `t` outside `[0, 1]` extrapolates along the same curve; `t = 0` returns `x0` and `t = 1`
+    /// returns `x1` to rounding (exactly, at `t = 0`, for every group that ships).
+    ///
+    /// # Domain
+    ///
+    /// `θ(x1 ⊖_R x0) < π`. At `π` the curve is `NUMERICS.md` §3.2's function of the quaternion
+    /// sign: the two preimages give geodesics `O(1)` apart, so two programs that disagree on the
+    /// sign by one ulp of `θ` disagree on the answer by `O(1)`
+    /// (`docs/maths/geodesics.md` GE.13(d)). Nothing panics, in debug or release.
+    fn geodesic(x0: &Self, x1: &Self, t: S) -> Self {
+        crate::reference::geodesic(x0, x1, t)
+    }
+    /// The body velocity of [`geodesic`](LieGroup::geodesic) per unit `t`, `x1 ⊖_R x0`, constant
+    /// along the curve (`NUMERICS.md` §10, `docs/maths/geodesics.md` GE.2(b)). For a time step
+    /// `Δt`, scale by `1/Δt`.
+    fn geodesic_velocity(x0: &Self, x1: &Self) -> Self::Tangent {
+        x1.rminus(x0)
+    }
     /// `(∂(self ⊕_R τ)/∂self, ∂(self ⊕_R τ)/∂τ)`, right convention.
     fn rplus_jacobians(&self, tau: &Self::Tangent) -> (Self::Jac, Self::Jac);
     /// `(∂(self ⊕_L τ)/∂self, ∂(self ⊕_L τ)/∂τ)`, left convention.

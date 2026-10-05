@@ -54,6 +54,8 @@ const F64: Bounds = Bounds {
     sandwich: 8.0,
     // `PHASE3.md` §8's second check, measured 5.485 over 20 000 draws.
     dual_rows: 11.0,
+    // `PHASE4.md` §1 and §3's six legs, over 10^6 draws of `laws::Rng`'s own geodesic stream (`measure_geodesic`), twice the worst of the three scalars, rounded up: symmetry 10.719 / 10.768, left 12.537 / 12.143, right 11.424 / 12.311, `t=1` 6.756 / 7.319. The `velocity` leg is exactly 0 on every group -- it is `rminus` against itself until a group overrides -- and `t=0` is `gerr`'s floor for two **bitwise equal** elements, not a geodesic error: `q* q` leaves a residue of about one `u` in the vector part, so it reads 1.118 whatever the curve does; `geodesic_at_zero_is_the_left_endpoint_bit_for_bit` is the statement that has no floor.
+    geodesic: 26.0,
 };
 const F32: Bounds = Bounds {
     tangent_order: 3.0,
@@ -623,5 +625,36 @@ fn adjoint_is_the_rotation_and_ad_is_the_hat() {
     let got = SO3::<f64>::ad(&tan(phi));
     for c in 0..3 {
         close(&got.col(c).0, &w.col(c).0, 0.0);
+    }
+}
+
+/// `γ(x₀, x₁, 0)` is `x₀` **bit for bit**, which `laws::geodesic`'s `t=0` leg cannot say: `gerr`
+/// compares two elements through `Log(x₀⁻¹ x₀)`, and `q* q` leaves about one `u` in the vector
+/// part whatever the curve did (1.118 `u`, the floor every quaternion group's law reads there).
+///
+/// It holds by the arithmetic and not by luck: `d.scale(0)` is `±0` per component, `Exp` of that
+/// is `(1, ±0, ±0, ±0)` — `θ² = 0`, so `k` is its series value and `cos(θ/2)` is exactly `1` —
+/// and multiplying a quaternion by it adds signed zeros to each component, which is exact
+/// (`docs/maths/geodesics.md` GE.7(b), `0045` item 3).
+#[test]
+fn geodesic_at_zero_is_the_left_endpoint_bit_for_bit() {
+    let q =
+        |v: [f64; 4]| SO3::from_quat_unchecked(Quat::from_wxyz_normalized(v[0], v[1], v[2], v[3]));
+    let cases = [
+        ([1.0, 0.0, 0.0, 0.0], [0.3, -0.5, 0.7]),
+        ([0.2, 0.3, -0.5, 0.78], [1.0, -2.0, 0.5]),
+        ([0.0, 0.6, 0.0, 0.8], [1e-9, 0.0, -1e-9]),
+        ([-0.4, 0.1, 0.9, -0.2], [0.0, 0.0, 0.0]),
+    ];
+    for (w, d) in cases {
+        let x0 = q(w);
+        let x1 = x0.rplus(&SO3Tangent { phi: Vector(d) });
+        let got = SO3::geodesic(&x0, &x1, 0.0).quat();
+        let want = x0.quat();
+        assert_eq!(
+            [got.w, got.x, got.y, got.z].map(f64::to_bits),
+            [want.w, want.x, want.y, want.z].map(f64::to_bits),
+            "t = 0 moved {w:?} along {d:?}"
+        );
     }
 }

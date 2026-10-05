@@ -225,6 +225,8 @@ mod group {
         sandwich: 8.0,
         // `PHASE3.md` §8's second check, measured 6.946 at `N = 1` and 5.274 at `N = 2` over 10 000 draws each.
         dual_rows: 14.0,
+        // `PHASE4.md` §1 and §3's six legs, over 10^6 draws of `laws::Rng`'s own geodesic stream (`measure_geodesic`), twice the worst of the three scalars, rounded up: symmetry 30.917 at `N = 1` and 35.339 at `N = 2`, `f32`, which is the binding leg; left 14.590, right 18.672, `t=1` 7.976. The `velocity` leg is exactly 0 on every group -- it is `rminus` against itself until a group overrides -- and `t=0` is `gerr`'s floor for two **bitwise equal** elements, not a geodesic error: 1.118 at `N = 1`, the quaternion's, as for SO(3); `geodesic_at_zero_is_the_left_endpoint_bit_for_bit` has no floor.
+        geodesic: 71.0,
     };
     // `tangent_order` is one rounding at `f32` where it is exact at `f64`, as for SO(3); every
     // other law agrees within 25% across the precisions, so one set serves them.
@@ -503,6 +505,46 @@ mod group {
             let m = x64.rotation().to_matrix();
             for r in 0..3 {
                 close(&dp.row(r).0, &m.row(r).0, 0.0);
+            }
+        }
+    }
+
+    /// `γ(x₀, x₁, 0)` is `x₀` **bit for bit**, at both widths, which `laws::geodesic`'s `t=0` leg
+    /// cannot say: `gerr` compares two elements through `Log(x₀⁻¹ x₀)` and the quaternion's
+    /// `q* q` leaves about one `u` in the vector part whatever the curve did (1.118 `u`).
+    ///
+    /// It holds by the arithmetic: `d.scale(0)` is `±0` per component, `Exp` of that is the
+    /// identity quaternion with signed zeros in `x`, and composing adds those signed zeros to
+    /// each component of `x₀` — exact, at `‖x₀‖ = 1e4` as at `0`
+    /// (`docs/maths/geodesics.md` GE.7(b), `0045` item 3).
+    #[test]
+    fn geodesic_at_zero_is_the_left_endpoint_bit_for_bit() {
+        let tangents: [[f64; 9]; 4] = [
+            [0.3, -0.7, 1.1, 0.5, -2.0, 0.25, -1.0, 4.0, 0.125],
+            [0.0, 0.0, 0.0, 1e4, -1e4, 1e4, 1e-9, 0.0, -1e-9],
+            [3.0, 0.1, -0.2, 1e-9, 1e-9, 1e-9, 0.0, 0.0, 0.0],
+            [0.0; 9],
+        ];
+        for v in tangents {
+            let x0 = SE23::<f64>::exp(&SEn3Tangent::read_dense(&v));
+            // The step is the fixture rotated into another octant, so `d` is neither `0` nor `v`.
+            let d = SEn3Tangent::<f64, 2>::read_dense(&v.map(|c| -c / 3.0));
+            let x1 = x0.rplus(&d);
+            let got = SE23::geodesic(&x0, &x1, 0.0);
+            for (a, b) in [(got, x0)] {
+                let (ra, ca) = a.parts();
+                let (rb, cb) = b.parts();
+                let q = |r: crate::SO3<f64>| {
+                    [r.quat().w, r.quat().x, r.quat().y, r.quat().z].map(f64::to_bits)
+                };
+                assert_eq!(q(ra), q(rb), "t = 0 moved the rotation of {v:?}");
+                for i in 0..2 {
+                    assert_eq!(
+                        ca[i].0.map(f64::to_bits),
+                        cb[i].0.map(f64::to_bits),
+                        "t = 0 moved column {i} of {v:?}"
+                    );
+                }
             }
         }
     }

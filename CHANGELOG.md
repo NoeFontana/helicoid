@@ -9,6 +9,43 @@ defined by the status tables in `docs/`; they win over this file.
 
 ### Added
 
+- **`LieGroup::geodesic` and `geodesic_velocity`** (`PHASE4.md` §1.1, `NUMERICS.md` §10), provided
+  methods on every group, with `reference::geodesic` as the expression they call — so the provided
+  body **is** the reference twin, as §1.1 asks, and a group's fast twin has something to be
+  measured against that its own override cannot shadow.
+  - `Product` delegates per factor, so **`Product<SO3, Rn<3>>` is slerp and lerp** by construction
+    (§1.3): `tf2`'s semantics without `tf2`'s small-angle fallback, which `0009` leaves to
+    `tf_tree`.
+  - **`SO3::geodesic` is deliberately not overridden.** GE.14 proves the provided body is
+    shortest-arc slerp with `Log`'s sign rule, in the better-conditioned spelling — `atan2` where
+    slerp has `acos`, whose slope is infinite where the two quaternions are nearly equal — and the
+    corpus now says so rather than the maths page alone: **1.572 `u` against
+    `tf_tree_math::slerp`'s 2.187** on `geo:consecutive`, the kilohertz stratum. It also removes
+    `Real::acos` (`0022`, unimplemented) from the path entirely.
+  - **And where it is behind, with the numbers**, because that is the point of having the
+    instrument first: `so3_geodesic` 2.721 / 2.429 `u` against 1.834 / 1.642 at `geo:generic` /
+    `geo:near-pi`, and `se3_geodesic` 2.556 / 3.240 / 3.466 against `ScLerp`'s 2.336 / 2.502 /
+    3.253. Five domination failures, and the motivation for §1.2's screw twin stated in numbers:
+    the provided body is `Log` then `Exp` where `ScLerp` is one `atan2` and one `sin_cos`, so the
+    reference pays for roundings the screw form does not have.
+  - **`laws::geodesic`**, six legs in one law for every instantiated group (`Rn`, `SO3`, `SE3`,
+    `SE_2(3)`, the test-only Heisenberg group and the four products) at `f64`, `f32` and
+    `Dual<f64, D>`: both endpoints, GE.2(c)'s symmetry, the velocity, and GE.4's left **and**
+    right invariance. Right invariance holds on *every* group, not only SE(3) —
+    `Log(h⁻¹Δh) = Ad_{h⁻¹}d` and `h Exp(Ad_{h⁻¹}ξ) = Exp(ξ)h`, no commutativity used — so
+    `Product<SO3, R3>`'s famous failure is against the **SE(3) reading** of `(R, t)` and not
+    against `Product`'s own `Mul`, which `PHASE4.md` §3 asserts separately. `x₁` is `x₀ ⊕ d` and
+    not a second draw, so `θ(d)` stays inside the domain: two draws of `[-1,1)^D` compose to up to
+    `2√3 > π`, where the law would measure GE.13(d)'s conditioning instead of the identity.
+  - Bounds are twice the worst of **10^6 draws** of a stream of its own, per group, printed per leg
+    by an `#[ignore]`d `measure_geodesic`: `Rn` 10, `Product` 18, `Heis` 19, `SO3` 26, `SEn3` 71
+    (its `symmetry` leg at `N = 2`, `f32`, is the binding one at 35.339). The `velocity` leg is
+    exactly **0** on every group, and `t = 0` returns the left endpoint **bit for bit** on SO(3)
+    and SE_2(3) — which the law's `gerr` cannot say, its floor for two bitwise equal quaternions
+    being 1.118 `u`, so two dedicated tests say it instead.
+  - `xtask/src/shipped.rs` gains a `Geodesic` family, so the two corpus ids are scored from the
+    moment they exist.
+
 - **The geodesic instrument: corpus ids `so3_geodesic` and `se3_geodesic`, 180 records each**
   (`PHASE4.md` §4, [`0045`](docs/decisions/0045-two-phase-4-checks-cannot-be-taken-as-written.md)
   plan steps 2 and 3). D7 puts the instrument before the routine, and Phase 4 had none: these are

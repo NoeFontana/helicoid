@@ -365,6 +365,25 @@ impl<S: Real, A: LieGroup<S>, B: LieGroup<S>> LieGroup<S> for Product<A, B> {
     fn lminus(&self, base: &Self) -> Self::Tangent {
         (self.0.lminus(&base.0), self.1.lminus(&base.1))
     }
+    /// The factors' geodesics side by side. With `SO3` and `Rn<3>` that is slerp and lerp —
+    /// `tf2`'s semantics without `tf2`'s small-angle fallback, which `0009` leaves to `tf_tree`
+    /// (`NUMERICS.md` §10, `PHASE4.md` §1.3).
+    ///
+    /// Under this law the curve is left- **and** right-invariant, exactly, because
+    /// `Ad_H = diag(Ad_{H_A}, Ad_{H_B})` is block diagonal; read as an SE(3) pose it is
+    /// left-invariant only, which `PHASE4.md` §3 asserts as a positive failure against *that*
+    /// composition and not against this one (`docs/maths/geodesics.md` GE.5, `0045`).
+    #[inline]
+    fn geodesic(x0: &Self, x1: &Self, t: S) -> Self {
+        Self(A::geodesic(&x0.0, &x1.0, t), B::geodesic(&x0.1, &x1.1, t))
+    }
+    #[inline]
+    fn geodesic_velocity(x0: &Self, x1: &Self) -> Self::Tangent {
+        (
+            A::geodesic_velocity(&x0.0, &x1.0),
+            B::geodesic_velocity(&x0.1, &x1.1),
+        )
+    }
     #[inline]
     fn rplus_jacobians(&self, tau: &Self::Tangent) -> (Self::Jac, Self::Jac) {
         let (a, b) = (

@@ -79,6 +79,8 @@ const F64: Bounds = Bounds {
     sandwich: 12.0,
     // `PHASE3.md` §8's second check, measured 0.316 over the four product groups, 10 000 draws each; `Rn x Rn` is exactly `0`.
     dual_rows: 1.0,
+    // `PHASE4.md` §1 and §3's six legs, over 10^6 draws of `laws::Rng`'s own geodesic stream (`measure_geodesic`), twice the worst of the three scalars, rounded up: the worst of the four groups: symmetry 5.038 / 6.345, left 5.993 / 7.280, right 7.430 / 8.821. The `velocity` leg is exactly 0 on every group -- it is `rminus` against itself until a group overrides -- and `t=0` is `gerr`'s floor for two **bitwise equal** elements, not a geodesic error: 0 for `Rn x Rn`, 0 for the Heisenberg factors too.
+    geodesic: 18.0,
 };
 const F32: Bounds = Bounds {
     axioms: 9.0,
