@@ -218,16 +218,19 @@ None until the open questions are resolved.
     no file are errors; a non-finite answer is a recorded row, not a failed run (§7: "oracles may
     be wrong"), where 6 fails an in-process subject on it. The three container runners will
     implement this in C++. Amend §7 with it, or take another shape?
-32. **What `tf_tree_math` answers beyond §7's list** (exp, log, `a, b, c` via `V`/`V⁻¹`, `slerp`,
-    ScLERP). At the pin the runner answers `so3_exp`, `so3_log`, `sen3_exp_n1` and `sen3_log_n1`.
-    `coeff_*` and the Jacobians are not exported (`v_coeffs`, `vinv_c3` are private). Three exported
-    functions have corpus ids and are not answered: `Iso3::adjoint` (`sen3_ad_n1`, `Ad(T)` on the
-    six basis twists), `Quat::rotate` (`so3_act`, which assumes a unit `q`, so `q:nonunit` and
-    `q:w0` would score that assumption) and `quat_from_rot3` (`so3_from_matrix`, checked for shape
-    and finiteness only). For those ids `0010`'s "dominate on every paired stratum" pairs nothing.
-    Answer them, with which strata, or leave the ids to sophus-rs and the containers? sophus-rs
-    0.15.0 exports `LieGroup::adj` and `LieGroup::transform` too, and its runner leaves
-    `sen3_ad_n1` and `so3_act` unanswered until this is answered.
+32. **What `tf_tree_math` answers beyond §7's list** — **answered for that runner, by
+    measurement.** All three of its exported functions that have corpus ids now answer, on every
+    stratum of the file: `Quat::rotate` (`so3_act`), `Iso3::adjoint` (`sen3_ad_n1`, `Ad(T)` on the
+    six basis twists) and `quat_from_rot3` (`so3_from_matrix`). Selecting strata was the
+    alternative and is rejected: it would make a paired comparison the runner's choice, where
+    `0010`'s "dominate on every paired stratum" means the ones the corpus holds. §7 and §0.0 row 20
+    carry the measurement; what it found is in row 20. `coeff_*` and the Jacobians stay unanswered,
+    not exported at the pin (`v_coeffs`, `vinv_c3` are private).
+    **Still open:** sophus-rs 0.15.0 exports `LieGroup::adj` and `LieGroup::transform`, and its
+    runner has not followed — two ids owed there, now that the question is settled on the other
+    side. Whether `so3_from_matrix` is worth a row at all while its metric is backward error that
+    `NUMERICS.md` §11 owes is question 1's territory: today the row records shape and finiteness
+    (NaN `max_u`, 0 non-finite) and pairs no number.
 33. **Which sophus-rs is oracle #2** (§7: "pinned version"; its example `sophus_to_helicoid_tangent`,
     `0002` and `PROJECT.md` §1 read Sophus as translation-first). `sophus_lie` 0.10.0 to 0.14.0
     are: tangent `[υ; ω]`, parameters `[p; q]`, no Jacobian. 0.15.0 (2025-08-09) is rotation-first,

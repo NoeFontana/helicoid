@@ -7,6 +7,36 @@ defined by the status tables in `docs/`; they win over this file.
 
 ## [Unreleased]
 
+### Added
+
+- **The `tf_tree_math` oracle answers three more corpus ids** — `so3_act` (`Quat::rotate`),
+  `sen3_ad_n1` (`Iso3::adjoint` on the six basis twists) and `so3_from_matrix`
+  (`quat_from_rot3`) — which the pin has always exported and `PHASE1.md` §7 did not list. It
+  answers 278 rows where it answered 164, which is 114 strata that were paired with nothing. This
+  settles [`0014`](docs/decisions/0014-the-conformance-metrics-open-readings.md) (draft) question
+  32 for that runner and `0041`'s scheduled `quat_from_rot3` reading, and it is the measurement
+  `PHASE4.md` §5.1's parity table is built from.
+  - `so3_act` is **bit-identical to `helicoid` on all 30 strata** — the second clean control after
+    `so3_log` (`0032`, draft). Both programs spell the action `p + 2w(u × p) + 2u × (u × p)`, so
+    both read `q:nonunit` at 510.3 `u` and neither is the reference's `R(q/‖q‖)p`.
+  - `sen3_ad_n1` differs on 42 of 54 strata: `helicoid` is smaller on 20, among them `q:nonunit`
+    (256.1 `u` against 418.8 — `Quat::rotate` at a non-unit `q` is neither `R` nor `‖q‖²R`, where
+    `to_matrix` is `‖q‖²R` exactly), and **larger on 22, at worst 3.30x** (`theta:1e-2`, 1.569 `u`
+    against 0.475). `helicoid`'s rows did not move; the pairing is new, so these are 22 newly
+    *visible* domination failures, not a regression — which is the whole of D7. `SEn3::adjoint`
+    forms `R` once with `to_matrix` and multiplies; `Iso3::adjoint` applies the sandwich per basis
+    twist. The obvious guess is already refuted: `docs/maths/so3.md` SO.6 measures the diagonal
+    `1 - 2(·² + ·²)` as *worse* near π, by 16x through the trace. Left to the `0038` paired
+    instrument with the numbers above.
+  - `so3_from_matrix` is scored by backward error, which `NUMERICS.md` §11 owes, so its 30 rows
+    record shape and finiteness (NaN `max_u`, no non-finite answer) and pair no number. The
+    corpus's `3 x 3` is **column-major** and `quat_from_rot3`'s is **row-major**: that conversion
+    is the one in this runner that is not a layout no-op, and its hand-computed test asserts that
+    the wrong reading returns the conjugate — a unit quaternion, silently the inverse rotation.
+  - Five stale `0014` question numbers in `PHASE1.md` §0.0 row 20 corrected (the record's
+    numbering shifted by five when questions were inserted); sophus-rs's own `adj` and `transform`
+    are now owed rather than blocked.
+
 ### Changed
 
 - **The coefficient kernel got its speed back: every switch now has a second, shorter arm**

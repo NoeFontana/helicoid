@@ -66,7 +66,15 @@ const RUNNERS: &[Runner] = &[
         dir: "runners/tf_tree_math",
         // `tf_tree_math`'s manifest declares `libm.workspace = true`.
         backend: Backend::LibmCrate,
-        answers: &["so3_exp", "so3_log", "sen3_exp_n1", "sen3_log_n1"],
+        answers: &[
+            "so3_exp",
+            "so3_log",
+            "so3_act",
+            "so3_from_matrix",
+            "sen3_exp_n1",
+            "sen3_log_n1",
+            "sen3_ad_n1",
+        ],
     },
     Runner {
         name: "sophus_rs",
