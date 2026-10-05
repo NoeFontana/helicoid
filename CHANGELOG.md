@@ -9,6 +9,52 @@ defined by the status tables in `docs/`; they win over this file.
 
 ### Changed
 
+- **Phase 4's records: five decided, two specs corrected, and the first blessed envelope unblocked.**
+  No code; the contract the geodesic work is implemented against.
+  - [`0041`](docs/decisions/0041-the-integration-is-an-adapter-at-tf-tree-math.md) is **ready** and
+    on `main` for the first time -- `PHASE3.md` §0.0 and this file have been citing a record that
+    existed only on a branch. Two stale claims corrected on promotion: its keystone blocker
+    ("`helicoid` has no group type") is cleared, so its plan steps 2 and 4 are done; and Wave 1
+    contains `slerp`, so Wave 3 is not "the only wave needing Phase 4" -- though SO(3) does **not**
+    override the provided geodesic, which `docs/maths/geodesics.md` GE.14 proves already *is*
+    shortest-arc slerp, in the `atan2` spelling rather than `acos`. Its open question 1 is decided:
+    `helicoid` and `helicoid-linalg` publish at `0.0.1` before Wave 1 lands, because `cargo publish`
+    rejects a path or git dependency, optional or not.
+  - [`0043`](docs/decisions/0043-the-geodesic-jacobian-ships-the-cancellation-free-form.md) edits
+    `NUMERICS.md` §10. Its `J_0` is a difference of two `O(1)` matrices vanishing like `1-t`, with
+    relative error `O(u/(1-t))`: **19 u at `1-t = 1e-1` and 1.3e12 u at 1e-12**, against **<= 0.72 u**
+    for GE.7(a)'s equal form, which is also exactly `0` at `t = 1`. §4 samples `t = 1 - 1e-9`, so
+    this is a stratum the spec requires. §10 now states both arrangements, which one ships, and the
+    **left** pair it never had. `Jac` gains exactly one method, `scale` -- no `add`, no `sub`, no
+    fused form, because `Ad - J Ad` is what an FMA contracts and D16 forbids the contraction.
+  - [`0044`](docs/decisions/0044-four-primitives-the-first-consumer-names-and-no-spec-does.md): the
+    four names `0041` delegates to that no spec lists. Two are holes, not conveniences -- **`SEn3`
+    cannot be renormalized from outside at all** (its `q` is private while `Mul`'s rustdoc makes
+    renormalizing the caller's step), and **`mul_inv` does one rotation of a vector where
+    `a * b.inverse()` does two**, so the two are equal exactly and not bit-identical, which makes it
+    a routine with its own `NUMERICS.md` §14 twin. `API.md` §3's `Quat` row was stale by four
+    shipped methods and is corrected.
+  - [`0045`](docs/decisions/0045-two-phase-4-checks-cannot-be-taken-as-written.md): two NORMATIVE
+    Phase 4 checks were unexecutable. `PHASE4.md` §4's `mp.logm` reference returns a **complex,
+    non-principal** logarithm from `theta = 3.03` -- error 1.0 to 1.9, mpmath 1.3.0 and 1.4.1 alike
+    -- so the stratum §4 requires (`geo:near-pi`) is exactly the one its stated reference gets wrong,
+    by `O(1)`; the reference becomes the geometric `Log`, with `mp.logm` kept as the cross-check only
+    where it is sound. And §3's "`Product<SO3, R3>` fails right-invariance, `max_err > 1e-6`" is
+    **vacuous** under the product's own law, where GE.5(a) proves exact bi-invariance at 1e-111: §3
+    now names the SE(3) reading and carries the fixture inequality `theta^2 ||t_perp|| >~ 1e-5`.
+  - [`0046`](docs/decisions/0046-explained-by-record-needs-a-record-to-point-at.md): `PHASE3.md` §10
+    and `PHASE4.md` §5.2 both let a lost stratum be "explained by record", and **neither hatch
+    existed** -- so `--bless` writes nothing, `docs/evidence/` is empty, and **no baseline has ever
+    been blessed**, leaving D8's no-regress half switched off for 1529 rows. A committed
+    `conformance/baseline/exceptions.toml` excepts **domination only**, needs a `ready` record, and
+    fails the run when the stratum is dominated after all. Three strata are excepted on the measured
+    ground that `helicoid` and `tf_tree_math` agree there to **ten significant digits** (5e-11
+    relative, both under 1/2 u); the other ten paired losses are not.
+  - [`0038`](docs/decisions/0038-a-program-comparison-is-not-a-bar.md) is **ready**: the max stays
+    the gate, a program comparison becomes `cargo xtask compare` -- a reporting task, no result CSV,
+    no baseline, read by no bar -- pooled per id then combined, reporting a magnitude and not only a
+    direction. Ranking programs by counting domination failures is retired.
+
 - `cargo xtask envelope` reports **which kind of oracle** beat the candidate. Each runner declares
   where its transcendentals come from (`conformance::Backend`): `tf_tree_math` is on the `libm` crate
   (`libm.workspace = true`), sophus-rs is Rust `std` and so the host's library. Every domination

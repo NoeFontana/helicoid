@@ -258,7 +258,11 @@ are recorded measurements, not asserted constants.
 
 Run `just oracles` and `just envelope`; **every paired stratum must be dominated**. A stratum where
 an oracle wins blocks the phase: fix the implementation or write a record explaining why the oracle
-is measuring something else. Bless the baseline; commit `docs/evidence/ENVELOPE.md`.
+is measuring something else — and that explanation is a row in
+`conformance/baseline/exceptions.toml` naming the `ready` record, which excepts **domination only**
+and fails the run once the stratum is dominated after all
+([`0046`](./decisions/0046-explained-by-record-needs-a-record-to-point-at.md)). Bless the baseline;
+commit `docs/evidence/ENVELOPE.md`.
 
 ## 11. Benches
 
