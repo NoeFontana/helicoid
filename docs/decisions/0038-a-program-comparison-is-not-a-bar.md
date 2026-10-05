@@ -1,8 +1,8 @@
 # 0038: A program comparison is not a bar
 
-**Status:** draft
+**Status:** ready
 **Owner:** @NoeFontana
-**Implementation:** the `W²` form twin; the rest proposes how two programs are compared, and corrects `0037`.
+**Implementation:** the `W²` form twin has landed; `cargo xtask compare` (decision 4) is open.
 
 ## Context
 
@@ -83,8 +83,6 @@ so the 33× I quoted there was bought with all of the power. Corrected below.
 
 ## Decision
 
-Proposed, not settled.
-
 1. **`0006`'s domination bar stays on the max.** A maximum is the right *gate*: a consumer feels the
    worst case, and a bar that passes a program because it is typically fine is the failure mode
    `0006` was written against. Nothing here argues for changing it, and `0037` open question 6
@@ -98,6 +96,24 @@ Proposed, not settled.
    application forms (36 / 16 / 19 failures) is a *bar* reading of a *comparison* question. It
    should be re-reported as a paired comparison before it decides anything, and `0036`'s open
    question 1 should not be settled on the failure counts as they stand.
+
+4. **A paired comparison is `cargo xtask compare`, a reporting task and not a bar.** It takes two
+   in-process subjects (`--a`, `--b`, optionally `--fn`), reads the corpus once, evaluates both on
+   every record, and prints per `(fn, stratum, precision)` the paired direction, the sign test and
+   the magnitude of decision 6. It writes **no** result CSV, touches **no** baseline and is read by
+   **no** bar, so `PHASE1.md` §5's schema is unchanged and gains one sentence saying the task
+   exists and what it is not. This is the cheapest of the three candidates and the only one that
+   cannot be mistaken for a gate: a flag on `conformance` would put a comparison inside the command
+   that writes the rows bars read, which is the confusion this record is about.
+5. **Pooling is per id, then combined.** The `p = 2.1 x 10^-14` quoted above pools nine ids that
+   share a kernel, and that dependence is real. Per id is the conservative reading and it gave the
+   same direction nine times out of nine, so nothing is lost by taking it; the combination across
+   ids is reported beside the nine, never instead of them.
+6. **A comparison owes a magnitude as well as a direction.** The complete answer is "worse at
+   p = 2e-14 by a geometric mean of 1.061", in units of `u`; a sign test alone is not an answer a
+   formula change can be decided on. The task reports the geometric mean of the per-record ratio
+   and the per-stratum maximum ratio in both directions, so a form that is better on average and
+   worse somewhere cannot hide behind either number.
 
 ## Rationale
 
@@ -149,18 +165,17 @@ and a worse program would have been as defensible as the current one.
 
 ## Open questions
 
-1. **Where does a paired comparison live?** It needs per-record errors of two subjects, which
-   `PHASE1.md` §5's result CSV does not carry. A second file, a flag on `conformance` that compares
-   instead of scoring, or an `xtask compare` of its own — and whichever it is, §5 gains a sentence.
-2. Should a comparison be allowed to pool across *ids*, or only across strata of one id? The
-   p = 2.1 × 10⁻¹⁴ above pools nine ids that share a kernel, which is a real dependency between the
-   rows it counts. Pooling per id and then combining is the conservative reading and gives the same
-   direction nine times out of nine.
-3. Does a comparison owe a *magnitude*, not only a direction? "Worse at p = 2e-14 by a geometric
-   mean of 1.061" is a complete answer; a sign test alone is not, and a formula change should be
-   worth stating in ULP.
-4. Is there a stratum where the form choice should differ, as `0036` found for the application
-   form? Two `sen3_exp_n*` strata improve by 0.64× to 0.73× under the identity, both at
+None. The three the *Decision* depended on are answered in decisions 4 to 6, under the owner's
+instruction to decide; the fourth never blocked it and is below.
+
+## Further work
+
+1. Is there a stratum where the form choice should differ, as `0036` found for the application
+   form? Two `sen3_exp_n*` strata improve by 0.64x to 0.73x under the identity, both at
    `rho:1e4/theta=pi-1e-6`. A per-regime choice is `0004`'s territory (a switch that is generated,
    never typed) and would need the sweep extended to assembly forms, which `0036` open question 1
-   already weighs.
+   already weighs. This was open question 4.
+2. The paired instrument is what
+   [`0046`](./0046-explained-by-record-needs-a-record-to-point-at.md) wants for each excepted
+   stratum: a direction and a magnitude in place of two maxima whose ordering is not a property of
+   either kernel.

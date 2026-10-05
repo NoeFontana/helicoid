@@ -280,11 +280,34 @@ $X(t) = X_0\,\mathrm{Exp}(t\,d)$ with $d = X_1 \ominus_R X_0$ and $\Delta = X_0^
 - **Definition = reference twin.** For SE(3) this is ScLERP; the unit-dual-quaternion power is the
   fast twin (`PHASE4.md` §1). For `Product<SO3, R3>` it is slerp + lerp, i.e. `tf2`'s semantics.
 - **Invariance.** The SE(3) geodesic is left- and right-invariant:
-  $X_0 H\,\mathrm{Exp}(t\,\mathrm{Ad}_{H^{-1}} d) = X_0\,\mathrm{Exp}(t\,d)\,H$. `Product<SO3, R3>` is
-  left-invariant only; its right-invariance test is **supposed to fail** (`tf_tree` D5).
-- **Jacobians (right).** $\partial X(t)/\partial X_1 = t\,J_r(t d)\,J_r^{-1}(d)$;
-  $\partial X(t)/\partial X_0 = \mathrm{Ad}_{\mathrm{Exp}(-td)} - t\,J_r(td)\,J_r^{-1}(d)\,\mathrm{Ad}_{\Delta^{-1}}$;
-  $\partial X(t)/\partial t = d$ (right, body frame).
+  $X_0 H\,\mathrm{Exp}(t\,\mathrm{Ad}_{H^{-1}} d) = X_0\,\mathrm{Exp}(t\,d)\,H$. For
+  `Product<SO3, R3>` **the answer depends on which law $a\cdot H$ uses**: under the product's own
+  componentwise law it is left- *and* right-invariant, exactly; read as an SE(3) pose
+  ($a\cdot H = (R_aR_H, R_a\mathbf t_H + \mathbf t_a)$) it is left-invariant only, and its
+  right-invariance test is **supposed to fail** (`tf_tree` D5), by
+  $\lvert\mu_s(\theta)\rvert\,\lVert\mathbf t_{H\perp}\rVert$ with
+  $\lvert\mu_s\rvert = \tfrac12 s(1-s)\theta^2 + O(\theta^4)$ and
+  $\mathbf t_{H\perp}\perp$ the axis (`docs/maths/geodesics.md` GE.5,
+  [`0045`](./decisions/0045-two-phase-4-checks-cannot-be-taken-as-written.md)).
+- **Jacobians.** $\partial X(t)/\partial t = d$ (right, body frame) on either side, and per side,
+  with $d = X_1\ominus_R X_0$ and $d_L = X_1\ominus_L X_0 = \mathrm{Ad}_{X_0}d$:
+
+  | | right | left |
+  |---|---|---|
+  | $\partial X(t)/\partial X_1$ | $t\,J_r(td)\,J_r^{-1}(d)$ | $t\,J_l(t\,d_L)\,J_l^{-1}(d_L)$ |
+  | $\partial X(t)/\partial X_0$ | $(1-t)\,J_l\big((1-t)d\big)\,J_l^{-1}(d)$ | $(1-t)\,J_r\big((1-t)d_L\big)\,J_r^{-1}(d_L)$ |
+
+  Each $\partial X(t)/\partial X_0$ is $\partial X(t)/\partial X_1$ of the swapped pair
+  $(X_1, X_0)$ at $1-t$: swapping negates $d$, and $J_l(-x) = J_r(x)$ exchanges the pair.
+  **This is the form that ships**
+  ([`0043`](./decisions/0043-the-geodesic-jacobian-ships-the-cancellation-free-form.md)). The
+  equal right form $\partial X(t)/\partial X_0 = \mathrm{Ad}_{\mathrm{Exp}(-td)} - t\,J_r(td)\,J_r^{-1}(d)\,\mathrm{Ad}_{\Delta^{-1}}$
+  is the definition it is derived from and is **not** evaluated: it is a difference of two $O(1)$
+  matrices vanishing like $1-t$, with relative error $O(u/(1-t))$ — measured $19\,u$ at
+  $1-t = 10^{-1}$ and $1.3\times10^{12}\,u$ at $10^{-12}$, against $\le 0.72\,u$ for the form
+  above — and it is not exactly $0$ at $t = 1$, which the boundary values require. The left
+  $\partial X(t)/\partial X_0 = I - \partial X(t)/\partial X_1$ cancels the same way and is not
+  evaluated either (`docs/maths/geodesics.md` GE.7).
 - **Velocity.** Body velocity $d/\Delta t$, constant along the geodesic.
 - **Domain.** $\theta(d) < \pi$ for a unique geodesic; at $\pi$ the problem is ill-posed and the
   result is §3.2's function of the quaternion sign.

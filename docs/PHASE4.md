@@ -70,18 +70,38 @@ covers the fast twin.
 - **Left:** `geodesic(G·a, G·b, s) == G·geodesic(a, b, s)` for every group, both SE(3)
   implementations.
 - **Right:** `geodesic(a·H, b·H, s) == geodesic(a, b, s)·H` for SE(3), both implementations.
-- **`Product<SO3, R3>` fails right-invariance, positively:** a fixed-seed test asserts
-  `max_err > 1e-6`. **Do not "fix" it.**
+- **`Product<SO3, R3>` under its own law is right-invariant**, exactly — `Ad_H = diag(R_H, I)`
+  preserves `θ` — and a test asserts that it is.
+- **`Product<SO3, R3>` fails right-invariance, positively, under the SE(3) reading of `(R, t)`**
+  (`a·H = (R_a R_H, R_a t_H + t_a)`): a fixed-seed test asserts `max_err > 1e-6`. **Do not "fix"
+  it** — the lerp is a world-frame straight line, while right-invariance forces the screw coupling
+  `ρ = J_l⁻¹(φ) t`, and fixing it gives `ScLerp`, a different function. The gap is
+  `|μ_s(θ)|·‖t_{H⊥}‖` with `|μ_s| = ½s(1−s)θ² + O(θ⁴)` and `t_{H⊥}` the part of `t_H` orthogonal
+  to the axis, so it **vanishes** at `s ∈ {0, 1}`, at `θ = 0` and for `t_H` parallel to the axis:
+  the fixture takes `s = ½` and `θ²‖t_{H⊥}‖ ≳ 1e-5`, and carries that inequality in its comment so
+  a later edit cannot make the assertion vacuous a second way
+  (`docs/maths/geodesics.md` GE.5, [`0045`](./decisions/0045-two-phase-4-checks-cannot-be-taken-as-written.md)).
 
-Bounds are recorded measurements from the first green run, then no-regress.
+Bounds are recorded measurements from the first green run, then no-regress. Left-invariance is
+measured at `‖t_G‖ ∈ {0, 1, 1e4}` and its bound set from those: `geodesic(G·a, G·b, s)` forms
+`a⁻¹G⁻¹Gb`, which equals `a⁻¹b` only to rounding, and §4's strata put `‖t₀‖` at `1e4`.
 
 ## 4. Corpus additions
 
-Function ids `so3_geodesic`, `se3_geodesic` (inputs $X_0, X_1, t$; reference `mp.expm`/`mp.logm`).
+Function ids `so3_geodesic`, `se3_geodesic` (inputs $X_0, X_1, t$; reference `mp.expm` of $t\,d$
+with $d$ the **geometric** $\mathrm{Log}$ — the quaternion `atan2` form and a $\mathsf V$ solve —
+**not `mp.logm`**, which returns a complex, non-principal logarithm from $\theta = 3.03$ and so is
+wrong by $O(1)$ on exactly the `geo:near-pi` stratum below; it is the generation-time cross-check
+for $\theta \le 3.0$, where the two agree to $9.2\times10^{-41}$, and the group identities are the
+check above it:
+[`0045`](./decisions/0045-two-phase-4-checks-cannot-be-taken-as-written.md)).
 Strata: `geo:consecutive` (relative motion $\|d\| \in [10^{-9}, 10^{-3}]$ — `tf_tree`'s
 kilohertz-edge regime — with $\|t_0\|$ up to $10^4$), `geo:generic`, `geo:near-pi` (relative
 rotation $\pi - 10^{-k}$); $t \in \{0, 10^{-9}, 0.25, 0.5, 1 - 10^{-9}, 1\}$ plus uniform samples.
-`tf_tree_math`'s `ScLerp` and `slerp` are the oracles.
+`tf_tree_math`'s `ScLerp` and `slerp` are the oracles. `geo:near-pi` stops strictly below $\pi$
+and records its margin: at $\pi$ the two preimages give geodesics $O(1)$ apart, so the stratum
+measures conditioning, not agreement. $t = 0$ and $t = 1$ stay and are exact rows — at $t = 0$ the
+answer is $X_0$ with zero deviation.
 
 ## 5. What `helicoid` delivers to the `tf_tree` record
 
@@ -106,7 +126,10 @@ rotation $\pi - 10^{-k}$); $t \in \{0, 10^{-9}, 0.25, 0.5, 1 - 10^{-9}, 1\}$ plu
 ### 5.2 Envelope precondition
 
 `helicoid` dominates `tf_tree_math` on **every** paired stratum of every function in §5.1. A
-stratum where `tf_tree_math` wins blocks the migration until fixed or explained by record.
+stratum where `tf_tree_math` wins blocks the migration until fixed or explained by record — the
+explanation being a row in `conformance/baseline/exceptions.toml` that names the `ready` record
+([`0046`](./decisions/0046-explained-by-record-needs-a-record-to-point-at.md)), so an exception is
+auditable and cannot outlive the defect it describes.
 
 ### 5.3 Bench precondition
 
