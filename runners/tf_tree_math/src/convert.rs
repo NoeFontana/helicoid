@@ -14,7 +14,9 @@
 use std::collections::BTreeMap;
 
 use tf_tree_math::twist::Twist;
-use tf_tree_math::{exp_se3, exp_so3, log_se3, log_so3, quat_from_rot3, Iso3, Quat, Vec3};
+use tf_tree_math::{
+    exp_se3, exp_so3, log_se3, log_so3, quat_from_rot3, slerp, Interp, Iso3, Quat, ScLerp, Vec3,
+};
 
 /// Named arrays: a record's `in` object, or the `out` object of the answer.
 pub(crate) type Fields = BTreeMap<String, Vec<f64>>;
@@ -24,14 +26,16 @@ type Evaluate = fn(&Fields) -> Result<Fields, String>;
 
 /// The function ids this runner answers, each with its evaluation: the one list, so an id cannot
 /// be advertised without an answer or answered without being advertised.
-const TABLE: [(&str, Evaluate); 7] = [
+const TABLE: [(&str, Evaluate); 9] = [
     ("so3_exp", so3_exp),
     ("so3_log", so3_log),
     ("so3_act", so3_act),
     ("so3_from_matrix", so3_from_matrix),
+    ("so3_geodesic", so3_geodesic),
     ("sen3_exp_n1", sen3_exp_n1),
     ("sen3_log_n1", sen3_log_n1),
     ("sen3_ad_n1", sen3_ad_n1),
+    ("se3_geodesic", se3_geodesic),
 ];
 
 /// The function ids [`answer`] evaluates, in table order.
@@ -186,6 +190,36 @@ fn so3_from_matrix(input: &Fields) -> Result<Fields, String> {
 fn sen3_ad_n1(input: &Fields) -> Result<Fields, String> {
     let t = helicoid_to_tf_tree_iso3(take(input, "q", 4)?, take(input, "x", 3)?)?;
     Ok(fields([("Ad", tf_tree_to_helicoid_adjoint(&t))]))
+}
+
+/// The scalar parameter of a geodesic record, which the corpus stores as a bare value.
+fn parameter(input: &Fields) -> Result<f64, String> {
+    Ok(take(input, "t", 1)?[0])
+}
+
+/// `slerp`, the oracle `PHASE4.md` §4 names for `so3_geodesic`.
+///
+/// A **different algorithm**, not a port: `slerp`'s large-arc arm is `acos` of the dot product
+/// with three `sin` weights, where `helicoid`'s geodesic is `Exp(t Log Delta)` through the
+/// quaternion `atan2` (D5, and `docs/maths/geodesics.md` GE.14 proves the two are the same
+/// shortest-arc function). So this row compares two algorithms, as `PHASE4.md` §5.1 intends.
+fn so3_geodesic(input: &Fields) -> Result<Fields, String> {
+    let q0 = helicoid_to_tf_tree_quat(take(input, "q0", 4)?)?;
+    let q1 = helicoid_to_tf_tree_quat(take(input, "q1", 4)?)?;
+    Ok(fields([(
+        "q",
+        tf_tree_to_helicoid_quat(slerp(q0, q1, parameter(input)?)),
+    )]))
+}
+
+/// `ScLerp`, the oracle `PHASE4.md` §4 names for `se3_geodesic`: the screw geodesic through the
+/// fast dual-quaternion power. `s = 0` and `s = 1` return an endpoint unchanged, so those records
+/// score the stored quaternion against the reference's normalized one and nothing else.
+fn se3_geodesic(input: &Fields) -> Result<Fields, String> {
+    let a = helicoid_to_tf_tree_iso3(take(input, "q0", 4)?, take(input, "x0", 3)?)?;
+    let b = helicoid_to_tf_tree_iso3(take(input, "q1", 4)?, take(input, "x1", 3)?)?;
+    let (q, x) = tf_tree_to_helicoid_iso3(ScLerp::eval(&a, &b, parameter(input)?));
+    Ok(fields([("q", q), ("x", x)]))
 }
 
 #[cfg(test)]
@@ -458,6 +492,67 @@ mod tests {
         Ok(())
     }
 
+    /// The quarter turn about `z` halved is the eighth turn, and `s = 0`, `s = 1` are the
+    /// endpoints as stored. Hand-computed, and the same anchor the generator's
+    /// `test_half_of_a_quarter_turn_is_an_eighth_turn` uses, so the two programs are pinned to
+    /// one number from either side.
+    #[test]
+    fn so3_geodesic_halves_a_quarter_turn_about_z() -> Result<(), String> {
+        let identity = [1.0, 0.0, 0.0, 0.0];
+        let s = FRAC_1_SQRT_2;
+        let quarter = [s, 0.0, 0.0, s];
+        let at = |t: f64| {
+            run(
+                "so3_geodesic",
+                &[("q0", &identity), ("q1", &quarter), ("t", &[t])],
+            )
+        };
+        // The eighth turn is the angle pi/4, so its quaternion sits at the half-angle pi/8.
+        let h = FRAC_PI_2 / 4.0;
+        near(&at(0.5)?["q"], &[h.cos(), 0.0, 0.0, h.sin()]);
+        near(&at(0.0)?["q"], &identity);
+        near(&at(1.0)?["q"], &quarter);
+        Ok(())
+    }
+
+    /// A pure translation interpolates linearly, and a screw about `z` through the origin halves
+    /// both parts: `Exp([(0, 0, pi/2); (0, 0, 1)])` is the quarter turn with `x = (0, 0, 1)`
+    /// because `V` is the identity along the axis, so at `s = 1/2` the rise is `1/2`. Both are
+    /// the generator's own hand-computed cases.
+    #[test]
+    fn se3_geodesic_lerps_a_translation_and_halves_a_screw() -> Result<(), String> {
+        let identity = [1.0, 0.0, 0.0, 0.0];
+        let zero = [0.0, 0.0, 0.0];
+        let out = run(
+            "se3_geodesic",
+            &[
+                ("q0", &identity),
+                ("x0", &zero),
+                ("q1", &identity),
+                ("x1", &[1.0, 2.0, 3.0]),
+                ("t", &[0.25]),
+            ],
+        )?;
+        near(&out["q"], &identity);
+        near(&out["x"], &[0.25, 0.5, 0.75]);
+
+        let s = FRAC_1_SQRT_2;
+        let out = run(
+            "se3_geodesic",
+            &[
+                ("q0", &identity),
+                ("x0", &zero),
+                ("q1", &[s, 0.0, 0.0, s]),
+                ("x1", &[0.0, 0.0, 1.0]),
+                ("t", &[0.5]),
+            ],
+        )?;
+        let h = FRAC_PI_2 / 4.0;
+        near(&out["q"], &[h.cos(), 0.0, 0.0, h.sin()]);
+        near(&out["x"], &[0.0, 0.0, 0.5]);
+        Ok(())
+    }
+
     #[test]
     fn a_missing_or_short_input_is_an_error_and_an_unknown_id_is_none() {
         assert!(run("so3_exp", &[]).is_err());
@@ -465,6 +560,7 @@ mod tests {
         assert!(run("so3_act", &[("q", &[0.0; 4])]).is_err());
         assert!(run("so3_from_matrix", &[("R", &[0.0; 6])]).is_err());
         assert!(run("sen3_ad_n1", &[("x", &[0.0; 3])]).is_err());
+        assert!(run("so3_geodesic", &[("q0", &[1.0, 0.0, 0.0, 0.0])]).is_err());
         assert!(answer("so3_jr", &Fields::new()).is_none());
         assert!(answer("sen3_exp_n2", &Fields::new()).is_none());
     }
@@ -472,7 +568,7 @@ mod tests {
     /// The harness holds the same list (`RUNNERS` in `xtask`) and fails on a listed id that got no
     /// answer file, so dropping an id here is an error there, not a run with fewer rows.
     #[test]
-    fn the_answered_ids_are_the_seven_of_the_status_table() {
+    fn the_answered_ids_are_the_nine_of_the_status_table() {
         let ids: Vec<&str> = supported().collect();
         assert_eq!(
             ids,
@@ -481,9 +577,11 @@ mod tests {
                 "so3_log",
                 "so3_act",
                 "so3_from_matrix",
+                "so3_geodesic",
                 "sen3_exp_n1",
                 "sen3_log_n1",
-                "sen3_ad_n1"
+                "sen3_ad_n1",
+                "se3_geodesic"
             ]
         );
     }

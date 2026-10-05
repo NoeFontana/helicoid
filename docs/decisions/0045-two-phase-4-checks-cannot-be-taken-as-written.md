@@ -2,7 +2,7 @@
 
 **Status:** ready
 **Owner:** @NoeFontana
-**Implementation:** none yet; `PHASE4.md` §3 and §4 are the deliverables
+**Implementation:** plan steps 1 (this record and the `PHASE4.md` edits), 2 (`gen/geodesic.py`, `gen/check_geodesic.py`, the `geo:*` family, the registry entries and the generator's tests) and 3 (`just corpus`, the two committed files, `PHASE1.md` §4.3 and §4.4, the `coverage::OWED`-to-`required` move) have landed. Step 4, §3's invariance tests, waits for `LieGroup::geodesic` to exist
 
 ## Context
 

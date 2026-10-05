@@ -188,9 +188,16 @@ mod tests {
                 let record: Value = serde_json::from_str(line).map_err(|e| e.to_string())?;
                 let object = record["in"].as_object().ok_or("in")?;
                 for (key, value) in object.iter().filter(|(k, _)| *k != SHAPE) {
-                    for s in value.as_array().ok_or(format!("{key}: array"))? {
-                        let s = s.as_str().ok_or(format!("{key}: string"))?;
+                    // A scalar input is a bare string, not a one-element array (`PHASE1.md` §7;
+                    // `t` of the geodesic ids and `theta` of the coefficient ones).
+                    let one = |v: &Value| -> Result<(), String> {
+                        let s = v.as_str().ok_or(format!("{key}: string"))?;
                         assert_eq!(hexfloat::format(hexfloat::parse(s)?), s);
+                        Ok(())
+                    };
+                    match value {
+                        Value::Array(items) => items.iter().try_for_each(one)?,
+                        v => one(v)?,
                     }
                 }
                 if let Some(shape) = object.get(SHAPE) {

@@ -192,8 +192,11 @@ class CheckTest(unittest.TestCase):
             yield f"so3_{name}", {"phi": phi}
 
     def test_every_id_carries_its_own_check_and_it_detects_a_planted_error(self):
+        # `so3_geodesic` is an `so3_*` id whose inputs are a pose pair and a parameter, so its
+        # cases and the mutants of its check are in `test_geodesic.py`, not here.
         cases = list(self.cases())
-        self.assertEqual({n for n, _ in cases}, {n for n in FUNCTIONS if n.startswith("so3_")})
+        here = {n for n in FUNCTIONS if n.startswith("so3_") and n != "so3_geodesic"}
+        self.assertEqual({n for n, _ in cases}, here)
         for name, inputs in cases:
             spec = FUNCTIONS[name]
             good = spec.evaluate(inputs)

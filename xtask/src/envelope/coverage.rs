@@ -23,12 +23,6 @@ const OWED: &[(u8, &str, &str, &[&str])] = &[
         &["eig3", "svd3", "solve_cubic"],
     ),
     (
-        4,
-        "Corpus id",
-        "PHASE4.md §4",
-        &["so3_geodesic", "se3_geodesic"],
-    ),
-    (
         5,
         "S² and its chart",
         "PHASE5.md §2",
@@ -63,6 +57,9 @@ fn required() -> Vec<String> {
         .map(|c| format!("coeff_{c}"))
         .collect();
     ids.extend(group("so3", &["exp", "log", "act", "from_matrix"], ""));
+    // `PHASE4.md` §4's two, required since their corpus files landed (`0045` plan step 3): an
+    // owed id with a file fails coverage, so the file, this move and the §4.3 rows are one step.
+    ids.extend(["so3_geodesic".to_string(), "se3_geodesic".to_string()]);
     for n in 1..=3 {
         ids.extend(group("sen3", &["exp", "log", "ad"], &format!("_n{n}")));
     }
@@ -209,7 +206,7 @@ mod tests {
             .collect();
         let c = check(&have, &rows(&[]));
         assert!(c.failures.is_empty(), "{:?}", messages(&c));
-        assert_eq!((c.required, c.excused), (46, 16));
+        assert_eq!((c.required, c.excused), (48, 14));
         Ok(())
     }
 
@@ -258,7 +255,7 @@ mod tests {
         assert!(messages(&c)[0].starts_with(
             "phase 2's row `corpus ids (§6)` is Done and `eig3` (PHASE2.md §6) has no corpus file"
         ));
-        assert_eq!(c.excused, 13);
+        assert_eq!(c.excused, 11);
     }
 
     #[test]
@@ -267,7 +264,7 @@ mod tests {
             let only = |p: u8, r: &str| -> Result<bool, String> { Ok(p == phase && r == row) };
             let c = check(&required(), &only);
             assert_eq!(c.failures.len(), ids.len(), "{row}");
-            assert_eq!(c.excused, 16 - ids.len(), "{row}");
+            assert_eq!(c.excused, 14 - ids.len(), "{row}");
         }
     }
 
@@ -282,12 +279,12 @@ mod tests {
     #[test]
     fn an_owed_id_that_has_a_file_fails_and_a_prefix_matches_any_id_under_it() {
         let mut have = required();
-        have.push("so3_geodesic".into());
+        have.push("s2_retract".into());
         let c = check(&have, &rows(&[]));
         assert_eq!(c.failures.len(), 1);
         assert!(c.failures[0]
             .text
-            .contains("`so3_geodesic` has a corpus file and is listed as owed"));
+            .contains("`s2_retract` has a corpus file and is listed as owed"));
         have.push("real_sqrt".into());
         assert_eq!(check(&have, &rows(&[])).failures.len(), 2);
     }
