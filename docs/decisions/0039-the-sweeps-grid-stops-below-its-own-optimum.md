@@ -2,7 +2,7 @@
 
 **Status:** ready
 **Owner:** @NoeFontana
-**Implementation:** records a measurement and proposes a `PHASE1.md` §6 amendment; no code change here.
+**Implementation:** plan step 0 and decisions 1 to 4 and 7 to 9 have landed (the grid spans the domain, the cap is the corpus's series length, a grid-end choice fails the run, every switch carries its feasibility, and `coeff_switch_ref` is the reference at each switch). Decisions 5, 6 and 10 — the **second** switch — are open; the catalogue has config E's accuracy and not yet its cost.
 
 ## Context
 

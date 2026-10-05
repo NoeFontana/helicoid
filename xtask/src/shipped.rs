@@ -753,29 +753,27 @@ mod tests {
         Ok(wins)
     }
 
+    /// **Two strata, both at `θ = π − 0.1`, and no other.** `0039` lifted the sweep's grid to span
+    /// the domain and the term cap to the corpus's series length, and the nine strata where the
+    /// `tf_tree` D12 prior used to beat `helicoid` — all of them `cos θ/2`, where the old switch
+    /// sat at `θ < 7.5e-8` because every candidate under `theta:1e0`'s objective tied — are gone:
+    /// `cos θ/2`'s switch is now `z = 5.23` at `f64`, so the series arm serves the small-angle
+    /// strata the prior used to win.
+    ///
+    /// What is left is near `π`, where the prior's four-term series below `θ = 0.1` is not what
+    /// decides: both candidates are on their exact arms there and the margin is the assembly's.
+    /// A stratum's maximum is what the bars compare (D8), the sweep's objective one maximum over
+    /// all of them: open, 0014 (draft) question 30.
     #[test]
-    fn the_prior_beats_helicoid_on_nine_cos_half_strata_and_on_no_other() -> Result<(), String> {
-        // `cos θ/2`'s objective is `theta:1e0`'s, where the two arms are one expression, so every
-        // switch whose arms stay under it ties, and the tie goes to fewer terms and the larger
-        // switch (`z < 5.6e-15`, `θ < 7.5e-8`; `z < 2.6e-6` at `f32`). Above it the exact arm
-        // costs 1.4 to 1.9 `u` where the prior's series costs less. A stratum's maximum is what
-        // the bars compare (D8), the sweep's objective one maximum over all of them: open,
-        // 0014 (draft) question 30.
+    fn the_prior_beats_helicoid_near_pi_on_two_strata_and_on_no_other() -> Result<(), String> {
         let want = [
-            (Precision::F64, "theta:1e-3"),
-            (Precision::F64, "theta:1e-4"),
-            (Precision::F64, "theta:1e-5"),
-            (Precision::F64, "theta:1e-6"),
-            (Precision::F64, "theta:1e-7"),
-            (Precision::F64, "theta:1e-8"),
-            (Precision::F32, "theta:1e-2@f32"),
-            (Precision::F32, "theta:1e-3@f32"),
-            (Precision::F32, "theta:dense@f32"),
+            ("b", Precision::F64, "theta:pi-1e-1"),
+            ("d", Precision::F32, "theta:pi-1e-1@f32"),
         ];
         let mut got = prior_wins()?;
-        got.sort_by(|a, b| a.2.cmp(&b.2));
-        let mut want = want.map(|(p, s)| ("cos_half", p, s.to_string())).to_vec();
-        want.sort_by(|a, b| a.2.cmp(&b.2));
+        got.sort_by(|a, b| (a.0, a.2.clone()).cmp(&(b.0, b.2.clone())));
+        let mut want = want.map(|(c, p, s)| (c, p, s.to_string())).to_vec();
+        want.sort_by(|a, b| (a.0, a.2.clone()).cmp(&(b.0, b.2.clone())));
         assert_eq!(got, want);
         Ok(())
     }

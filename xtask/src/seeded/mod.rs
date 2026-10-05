@@ -743,8 +743,10 @@ mod tests {
         let c = planted.candidate(Coeff::C);
         assert_eq!((c.terms, c.switch_z.v.to_bits()), (2, 1e-16f64.to_bits()));
         assert_eq!(C_PLANTED, (2, 1e-16));
-        // Its series is the generated one, of which two terms are used.
-        assert_eq!(planted.arms[Coeff::C.index()].series.len(), 8);
+        // Its series is the generated one, of which two terms are used: the same length the
+        // correct kernel holds, which is the sweep's term cap and not a number to type here.
+        let i = Coeff::C.index();
+        assert_eq!(planted.arms[i].series.len(), generated.arms[i].series.len());
     }
 
     #[test]

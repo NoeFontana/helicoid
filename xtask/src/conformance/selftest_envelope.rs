@@ -82,7 +82,7 @@ mod tests {
         assert!(report.failures.is_empty(), "{:?}", report.failures);
         assert!(report
             .text
-            .contains("seeded:c-two-terms-1e-8 loses on 9 strata"));
+            .contains("seeded:c-two-terms-1e-8 loses on 10 strata"));
         assert!(
             report.text.contains("seeded:correct on 0"),
             "{}",

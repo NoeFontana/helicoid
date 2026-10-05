@@ -484,8 +484,9 @@ mod tests {
             the_shipped_arms_are_the_seeded_arms::<f64>()?,
             the_shipped_arms_are_the_seeded_arms::<f32>()?,
         );
-        // Nine arms of each record but the six `q:w0` records of `r`, which have the exact one.
-        assert_eq!(wide + narrow, (7 * 3420 + 3426) * 9 - 6 * 8);
+        // `TERMS + 1` arms of each record but the six `q:w0` records of `r`, which have the
+        // exact one. The `+ 1` is the exact arm; the count scales with the cap `0039` lifted.
+        assert_eq!(wide + narrow, (7 * 3420 + 3426) * (TERMS + 1) - 6 * TERMS);
         Ok(())
     }
 

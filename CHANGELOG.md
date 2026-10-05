@@ -9,6 +9,45 @@ defined by the status tables in `docs/`; they win over this file.
 
 ### Changed
 
+- **The threshold sweep searched a box too small, and lifting it moved every coefficient**
+  ([`0039`](docs/decisions/0039-the-sweeps-grid-stops-below-its-own-optimum.md) plan step 0 and
+  decisions 1-4, 7-9). `PHASE1.md` §6's grid stopped at `z = 1` while `NUMERICS.md` §12's domain
+  runs to `pi^2`, and the cap stopped at 8 terms while the corpus commits 16. The two were
+  **jointly** binding: neither alone got the worst swept row below 1846 u, both together reach
+  **94.48**. Worst row per precision, against the D12 prior it replaced: `f64` `c` 2.8e7 -> 94.48 u,
+  `e` 9.2e9 -> 19.87, `d` 1.2e7 -> 7.90; `f32` `e` 8.1e9 -> **15.65**, `d` 1.7e7 -> 12.96. No row is
+  above 100 u at either precision now. The **D12 prior beats `helicoid` on two strata instead of
+  nine**, and the two are near `pi` where both candidates are on their exact arms, so the margin is
+  the assembly's and not a switch's.
+  - The grid now **spans** the domain and the selection **rule** stops below it: a grid is a
+    geometric object, a domain is a semantic constraint, and keeping the bound in the rule leaves
+    `the_grid_has_64_points_per_decade_and_both_ends` a statement about the grid alone.
+  - **A boundary optimum is no longer reported as a result.** A choice on the grid's first point
+    **fails the run** — it is the edge of the box and nothing in the output would say so, which is
+    how eight switches sat on a wall for the generated file's whole existence. A choice at the last
+    point below `pi^2` is the *domain* binding and a choice at 16 terms is the *cap's*; both are
+    printed, and every generated switch now carries its grid span, its cap and which limit it sits
+    against. Under this configuration three `f64` and three `f32` rows sit at the domain bound and
+    `c` at `f64` takes every term the corpus holds — exactly what `0039` predicted.
+- **`coeff_switch_ref.jsonl`: the reference at every switch the sweep can return** (`0039` plan
+  step 0; 17 424 records, 2.7 MB, `manifest kind: "switch-ref"`). `docs/maths/coefficients.md`
+  CO.12 bounds the jump between a coefficient's two arms at its switch by the sum of the arms'
+  errors *there*, and sampling that right-hand side at the two corpus records bracketing the switch
+  understates it by up to **3.5x** — the exact arm's error is a sawtooth, swinging 195x over 0.8% of
+  `theta`, so no density of records makes a point sample a bound. `coeffs::tests::branch_continuity`
+  now checks CO.12 as stated at **both** precisions against the true value and `d/dz`, with the
+  reference's own half-ulp charged to the bound once per arm.
+- **Honest accounting of what this cost.** Paired with `tf_tree_math` at `f64` over 164 strata,
+  `helicoid` is worse on **17 against 13** before: four new marginal regressions, all at
+  `theta ~ 1`, where the switch has moved and `theta = 1` now takes a 13-to-16-term series instead
+  of the exact arm — `sen3_log_n1` at `rho:1e3/theta=1` (1.045x) and `rho:1e4/theta=1` (1.042x),
+  `sen3_exp_n1` at `theta:1e0` (1.043x), `so3_exp` at `theta:dense` (1.034x). A per-call-site switch
+  (CO.18, `0015` draft NU.5) is the lead.
+  And it **retires a diagnosis this project has been carrying**: `sen3_log_n1`'s 2.2x loss at
+  `theta=1e-1` is unmoved to four digits although `coeff_c` there is now **1.54 u**, so it was never
+  `c`'s generated switch against D12's typed prior. It is a two-program question about the assembly
+  of `J_r^-1 = I - W/2 + cW^2`, which is what `0038`'s paired comparison exists to answer.
+
 - **Phase 4's records: five decided, two specs corrected, and the first blessed envelope unblocked.**
   No code; the contract the geodesic work is implemented against.
   - [`0041`](docs/decisions/0041-the-integration-is-an-adapter-at-tf-tree-math.md) is **ready** and

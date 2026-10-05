@@ -13,8 +13,10 @@ from .rng import SEED
 
 ROOT = Path(__file__).resolve().parent.parent
 # What `Built.checked` counts, per file kind: "corpus" files hold (id, stratum, in, out) records,
-# recomputed at 150 digits; "series" (`coeff_series`) holds series, each equal to exact algebra.
-CHECKED = {"corpus": "rechecked", "series": "verified"}
+# recomputed at 150 digits; "series" (`coeff_series`) holds series, each equal to exact algebra;
+# "switch-ref" (`coeff_switch_ref`) holds the true coefficient at every grid point of
+# docs/PHASE1.md section 6, each recomputed at 150 digits (docs/decisions/0039 plan step 0).
+CHECKED = {"corpus": "rechecked", "series": "verified", "switch-ref": "rechecked"}
 
 
 class Built(NamedTuple):

@@ -21,7 +21,8 @@
 //! nothing.
 //!
 //! **Candidates.** `1..=8` terms times `grid`: 64 points per decade of the branch variable
-//! `z = θ²` from `1e-16` (`θ = 1e-8`) to `1` (`θ = 1`), ends included, 8200 candidates, at each
+//! `z = θ²` from `1e-16` (`θ = 1e-8`) to `10`, ends included and the search stopping below `π²`,
+//! 17 408 candidates, at each
 //! precision the points correctly rounded there (`grid`); the per-decade-of-`z` reading is
 //! 0014 (draft) question 8. A candidate uses the series arm where `z < switch` (`z = fl(θ·θ)` at the
 //! precision, as `Seeded::eval` forms it) and the exact arm elsewhere; each arm's error is formed
@@ -57,7 +58,7 @@
 //! | `coeff`, `precision` | `k, a, b, c, d, e, cos_half, r`; `f64` or `f32` |
 //! | `terms` | series terms of the chosen candidate |
 //! | `switch_bits`, `switch_z`, `switch_theta` | its switch: the bit pattern `generated.rs` emits (16 hex digits at `f64`, 8 at `f32`), its shortest decimal at the precision, and its square root (`n/w` for `r`) |
-//! | `grid_index` | its place in the grid, `0..=1024`; `1024` is the top, `θ = 1` |
+//! | `grid_index` | its place in the grid, `0..=1088`; `1088` is the top, `z = 10`, which the domain rule makes unreachable |
 //! | `value_max_u`, `deriv_max_u` | its maxima over the records of the value error and of the `d/dz` error |
 //! | `objective` | their larger |
 //! | `argmax_field`, `argmax_stratum`, `argmax_id`, `argmax_z` | what attains `objective`: `value` or `deriv` (`value` on a tie), and the first such record's stratum, id and branch variable |
@@ -69,6 +70,8 @@
 //! | `next_objective` | the smallest grid objective above the chosen one; empty when none |
 //! | `at_switch_exact_value_u`, `at_switch_exact_deriv_u` | the chosen candidate's exact arm's errors at the two records that bracket its switch, the last below it and the first at or above it, the larger of the two (`search::at_switch`) |
 //! | `at_switch_series_value_u`, `at_switch_series_deriv_u` | its series arm's: the sum of the two arms' is what the jump between them at the switch is compared with (`docs/maths/coefficients.md` CO.12), a sample at two records and not a bound over the interval |
+//! | `grid_lo`, `grid_hi`, `term_cap` | **the search space the choice was made in** (`0039` item 9): the grid's ends and the cap on series terms. An objective reported without them reads as an optimum even when it is only the edge of the box |
+//! | `binding` | which limit the choice sits against: `none`, `domain` (the largest grid point below `π²`, so `NUMERICS.md` §12 is what bounds it), `terms` (every term the corpus holds), or `domain+terms`. A choice on the grid's *floor* is not a value here — it fails the run instead (`0039` item 2) |
 //!
 //! Numbers are shortest round-trip decimals (`{:e}`), those of an `f32` row's switch and branch
 //! variable at `f32`. Not swept: SE(2)'s `α`, `β` (no corpus id) and a switch shared by a call-site
@@ -96,7 +99,8 @@ const CSV_HELICOID: &str = "conformance/sweeps/thresholds.csv";
 const HEADER: &str = "coeff,precision,terms,switch_bits,switch_z,switch_theta,grid_index,\
 value_max_u,deriv_max_u,objective,argmax_field,argmax_stratum,argmax_id,argmax_z,below_objective,\
 above_objective,top_objective,prior_objective,prior_rank,tied,next_objective,at_switch_exact_value_u,\
-at_switch_exact_deriv_u,at_switch_series_value_u,at_switch_series_deriv_u";
+at_switch_exact_deriv_u,at_switch_series_value_u,at_switch_series_deriv_u,grid_lo,grid_hi,\
+term_cap,binding";
 
 /// What a sweep measures.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -255,6 +259,10 @@ fn render(rows: &[Row]) -> String {
             format!("{:e}", r.arms.0.deriv),
             format!("{:e}", r.arms.1.value),
             format!("{:e}", r.arms.1.deriv),
+            shown(p, s.grid_lo),
+            shown(p, s.grid_hi),
+            s.term_cap.to_string(),
+            s.binding.name().to_string(),
         ];
         out.push_str(&cells.join(","));
         out.push('\n');
@@ -309,7 +317,9 @@ impl Ranker {
             objective,
             chosen: self.chosen,
             rank: search::rank_of(&self.samples, &self.grid, objective),
-            of: search::TERMS * self.grid.len(),
+            // Over the **admissible** grid, as `rank_of` and `search` both are: a rank against
+            // candidates the search may not choose would not say where this one stands.
+            of: search::TERMS * (1 + grid::last_admissible(&self.grid)),
         })
     }
 }
@@ -376,8 +386,13 @@ fn bootstrap(dir: &Path) -> Result<String, String> {
             let cells = HEADER.split(',').map(|name| match name {
                 "coeff" => id.name(),
                 "precision" => precision_name(precision),
-                "terms" => "8",
+                "terms" => "16",
                 "switch_bits" => zero,
+                // The placeholder file is never a measurement, and `binding` is a name, not a
+                // number: the emitter refuses anything but the four, which is what keeps a
+                // bootstrap row from reading as a swept one.
+                "binding" => "none",
+                "term_cap" => "16",
                 _ => "0e0",
             });
             csv.push_str(&cells.collect::<Vec<_>>().join(","));
@@ -631,8 +646,16 @@ mod tests {
             let field = format!("{}_max_u", cell("argmax_field")?);
             assert_eq!(num(&field)?.to_bits(), objective.to_bits(), "{row}");
             assert!(cell("argmax_stratum")?.starts_with("theta:"), "{row}");
-            // A neighbour is no better than the chosen switch, and is empty only at an end.
-            let end = cell("grid_index")? == "1024";
+            // A neighbour is no better than the chosen switch, and is empty only at the end of
+            // the **admissible** grid: the domain rule stops the search below `π²`, so the point
+            // above the last searchable one is not scored and has no objective (`0039` item 7).
+            let p = match cell("precision")? {
+                "f64" => Precision::F64,
+                "f32" => Precision::F32,
+                other => return Err(format!("{row}: precision `{other}`")),
+            };
+            let last = grid::last_admissible(&grid::grid(p));
+            let end = cell("grid_index")? == last.to_string();
             assert_eq!(cell("above_objective")?.is_empty(), end, "{row}");
             for n in ["below_objective", "above_objective"] {
                 assert!(cell(n)?.is_empty() || num(n)? >= objective, "{row}");
@@ -810,7 +833,8 @@ mod tests {
         assert!(e.contains("placeholder switches; run it again"), "{e}");
         let written = read(&out, generated)?;
         assert!(written.contains("// Placeholder switches: the series changed;"));
-        assert!(written.contains("Switch<f64, 8> = Switch::first("));
+        let shape = format!("Switch<f64, {}> = Switch::first(", search::TERMS);
+        assert!(written.contains(&shape), "{written}");
         assert!(
             written.contains(&format!("{:e},", 1.0 / -49.0)),
             "{written}"
@@ -846,17 +870,25 @@ mod tests {
     #[test]
     fn a_changed_corpus_series_is_stale_at_every_coefficient_and_swept_term() -> Result<(), String>
     {
-        // Any of the `TERMS` swept terms of any row, and no term past them, which the arms never read.
+        // Any of the `TERMS` swept terms of any row makes the file stale. There is **no term past
+        // them** to check any more: `0039` item 3 raised the cap to the corpus's own series length,
+        // so the swept prefix is the whole row, and that equality is asserted here rather than
+        // assumed — if the corpus ever carries more terms than the sweep reads, this test says so
+        // and the past-the-end case comes back.
         let (corpus, scratch) = (corpus_dir()?, Scratch::new("stale-corpus"));
         let text = String::from_utf8(series_file(&corpus)?).map_err(|e| e.to_string())?;
+        assert_eq!(
+            Series::<f64>::load(&corpus)?.terms(),
+            search::TERMS,
+            "the sweep reads a prefix of the corpus's series, not all of it"
+        );
         let stale = scratch.0.join("corpus");
         std::fs::create_dir_all(&stale).map_err(|e| e.to_string())?;
         for id in Swept::ALL {
-            for term in [0, search::TERMS - 1, search::TERMS] {
+            for term in [0, search::TERMS - 1] {
                 let edited = with_term_changed(&text, id.name(), term)?;
                 std::fs::write(stale.join(SERIES_FILE), edited).map_err(|e| e.to_string())?;
-                let current = swept_is_current(&stale)?;
-                assert_eq!(current, term == search::TERMS, "{id:?} term {term}");
+                assert!(!swept_is_current(&stale)?, "{id:?} term {term}");
             }
         }
         Ok(())
@@ -909,7 +941,9 @@ mod tests {
             r.objective,
             r.chosen
         );
-        assert_eq!(r.of, 8200);
+        // `TERMS` lengths times the admissible grid, which the domain rule ends below `π²`.
+        let admissible = 1 + grid::last_admissible(&grid::grid(Precision::F64));
+        assert_eq!(r.of, search::TERMS * admissible);
         // Only candidates that also leave nearly every record to the exact arm rank with it.
         assert!(r.rank * 10 > r.of * 9, "{} of {}", r.rank, r.of);
         Ok(())
@@ -943,10 +977,11 @@ mod tests {
         let terms: usize = cells[2].parse().map_err(|e| format!("{e}"))?;
         let r = ranker.rank(terms, f64::from_bits(bits))?;
         assert_eq!((r.rank, r.objective.to_bits()), (1, r.chosen.to_bits()));
-        // A switch off the grid is scored like any other, and 0 or 9 terms are refused.
+        // A switch off the grid is scored like any other; a length outside `1..=TERMS` is refused.
         let off = ranker.rank(4, 0.01)?;
         assert!(off.objective > r.chosen);
-        assert!(ranker.rank(0, 0.01).is_err() && ranker.rank(9, 0.01).is_err());
+        assert!(ranker.rank(0, 0.01).is_err());
+        assert!(ranker.rank(search::TERMS + 1, 0.01).is_err());
         Ok(())
     }
 }

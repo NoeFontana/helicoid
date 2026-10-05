@@ -55,6 +55,12 @@
       "sha256": "e030c23861992a2756e74059cf35a1bafa4ea071bfe5b23b0c0a4bdb97ecf773",
       "verified": 8
     },
+    "coeff_switch_ref.jsonl": {
+      "kind": "switch-ref",
+      "rechecked": 17424,
+      "records": 17424,
+      "sha256": "35e8170d84fc1c78a32df86075b8f2b558437dcda6f3240e952c939580407348"
+    },
     "se2_ad.jsonl": {
       "kind": "corpus",
       "rechecked": 52,
@@ -284,7 +290,7 @@
       "sha256": "577f40aa3db75180b8168b459e383bc53182a24856995d267c000b498d8ac5c1"
     }
   },
-  "generator": "sha256:e64f5ba820a1341debd35c1d5cc0bea291ba10b310a7542cdef4f94b82893b69",
+  "generator": "sha256:0af236b09e4cfc9333cac26a5695cd623f7a4a2e6d53dddf8176cb51997867f4",
   "mpmath": "1.4.1",
   "python": "3.12",
   "recheck": {
