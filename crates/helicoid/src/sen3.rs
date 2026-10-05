@@ -351,7 +351,7 @@ impl<S: Real> SEn3<S, 1> {
     pub fn act_jacobians<Sd: Side>(&self, p: Point3<S>) -> (Matrix<S, 3, 6>, Mat3<S>) {
         let r = self.rotation().to_matrix();
         let (left, right) = match Sd::IS_RIGHT {
-            true => (-(r * hat(Vector(p.0))), r),
+            true => (-mul_hat(&r, Vector(p.0)), r),
             false => (-hat(Vector(self.act(p).0)), Mat3::identity()),
         };
         let cols = array::from_fn(|c| match c < 3 {

@@ -77,11 +77,14 @@ const F64: Bounds = Bounds {
     tangent_order: 0.0,
     jac_order: 9.0,
     sandwich: 12.0,
+    // `PHASE3.md` §8's second check, measured 0.316 over the four product groups, 10 000 draws each; `Rn x Rn` is exactly `0`.
+    dual_rows: 1.0,
 };
 const F32: Bounds = Bounds {
     axioms: 9.0,
     tangent_order: 7.0,
     sandwich: 9.0,
+    dual_rows: 1.0,
     ..F64
 };
 

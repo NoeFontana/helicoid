@@ -31,8 +31,8 @@
 //! of headroom on laws `proptest` explores every run. A sample count is part of a bound.
 
 use crate::laws::{laws_for, tangent, Bounds, Sample};
-use crate::{LieGroup, Quat, Tangent, SO3};
-use helicoid_linalg::{hat, Mat3, Matrix, Vector};
+use crate::{Left, LieGroup, Quat, Right, SO3Tangent, Tangent, SO3};
+use helicoid_linalg::{hat, Dual, Mat3, Matrix, Vector};
 
 type G<S> = SO3<S>;
 
@@ -52,6 +52,8 @@ const F64: Bounds = Bounds {
     tangent_order: 0.0,
     jac_order: 7.0,
     sandwich: 8.0,
+    // `PHASE3.md` §8's second check, measured 5.485 over 20 000 draws.
+    dual_rows: 11.0,
 };
 const F32: Bounds = Bounds {
     tangent_order: 3.0,
@@ -296,6 +298,70 @@ fn the_jacobians_are_the_closed_forms_of_3_5() {
 /// because the two instruction schedules pick a different one of two NaN operands.
 fn same_or_nan(a: f64, b: f64) -> bool {
     same(a, b) || (a.is_nan() && b.is_nan())
+}
+
+/// §2.4's action rows against `Dual<f64, 3>` differentiation of the action itself, both sides and
+/// `∂/∂p` — `PHASE3.md` §8's second check for the action, as `jacobians_match_dual` is for §2.3.
+///
+/// `11` is twice the worst of 20 000 draws, 5.066 `u` over both sides and both arguments. It is
+/// not a differentiation error alone: `act` is §3.3's quaternion sandwich where the closed form
+/// goes through `to_matrix`, so the comparison carries that difference too — the same one §14's
+/// `act_many` row records.
+#[test]
+fn act_jacobians_differentiate_the_action() {
+    type D3 = Dual<f64, 3>;
+    let mut st = 0x6A09_E667_F3BC_C908_u64;
+    let mut next = || {
+        st ^= st << 13;
+        st ^= st >> 7;
+        st ^= st << 17;
+        (st >> 11) as f64 / (1u64 << 53) as f64 * 4.0 - 2.0
+    };
+    let mut worst = 0.0_f64;
+    for _ in 0..20_000 {
+        let (phi, p) = ([next(), next(), next()], [next(), next(), next()]);
+        let x = SO3::<f64>::exp(&tan(phi));
+        let xd = SO3::<D3>::exp(&SO3Tangent {
+            phi: Vector(phi.map(D3::constant)),
+        });
+        let pd = Vector(p.map(D3::constant));
+        // `δ`, seeded: lane `i` is `∂/∂δ_i`, and the value is `0`.
+        let delta = SO3Tangent {
+            phi: Vector(core::array::from_fn(|i| D3::variable(0.0, i))),
+        };
+        for right in [true, false] {
+            let moved = match right {
+                true => xd.rplus(&delta),
+                false => xd.lplus(&delta),
+            };
+            let got = moved.act(pd);
+            let (j, dp) = match right {
+                true => x.act_jacobians::<Right>(Vector(p)),
+                false => x.act_jacobians::<Left>(Vector(p)),
+            };
+            // Column-major, as `Jac::write_dense` and `laws::e` read a matrix.
+            let lanes: [[f64; 3]; 3] =
+                core::array::from_fn(|c| core::array::from_fn(|r| got.0[r].d[c]));
+            let want: [[f64; 3]; 3] =
+                core::array::from_fn(|c| core::array::from_fn(|r| j.get(r, c)));
+            worst = crate::laws::worst(
+                worst,
+                crate::laws::e::<f64>(lanes.as_flattened(), want.as_flattened()),
+            );
+            // `∂(R p)/∂p = R`, by differentiating in `p` instead.
+            let pv = Vector(core::array::from_fn(|i| D3::variable(p[i], i)));
+            let moved = xd.act(pv);
+            let lanes: [[f64; 3]; 3] =
+                core::array::from_fn(|c| core::array::from_fn(|r| moved.0[r].d[c]));
+            let want: [[f64; 3]; 3] =
+                core::array::from_fn(|c| core::array::from_fn(|r| dp.get(r, c)));
+            worst = crate::laws::worst(
+                worst,
+                crate::laws::e::<f64>(lanes.as_flattened(), want.as_flattened()),
+            );
+        }
+    }
+    assert!(worst <= 11.0, "{worst} u");
 }
 
 /// `mul_hat` against the generic `Mat3 * hat(v)` it replaces, entry by entry on the bits.

@@ -413,6 +413,115 @@ pub(crate) fn sandwich_matches_dense<S: Real, G: LieGroup<S>, const D: usize>(
     e::<S>(got.as_flattened(), want.as_flattened())
 }
 
+/// Every row of `NUMERICS.md` §2.3 against `Dual<S, D>` differentiation of the operation it is the
+/// Jacobian *of* — the second of the two checks `PHASE3.md` §8 asks for, where
+/// [`jacobian_rows`] is the first.
+///
+/// The difference matters: `jacobian_rows` compares each closed form with a chain of the crate's
+/// own primitives, so a sign carried consistently through `jr`, `jl` and `Ad` would satisfy it.
+/// This differentiates the *operation* — `X ⊕ τ`, `Y ⊖ X`, `X Y`, `X⁻¹` — and so answers "is this
+/// matrix the derivative" from outside the closed forms entirely.
+///
+/// Everything runs at one scalar, `Dual<S, D>`: the elements are lifted as constants, the
+/// perturbation `δ` is seeded with [`Dual::variable`], and the closed forms are evaluated at the
+/// same scalar, where their *value* lanes are the answer `S` would have given. A row whose output
+/// is a group element is differentiated through `Log` of the correction, which is what the
+/// perturbation *means* (§2.3 states each row in its own side's convention):
+///
+/// ```text
+/// right: J[i] = d/dδ_i Log( f(X)⁻¹ · f(X ⊕_R δ) )   left: d/dδ_i Log( f(X ⊕_L δ) · f(X)⁻¹ )
+/// ```
+///
+/// A row whose output is already a tangent (`⊖`) is differentiated directly.
+///
+/// # Domain
+///
+/// `D == G::DOF`. The error is `laws::e`'s, so a bound is in `u`; it is **not** `0` for any group,
+/// because the two sides compute different expressions — the closed form is one formula and this is
+/// a difference of two `Log`s divided by nothing, so the comparison carries `Log`'s conditioning
+/// near a half turn.
+pub(crate) fn jacobians_match_dual<S: Real, G: LieGroup<Dual<S, D>>, const D: usize>(
+    a: &[f64; D],
+    b: &[f64; D],
+    c: &[f64; D],
+) -> f64 {
+    type T<S, G> = <G as LieGroup<S>>::Tangent;
+    let lift = |v: &[f64; D]| -> T<Dual<S, D>, G> {
+        <T<Dual<S, D>, G> as Tangent<Dual<S, D>>>::read_dense(&v.map(|x| Dual::constant(S::lit(x))))
+    };
+    // `δ`, seeded: lane `i` is `∂/∂δ_i`, and the value is `0`, so every element below is its own
+    // unperturbed self in the value lane.
+    let seeds: [Dual<S, D>; D] = array::from_fn(|i| Dual::variable(S::zero(), i));
+    let delta = <T<Dual<S, D>, G> as Tangent<Dual<S, D>>>::read_dense(&seeds);
+    let (x, y, tau) = (G::exp(&lift(a)), G::exp(&lift(b)), lift(c));
+    // The `D x D` in a tangent's derivative lanes, column-major as `dj` reads a `Jac`.
+    let lanes = |t: &T<Dual<S, D>, G>| -> [[f64; D]; D] {
+        let mut buf = [Dual::constant(S::zero()); D];
+        t.write_dense(&mut buf);
+        array::from_fn(|col| array::from_fn(|row| buf[row].d[col].value_f64()))
+    };
+    // `Log` of the correction, in the side's own convention.
+    let right_of = |moved: &G, base: &G| lanes(&moved.rminus(base));
+    let left_of = |moved: &G, base: &G| lanes(&moved.lminus(base));
+    let mut worst = 0.0_f64;
+    let mut check = |closed: &G::Jac, got: [[f64; D]; D]| {
+        let want = dj::<Dual<S, D>, G, D>(closed);
+        worst = crate::laws::worst(
+            worst,
+            e::<Dual<S, D>>(want.as_flattened(), got.as_flattened()),
+        );
+    };
+
+    // `X ⊕ τ`: the first row is `∂/∂X`, the second `∂/∂τ`.
+    let (rp, lp) = (x.rplus(&tau), x.lplus(&tau));
+    let (jr_x, jr_t) = x.rplus_jacobians(&tau);
+    check(&jr_x, right_of(&x.rplus(&delta).rplus(&tau), &rp));
+    check(&jr_t, right_of(&x.rplus(&tau.add(&delta)), &rp));
+    let (jl_x, jl_t) = x.lplus_jacobians(&tau);
+    check(&jl_x, left_of(&x.lplus(&delta).lplus(&tau), &lp));
+    check(&jl_t, left_of(&x.lplus(&tau.add(&delta)), &lp));
+
+    // `Y ⊖ X`, whose output is a tangent already.
+    let (rm_y, rm_x) = y.rminus_jacobians(&x);
+    check(&rm_y, lanes(&y.rplus(&delta).rminus(&x)));
+    check(&rm_x, lanes(&y.rminus(&x.rplus(&delta))));
+    let (lm_y, lm_x) = y.lminus_jacobians(&x);
+    check(&lm_y, lanes(&y.lplus(&delta).lminus(&x)));
+    check(&lm_x, lanes(&y.lminus(&x.lplus(&delta))));
+
+    // `X Y` and `X⁻¹`, both sides.
+    let xy = x * y;
+    let (cr_x, cr_y) = x.compose_jacobians::<Right>(&y);
+    check(&cr_x, right_of(&(x.rplus(&delta) * y), &xy));
+    check(&cr_y, right_of(&(x * y.rplus(&delta)), &xy));
+    let (cl_x, cl_y) = x.compose_jacobians::<Left>(&y);
+    check(&cl_x, left_of(&(x.lplus(&delta) * y), &xy));
+    check(&cl_y, left_of(&(x * y.lplus(&delta)), &xy));
+    let inv = x.inverse();
+    check(
+        &x.inverse_jacobian::<Right>(),
+        right_of(&x.rplus(&delta).inverse(), &inv),
+    );
+    check(
+        &x.inverse_jacobian::<Left>(),
+        left_of(&x.lplus(&delta).inverse(), &inv),
+    );
+
+    // `Exp(τ)` and `Log(X)`: `J_r(τ)` and `J_r⁻¹(Log X)` are those rows (§2.3), and the left pair
+    // with them.
+    check(
+        &G::jr(&tau),
+        right_of(&G::exp(&tau.add(&delta)), &G::exp(&tau)),
+    );
+    check(
+        &G::jl(&tau),
+        left_of(&G::exp(&tau.add(&delta)), &G::exp(&tau)),
+    );
+    check(&G::jr_inv(&x.log()), lanes(&x.rplus(&delta).log()));
+    check(&G::jl_inv(&x.log()), lanes(&x.lplus(&delta).log()));
+    worst
+}
+
 /// Every method of `G` at the tangents `a`, `b`, as value parts: run over `f64` and over
 /// `Dual<f64, D>`, the two must agree to the bit (`dual_value_is_plain_value`).
 pub(crate) fn probe<S: Real, G: LieGroup<S>, const D: usize>(
@@ -497,6 +606,8 @@ pub(crate) struct Bounds {
     pub(crate) tangent_order: f64,
     pub(crate) jac_order: f64,
     pub(crate) sandwich: f64,
+    /// [`jacobians_match_dual`]'s bound, `PHASE3.md` §8's second check.
+    pub(crate) dual_rows: f64,
 }
 
 /// splitmix64, seeded; `unif` is uniform on `[-1, 1)`.
@@ -583,7 +694,7 @@ macro_rules! laws_for {
             $crate::laws::laws_for!(@case as_f32, f32, $b32, $G, $jac, $D);
             $crate::laws::laws_for!(
                 @case as_dual, helicoid_linalg::Dual<f64, $D>, $b64, $G, $jac, $D);
-            $crate::laws::laws_for!(@plain $G, $D);
+            $crate::laws::laws_for!(@plain $G, $D, $b64);
         }
     };
     (@case $m:ident, $S:ty, $B:ident, $G:ident, $jac:ident, $D:literal) => {
@@ -660,7 +771,25 @@ macro_rules! laws_for {
     // `probe` reads every method of the group; over any `f64` and with NaN, infinite and huge
     // derivative lanes the value parts must be the plain result, bit for bit (NaN sign and payload
     // of arithmetic excepted, as for `Dual`).
-    (@plain $G:ident, $D:literal) => {
+    //
+    // `jacobians_match_dual` sits here and not in `@case` because it names one scalar of its own:
+    // it differentiates at `Dual<f64, D>` and reads the closed forms' value lanes at the same
+    // scalar, so running it per precision would measure nothing extra (`PHASE3.md` §8).
+    (@plain $G:ident, $D:literal, $B:ident) => {
+        proptest::proptest! {
+            #[test]
+            fn jacobians_match_dual(
+                a in $crate::laws::sample::<$D>(),
+                b in $crate::laws::sample::<$D>(),
+                c in $crate::laws::sample::<$D>(),
+            ) {
+                $crate::laws::within(
+                    $crate::laws::jacobians_match_dual::<
+                        f64, $G<helicoid_linalg::Dual<f64, $D>>, $D>(&a, &b, &c),
+                    $B.dual_rows,
+                )?;
+            }
+        }
         proptest::proptest! {
             #[test]
             fn dual_value_is_plain_value(
