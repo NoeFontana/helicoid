@@ -17,8 +17,8 @@
 //! `subject_version` is the workspace version: there is no other version of the shipped kernel.
 
 use helicoid::__sweep as k;
-use helicoid::{Jac, LieGroup, Quat, Tangent, SO3};
-use helicoid_linalg::{Dual, Mat3, Matrix, Precision, Real, StridedMut, Vector};
+use helicoid::{Jac, LieGroup, Quat, SEn3, SEn3Jac, SEn3Tangent, Tangent, SO3};
+use helicoid_linalg::{Dual, Mat3, Matrix, Precision, Real, StridedMut, Vec3, Vector};
 
 use crate::conformance::corpus::Record;
 use crate::conformance::subject::{Output, Registered, Subject};
@@ -192,6 +192,137 @@ fn answer<S: Real + Into<f64>>(id: Swept, record: &Record) -> Output {
     ])
 }
 
+/// What a `sen3_*` id computes (`docs/PHASE3.md` §5).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Sen3 {
+    Exp,
+    Log,
+    Ad,
+    Jr,
+    Jl,
+    JrInv,
+    JlInv,
+}
+
+impl Sen3 {
+    /// `(op, N)` of `sen3_<op>_n<N>`; `None` for every other id. The same spelling the seeded
+    /// subject parses (`seeded::se3::parse`), extended by the ids only the library answers.
+    fn of_fn(fn_id: &str) -> Option<(Self, usize)> {
+        let (op, n) = fn_id.strip_prefix("sen3_")?.rsplit_once("_n")?;
+        let op = match op {
+            "exp" => Self::Exp,
+            "log" => Self::Log,
+            "ad" => Self::Ad,
+            "jr" => Self::Jr,
+            "jl" => Self::Jl,
+            "jr_inv" => Self::JrInv,
+            "jl_inv" => Self::JlInv,
+            _ => return None,
+        };
+        let n = match n {
+            "1" => 1,
+            "2" => 2,
+            "3" => 3,
+            _ => return None,
+        };
+        Some((op, n))
+    }
+}
+
+/// The group a `q`/`x` record holds, at `N`.
+fn sen3_of<S: Real + From<f64>, const N: usize>(record: &Record) -> Option<SEn3<S, N>> {
+    let q = quat_of::<S>(record, "q")?;
+    let x = record.input("x").filter(|x| x.len() == 3 * N)?;
+    let cols = core::array::from_fn(|i| Vector(core::array::from_fn(|r| S::from(x[3 * i + r]))));
+    // Not through `Quat::from_wxyz_unchecked`'s assert, as `quat_of` says: the `q:*` strata carry
+    // quaternions that are unit only to rounding on purpose.
+    Some(SEn3::from_parts(SO3::from_quat_unchecked(q), cols))
+}
+
+/// The dense `(3 + 3N)`-square matrix of a `SEn3Jac`, column-major as the corpus holds it
+/// (`PHASE1.md` §4.3), through `Jac::write_dense` -- the shipped path, structural zeros included.
+fn sen3_jac_out<S: Real + Into<f64>, const N: usize>(j: &SEn3Jac<S, N>) -> Output {
+    let d = 3 + 3 * N;
+    let mut buf = vec![S::zero(); d * d];
+    Jac::<S, SEn3Tangent<S, N>>::write_dense(j, &mut StridedMut::col_major(&mut buf, d, d));
+    Output::from([(
+        "J".to_string(),
+        buf.into_iter().map(Into::into).collect::<Vec<f64>>(),
+    )])
+}
+
+/// The shipped answer of `op` at `N`, or nothing when the record holds no usable input.
+fn sen3_answer<S: Real + Into<f64> + From<f64>, const N: usize>(
+    op: Sen3,
+    record: &Record,
+) -> Output {
+    let flat = |v: Vec<Vec3<S>>| {
+        v.into_iter()
+            .flat_map(|c| c.0)
+            .map(Into::into)
+            .collect::<Vec<f64>>()
+    };
+    match op {
+        Sen3::Exp => {
+            let Some(tau) = record.input("tau").filter(|t| t.len() == 3 + 3 * N) else {
+                return Output::new();
+            };
+            // Through `read_dense`, so the dense order is §1's and not this file's reading of it.
+            let tau: Vec<S> = tau.iter().map(|&t| S::from(t)).collect();
+            let x = SEn3::<S, N>::exp(&SEn3Tangent::read_dense(&tau));
+            let (r, cols) = x.parts();
+            let mut out = quat_out(&r.quat());
+            out.insert("x".to_string(), flat(cols.to_vec()));
+            out
+        }
+        Sen3::Log => {
+            let Some(x) = sen3_of::<S, N>(record) else {
+                return Output::new();
+            };
+            let mut tau = vec![S::zero(); 3 + 3 * N];
+            x.log().write_dense(&mut tau);
+            Output::from([(
+                "tau".to_string(),
+                tau.into_iter().map(Into::into).collect::<Vec<f64>>(),
+            )])
+        }
+        Sen3::Ad => {
+            let Some(x) = sen3_of::<S, N>(record) else {
+                return Output::new();
+            };
+            let mut out = sen3_jac_out(&x.adjoint());
+            // The corpus names the adjoint `Ad`, not `J`.
+            let j = out.remove("J").unwrap_or_default();
+            Output::from([("Ad".to_string(), j)])
+        }
+        Sen3::Jr | Sen3::Jl | Sen3::JrInv | Sen3::JlInv => {
+            let Some(tau) = record.input("tau").filter(|t| t.len() == 3 + 3 * N) else {
+                return Output::new();
+            };
+            let tau: Vec<S> = tau.iter().map(|&t| S::from(t)).collect();
+            let tau = SEn3Tangent::<S, N>::read_dense(&tau);
+            let j = match op {
+                Sen3::Jr => SEn3::<S, N>::jr(&tau),
+                Sen3::Jl => SEn3::<S, N>::jl(&tau),
+                Sen3::JrInv => SEn3::<S, N>::jr_inv(&tau),
+                _ => SEn3::<S, N>::jl_inv(&tau),
+            };
+            sen3_jac_out(&j)
+        }
+    }
+}
+
+/// [`sen3_answer`] at the `N` the id names: `N` is a const parameter, so the three widths the
+/// corpus holds are three instantiations and the dispatch is this match.
+fn sen3_at<S: Real + Into<f64> + From<f64>>(op: Sen3, n: usize, record: &Record) -> Output {
+    match n {
+        1 => sen3_answer::<S, 1>(op, record),
+        2 => sen3_answer::<S, 2>(op, record),
+        3 => sen3_answer::<S, 3>(op, record),
+        _ => Output::new(),
+    }
+}
+
 pub(crate) struct Helicoid;
 
 impl Subject for Helicoid {
@@ -200,7 +331,7 @@ impl Subject for Helicoid {
     }
 
     fn supports(&self, fn_id: &str) -> bool {
-        Swept::of_fn(fn_id).is_some() || So3::of_fn(fn_id).is_some()
+        Swept::of_fn(fn_id).is_some() || So3::of_fn(fn_id).is_some() || Sen3::of_fn(fn_id).is_some()
     }
 
     fn eval(&self, fn_id: &str, record: &Record, precision: Precision) -> Output {
@@ -209,6 +340,14 @@ impl Subject for Helicoid {
             // harness's error, not this subject's (`So3::answer` says why).
             return match precision {
                 Precision::F64 => id.answer::<f64>(record),
+                Precision::F32 => Output::new(),
+            };
+        }
+        if let Some((op, n)) = Sen3::of_fn(fn_id) {
+            // `f32` as for the `so3_*` ids: no vector id has an `@f32` stratum until a record
+            // extends `0016`.
+            return match precision {
+                Precision::F64 => sen3_at::<f64>(op, n, record),
                 Precision::F32 => Output::new(),
             };
         }
@@ -318,16 +457,26 @@ mod tests {
         for id in Swept::ALL {
             assert!(Helicoid.supports(&format!("coeff_{}", id.name())), "{id:?}");
         }
-        // Every `so3_*` id the corpus holds; SE_N(3)'s wait for §5.
+        // Every `so3_*` id the corpus holds, and every `sen3_*` one (`PHASE3.md` §5).
         for (id, _) in So3::ALL {
             assert!(Helicoid.supports(id), "{id}");
+        }
+        for op in ["exp", "log", "ad", "jr", "jl", "jr_inv", "jl_inv"] {
+            for n in 1..=3 {
+                let id = format!("sen3_{op}_n{n}");
+                assert!(Helicoid.supports(&id), "{id}");
+            }
         }
         for id in [
             "coeff_",
             "coeff_f",
             "coeff_series",
             "so3_jl_jr",
-            "sen3_exp_n1",
+            // A width the corpus does not hold, and an op that is not one.
+            "sen3_exp_n4",
+            "sen3_exp_n0",
+            "sen3_adjoint_n1",
+            "sen3_exp",
         ] {
             assert!(!Helicoid.supports(id), "{id}");
             let rec = record(&[("theta", &[0.5]), ("n", &[0.5]), ("w", &[1.0])], &[])?;

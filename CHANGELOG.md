@@ -72,6 +72,48 @@ defined by the status tables in `docs/`; they win over this file.
 
 ### Added
 
+- `helicoid`: **`SEn3<S, N>`**, with `SE3` and `SE23` (`docs/PHASE3.md` §5) — the group the whole
+  `tf_tree` migration lands on. `exp`/`log` of `NUMERICS.md` §5.1, `adjoint`/`ad` of §5.2, `jr` of
+  §5.3 with Barfoot's `Q`, `jr_inv` of §5.4, the six §2.3 rows, `Mul`, `Blend`, the accessors, and
+  the action as `Mul<Point3<S>>` with `act_many` and `act_jacobians::<Sd>`. `jl`/`jl_inv` are not
+  overridden: the provided `jr(−τ)` is §5.3's left form exactly, because negating the tangent
+  negates both arguments of `Q` twice over.
+  **`exp` and `log` apply `J_l(φ)` and `J_l⁻¹(φ)` by two cross products per column**, not by
+  assembling `I + aW + bW²` and multiplying. `0036` (draft) measured that choice on the real corpus
+  -- 16 domination failures against 36 for the assembled form on `sen3_exp_n1` -- and the shipped
+  code reproduces that 16 exactly; it is also cheaper at every `N` this type has (`12N`
+  multiplications against `27 + 9N`) and it is what `tf_tree_math::exp_se3` does, so the parity rows
+  compare one program's rounding with its own (`0010`, `0041` draft).
+  **`jr_inv` does not call `Jac::inverse`**: it composes `−A⁻¹ Q A⁻¹` with `A⁻¹` from `SO3::jr_inv`'s
+  closed form, which §5.4 states and which has no division -- so `NUMERICS.md` §12's promise of a
+  finite `jr_inv` holds by construction and `det A = 0` never arises on that path. That settles what
+  `PHASE3.md` §0.0 parked "for the `jr_inv` PR". §14's twin backs it: `sen3_jr_inv_matches_reference`
+  against the dense Gauss-Jordan inverse of `jr`, at 7 `u` -- twice the worst of 60 000 draws
+  (3.437 at `N = 2` `f64`, 3.243/3.132/3.166 at `N = 1`, 3.258 at `N = 3`).
+  Under every generic law of `laws.rs` at `f64`, `f32` and `Dual` for `N = 1, 2`, with bounds twice
+  the worst of 60 000 draws per law per scalar: `adjoint` 8.279 `u`, `ad` 7.855, `plus_minus` 7.561,
+  `axioms` 6.085 down to `sides` 1.118, and `tangent_order` exactly `0` at `f64`. `rows` is **2.182
+  and not `0`** as SO(3)'s is, because this group's `Ad_Y⁻¹` is `Ad` of the group inverse where
+  SO(3)'s is a transpose: an exactness claim would be false, so a measured bound stands there.
+  Scored over **all 21 `sen3_*` corpus ids** at `N = 1, 2, 3`, no non-finite output, which takes the
+  envelope from 170 paired strata to **484**.
+  `from_parts`/`parts` land with it (`0042`, draft): `PHASE3.md` §5 names the accessors per `N`, and
+  the corpus's `sen3_log_n3` and `sen3_ad_n3` records *are* an element's parts, so without them the
+  shipped code could not answer its own ids -- and making the conformance subject a privileged
+  reader would retire `0006`'s external-consumer guarantee for every id at once.
+
+### Fixed
+
+- `SEn3Jac::inverse`'s `debug_assert!` **panicked on a NaN determinant**. It read "every lane has
+  `0 < |det| < ∞`"; it now reads "no lane has `det = 0` and none has `|det| = ∞`". The two spellings
+  differ only on NaN, and a NaN determinant is a NaN matrix whose inverse is NaN -- the answer a
+  value function owes, not a panic. `Mat3`'s `Jac::inverse` and `coeffs`'s `nonnegative` assert
+  already read it that way and say why; this was the one place that did not. Found by instantiating
+  `laws.rs` on `SEn3`: `dual_value_is_plain_value` draws from `f64::ANY`, so `laws::probe` inverts a
+  `jr` built from garbage, which is exactly the caller the two spellings disagree about. The
+  infinite case still fires, because `adj/det` is then a finite, wrong zero with a finite input to
+  blame.
+
 - The seeded subject and its host-`std` twin answer **`so3_jr` and `so3_jl`**, the two ids SO(3)
   brought that no subject but `helicoid` scored. The program is the rotation block of the SE_N(3)
   Jacobian (`se3::so3_jacobian`) and not a second reading of §3.5: it is, bit for bit and under both

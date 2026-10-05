@@ -44,7 +44,7 @@ pub struct SO3Tangent<S> {
 /// `x·x + y·y + z·z` left to right: `θ²` and `n²` are dot products (`NUMERICS.md` §2.1), and this
 /// order is the one the kernels and the corpus were scored against.
 #[inline]
-fn norm_sq<S: Real>(v: Vec3<S>) -> S {
+pub(crate) fn norm_sq<S: Real>(v: Vec3<S>) -> S {
     let [x, y, z] = v.0;
     (x * x + y * y) + z * z
 }
