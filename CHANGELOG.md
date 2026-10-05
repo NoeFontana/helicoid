@@ -70,6 +70,41 @@ defined by the status tables in `docs/`; they win over this file.
 - `eig3`'s three private helpers gain `#[inline]`, the convention the rest of the crate keeps; it
   also picks up `pi` as a literal, which it was paying as a `libm::atan2` per call.
 
+### Changed
+
+- **Every hat-structured product in the crate skips `hat`'s three structural zeros**, through
+  `so3::mul_hat` and `hat_mul`: `Q`'s seven products (`NUMERICS.md` §5.3), the `W²` of `SO3::jr`
+  and `jr_inv` (§3.5), and `SEn3::adjoint`'s `[x_i]_× R` (§5.2). 18 multiplications and 9 additions
+  against 27 and 18. `Matrix::mul` cannot skip them itself: `0 · x` is not `0` for a non-finite
+  `x`, so LLVM may not fold it and D16 forbids the fast-math that would let it.
+
+  **Measured** against this tree at `966d715` (`f64`, `taskset`-pinned, baseline built in-tree),
+  near-identity / generic / near-π: `so3/jr` **0.297 / 0.420 / 0.436**, `so3/jr_inv` 0.153 / 0.286 /
+  0.326, `se3/jr` **0.165 / 0.217 / 0.225** (449 -> 125 ns), `se23/jr` 0.142 / 0.175 / 0.181
+  (779 -> 167 ns), `se3/jr_inv` 0.273 / 0.301 / 0.310, `se3/adjoint` 0.370 / 0.371 / 0.371,
+  `se3/rminus_jacobians` 0.459 / 0.501 / 0.508, `se23/rminus_jacobians` 0.439 / 0.463 / 0.466.
+  Floors 0.003--0.13, every effect far outside; `se3/exp`, which reaches no matrix product, held at
+  0.999--1.005 inside its own. With the fusion of this release, `se3/rminus_jacobians` is
+  **1124 -> 340 ns**.
+
+  **Not a rounding change.** The corpus is byte-identical -- 1559 rows, every maximum unmoved --
+  which the finite-entry bit identity predicts and two tests pin: 20 000 random pairs agree exactly
+  per helper, and the degenerate cases are counted rather than assumed (28 and 44 keep a `∓0` the
+  dropped term would have normalized to `+0`; 216 and 225 carry a non-finite entry that `0 · x`
+  would have spread across the column), with the invariant asserted that a finite difference is a
+  zero's sign and nothing else. Those counts are stable across the dev and release profiles only
+  under the crate's standing NaN exception -- which NaN a product returns is the implementation's
+  choice of input payload, and the two instruction schedules choose differently, so on `to_bits`
+  alone the non-finite counts read 216 and 234. `laws_for!`'s `dual_value_is_plain_value` arm
+  already excepts NaN payloads for the same reason; these tests now do too. Every recorded law bound and `jl_is_jr_transposed_to_the_bit` hold
+  unchanged.
+
+  **The ratios exceed the arithmetic.** `SEn3::jr` saves `216 -> 144` multiplications, about 1.5x,
+  and the rows moved 4--7x: a chained generic `Matrix::mul` runs at roughly 1 flop/ns where the
+  written-out entries reach 3.2. `PROJECT.md` §5.1 carries that as a row -- whether the *generic*
+  `3 x 3` product is worth specializing is a `helicoid-linalg` bench nobody has run, and this
+  change does not touch it.
+
 ### Added
 
 - **`PHASE3.md` §11's group benches** (`crates/helicoid/benches/groups.rs`), in a criterion target

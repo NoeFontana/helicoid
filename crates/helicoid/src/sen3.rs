@@ -5,7 +5,7 @@ use crate::coeffs::{jr_coeffs, jr_inv_coeff, q_coeffs};
 use crate::dualmat::{zero3, SEn3Jac};
 use crate::quat::Quat;
 use crate::side::Side;
-use crate::so3::{norm_sq, SO3Tangent, SO3};
+use crate::so3::{hat_mul, mul_hat, norm_sq, SO3Tangent, SO3};
 use crate::traits::{tie_dof, Jac, LieGroup, Tangent};
 use core::array;
 use core::iter::once;
@@ -430,8 +430,21 @@ impl<S: Real> Mul<Point3<S>> for SEn3<S, 1> {
 /// `W²` is passed in, not formed here: it is the one word of the eight that does not depend on
 /// `ρ`, so forming it per column cost `(N − 1) · 27` multiplications for the same bits.
 #[inline]
-fn q_block<S: Real>(x: &Mat3<S>, w: &Mat3<S>, ww: &Mat3<S>, b: S, d: S, e: S) -> Mat3<S> {
-    q_assemble(x, &q_words(x, w, ww), b, d, e, false)
+#[expect(
+    clippy::too_many_arguments,
+    reason = "Q's arguments, and `0005`'s blocks are not values"
+)]
+fn q_block<S: Real>(
+    phi: Vec3<S>,
+    rho: Vec3<S>,
+    x: &Mat3<S>,
+    w: &Mat3<S>,
+    ww: &Mat3<S>,
+    b: S,
+    d: S,
+    e: S,
+) -> Mat3<S> {
+    q_assemble(x, &q_words(phi, rho, x, w, ww), b, d, e, false)
 }
 
 /// The matrix words of `Q`, grouped as §5.3 writes them: `W X + X W`, `W X W`, `W W X + X W W`, and
@@ -454,14 +467,23 @@ struct Words<S> {
 }
 
 #[inline]
-fn q_words<S: Real>(x: &Mat3<S>, w: &Mat3<S>, ww: &Mat3<S>) -> Words<S> {
-    let (wx, xw) = (*w * *x, *x * *w);
-    let (wxw, wwx, xww) = (wx * *w, *ww * *x, xw * *w);
+fn q_words<S: Real>(
+    phi: Vec3<S>,
+    rho: Vec3<S>,
+    x: &Mat3<S>,
+    w: &Mat3<S>,
+    ww: &Mat3<S>,
+) -> Words<S> {
+    // Every one of the seven products has a `hat` on the right, so every one goes through
+    // `mul_hat`: 18 multiplications and 9 additions each against 27 and 18, and bit-identical for
+    // finite entries (`so3::mul_hat` states the two exceptions and its test counts them).
+    let (wx, xw) = (mul_hat(w, rho), mul_hat(x, phi));
+    let (wxw, wwx, xww) = (mul_hat(&wx, phi), mul_hat(ww, rho), mul_hat(&xw, phi));
     Words {
         wx_xw: wx + xw,
         wxw,
         ww_sum: wwx + xww,
-        e: wxw * *w + wwx * *w,
+        e: mul_hat(&wxw, phi) + mul_hat(&wwx, phi),
     }
 }
 
@@ -502,8 +524,9 @@ fn inverses<S: Real, const N: usize>(tau: &SEn3Tangent<S, N>) -> (SEn3Jac<S, N>,
     let right = SO3::jr_inv(&SO3Tangent { phi: tau.phi });
     let left = right.transpose();
     let (b, d, e) = q_coeffs(norm_sq(tau.phi));
-    let w = hat(-tau.phi);
-    let ww = w * w;
+    let neg = -tau.phi;
+    let w = hat(neg);
+    let ww = mul_hat(&w, neg);
     let mut jr = SEn3Jac {
         diag: right,
         col: [zero3(); N],
@@ -515,7 +538,7 @@ fn inverses<S: Real, const N: usize>(tau: &SEn3Tangent<S, N>) -> (SEn3Jac<S, N>,
     for (i, &r) in tau.rho.iter().enumerate() {
         // The words of `Q(−ρ_i, −φ)`, which `jr_inv` reads directly and `jl_inv` reads negated.
         let x = hat(-r);
-        let v = q_words(&x, &w, &ww);
+        let v = q_words(neg, -r, &x, &w, &ww);
         jr.col[i] = -(right * q_assemble(&x, &v, b, d, e, false) * right);
         jl.col[i] = -(left * q_assemble(&x, &v, b, d, e, true) * left);
     }
@@ -593,7 +616,7 @@ impl<S: Real, const N: usize> LieGroup<S> for SEn3<S, N> {
         let r = self.rotation().to_matrix();
         SEn3Jac {
             diag: r,
-            col: self.x.map(|v| hat(v) * r),
+            col: self.x.map(|v| hat_mul(v, &r)),
         }
     }
 
@@ -615,11 +638,14 @@ impl<S: Real, const N: usize> LieGroup<S> for SEn3<S, N> {
     #[inline]
     fn jr(tau: &SEn3Tangent<S, N>) -> SEn3Jac<S, N> {
         let (b, d, e) = q_coeffs(norm_sq(tau.phi));
-        let w = hat(-tau.phi);
-        let ww = w * w;
+        let neg = -tau.phi;
+        let w = hat(neg);
+        let ww = mul_hat(&w, neg);
         SEn3Jac {
             diag: SO3::jr(&SO3Tangent { phi: tau.phi }),
-            col: tau.rho.map(|r| q_block(&hat(-r), &w, &ww, b, d, e)),
+            col: tau
+                .rho
+                .map(|r| q_block(neg, -r, &hat(-r), &w, &ww, b, d, e)),
         }
     }
 
@@ -639,13 +665,14 @@ impl<S: Real, const N: usize> LieGroup<S> for SEn3<S, N> {
     fn jr_inv(tau: &SEn3Tangent<S, N>) -> SEn3Jac<S, N> {
         let ai = SO3::jr_inv(&SO3Tangent { phi: tau.phi });
         let (b, d, e) = q_coeffs(norm_sq(tau.phi));
-        let w = hat(-tau.phi);
-        let ww = w * w;
+        let neg = -tau.phi;
+        let w = hat(neg);
+        let ww = mul_hat(&w, neg);
         SEn3Jac {
             diag: ai,
             col: tau
                 .rho
-                .map(|r| -(ai * q_block(&hat(-r), &w, &ww, b, d, e) * ai)),
+                .map(|r| -(ai * q_block(neg, -r, &hat(-r), &w, &ww, b, d, e) * ai)),
         }
     }
 

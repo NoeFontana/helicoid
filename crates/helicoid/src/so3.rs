@@ -49,6 +49,49 @@ pub(crate) fn norm_sq<S: Real>(v: Vec3<S>) -> S {
     (x * x + y * y) + z * z
 }
 
+/// `a · φ^`, with `φ^`'s three structural zeros skipped (`NUMERICS.md` §2.1).
+///
+/// Every product of Barfoot's `Q` (§5.3) and every `W²` in the crate has a `hat` matrix on the
+/// right, and `Matrix::mul` cannot skip its zeros: `0 · x` is not `0` for a NaN or an infinite `x`,
+/// so LLVM may not fold it and D16 forbids the fast-math that would let it. Doing it here is
+/// **18 multiplications and 9 additions against 27 and 18**.
+///
+/// **Measured** (`PHASE3.md` §11, `f64`, against this tree at `966d715`): it takes `jr` to
+/// 0.14–0.44 of its time, `jr_inv` to 0.15–0.33, `adjoint` to 0.37–0.39 and `rminus_jacobians` to
+/// 0.44–0.62, across SO(3), SE(3) and SE₂(3) — more than the `216 → 144` multiplications of
+/// `SEn3::jr` account for, so part of it is that a chain of generic `Matrix::mul` calls generates
+/// worse code than the entries written out. `se3/exp`, which reaches no matrix product, held at
+/// 0.999–1.005 inside its floor.
+///
+/// Bit-identical to `*a * hat(v)` for finite entries: `hat`'s zero sits at `k == c`, `sum` adds
+/// the three terms left to right, and `x + ±0` is `x`. It differs in two stated cases — a partial
+/// sum of exactly `∓0` keeps its own sign instead of being normalized to `+0` by the dropped term,
+/// and a non-finite entry of `a` no longer poisons the whole column through `0 · x` — and
+/// `so3_tests::the_structured_product_is_the_generic_one_to_the_bit` is what measures that.
+///
+/// The operands are `Matrix::mul`'s, in its order: `a`'s entry times the entry `hat` *stores*, so
+/// `-y` and not `-(a · y)`.
+#[inline]
+pub(crate) fn mul_hat<S: Real>(a: &Mat3<S>, v: Vec3<S>) -> Mat3<S> {
+    let [x, y, z] = v.0;
+    Matrix::from_rows(array::from_fn(|r| {
+        let (a0, a1, a2) = (a.get(r, 0), a.get(r, 1), a.get(r, 2));
+        Vector([a1 * z + a2 * -y, a0 * -z + a2 * x, a0 * y + a1 * -x])
+    }))
+}
+
+/// `φ^ · b`, the mirror of [`mul_hat`]: `hat`'s zero sits at `k == r` here, and the same 18
+/// multiplications and 9 additions apply. `SEn3::adjoint`'s `[x_i]_× R` is its call site.
+#[inline]
+pub(crate) fn hat_mul<S: Real>(v: Vec3<S>, b: &Mat3<S>) -> Mat3<S> {
+    let [x, y, z] = v.0;
+    let col = |c: usize| (b.get(0, c), b.get(1, c), b.get(2, c));
+    Matrix::from_cols(array::from_fn(|c| {
+        let (b0, b1, b2) = col(c);
+        Vector([-z * b1 + y * b2, z * b0 + -x * b2, -y * b0 + x * b1])
+    }))
+}
+
 /// `m` applied to a `D`-vector, for the `sandwich` whose `D` is `3` by its own assertion. Written
 /// out because a `Matrix<S, D, D>` column is not a `Vec3<S>` to the type checker, as `SEn3Jac`
 /// does the same thing for the same reason; the sum is left to right, as `Mul<Vector>` forms it,
@@ -467,14 +510,16 @@ impl<S: Real> LieGroup<S> for SO3<S> {
     fn jr(tau: &SO3Tangent<S>) -> Mat3<S> {
         let w = hat(tau.phi);
         let (a, b) = jr_coeffs(norm_sq(tau.phi));
-        // `W²` through the generic product, not the closed `φφᵗ − θ²I`. The closed form costs 6
+        // `W²` through `mul_hat`, which is the generic product with `hat`'s three structural zeros
+        // skipped -- bit-identical for finite entries, 18 multiplications against 27 -- and *not*
+        // the closed `φφᵗ − θ²I`. The closed form costs 6
         // multiplies against 27 and lowers `so3_jr`'s worst row from 4.097 to 3.439 `u`, but it is
         // a different rounding (13.8% of entries differ over 20 000 samples) and the corpus says
         // it is worse where it is not better: 6 of 28 `so3_jr` strata regress, up to 1.34x, and
         // `so3_jr_inv` keeps its 2.112 maximum while **12 of 28** strata regress, up to 1.39x.
         // Nothing has asked for the arithmetic yet — `PHASE3.md` §11's benches are owed — so the
         // trade is not taken, and `0006` says the bar is the max, per stratum, never a mean.
-        (Matrix::identity() + w.scale(-a)) + (w * w).scale(b)
+        (Matrix::identity() + w.scale(-a)) + mul_hat(&w, tau.phi).scale(b)
     }
     /// `J_r⁻¹ = I + W/2 + cW²` (`NUMERICS.md` §3.5).
     ///
@@ -486,7 +531,7 @@ impl<S: Real> LieGroup<S> for SO3<S> {
     fn jr_inv(tau: &SO3Tangent<S>) -> Mat3<S> {
         let w = hat(tau.phi);
         let c = jr_inv_coeff(norm_sq(tau.phi));
-        (Matrix::identity() + w.scale(S::lit(0.5))) + (w * w).scale(c)
+        (Matrix::identity() + w.scale(S::lit(0.5))) + mul_hat(&w, tau.phi).scale(c)
     }
     /// `(Ad_Exp(τ)⁻¹, J_r(τ))` (`NUMERICS.md` §2.3). `Ad` is a rotation here, so its inverse is
     /// the transpose, not `Jac::inverse`'s adjugate.
