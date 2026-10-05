@@ -13,7 +13,8 @@
 
 use std::collections::BTreeMap;
 
-use tf_tree_math::{exp_se3, exp_so3, log_se3, log_so3, Iso3, Quat, Vec3};
+use tf_tree_math::twist::Twist;
+use tf_tree_math::{exp_se3, exp_so3, log_se3, log_so3, quat_from_rot3, Iso3, Quat, Vec3};
 
 /// Named arrays: a record's `in` object, or the `out` object of the answer.
 pub(crate) type Fields = BTreeMap<String, Vec<f64>>;
@@ -23,11 +24,14 @@ type Evaluate = fn(&Fields) -> Result<Fields, String>;
 
 /// The function ids this runner answers, each with its evaluation: the one list, so an id cannot
 /// be advertised without an answer or answered without being advertised.
-const TABLE: [(&str, Evaluate); 4] = [
+const TABLE: [(&str, Evaluate); 7] = [
     ("so3_exp", so3_exp),
     ("so3_log", so3_log),
+    ("so3_act", so3_act),
+    ("so3_from_matrix", so3_from_matrix),
     ("sen3_exp_n1", sen3_exp_n1),
     ("sen3_log_n1", sen3_log_n1),
+    ("sen3_ad_n1", sen3_ad_n1),
 ];
 
 /// The function ids [`answer`] evaluates, in table order.
@@ -92,6 +96,33 @@ pub(crate) fn tf_tree_to_helicoid_iso3(t: Iso3) -> (Vec<f64>, Vec<f64>) {
     (tf_tree_to_helicoid_quat(t.q), tf_tree_to_helicoid_vec3(t.t))
 }
 
+/// A helicoid `3 x 3` matrix, **column-major** as the corpus holds it (`PHASE1.md` §4.3), as
+/// `quat_from_rot3`'s **row-major** `[r00 r01 r02, r10 r11 r12, r20 r21 r22]`.
+///
+/// The one conversion here that is not a layout no-op: both sides agree on the convention
+/// (`0002`) and disagree on the storage, so this is a transpose. Reading the corpus's array as
+/// row-major instead transposes the rotation, which negates the quaternion's vector part and is
+/// still a unit quaternion — no error, a wrong answer, which is what the hand-computed
+/// `a_rotation_matrix_is_column_major_in_the_corpus_and_row_major_here` holds down.
+pub(crate) fn helicoid_to_tf_tree_rot3(m: &[f64]) -> Result<[f64; 9], String> {
+    let m = <&[f64; 9]>::try_from(m).map_err(|_| format!("a 3x3 has 9 values, not {}", m.len()))?;
+    Ok(core::array::from_fn(|k| m[(k % 3) * 3 + k / 3]))
+}
+
+/// `Ad(T)` as the corpus holds it: the dense `6 x 6`, column-major, its columns the images of the
+/// tangent basis. `tf_tree_math` has no dense adjoint — `Iso3::adjoint` is the closed form — so
+/// the matrix is formed here, one basis twist at a time, in the rotation-first order both sides
+/// use (`[omega, v]`).
+pub(crate) fn tf_tree_to_helicoid_adjoint(t: &Iso3) -> Vec<f64> {
+    (0..6)
+        .flat_map(|j| {
+            let mut e = [0.0; 6];
+            e[j] = 1.0;
+            t.adjoint(&Twist::from_se3(e)).to_se3()
+        })
+        .collect()
+}
+
 fn fields<const N: usize>(entries: [(&str, Vec<f64>); N]) -> Fields {
     entries
         .into_iter()
@@ -124,6 +155,37 @@ fn sen3_exp_n1(input: &Fields) -> Result<Fields, String> {
 fn sen3_log_n1(input: &Fields) -> Result<Fields, String> {
     let t = helicoid_to_tf_tree_iso3(take(input, "q", 4)?, take(input, "x", 3)?)?;
     Ok(fields([("tau", tf_tree_to_helicoid_tangent(log_se3(t)))]))
+}
+
+/// `R(q) p` of the quaternion as the corpus holds it.
+///
+/// `Quat::rotate` is `p + 2w(u × p) + 2u × (u × p)`, the same spelling `helicoid`'s `SO3::act`
+/// has — which is the sandwich only for a unit `q`, so on `q:nonunit` both programs depart from
+/// the reference `R(q/‖q‖)p` by the same `1 − 2‖u‖² − (w² − ‖u‖²)`, and the stratum compares two
+/// kernels rather than one side's normalization.
+fn so3_act(input: &Fields) -> Result<Fields, String> {
+    let q = helicoid_to_tf_tree_quat(take(input, "q", 4)?)?;
+    let p = helicoid_to_tf_tree_vec3(take(input, "p", 3)?)?;
+    Ok(fields([("Rp", tf_tree_to_helicoid_vec3(q.rotate(p)))]))
+}
+
+/// The quaternion of a rounded or scaled `R`, through Shepperd's method.
+///
+/// `quat_from_rot3` neither validates nor normalizes `R` and has no sign rule of its own, where
+/// the reference is the polar factor's quaternion under a stated sign convention: this id is
+/// scored by backward error, which `NUMERICS.md` §11 owes, so the row measures shape and
+/// finiteness until it lands (`metric.rs`'s `BackwardOnly`).
+fn so3_from_matrix(input: &Fields) -> Result<Fields, String> {
+    let r = helicoid_to_tf_tree_rot3(take(input, "R", 9)?)?;
+    Ok(fields([(
+        "q",
+        tf_tree_to_helicoid_quat(quat_from_rot3(&r)),
+    )]))
+}
+
+fn sen3_ad_n1(input: &Fields) -> Result<Fields, String> {
+    let t = helicoid_to_tf_tree_iso3(take(input, "q", 4)?, take(input, "x", 3)?)?;
+    Ok(fields([("Ad", tf_tree_to_helicoid_adjoint(&t))]))
 }
 
 #[cfg(test)]
@@ -328,10 +390,81 @@ mod tests {
         Ok(())
     }
 
+    /// The corpus's `3 x 3` is column-major and `quat_from_rot3`'s is row-major: the conversion
+    /// is a transpose, and nine distinct entries are what shows it. Read the wrong way round, the
+    /// quarter turn about `z` comes back as its conjugate — a unit quaternion, silently the
+    /// inverse rotation — which the second half asserts.
+    #[test]
+    fn a_rotation_matrix_is_column_major_in_the_corpus_and_row_major_here() -> Result<(), String> {
+        let columns = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0];
+        assert_eq!(
+            bits(&helicoid_to_tf_tree_rot3(&columns)?),
+            bits(&[1.0, 4.0, 7.0, 2.0, 5.0, 8.0, 3.0, 6.0, 9.0])
+        );
+        assert!(helicoid_to_tf_tree_rot3(&[0.0; 8]).is_err());
+
+        let turn = [0.0, 1.0, 0.0, -1.0, 0.0, 0.0, 0.0, 0.0, 1.0]; // R(z, pi/2), column-major
+        let s = FRAC_1_SQRT_2;
+        near(
+            &run("so3_from_matrix", &[("R", &turn)])?["q"],
+            &[s, 0.0, 0.0, s],
+        );
+        let transposed = tf_tree_to_helicoid_quat(quat_from_rot3(&turn));
+        near(&transposed, &[s, 0.0, 0.0, -s]);
+        Ok(())
+    }
+
+    /// `R(z, pi/2) (1, 2, 3) = (-2, 1, 3)`, and a non-unit `q` is not normalized first: at
+    /// `q = (1, 0, 0, 1)`, which is the same rotation scaled, the sandwich spelling returns
+    /// `p(1 - 2‖u‖²) + 2(u·p)u + 2w(u × p) = (-1, -2, -3) + (0, 0, 6) + (-4, 2, 0) = (-5, 0, 3)`
+    /// — neither `R p` nor `‖q‖² R p`. `SO3::act` has the same spelling, so the two agree there
+    /// and the reference does not.
+    #[test]
+    fn so3_act_of_a_quarter_turn_about_z_and_of_a_scaled_quaternion() -> Result<(), String> {
+        let s = FRAC_1_SQRT_2;
+        let p = [1.0, 2.0, 3.0];
+        near(
+            &run("so3_act", &[("q", &[s, 0.0, 0.0, s]), ("p", &p)])?["Rp"],
+            &[-2.0, 1.0, 3.0],
+        );
+        near(
+            &run("so3_act", &[("q", &[1.0, 0.0, 0.0, 1.0]), ("p", &p)])?["Rp"],
+            &[-5.0, 0.0, 3.0],
+        );
+        Ok(())
+    }
+
+    /// `Ad(T)` of the quarter turn about `z` at `t = (1, 2, 3)`, column-major, hand-computed from
+    /// `[omega; v] -> [R omega; t x (R omega) + R v]`: the upper-right block is 0, the lower-right
+    /// is `R` and the lower-left is `[t]x R`, so a transposed or translation-first reading moves
+    /// nine nonzero entries.
+    #[test]
+    fn sen3_ad_n1_of_a_quarter_turn_about_z_with_a_skew_translation() -> Result<(), String> {
+        let s = FRAC_1_SQRT_2;
+        let out = run(
+            "sen3_ad_n1",
+            &[("q", &[s, 0.0, 0.0, s]), ("x", &[1.0, 2.0, 3.0])],
+        )?;
+        #[rustfmt::skip]
+        let want = [
+            0.0, 1.0, 0.0, -3.0,  0.0, 1.0,
+            -1.0, 0.0, 0.0, 0.0, -3.0, 2.0,
+            0.0, 0.0, 1.0,  2.0, -1.0, 0.0,
+            0.0, 0.0, 0.0,  0.0,  1.0, 0.0,
+            0.0, 0.0, 0.0, -1.0,  0.0, 0.0,
+            0.0, 0.0, 0.0,  0.0,  0.0, 1.0,
+        ];
+        near(&out["Ad"], &want);
+        Ok(())
+    }
+
     #[test]
     fn a_missing_or_short_input_is_an_error_and_an_unknown_id_is_none() {
         assert!(run("so3_exp", &[]).is_err());
         assert!(run("so3_exp", &[("phi", &[0.0; 4])]).is_err());
+        assert!(run("so3_act", &[("q", &[0.0; 4])]).is_err());
+        assert!(run("so3_from_matrix", &[("R", &[0.0; 6])]).is_err());
+        assert!(run("sen3_ad_n1", &[("x", &[0.0; 3])]).is_err());
         assert!(answer("so3_jr", &Fields::new()).is_none());
         assert!(answer("sen3_exp_n2", &Fields::new()).is_none());
     }
@@ -339,8 +472,19 @@ mod tests {
     /// The harness holds the same list (`RUNNERS` in `xtask`) and fails on a listed id that got no
     /// answer file, so dropping an id here is an error there, not a run with fewer rows.
     #[test]
-    fn the_answered_ids_are_the_four_of_the_status_table() {
+    fn the_answered_ids_are_the_seven_of_the_status_table() {
         let ids: Vec<&str> = supported().collect();
-        assert_eq!(ids, ["so3_exp", "so3_log", "sen3_exp_n1", "sen3_log_n1"]);
+        assert_eq!(
+            ids,
+            [
+                "so3_exp",
+                "so3_log",
+                "so3_act",
+                "so3_from_matrix",
+                "sen3_exp_n1",
+                "sen3_log_n1",
+                "sen3_ad_n1"
+            ]
+        );
     }
 }

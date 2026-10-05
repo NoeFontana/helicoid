@@ -25,10 +25,19 @@ use convert::{answer, supported, Fields};
 /// The oracle, as `Cargo.toml` pins it: the `tf_tree` commit that `tf_tree_math` is built from.
 const PIN: &str = "tf_tree@20bc5a0518ec791318777d2105ab3296047d84ec";
 
-/// The `in` object of a corpus record: every entry is a hex-float string or an array of them.
+/// The `in` object of a corpus record: every entry is a hex-float string or an array of them,
+/// except `shape`.
+///
+/// `shape` is the sibling a matrix field carries (`docs/PHASE1.md` §4.3) and holds two JSON
+/// integers, not values; a record holds at most one matrix, so the dimensions are the field's own
+/// and the conversion that reads it names the layout (`convert::helicoid_to_tf_tree_rot3`).
+/// Parsing it as a hex float is what made `so3_from_matrix` fail with `string` before it was
+/// skipped here.
+const SHAPE: &str = "shape";
+
 fn inputs(object: &Map<String, Value>) -> Result<Fields, String> {
     let mut fields = BTreeMap::new();
-    for (key, value) in object {
+    for (key, value) in object.iter().filter(|(k, _)| *k != SHAPE) {
         let one = |v: &Value| match v.as_str() {
             Some(s) => hexfloat::parse(s),
             None => Err(format!("`{key}`: not a string: {v}")),
@@ -166,6 +175,10 @@ mod tests {
 
     /// Every input of every supported corpus file is `float.hex()` to the byte, every record is
     /// answered, and every output is finite. The corpus is committed, so this reads it as it is.
+    ///
+    /// [`SHAPE`] is the one entry that is not a value: it is checked as the dimensions it is —
+    /// integers whose product is the length of the matrix field beside it — so the exception
+    /// [`inputs`] makes is asserted here rather than only skipped.
     #[test]
     fn the_whole_supported_corpus_is_answered() -> Result<(), String> {
         for fn_id in supported() {
@@ -173,11 +186,26 @@ mod tests {
             let text = std::fs::read_to_string(&path).map_err(|e| format!("{path}: {e}"))?;
             for line in text.lines() {
                 let record: Value = serde_json::from_str(line).map_err(|e| e.to_string())?;
-                for value in record["in"].as_object().ok_or("in")?.values() {
-                    for s in value.as_array().ok_or("array")? {
-                        let s = s.as_str().ok_or("string")?;
+                let object = record["in"].as_object().ok_or("in")?;
+                for (key, value) in object.iter().filter(|(k, _)| *k != SHAPE) {
+                    for s in value.as_array().ok_or(format!("{key}: array"))? {
+                        let s = s.as_str().ok_or(format!("{key}: string"))?;
                         assert_eq!(hexfloat::format(hexfloat::parse(s)?), s);
                     }
+                }
+                if let Some(shape) = object.get(SHAPE) {
+                    let dims: Vec<u64> = shape
+                        .as_array()
+                        .ok_or("shape: array")?
+                        .iter()
+                        .map(|d| d.as_u64().ok_or("shape: integer".to_string()))
+                        .collect::<Result<_, _>>()?;
+                    let entries = dims.iter().product::<u64>() as usize;
+                    let of = |v: &Value| v.as_array().map_or(0, Vec::len);
+                    assert!(
+                        object.values().any(|v| of(v) == entries),
+                        "{fn_id}: shape {dims:?} fits no field"
+                    );
                 }
             }
             let answers = answer_file(fn_id, &text)?;
