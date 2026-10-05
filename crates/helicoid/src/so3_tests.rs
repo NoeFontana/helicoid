@@ -288,6 +288,163 @@ fn the_jacobians_are_the_closed_forms_of_3_5() {
 
 /// `J_l = J_rᵗ` and `J_l⁻¹ = J_r⁻¹ᵗ` to the bit, which is what lets `rminus_jacobians` and
 /// `lminus_jacobians` answer both rows from one `jr_inv` and a transpose.
+/// Bit equality with the crate's standing NaN exception: which NaN an arithmetic operation
+/// returns is the implementation's choice of input payload, so two NaNs match.
+///
+/// `laws_for!`'s `dual_value_is_plain_value` arm reads the same way. Without it, the structured
+/// products' degenerate counts differ between the dev and release profiles -- 216 against 234 --
+/// because the two instruction schedules pick a different one of two NaN operands.
+fn same_or_nan(a: f64, b: f64) -> bool {
+    same(a, b) || (a.is_nan() && b.is_nan())
+}
+
+/// `mul_hat` against the generic `Mat3 * hat(v)` it replaces, entry by entry on the bits.
+///
+/// Finite entries must agree exactly — that is the whole licence for skipping `hat`'s zeros — and
+/// the two stated exceptions are counted, not assumed: a partial sum of `∓0`, which the dropped
+/// `0 · x` term would have normalized to `+0`, and a non-finite entry of `a`, which `0 · x` would
+/// have spread across the column as NaN.
+#[test]
+fn the_structured_product_is_the_generic_one_to_the_bit() {
+    use crate::so3::mul_hat;
+    let mut st = 0x9E37_79B9_7F4A_7C15_u64;
+    let mut next = || {
+        st ^= st << 13;
+        st ^= st >> 7;
+        st ^= st << 17;
+        (st >> 11) as f64 / (1u64 << 53) as f64 * 4.0 - 2.0
+    };
+    let agree = |x: &Mat3<f64>, y: &Mat3<f64>| {
+        (0..9).all(|i| same_or_nan(x.get(i / 3, i % 3), y.get(i / 3, i % 3)))
+    };
+    // Finite, generic: exact agreement, and no headroom.
+    for _ in 0..20_000 {
+        let a = Matrix::from_rows(core::array::from_fn(|_| Vector([next(), next(), next()])));
+        let v = Vector([next(), next(), next()]);
+        assert!(agree(&mul_hat(&a, v), &(a * hat(v))), "finite");
+    }
+    // Degenerate and non-finite, where the dropped term did something: counted.
+    let odd = [
+        0.0,
+        -0.0,
+        1.0,
+        -1.0,
+        f64::INFINITY,
+        -f64::INFINITY,
+        f64::NAN,
+    ];
+    let (mut zeros, mut nonfinite, mut total) = (0usize, 0usize, 0usize);
+    for &e in &odd {
+        for &f in &odd {
+            let a = Matrix::from_rows([
+                Vector([e, f, 0.0]),
+                Vector([-0.0, e, f]),
+                Vector([f, 0.0, e]),
+            ]);
+            for &g in &odd {
+                let v = Vector([g, -0.0, 0.0]);
+                total += 1;
+                let (s, m) = (mul_hat(&a, v), a * hat(v));
+                if !agree(&s, &m) {
+                    match [e, f, g].iter().any(|x| !x.is_finite()) {
+                        true => nonfinite += 1,
+                        false => {
+                            zeros += 1;
+                            // The invariant, not just the count: with every entry finite, what
+                            // differs is a zero's sign and nothing else.
+                            for i in 0..9 {
+                                let (a, b) = (s.get(i / 3, i % 3), m.get(i / 3, i % 3));
+                                assert!(
+                                    same(a, b) || (a == 0.0 && b == 0.0),
+                                    "{e} {f} {g}: {a} vs {b}"
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    // Pinned, not bounded: 28 of the finite degenerate cases keep a `∓0` the dropped term would
+    // have normalized, and 200 carry a non-finite entry that `0 · x` would have spread as NaN.
+    // Every one of the 20 000 generic finite cases above agrees, which is the licence. The counts
+    // are the same in both profiles *because* of `same_or_nan`: on `to_bits` alone they read 216
+    // and 234, since the two instruction schedules pick a different one of two NaN operands.
+    assert_eq!(
+        (zeros, nonfinite, total),
+        (28, 200, 343),
+        "signed-zero / non-finite / cases"
+    );
+}
+
+/// `hat_mul` against the generic `hat(v) * Mat3`, the mirror of
+/// `the_structured_product_is_the_generic_one_to_the_bit` and held to the same licence: finite
+/// entries exactly, and the degenerate cases counted.
+#[test]
+fn the_structured_left_product_is_the_generic_one_to_the_bit() {
+    use crate::so3::hat_mul;
+    let mut st = 0x2545_F491_4F6C_DD1D_u64;
+    let mut next = || {
+        st ^= st << 13;
+        st ^= st >> 7;
+        st ^= st << 17;
+        (st >> 11) as f64 / (1u64 << 53) as f64 * 4.0 - 2.0
+    };
+    let agree = |x: &Mat3<f64>, y: &Mat3<f64>| {
+        (0..9).all(|i| same_or_nan(x.get(i / 3, i % 3), y.get(i / 3, i % 3)))
+    };
+    for _ in 0..20_000 {
+        let b = Matrix::from_rows(core::array::from_fn(|_| Vector([next(), next(), next()])));
+        let v = Vector([next(), next(), next()]);
+        assert!(agree(&hat_mul(v, &b), &(hat(v) * b)), "finite");
+    }
+    let odd = [
+        0.0,
+        -0.0,
+        1.0,
+        -1.0,
+        f64::INFINITY,
+        -f64::INFINITY,
+        f64::NAN,
+    ];
+    let (mut zeros, mut nonfinite, mut total) = (0usize, 0usize, 0usize);
+    for &e in &odd {
+        for &f in &odd {
+            let b = Matrix::from_rows([
+                Vector([e, f, 0.0]),
+                Vector([-0.0, e, f]),
+                Vector([f, 0.0, e]),
+            ]);
+            for &g in &odd {
+                let v = Vector([g, -0.0, 0.0]);
+                total += 1;
+                let (h, m) = (hat_mul(v, &b), hat(v) * b);
+                if !agree(&h, &m) {
+                    match [e, f, g].iter().any(|x| !x.is_finite()) {
+                        true => nonfinite += 1,
+                        false => {
+                            zeros += 1;
+                            for i in 0..9 {
+                                let (a, c) = (h.get(i / 3, i % 3), m.get(i / 3, i % 3));
+                                assert!(
+                                    same(a, c) || (a == 0.0 && c == 0.0),
+                                    "{e} {f} {g}: {a} vs {c}"
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    // Pinned as its mirror is, and the same in both profiles for its reason.
+    assert_eq!(
+        (zeros, nonfinite, total),
+        (44, 212, 343),
+        "signed-zero / non-finite / cases"
+    );
+}
+
 #[test]
 fn jl_is_jr_transposed_to_the_bit() {
     let mut st = 0x1234_5678_9abc_def0_u64;
