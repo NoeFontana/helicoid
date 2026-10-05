@@ -177,6 +177,30 @@ impl<S: Real> Quat<S> {
         self.w * self.w + self.x * self.x + self.y * self.y + self.z * self.z
     }
 
+    /// `q · q' = w w' + x x' + y y' + z z'`, summed left to right in that order — which is
+    /// [`norm_sq`](Quat::norm_sq)'s order at `o == self`, as
+    /// `quat_tests::dot_at_self_is_norm_sq_to_the_bit` pins. On unit quaternions it is
+    /// `cos(α/2)` for the angle `α` between the two rotations, so a consumer reads its sign to
+    /// pick the shorter arc. No domain (`0044` item 1).
+    #[inline]
+    pub fn dot(&self, o: &Self) -> S {
+        self.w * o.w + self.x * o.x + self.y * o.y + self.z * o.z
+    }
+
+    /// `‖q‖`, as `norm_sq().sqrt()`: **two** roundings, the sum's and the root's, not one. A
+    /// scaled `hypot` would give one and is a different routine with its own error constant;
+    /// nothing in the stack has asked for it (`0044` item 1).
+    ///
+    /// # Domain
+    ///
+    /// [`norm_sq`](Quat::norm_sq) finite. The squaring overflows for `‖q‖` above about `1.3e154`
+    /// at `f64` and `1.8e19` at `f32`, where this returns infinity and a scaled `hypot` would
+    /// not. Documented, never checked in a release build (D11).
+    #[inline]
+    pub fn norm(&self) -> S {
+        self.norm_sq().sqrt()
+    }
+
     /// The matrix `R(q) = (w² - ‖u‖²) I + 2 u uᵀ + 2w [u]×` of `NUMERICS.md` §1, `u = (x, y, z)`.
     ///
     /// For a unit `q` it is the rotation `v ↦ q v q*`, orthogonal with determinant `+1`. For any

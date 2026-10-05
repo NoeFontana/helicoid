@@ -798,3 +798,53 @@ fn matrix_sums_group_as_written() {
         ]
     );
 }
+
+/// `dot` at `o == self` is `norm_sq` **to the bit** (`0044` item 1): the same four products in the
+/// same left-to-right order, so the two cannot drift apart as one of them is edited.
+///
+/// `norm` is `norm_sq().sqrt()`, two roundings — asserted as that composition and not against a
+/// scaled `hypot`, which is a different routine (and which, unlike this one, would not overflow:
+/// the second half shows the documented domain by reaching infinity above `1.3e154`).
+#[test]
+fn dot_at_self_is_norm_sq_to_the_bit_and_norm_is_its_root() {
+    let mut rng = crate::laws::Rng(0x646F_745F_6E6F_726D);
+    for _ in 0..20_000 {
+        let [w, x, y, z, a, b, c, d] = rng.arr::<8>();
+        let q = Quat { w, x, y, z };
+        let o = Quat {
+            w: a,
+            x: b,
+            y: c,
+            z: d,
+        };
+        assert_eq!(q.dot(&q).to_bits(), q.norm_sq().to_bits());
+        assert_eq!(q.dot(&o).to_bits(), o.dot(&q).to_bits());
+        assert_eq!(q.norm().to_bits(), q.norm_sq().sqrt().to_bits());
+    }
+    // Hand cases: the unit quaternion, and the angle between two rotations through `dot`.
+    let one = Quat::<f64> {
+        w: 1.0,
+        x: 0.0,
+        y: 0.0,
+        z: 0.0,
+    };
+    assert_eq!(one.norm().to_bits(), 1.0_f64.to_bits());
+    let s = core::f64::consts::FRAC_1_SQRT_2;
+    let quarter = Quat {
+        w: s,
+        x: 0.0,
+        y: 0.0,
+        z: s,
+    };
+    // `cos(α/2)` for a quarter turn is `cos(π/4)`.
+    assert!((one.dot(&quarter) - s).abs() < 1e-16);
+    assert!((quarter.norm() - 1.0).abs() < 1e-16);
+    // The stated domain: `norm_sq` overflows and `norm` is infinite, with no check (D11).
+    let huge = Quat::<f64> {
+        w: 1e300,
+        x: 0.0,
+        y: 0.0,
+        z: 0.0,
+    };
+    assert!(huge.norm().is_infinite());
+}

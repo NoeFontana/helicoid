@@ -385,6 +385,7 @@ row spells the composition and the proptest writes it inline
 | `*_jacobians` (§2.3 closed forms) | chains of primitive Jacobians, dense | 3 |
 | `SO3::act_many` | per-point `act` | 3 |
 | `SEn3Jac::mul`, `inverse` | dense product / Gauss–Jordan | 3 |
+| `SEn3<S, 1>::mul_inv` | the composition `a * b.inverse()`, which it is **not** bit-identical to ([`0044`](./decisions/0044-four-primitives-the-first-consumer-names-and-no-spec-does.md)) | 4 |
 | `SEn3Jac::apply`, `apply_transpose` | dense $J x$ and $J^\top x$ | 3 |
 | `SEn3Jac::sandwich` | dense $J\,\Sigma\,J^\top$; also the twin the `Gaussian` row below asks for | 3 |
 | `ProductJac::sandwich` | dense $J\,\Sigma\,J^\top$ of the block-diagonal $J$ | 3 |

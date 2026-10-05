@@ -87,7 +87,7 @@ constructors normalize.
 | `Tangent<S>`, `Jac<S, T>`, `LieGroup<S>`, `Side`, `Left`, `Right` | traits/ZSTs | 3 | Signatures `PHASE3.md` §2. `Side` is sealed: `Left` and `Right` are the only impls. `Tangent::dot_acc` is required, `dot` provided (`0025`). |
 | `Quat<S>` | struct | 3 | `{ w, x, y, z }`; `from_wxyz_unchecked`, `from_wxyz_normalized`, `from_xyzw`, `to_xyzw`, `from_jpl`, `conjugate`, `norm_sq`, `norm`, `dot`, `to_matrix`, `renormalize` ([`0027`](./decisions/0027-a-normalizing-constructor-normalizes.md), [`0044`](./decisions/0044-four-primitives-the-first-consumer-names-and-no-spec-does.md)). No `inverse`: `conjugate` is it on the unit sphere and nothing covers the rest. |
 | `SO2<S>`, `SO3<S>`, `SE2<S>` | structs | 3 | |
-| `SEn3<S, const N: usize>`; `SE3<S> = SEn3<S, 1>`, `SE23<S> = SEn3<S, 2>` | struct, aliases | 3 | `{ q: Quat<S>, x: [Vec3<S>; N] }`. |
+| `SEn3<S, const N: usize>`; `SE3<S> = SEn3<S, 1>`, `SE23<S> = SEn3<S, 2>` | struct, aliases | 3 | `{ q: Quat<S>, x: [Vec3<S>; N] }` (private); `from_parts`, `parts`, `rotation`, `renormalize`, and at `N = 1` `translation`, `mul_inv` ([`0044`](./decisions/0044-four-primitives-the-first-consumer-names-and-no-spec-does.md)). No `normalized(self) -> Self` and no `inverse`-then-compose spelling: R3 keeps one per operation. |
 | `SEn3Tangent<S, N>`; `Twist<S> = SEn3Tangent<S, 1>` | struct, alias | 3 | `{ phi, rho: [Vec3; N] }`; `Twist::omega()`, `Twist::v()`. |
 | `SEn3Jac<S, N>` | struct | 3 | `{ diag: Mat3, col: [Mat3; N] }` ([`0005`](./decisions/0005-the-jacobian-is-a-dual-matrix.md)). |
 | `Rn<S, N>`, `RnTangent<S, N>`, `RnJac<S, N>`, `Product<A, B>`, `ProductJac<A, B>` | structs | 3 | Block-diagonal Jacobians; `RnJac` is `k I`. |

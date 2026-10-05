@@ -264,6 +264,24 @@ pub type SE3<S> = SEn3<S, 1>;
 pub type SE23<S> = SEn3<S, 2>;
 
 impl<S: Real, const N: usize> SEn3<S, N> {
+    /// One Newton step on the rotation's quaternion, in place, leaving the columns alone
+    /// (`0044` item 2): [`SO3::renormalize`]'s step, which is [`Quat::renormalize`]'s.
+    ///
+    /// Before this, an `SEn3` could not be renormalized from outside at all — `q` is private —
+    /// although `Mul`'s own rustdoc names the step as the caller's (`0027`). There is no
+    /// `normalized(self) -> Self`: `API.md` R3 keeps one spelling per operation and R2 makes
+    /// `&mut self` the shape for an in-place one.
+    ///
+    /// # Domain
+    ///
+    /// [`Quat::renormalize`]'s. One step is a *normalization* only for `|‖q‖² − 1|` at most
+    /// `2^-26.29` (`f64`) or `2^-11.79` (`f32`) — the drift a chain of compositions accumulates,
+    /// not an arbitrary quaternion's. Asserted nowhere, for that method's reason.
+    #[inline]
+    pub fn renormalize(&mut self) {
+        self.q.renormalize();
+    }
+
     /// The rotation part `R`.
     #[inline]
     pub fn rotation(&self) -> SO3<S> {
@@ -291,6 +309,24 @@ impl<S: Real, const N: usize> SEn3<S, N> {
 }
 
 impl<S: Real> SEn3<S, 1> {
+    /// `self · other⁻¹`, without forming `other⁻¹` (`0044` item 3).
+    ///
+    /// `(q_a q_b*, t_a − R(q_a q_b*) t_b)`: **one** rotation of a vector, where
+    /// `*self * other.inverse()` does two — `inverse` forms `−R_bᵗ t_b` and the product then
+    /// rotates it by `R_a` — because `R_a R_bᵗ` is `R(q_a q_b*)`. The two are equal in exact
+    /// arithmetic and **not bit-identical**, so this is its own routine with its own
+    /// `NUMERICS.md` §14 twin, whose reference *is* the composition it differs from
+    /// (`mul_inv_matches_reference`).
+    #[inline]
+    pub fn mul_inv(&self, other: &Self) -> Self {
+        let q = self.q * other.q.conjugate();
+        let r = SO3::from_quat_unchecked(q);
+        Self {
+            q,
+            x: [self.x[0] - r.act(other.x[0])],
+        }
+    }
+
     /// The translation `t`.
     #[inline]
     pub fn translation(&self) -> Vec3<S> {

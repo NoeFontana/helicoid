@@ -9,6 +9,23 @@ defined by the status tables in `docs/`; they win over this file.
 
 ### Added
 
+- **`0044`'s four primitives**, the names `0041`'s waves need and no spec had: `Quat::dot`,
+  `Quat::norm`, `SEn3::renormalize` and `SEn3<S, 1>::mul_inv`.
+  - `SEn3::renormalize` closes a real hole, not a convenience: `q` is private, `Mul`'s own rustdoc
+    names the Newton step as the caller's (`0027`), and the only route a caller had was
+    `parts()` → `SO3::renormalize` → `from_parts`. The type documented an obligation it gave no
+    way to discharge.
+  - **`mul_inv` is a routine, not a spelling.** `(q_a q_b*, t_a − R(q_a q_b*) t_b)` rotates a
+    vector **once** where `a * b.inverse()` rotates it twice, so the two are equal in exact
+    arithmetic and not bit-identical — `NUMERICS.md` §14 gains the row and the twin is the
+    composition it differs from. Measured difference 7.052 `u` over 20 000 draws, and the test
+    also asserts that the two **do** differ on most of them: if they agreed to the bit, `0044`'s
+    case for the routine would be wrong.
+  - `Quat::dot` is `norm_sq`'s four products in `norm_sq`'s order, pinned bit-identical at
+    `o == self`; `Quat::norm` is `norm_sq().sqrt()`, **two** roundings, with the overflow above
+    `1.3e154` a documented domain and no release check (D11) — a scaled `hypot` would be a
+    different routine with a different error constant and nothing has asked for one.
+
 - **`LieGroup::geodesic` and `geodesic_velocity`** (`PHASE4.md` §1.1, `NUMERICS.md` §10), provided
   methods on every group, with `reference::geodesic` as the expression they call — so the provided
   body **is** the reference twin, as §1.1 asks, and a group's fast twin has something to be
