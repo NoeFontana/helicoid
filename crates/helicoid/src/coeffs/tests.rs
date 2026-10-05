@@ -95,6 +95,41 @@ fn chosen<S: Real>() -> [(f64, u64, usize); 8] {
     }
 }
 
+/// A generated constant's second arm, `(short_below, short_terms)`.
+fn second_f64<const M: usize>(s: &Switch<f64, M>) -> (f64, usize) {
+    (s.short_below, s.short_terms)
+}
+
+fn second_f32<const M: usize>(s: &Switch<f32, M>) -> (f64, usize) {
+    (f64::from(s.short_below), s.short_terms)
+}
+
+/// The generated second arm of every coefficient at `S`'s precision, in [`NAMES`] order.
+fn second<S: Real>() -> [(f64, usize); 8] {
+    match S::PRECISION {
+        Precision::F64 => [
+            second_f64(&K_F64),
+            second_f64(&A_F64),
+            second_f64(&B_F64),
+            second_f64(&C_F64),
+            second_f64(&D_F64),
+            second_f64(&E_F64),
+            second_f64(&COS_HALF_F64),
+            second_f64(&R_F64),
+        ],
+        Precision::F32 => [
+            second_f32(&K_F32),
+            second_f32(&A_F32),
+            second_f32(&B_F32),
+            second_f32(&C_F32),
+            second_f32(&D_F32),
+            second_f32(&E_F32),
+            second_f32(&COS_HALF_F32),
+            second_f32(&R_F32),
+        ],
+    }
+}
+
 /// `x` rounded to a value `S` holds.
 fn at<S: Real>(x: f64) -> S {
     match S::PRECISION {
@@ -134,6 +169,14 @@ fn bits<S: Real>(x: S) -> u64 {
 struct Recorded {
     terms: usize,
     bits: u64,
+    short_terms: usize,
+    short_bits: u64,
+}
+
+/// `conformance/corpus/coeff_switch_ref.jsonl`: one record per grid point, coefficient and
+/// precision (`docs/PHASE1.md` §6).
+fn switch_ref() -> &'static str {
+    include_str!("../../../../conformance/corpus/coeff_switch_ref.jsonl")
 }
 
 /// The **true** value and `d/dz` of `name` at the grid point `z`, from
@@ -145,14 +188,13 @@ struct Recorded {
 /// Each 30-digit decimal is read as one `f64`, so the reference carries at most half an ulp —
 /// `2^-53` relative, which [`branch_continuity`] charges to its bound explicitly.
 fn reference(name: &str, precision: &str, z: f64) -> Result<(f64, f64), String> {
-    const REF: &str = include_str!("../../../../conformance/corpus/coeff_switch_ref.jsonl");
     let key = format!("\"bits\":\"{:016x}\"", z.to_bits());
     let want = (
         key.as_str(),
         format!("\"coeff\":\"{name}\""),
         format!("\"precision\":\"{precision}\""),
     );
-    let line = REF
+    let line = switch_ref()
         .lines()
         .find(|l| l.contains(want.0) && l.contains(&want.1) && l.contains(&want.2))
         .ok_or_else(|| format!("no {name} {precision} reference at z = {z:e} ({})", want.0))?;
@@ -183,49 +225,240 @@ fn recorded(name: &str, precision: &str) -> Result<Recorded, String> {
         i.and_then(|i| row.get(i).copied())
             .ok_or_else(|| format!("no {column}"))
     };
-    let bits = cell("switch_bits")?.trim_start_matches("0x");
+    let hex = |column: &str| -> Result<u64, String> {
+        let bits = cell(column)?.trim_start_matches("0x");
+        u64::from_str_radix(bits, 16).map_err(|e| e.to_string())
+    };
     Ok(Recorded {
         terms: cell("terms")?.parse().map_err(|e| format!("terms: {e}"))?,
-        bits: u64::from_str_radix(bits, 16).map_err(|e| e.to_string())?,
+        bits: hex("switch_bits")?,
+        short_terms: cell("short_terms")?
+            .parse()
+            .map_err(|e| format!("short_terms: {e}"))?,
+        short_bits: hex("short_switch_bits")?,
     })
 }
 
 #[test]
 fn a_switch_takes_the_first_terms_of_the_swept_series() {
-    let s = Switch::<f64, 2>::first(7.0, &[1.0, 2.0, 3.0]);
+    let s = Switch::<f64, 2>::first(7.0, 0.25, 1, &[1.0, 2.0, 3.0]);
     assert_eq!(
-        (s.below.to_bits(), s.series.map(f64::to_bits)),
-        (7f64.to_bits(), [1f64, 2.0].map(f64::to_bits))
+        (
+            s.below.to_bits(),
+            s.series.map(f64::to_bits),
+            s.short_below.to_bits(),
+            s.short_terms
+        ),
+        (
+            7f64.to_bits(),
+            [1f64, 2.0].map(f64::to_bits),
+            0.25f64.to_bits(),
+            1
+        )
     );
 }
 
 #[test]
 fn the_generated_switches_are_the_sweeps_choice() -> Result<(), String> {
     for (precision, want) in [("f64", chosen::<f64>()), ("f32", chosen::<f32>())] {
-        for (name, (_, bits, terms)) in NAMES.iter().zip(want) {
+        let short = match precision {
+            "f64" => second::<f64>(),
+            _ => second::<f32>(),
+        };
+        for ((name, (_, bits, terms)), (below, short_terms)) in NAMES.iter().zip(want).zip(short) {
             let r = recorded(name, precision)?;
             assert_eq!((r.bits, r.terms), (bits, terms), "{name} {precision}");
+            // The second arm's switch is the row's own bits read at the row's precision, which is
+            // what `f32_of` widens: a `0` there is the sweep's "no prefix is cheaper".
+            let got = match precision {
+                "f64" => f64::from_bits(r.short_bits),
+                _ => f64::from(f32::from_bits(r.short_bits as u32)),
+            };
+            assert_eq!(
+                (got.to_bits(), r.short_terms),
+                (below.to_bits(), short_terms),
+                "{name} {precision} second arm"
+            );
         }
     }
     Ok(())
 }
 
+/// Every grid point of `name` at `precision`, from the switch reference — which holds one record
+/// per grid point per coefficient per precision (`docs/PHASE1.md` §6), so its keys *are* the grid.
+fn grid_points(name: &str, precision: &str) -> Vec<f64> {
+    let want = (
+        format!("\"coeff\":\"{name}\""),
+        format!("\"precision\":\"{precision}\""),
+    );
+    switch_ref()
+        .lines()
+        .filter(|l| l.contains(&want.0) && l.contains(&want.1))
+        .filter_map(|l| {
+            let at = l.find("\"bits\":\"")? + 8;
+            u64::from_str_radix(l.get(at..at + 16)?, 16).ok()
+        })
+        .map(f64::from_bits)
+        .collect()
+}
+
+/// The second arm **is** the first arm below its switch, to the bit, in the value and in `d/dz`
+/// alike — at every grid point, which is the half of stage 2's feasibility rule that needs no
+/// reference (`docs/decisions/0039` items 5, 6 and 10; `0047`).
+///
+/// This is the whole of what makes the second switch a latency change: the sweep admits a prefix
+/// only where it agrees with the whole arm, so no conformance row, no envelope verdict and no
+/// `branch_continuity` bound can move when one is added, shortened or dropped. A failure here says
+/// the generated `short_terms` reaches further than the agreement does.
+fn second_arm_is_the_first<S: Real + Into<f64>>(precision: &str) -> Result<(), String> {
+    for (i, ((_, _, terms), (short_below, short_terms))) in
+        chosen::<S>().into_iter().zip(second::<S>()).enumerate()
+    {
+        let name = NAMES[i];
+        if short_terms > terms {
+            return Err(format!(
+                "{name} {precision}: {short_terms} of {terms} terms"
+            ));
+        }
+        let mut below = 0usize;
+        for z in grid_points(name, precision) {
+            if z >= short_below {
+                continue;
+            }
+            below += 1;
+            let seeded = D::variable(at::<S>(z), 0);
+            let (long, short) = (arms(i, seeded, terms).1, arms(i, seeded, short_terms).1);
+            let bits = |x: D<S>| (x.v.value_f64().to_bits(), x.d[0].value_f64().to_bits());
+            if bits(long) != bits(short) {
+                return Err(format!(
+                    "{name} {precision}: {short_terms} terms differ from {terms} at z = {z:e}: \
+                     {:e} / {:e} against {:e} / {:e}",
+                    short.v.value_f64(),
+                    short.d[0].value_f64(),
+                    long.v.value_f64(),
+                    long.d[0].value_f64(),
+                ));
+            }
+        }
+        // A second switch the grid never reaches is not a measured one. Every coefficient has
+        // one today; the guard is here so dropping to none is a visible change, not a silent one.
+        if below == 0 {
+            return Err(format!(
+                "{name} {precision}: no grid point below the second switch {short_below:e}"
+            ));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn the_second_arm_is_the_first_one_below_its_switch_at_f64() -> Result<(), String> {
+    second_arm_is_the_first::<f64>("f64")
+}
+
+#[test]
+fn the_second_arm_is_the_first_one_below_its_switch_at_f32() -> Result<(), String> {
+    second_arm_is_the_first::<f32>("f32")
+}
+
+/// How far the two series arms can part **between** the points stage 2 checked, in units of `u`.
+///
+/// Stage 2 admits a prefix where it agrees with the whole arm to the bit at every grid point and
+/// every corpus record (`second_arm_is_the_first`), which is what keeps every conformance row
+/// identical; between those points the agreement is not a theorem. Where the dropped tail's
+/// contribution crosses half an ulp the two arms part by one, and the crossing wobbles by the
+/// rounding of each Horner step, so a point a few grid steps below the switch can differ while
+/// the grid points around it do not. This measures that band over a dense log-uniform sample:
+/// worst **1.875 u** at binary64 (`b`) and **3.000 u** at binary32 (`k`), the last place or two of
+/// the shorter arm, against a catalogue whose gentlest objective is 1.747 `u` and whose worst is
+/// 94.5 (`conformance/sweeps/thresholds.csv`) — so nothing a bar reads can move by it. No-regress,
+/// like a `laws::Bounds` row, and set at the measurement rather than twice it, because a prefix
+/// reaching further than its agreement does is the one regression this guard exists to catch.
+const SECOND_ARM_BAND_U: f64 = 3.001;
+
+fn the_two_series_arms_part_by_at_most_an_ulp<S: Real + Into<f64>>() -> Result<(), String> {
+    let (table, short) = (chosen::<S>(), second::<S>());
+    let u = match S::PRECISION {
+        Precision::F64 => 2f64.powi(-53),
+        Precision::F32 => 2f64.powi(-24),
+    };
+    let mut worst = (0.0f64, "", 0.0f64);
+    for (i, ((_, _, terms), (short_below, short_terms))) in table.into_iter().zip(short).enumerate()
+    {
+        // Log-uniform from the grid's floor to the second switch, which is the whole of the
+        // short arm's reach; 4096 points put about 16 in each grid interval of the top decade.
+        let top = short_below.log10();
+        for j in 0..4096u32 {
+            let z = at::<S>(10f64.powf(-16.0 + (top + 16.0) * f64::from(j) / 4095.0));
+            let seeded = D::variable(z, 0);
+            let (long, head) = (arms(i, seeded, terms).1, arms(i, seeded, short_terms).1);
+            for (a, b) in [(long.v, head.v), (long.d[0], head.d[0])] {
+                let (a, b) = (a.value_f64(), b.value_f64());
+                let rel = ((b - a) / a).abs() / u;
+                if rel > worst.0 {
+                    worst = (rel, NAMES[i], z.value_f64());
+                }
+            }
+        }
+    }
+    match worst.0 <= SECOND_ARM_BAND_U {
+        true => Ok(()),
+        false => Err(format!(
+            "the two series arms part by {:e} u at {} z = {:e}, over {SECOND_ARM_BAND_U} u",
+            worst.0, worst.1, worst.2
+        )),
+    }
+}
+
+#[test]
+fn the_two_series_arms_part_by_at_most_an_ulp_at_f64() -> Result<(), String> {
+    the_two_series_arms_part_by_at_most_an_ulp::<f64>()
+}
+
+#[test]
+fn the_two_series_arms_part_by_at_most_an_ulp_at_f32() -> Result<(), String> {
+    the_two_series_arms_part_by_at_most_an_ulp::<f32>()
+}
+
 /// Which coefficient of `NAMES` each output of `groups` is.
 const OF: [usize; 9] = [0, 1, 2, 3, 4, 5, 6, 7, 2];
 
-/// A group member is its series arm below its own switch and its exact arm elsewhere, bit for bit,
-/// value and derivative.
+/// The call-site group each output of `groups` belongs to, as `NAMES` indices (`PHASE3.md` §3):
+/// `exp_coeffs` is `{k, cos θ/2}`, `jr_coeffs` `{a, b}`, `jr_inv_coeff` `{c}`, `q_coeffs`
+/// `{b, d, e}`, `log_ratio` `{r}`. The **second** switch is read at the group's smallest, so this
+/// is what decides which arm a member takes there (`0047` item 7).
+const GROUP: [&[usize]; 9] = [
+    &[0, 6],
+    &[1, 2],
+    &[1, 2],
+    &[3],
+    &[2, 4, 5],
+    &[2, 4, 5],
+    &[0, 6],
+    &[7],
+    &[2, 4, 5],
+];
+
+/// A group member is the arm its own two switches select — the short series arm, the whole series
+/// arm, or the exact arm — bit for bit, value and derivative. Grouping is therefore a cost and
+/// never a value: which members share a branch decides only whether the shared exact closure runs.
 fn groups_are_their_members_own_arm<S: Real + Into<f64>>() {
-    let table = chosen::<S>();
-    let piece = |i: usize, z: D<S>| {
+    let (table, short) = (chosen::<S>(), second::<S>());
+    let piece = |p: usize, z: D<S>| {
+        let i = OF[p];
         let (below, _, terms) = table[i];
+        let group_short = GROUP[p]
+            .iter()
+            .fold(f64::INFINITY, |m: f64, &j| m.min(short[j].0));
         let (exact, series) = arms(i, z, terms);
+        let head = arms(i, z, short[i].1).1;
+        let series = D::select(z.lt(D::lit(group_short)), head, series);
         D::select(z.lt(D::lit(below)), series, exact)
     };
     for z in samples::<S>() {
         let z = D::variable(z, 0);
-        for (got, i) in groups(z, D::one()).iter().zip(OF) {
-            let want = piece(i, z);
+        for (p, (got, i)) in groups(z, D::one()).iter().zip(OF).enumerate() {
+            let want = piece(p, z);
             let bits = |x: D<S>| (bits(x.v), bits(x.d[0]));
             assert_eq!(
                 bits(*got),

@@ -95,6 +95,34 @@ fn errors<S: Real + Into<f64>>(rec: &Record, r: Dual<S, 1>) -> Result<Errors, St
     })
 }
 
+/// The `(value, d/dz)` of one arm, widened to binary64 and taken as bits: the comparison
+/// [`super::search::second`] admits a prefix by. Widening is injective, so these agree exactly when the
+/// arm's own bits do.
+fn bits_of<S: Real + Into<f64>>(r: Dual<S, 1>) -> (u64, u64) {
+    let v: f64 = r.v.into();
+    let d: f64 = r.d[0].into();
+    (v.to_bits(), d.to_bits())
+}
+
+/// Every series arm's bits at every grid point, through the same `Arms` the records go through:
+/// the dense, reference-free half of stage 2's feasibility rule. The branch variable is the grid
+/// point itself — `w = 1` makes `r`'s `n²/w²` the grid point and its `2/w` factor exact, so a
+/// prefix agrees with the whole arm here exactly when it does inside `log_ratio`.
+pub(super) fn grid_arms<S: Real + Into<f64>>(
+    arms: &impl Arms<S>,
+    id: Swept,
+    grid: &[f64],
+) -> Vec<[(u64, u64); TERMS]> {
+    let at = |&z: &f64| {
+        let x = Input {
+            z: S::lit(z),
+            w: S::one(),
+        };
+        core::array::from_fn(|i| bits_of(arms.series(id, x.seed(), i + 1)))
+    };
+    grid.iter().map(at).collect()
+}
+
 /// The samples of one coefficient and, at the same indices, the stratum and id of their records.
 pub(super) struct Measured {
     pub(super) samples: Vec<Sample>,
@@ -131,9 +159,12 @@ pub(super) fn samples<S: Real + Into<f64>>(
             z: branch_variable(id, x).into(),
             exact,
             series: [exact; TERMS],
+            bits: [(0, 0); TERMS],
         };
         for terms in 1..=TERMS {
-            s.series[terms - 1] = errors(&rec, arms.series(id, x.seed(), terms))?;
+            let arm = arms.series(id, x.seed(), terms);
+            s.series[terms - 1] = errors(&rec, arm)?;
+            s.bits[terms - 1] = bits_of(arm);
         }
         out.push(s);
         records.push((rec.stratum, rec.id));

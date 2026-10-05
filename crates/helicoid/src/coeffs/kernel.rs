@@ -32,6 +32,8 @@ enum Terms<'a> {
 #[derive(Clone, Copy)]
 struct Arm<'a> {
     below: f64,
+    short_below: f64,
+    short_terms: usize,
     terms: Terms<'a>,
 }
 
@@ -39,6 +41,8 @@ impl<const M: usize> Switch<f64, M> {
     fn arm(&self) -> Arm<'_> {
         Arm {
             below: self.below,
+            short_below: self.short_below,
+            short_terms: self.short_terms,
             terms: Terms::F64(&self.series),
         }
     }
@@ -48,6 +52,8 @@ impl<const M: usize> Switch<f32, M> {
     fn arm(&self) -> Arm<'_> {
         Arm {
             below: f64::from(self.below),
+            short_below: f64::from(self.short_below),
+            short_terms: self.short_terms,
             terms: Terms::F32(&self.series),
         }
     }
@@ -58,10 +64,25 @@ impl Arm<'_> {
         S::lit(self.below)
     }
 
+    fn short_below<S: Real>(&self) -> S {
+        S::lit(self.short_below)
+    }
+
     fn horner<S: Real>(&self, z: S) -> S {
         match self.terms {
             Terms::F64(t) => horner(t, z),
             Terms::F32(t) => horner(t, z),
+        }
+    }
+
+    /// The first `short_terms` terms alone, the second arm of `0039` items 5, 6 and 10. Equal to
+    /// [`Self::horner`] at every grid point and every corpus record below `short_below`, by the
+    /// sweep's own choice of the prefix, so taking it moves no bit of any measured row (`0047`).
+    fn short<S: Real>(&self, z: S) -> S {
+        let head = self.short_terms;
+        match self.terms {
+            Terms::F64(t) => horner(t.get(..head).unwrap_or(t), z),
+            Terms::F32(t) => horner(t.get(..head).unwrap_or(t), z),
         }
     }
 }
@@ -94,26 +115,44 @@ fn nonnegative<S: Real>(z: S) {
     );
 }
 
-/// One group: every member on its series arm below its own switch, else on its exact arm. The one
-/// branch is on "every member is on its series arm", where no exact arm runs. Off it `exact` runs
-/// once for the group, so what its members share (`θ`, a `sin_cos`) is formed once, at
-/// `select(all, 1, z)`: `z` is then at or above the group's smallest switch, which is positive, so
-/// a member on its series arm is finite there too. Each member then selects by its own mask; a
-/// scalar mask runs the Horner of the members that are small and no other.
+/// One group: every member on the short prefix below the group's second switch, else on its series
+/// arm below its own first switch, else on its exact arm.
+///
+/// The outer branch is the **group's** second switch, its members' smallest, so everything under it
+/// is the one-arm kernel unchanged (`0047` item 7). The inner branch is on "every member is on its
+/// series arm", where no exact arm runs. Off it `exact` runs once for the group, so what its
+/// members share (`θ`, a `sin_cos`) is formed once, at `select(all, 1, z)`: `z` is then at or above
+/// the group's smallest first switch, which is positive, so a member on its series arm is finite
+/// there too. Each member then selects by its own mask; a scalar mask runs the Horner of the
+/// members that are small and no other.
 fn grouped<S: Real, const G: usize>(
     arms: [Arm<'_>; G],
     exact: impl FnOnce(S) -> [S; G],
     z: S,
 ) -> [S; G] {
     nonnegative(z);
-    let small = arms.map(|a| z.lt(a.below()));
-    let all = small.iter().fold(S::zero().le(S::zero()), |m, &s| m.and(s));
+    // A mask per member instead of this one measured **1.15x to 1.17x slower** than the one-arm
+    // kernel at near-identity `θ` and 1.20x to 1.28x slower above the second switch, where no
+    // member takes a short arm at all: one comparison and one branch each, on every call
+    // (`0047` item 7). It costs no accuracy — between the group's switch and a member's own the
+    // member takes the *whole* arm, which is the arm the sweep admitted the prefix to agree with
+    // there — so neither reading moves a grid point or a corpus record. A member with no second
+    // arm has `0`, which no `z` is below, and takes the group's switch down with it.
+    let short_below = arms.iter().fold(f64::INFINITY, |m, a| m.min(a.short_below));
     S::branch(
-        all,
-        || arms.map(|a| a.horner(z)),
+        z.lt(S::lit(short_below)),
+        || arms.map(|a| a.short(z)),
         || {
-            let x = exact(S::select(all, S::one(), z));
-            core::array::from_fn(|i| S::branch(small[i], || arms[i].horner(z), || x[i]))
+            let small = arms.map(|a| z.lt(a.below()));
+            let all = small.iter().fold(S::zero().le(S::zero()), |m, &s| m.and(s));
+            S::branch(
+                all,
+                || arms.map(|a| a.horner(z)),
+                || {
+                    let x = exact(S::select(all, S::one(), z));
+                    core::array::from_fn(|i| S::branch(small[i], || arms[i].horner(z), || x[i]))
+                },
+            )
         },
     )
 }
@@ -154,11 +193,17 @@ fn exact_a_b<S: Real>(z: S) -> [S; 2] {
 pub(crate) fn jr_inv_coeff<S: Real>(z: S) -> S {
     nonnegative(z);
     let c = table::<S, _>(C_F64.arm(), C_F32.arm());
-    let small = z.lt(c.below());
     S::branch(
-        small,
-        || c.horner(z),
-        || exact_c(S::select(small, S::one(), z)),
+        z.lt(c.short_below()),
+        || c.short(z),
+        || {
+            let small = z.lt(c.below());
+            S::branch(
+                small,
+                || c.horner(z),
+                || exact_c(S::select(small, S::one(), z)),
+            )
+        },
     )
 }
 
@@ -182,14 +227,32 @@ pub(crate) fn log_ratio<S: Real>(n2: S, w: S) -> S {
     let r = table::<S, _>(R_F64.arm(), R_F32.arm());
     let positive = S::zero().lt(w);
     let s = n2 / S::select(positive, w * w, S::one());
-    let small = positive.and(s.lt(r.below()));
+    // The second switch is the **outermost** branch, so everything under it is what it was
+    // (`0047` item 7): measured the other way round — the prefix selected inside the series arm —
+    // this function was **1.16x slower** at `θ = 0.5`, where `s = 0.065` takes the whole arm, even
+    // though that spelling also saved a division. One comparison on the way in buys the prefix;
+    // a comparison *under* the series arm buys it and pays for two Horner bodies in one block.
+    let tiny = positive.and(s.lt(r.short_below()));
     S::branch(
-        small,
+        tiny,
         || {
-            let w = S::select(small, w, S::one());
-            S::lit(2.0) / w * r.horner(n2 / (w * w))
+            // `tiny` implies `w > 0`, so the selects are the safe arguments a lane that is not
+            // selected needs (`0003` item 3): `2 / 1` and a Horner at `0`, both finite. `s` is
+            // the Horner's argument here because it is `n2 / (w * w)` to the bit on a selected
+            // lane — the mask's own `select` took `w * w` — and a division is 1.11 ns.
+            S::lit(2.0) / S::select(tiny, w, S::one()) * r.short(S::select(tiny, s, S::zero()))
         },
-        || exact_r(S::select(small, S::one(), n2), w),
+        || {
+            let small = positive.and(s.lt(r.below()));
+            S::branch(
+                small,
+                || {
+                    let w = S::select(small, w, S::one());
+                    S::lit(2.0) / w * r.horner(n2 / (w * w))
+                },
+                || exact_r(S::select(small, S::one(), n2), w),
+            )
+        },
     )
 }
 

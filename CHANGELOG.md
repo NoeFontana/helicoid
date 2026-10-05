@@ -9,6 +9,66 @@ defined by the status tables in `docs/`; they win over this file.
 
 ### Changed
 
+- **The coefficient kernel got its speed back: every switch now has a second, shorter arm**
+  ([`0039`](docs/decisions/0039-the-sweeps-grid-stops-below-its-own-optimum.md) items 5, 6 and 10,
+  with [`0047`](docs/decisions/0047-the-second-arm-is-admitted-by-agreement-not-by-the-objective.md)
+  deciding what admits one). A series arm's term count is set by the largest branch variable it
+  serves and paid by the smallest, so lifting the search space to reach config E's accuracy left
+  every near-identity input paying the hardest one's price — 11 to 16 terms where 3 to 6 give the
+  same bits. `coeffs::Switch` now carries `short_below` and `short_terms`, the first `m0` terms of
+  the same series below a second generated grid point, and the sweep is two stages: stage 1 is the
+  objective, unchanged, and stage 2 is a **cost** search afterwards, because a shorter arm under a
+  maximum the long arm already attains cannot lower it.
+  - Corpus-weighted term count, one term one unit: **172427 -> 92264 at `f64` (1.87x)** and
+    **119547 -> 60082 at `f32` (1.99x)**. Every one of the sixteen rows gets a second arm: `m0 = 5`
+    for seven of eight at `f64` and 3 for six of eight at `f32`.
+  - **Measured, at the stratum `PHASE3.md` §11 names first.** `cargo xtask bench-gate --bench coeffs
+    --only near-identity-7.5e-8 --against` a baseline built in this tree from `main`, point ratio
+    (`f32` / `f64`): `jr_inv_coeff` **0.2353 / 0.2605** (4.3x and 3.8x faster), `jr_coeffs`
+    **0.5282** / 0.7476, `exp_coeffs` **0.5525** / 0.8760, `log_ratio` 0.5975 / 0.6365, `q_coeffs`
+    0.7826 / 0.6585. **Ten of ten faster**, floors 0.0038 to 0.0537, every effect outside its own.
+  - **And what it costs, which the near-identity table does not say.** At `near-pi`, where every
+    group is on its exact arm and the extra comparison is all that is left: `jr_inv_coeff`
+    1.0014 / 0.9997, `q_coeffs` 1.0190 / 1.0081, `jr_coeffs` 1.0204 / 1.0350, `exp_coeffs`
+    1.0275 / 1.0269 — 1% to 3.5% for one comparison against a `sqrt` and a `sin_cos` — and
+    `log_ratio` 1.1288 / **1.3036**. That last is 1.37 ns, about four cycles, on a mask chain that
+    already waits on the division forming `s` and in front of a body that is one `sqrt` and one
+    `atan2`. `#[inline]` on all five entry points was measured against it and changed nothing, so
+    it is not shipped. Swapping `log_ratio`'s two switch tests would move the 1.37 ns onto its
+    series arm instead; `0047` *Further work* holds it with the numbers that decide it.
+  - **A call-site group reads one second switch, its members' smallest** (`0047` item 7) — and that
+    is the measurement that changed the design. A mask and a branch *per member* costs one compare
+    and one branch on every call, including every call above the second switch, and it measured
+    **1.17x, 1.15x and 1.15x slower** than one arm on the three multi-member groups at `f32`
+    near-identity, and 1.20x to 1.28x slower above the second switch. One switch for the group puts
+    the short arms one compare from the entry point and leaves the rest of `grouped` as it was. It
+    costs no accuracy: between the group's switch and a member's own, the member takes the *whole*
+    arm, which is the arm the prefix was admitted to agree with there.
+  - **Not one bit of any measured row moves.** A prefix is admitted only where it agrees with the
+    whole arm **to the bit** — at every grid point and every corpus record below the second switch,
+    in the value and in `d/dz` — which is why all nineteen files under `conformance/results/` are
+    byte-identical to the committed ones apart from the git revision each run stamps, and why no
+    stage-1 cell of `thresholds.csv` changes.
+  - `0039` item 6's literal rule, "the cheapest arm that *holds* stage 1's objective", was measured
+    and **refused**: 5.8% cheaper at `f64`, 9.3% at `f32`, and it raises individual corpus records
+    by up to **50224x** (`e` at `f32`), because the objective is one maximum and `0006`'s bars are
+    per stratum.
+  - Between the points stage 2 checks, the two arms part by at most **1.875 u** at `f64` and
+    **3.000 u** at `f32` — the last place or two of the shorter arm, against a catalogue whose
+    gentlest objective is 1.747 u. Carried as a no-regress bound.
+- **`log_ratio` takes its second arm at one division fewer.** Its short arm's Horner argument is
+  `s = n^2/w^2` itself, made safe by a `select`: on a selected lane `small` implies `w > 0`, so the
+  mask's own `select` took `w * w` and `s` is `n2 / (w * w)` to the bit, where the whole arm
+  re-divides at a re-selected `w`. A division is 1.11 ns against the 1.41 ns of a five-term arm.
+  The whole arm's path is left exactly as it was, deliberately: measured with the prefix selected
+  *inside* the series arm — which also removed that division — the function was **1.16x slower** at
+  `theta = 0.5`, where `s = 0.065` takes the whole arm. One comparison on the way in buys the
+  prefix; a comparison under the series arm buys it and pays for two Horner bodies in one block.
+- **The kernel's module doc was stale and is corrected.** It still described the switches the old
+  grid produced — `cos θ/2` at `θ² < 5.6e-15`, so "`Exp` is on its exact arm from `θ = 7.5e-8`", and
+  "eight of the sixteen switches are `θ² = 1`, the top of the sweep's grid". Under the committed
+  sweep `exp_coeffs` is on its series arms to `θ = 2.29`, and six switches sit on the **domain**
+  bound with the file printing which limit each sits against.
 - **The threshold sweep searched a box too small, and lifting it moved every coefficient**
   ([`0039`](docs/decisions/0039-the-sweeps-grid-stops-below-its-own-optimum.md) plan step 0 and
   decisions 1-4, 7-9). `PHASE1.md` §6's grid stopped at `z = 1` while `NUMERICS.md` §12's domain
