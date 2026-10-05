@@ -72,6 +72,46 @@ defined by the status tables in `docs/`; they win over this file.
 
 ### Added
 
+- **`PHASE3.md` §11's group benches** (`crates/helicoid/benches/groups.rs`), in a criterion target
+  of their own so a change to a group does not pay for the coefficient kernel's 60 windows and the
+  other way round. `bench-gate` gains `--bench <target>` and a repeatable `--only <substring>`: a
+  subset is the same per-benchmark rule over fewer rows, so it decides one change, with the A/A
+  control measured over that same subset -- what it cannot do is report the suite's worst, so a
+  gate run claims nothing from it.
+  The A/A floor over the 27 rows two pending optimisations would move was **worst 1.25%, median
+  0.32%** on a `taskset`-pinned core, against the 0.6864 that one session of `0033` (draft)
+  recorded. The rows then reordered both: `se3/jr` is **6.8x** `so3/jr` (445 ns against 65), and
+  its near-identity row -- every coefficient on its series arm, so not one `sin_cos` -- is only
+  30 ns cheaper, so the transcendentals are **~7% of that row** and Barfoot's `Q` is the cost.
+
+- The library's own host-`std` twin, **`helicoid:host-std`**: the shipped subject's program at
+  `seeded::Host`, whose transcendentals are Rust `std`'s. The envelope now reads
+  `<candidate>:host-std` where it exists and falls back to the seeded stand-in's, which is what
+  `bars::judge_with`'s contract already said a twin is -- "the candidate's own program with one
+  variable changed". **Every domination failure is attributed: 13 / 5 / 81 / 0**, where the
+  stand-in's twin left 27 with no row, because `PHASE1.md` §10's seeded kernel answers `exp`, `jr`
+  and `jl` and nothing else. It also corrected rows in both directions: `so3_log`/`theta:dense` was
+  called D16's cost by the stand-in and is not, four `sen3_log_n1` rows are -- the stand-in's `Log`
+  is not the library's, so it was never the right program to attribute with.
+
+### Changed
+
+- **`SEn3`'s `rminus_jacobians`/`lminus_jacobians` fuse their two inversions**, 0.645--0.661 of the
+  time at `N = 1` and 0.621--0.634 at `N = 2` -- on what `SO3::rminus_jacobians` calls the crate's
+  hottest Jacobian path, one per residual per solver iteration. Both sides share `θ²`, `W`, `W²`,
+  the `q_coeffs` branch and **all six of `Q`'s matrix products**, which is most of what the call
+  costs: `Q(−ρ, −φ)`'s words are `Q(ρ, φ)`'s with three exact sign changes and no new product, so
+  `q_words` forms them once and `q_assemble` reads the signs off the side.
+  **Not a second rounding:** `laws::jacobian_rows` holds the fused pair against separate
+  `jr_inv`/`jl_inv` calls at a bound of exactly `0`, over 100 000 cases, and the whole corpus
+  re-scores byte-identically -- 1559 rows, every failing row's maximum unmoved. Measured with
+  `bench-gate --against` against the pre-change binary, each ratio far below its own concurrent A/A
+  floor, with the untouched `jr`, `jr_inv` and `so3` rows at 0.987--1.020 inside theirs.
+  `q_block` keeps one code path through the same two functions, so the standalone `jr`/`jr_inv` are
+  bit-identical to what they were.
+
+### Added
+
 - `helicoid`: **`SEn3<S, N>`**, with `SE3` and `SE23` (`docs/PHASE3.md` §5) — the group the whole
   `tf_tree` migration lands on. `exp`/`log` of `NUMERICS.md` §5.1, `adjoint`/`ad` of §5.2, `jr` of
   §5.3 with Barfoot's `Q`, `jr_inv` of §5.4, the six §2.3 rows, `Mul`, `Blend`, the accessors, and

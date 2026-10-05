@@ -60,7 +60,7 @@ pub(crate) const fn dof<S: Real, const N: usize>() -> usize {
 }
 
 #[inline]
-fn zero3<S: Real>() -> Mat3<S> {
+pub(crate) fn zero3<S: Real>() -> Mat3<S> {
     Matrix::from_cols([Vector([S::zero(); 3]); 3])
 }
 

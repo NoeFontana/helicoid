@@ -114,13 +114,16 @@ oracle-sophus-rs:
     cargo nextest run --manifest-path runners/sophus_rs/Cargo.toml --locked
     cargo xtask conformance --oracle sophus_rs
 
-# The one-variable twin (`0037`, draft): `seeded:correct`'s program at a scalar whose
-# transcendentals are the host's `std` instead of the `libm` crate, into
-# conformance/results/seeded-host-std.csv. It is a planted subject, so a plain `conformance` run
-# skips it; `envelope` reads its rows to say whether a domination failure no `libm`-crate oracle
-# wins is D16's cost or is not explained by D16 either. 3.6 s over the whole corpus.
+# The one-variable twins (`0037`, draft): a candidate's program at a scalar whose transcendentals
+# are the host's `std` instead of the `libm` crate, into conformance/results/*-host-std.csv. Both
+# are planted subjects, so a plain `conformance` run skips them; `envelope` reads the rows of the
+# candidate's *own* twin — `helicoid:host-std` for the library, the seeded stand-in's for the
+# stand-in — to say whether a domination failure no `libm`-crate oracle wins is D16's cost or is
+# not explained by D16 either. `helicoid:host-std` is the shipped program at that scalar, so it
+# answers every id the candidate answers; `seeded:host-std` answers `PHASE1.md` §10's kernels.
 conformance-twin:
     cargo xtask conformance --subject seeded:host-std
+    cargo xtask conformance --subject helicoid:host-std
 
 # The bars of `docs/PHASE1.md` §8 over conformance/results: domination over the best oracle and exact
 # no-regress against conformance/baseline, per (fn, stratum, precision) on the max, then coverage of

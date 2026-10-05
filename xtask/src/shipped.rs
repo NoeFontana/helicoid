@@ -22,7 +22,7 @@ use helicoid_linalg::{Dual, Mat3, Matrix, Precision, Real, StridedMut, Vec3, Vec
 
 use crate::conformance::corpus::Record;
 use crate::conformance::subject::{Output, Registered, Subject};
-use crate::seeded::{input, Coeff, Input, Swept};
+use crate::seeded::{input, Coeff, Host, Input, Swept};
 
 /// The group of `id` at `x`, as the shipped kernel evaluates it.
 pub(crate) fn shipped<S: Real>(id: Swept, x: Input<Dual<S, 1>>) -> Dual<S, 1> {
@@ -368,6 +368,65 @@ impl Subject for Helicoid {
     }
 }
 
+/// The library's own host-`std` twin: this subject's program at [`Host`], whose transcendentals
+/// are Rust `std`'s — the host's libm, so glibc on Linux — where a default build routes them
+/// through the `libm` crate (D16).
+///
+/// `judge_with` reads a twin to attribute a domination failure to D16, and the twin it read could
+/// only ever be `seeded:host-std`: the *stand-in's* program, which answers `exp`, `jr` and `jl`
+/// and nothing else of `PHASE1.md` §10's. That left every `sen3_log`, `sen3_jr_inv` and
+/// `sen3_jl_inv` failure unattributed, and attributed the rest through a program that is not the
+/// one being judged. This twin is the candidate's own, for every id it answers, which is what
+/// `judge_with`'s own words ask for — "the candidate's own program with one variable changed".
+///
+/// It is planted, so a plain `just conformance` skips it and no bar reads its rows: the envelope
+/// comparing `helicoid` with a differently-rounded copy of itself would measure nothing.
+pub(crate) struct HostStd;
+
+impl Subject for HostStd {
+    fn name(&self) -> &str {
+        "helicoid:host-std"
+    }
+
+    /// Every id the candidate answers, so D16's price is measured wherever the candidate is scored.
+    fn supports(&self, fn_id: &str) -> bool {
+        Helicoid.supports(fn_id)
+    }
+
+    fn eval(&self, fn_id: &str, record: &Record, precision: Precision) -> Output {
+        // `f64` alone, as `seeded:host-std` is: `std`'s `f32` transcendentals are not the host's
+        // `f32` libm on every target (LLVM may widen), so an `f32` twin would change two things.
+        if precision != Precision::F64 {
+            return Output::new();
+        }
+        if let Some(id) = So3::of_fn(fn_id) {
+            return id.answer::<Host>(record);
+        }
+        if let Some((op, n)) = Sen3::of_fn(fn_id) {
+            return sen3_at::<Host>(op, n, record);
+        }
+        let Some(id) = Swept::of_fn(fn_id) else {
+            return Output::new();
+        };
+        answer::<Host>(id, record)
+    }
+}
+
+pub(crate) fn host_std() -> Registered {
+    let version = env!("CARGO_PKG_VERSION");
+    Registered {
+        version: format!("{version}@host-std"),
+        version_f32: format!("{version}@host-std"),
+        no_f32: Some(
+            "the twin measures the host's binary64 transcendentals; `0016`'s `@f32` strata are \
+             the coefficient ids' own"
+                .to_string(),
+        ),
+        planted: true,
+        subject: Box::new(HostStd),
+    }
+}
+
 pub(crate) fn registered() -> Registered {
     let version = env!("CARGO_PKG_VERSION").to_string();
     Registered {
@@ -456,6 +515,44 @@ mod tests {
                 .count(),
             1
         );
+    }
+
+    /// The library's twin answers the candidate's ids, at `f64` only, and its answers **differ** —
+    /// so the swap reaches the group code and is a change, not a relabelling.
+    ///
+    /// The seeded twin's `the_scalar_differs_from_the_libm_crate_in_the_transcendentals_only`
+    /// proves that of the scalar; this proves it of the path the groups take to it.
+    #[test]
+    fn the_library_twin_answers_every_candidate_id_and_differs_somewhere() -> Result<(), String> {
+        let twin = HostStd;
+        for (id, _) in So3::ALL {
+            assert!(twin.supports(id), "{id}");
+        }
+        for id in Swept::ALL.map(|i| format!("coeff_{}", i.name())) {
+            assert!(twin.supports(&id), "{id}");
+        }
+        for op in ["exp", "log", "ad", "jr", "jl", "jr_inv", "jl_inv"] {
+            let id = format!("sen3_{op}_n2");
+            assert!(twin.supports(&id), "{id}");
+        }
+        assert!(!twin.supports("so3_jl_jr"));
+        // A `θ` where `Log` is on its exact arm, so `atan2` is reached and the two libraries can
+        // disagree: the quaternion of a quarter turn about `(1, 2, 2)/3`.
+        let (s, c) = (core::f64::consts::FRAC_PI_4).sin_cos();
+        let q = [c, s / 3.0, 2.0 * s / 3.0, 2.0 * s / 3.0];
+        let rec = record(&[("q", &q), ("x", &[0.5, -2.0, 0.25])], &[])?;
+        let (mine, theirs) = (
+            Helicoid.eval("sen3_log_n1", &rec, Precision::F64),
+            twin.eval("sen3_log_n1", &rec, Precision::F64),
+        );
+        assert_eq!(mine.keys().collect::<Vec<_>>(), ["tau"]);
+        assert_eq!(theirs.keys().collect::<Vec<_>>(), ["tau"]);
+        let bits = |o: &Output| o["tau"].iter().map(|x| x.to_bits()).collect::<Vec<_>>();
+        assert_ne!(bits(&mine), bits(&theirs), "the swap changed nothing");
+        // `f64` only, for the reason the subject's doc gives.
+        assert!(twin.eval("sen3_log_n1", &rec, Precision::F32).is_empty());
+        assert!(twin.eval("so3_exp", &rec, Precision::F32).is_empty());
+        Ok(())
     }
 
     #[test]

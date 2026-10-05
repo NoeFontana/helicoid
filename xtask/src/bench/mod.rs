@@ -83,7 +83,9 @@ const SEED: u64 = 0x5EED_B3C0_DEAD_BEEF;
 /// Where the measured floor lives.
 const HOST: &str = "baseline/HOST.md";
 
-/// The benches the gate runs. One target today; §11 adds the group benches with Phase 3.
+/// The bench target `--bench` selects when it is not given. `coeffs` is the coefficient kernel's
+/// 60 benchmarks; `groups` is `PHASE3.md` §11's, in a binary of its own so a change to one does not
+/// pay for the other's windows.
 const BENCH: &str = "coeffs";
 
 /// The two named slots each benchmark's adjacent pair writes.
@@ -137,9 +139,20 @@ struct Options {
     record: Option<PathBuf>,
     /// A recording to run the rule over, executing no benchmark.
     replay: Option<PathBuf>,
+    /// Which `[[bench]]` target to build and run ([`BENCH`] by default).
+    bench: String,
+    /// Run only the benchmarks whose id contains one of these, instead of every id the target
+    /// lists. Repeat the flag to keep several.
+    ///
+    /// The rule is per benchmark, so a subset is the same measurement over fewer rows -- what it
+    /// cannot do is report the suite's worst, so a *gate* run claims nothing here. It is for
+    /// deciding one change against the rows that change can move, with the A/A control measured
+    /// over the same subset.
+    only: Vec<String>,
 }
 
 const USAGE: &str = "usage: cargo xtask bench-gate [--aa] [--bless] [--dry-run] \
+                     [--bench <target>] [--only <substring>] \
                      [--against <bench-binary> [--record <dir>]] [--replay <dir>]";
 
 fn parse_args(args: &[String]) -> Result<Options, String> {
@@ -150,6 +163,8 @@ fn parse_args(args: &[String]) -> Result<Options, String> {
         against: None,
         record: None,
         replay: None,
+        bench: BENCH.to_string(),
+        only: Vec::new(),
     };
     let mut rest = args.iter();
     while let Some(a) = rest.next() {
@@ -174,6 +189,18 @@ fn parse_args(args: &[String]) -> Result<Options, String> {
                     .next()
                     .ok_or_else(|| format!("`--replay` takes a directory; {USAGE}"))?;
                 o.replay = Some(PathBuf::from(path));
+            }
+            "--bench" => {
+                let name = rest
+                    .next()
+                    .ok_or_else(|| format!("`--bench` takes a target name; {USAGE}"))?;
+                o.bench = name.clone();
+            }
+            "--only" => {
+                let pat = rest
+                    .next()
+                    .ok_or_else(|| format!("`--only` takes a substring; {USAGE}"))?;
+                o.only.push(pat.clone());
             }
             _ => return Err(format!("unknown argument `{a}`; {USAGE}")),
         }
@@ -207,8 +234,24 @@ pub(crate) fn run(args: &[String]) -> Result<(), String> {
         let mode = format!("--replay {}", dir.display());
         return verdict(&read_recording(dir)?, Some(&root), &mode);
     }
-    let ids = list(&root)?;
-    let mine = build_bench(&root)?;
+    let all = list(&root, &o.bench)?;
+    let ids: Vec<String> = match o.only.is_empty() {
+        true => all,
+        false => {
+            let kept: Vec<String> = all
+                .into_iter()
+                .filter(|id| o.only.iter().any(|p| id.contains(p)))
+                .collect();
+            if kept.is_empty() {
+                return Err(format!(
+                    "`--only` matched no benchmark of `{}`: {:?}",
+                    o.bench, o.only
+                ));
+            }
+            kept
+        }
+    };
+    let mine = build_bench(&root, &o.bench)?;
     eprintln!("bench-gate: {} benchmarks", ids.len());
 
     if o.aa {
@@ -756,7 +799,7 @@ fn clear_slots(criterion: &Path) -> Result<(), String> {
 }
 
 /// The benchmark ids, from the harness itself: `--list` prints `<id>: benchmark`.
-fn list(root: &Path) -> Result<Vec<String>, String> {
+fn list(root: &Path, bench: &str) -> Result<Vec<String>, String> {
     let out = Command::new("cargo")
         .current_dir(root)
         .args([
@@ -764,7 +807,7 @@ fn list(root: &Path) -> Result<Vec<String>, String> {
             "-p",
             "helicoid",
             "--bench",
-            BENCH,
+            bench,
             "--features",
             "__sweep",
             "--",
@@ -795,7 +838,7 @@ fn list(root: &Path) -> Result<Vec<String>, String> {
 /// cargo spends its own CPU immediately before the run it wraps — and a floor measured with cargo
 /// on both sides does not cover a comparison with cargo on one. Measured: that asymmetry alone put
 /// 3 of 60 identical-code verdicts past their floor, at ratios of 1.007 to 1.018.
-fn build_bench(root: &Path) -> Result<PathBuf, String> {
+fn build_bench(root: &Path, bench: &str) -> Result<PathBuf, String> {
     let out = Command::new("cargo")
         .current_dir(root)
         .args([
@@ -803,7 +846,7 @@ fn build_bench(root: &Path) -> Result<PathBuf, String> {
             "-p",
             "helicoid",
             "--bench",
-            BENCH,
+            bench,
             "--features",
             "__sweep",
             "--no-run",
@@ -827,14 +870,14 @@ fn build_bench(root: &Path) -> Result<PathBuf, String> {
         if v.get("reason").and_then(|r| r.as_str()) != Some("compiler-artifact") {
             continue;
         }
-        if v.pointer("/target/name").and_then(|n| n.as_str()) != Some(BENCH) {
+        if v.pointer("/target/name").and_then(|n| n.as_str()) != Some(bench) {
             continue;
         }
         if let Some(exe) = v.get("executable").and_then(|e| e.as_str()) {
             found = Some(PathBuf::from(exe));
         }
     }
-    found.ok_or_else(|| format!("cargo bench --no-run named no `{BENCH}` executable"))
+    found.ok_or_else(|| format!("cargo bench --no-run named no `{bench}` executable"))
 }
 
 /// One run of a criterion bench binary over one benchmark, into one slot.
