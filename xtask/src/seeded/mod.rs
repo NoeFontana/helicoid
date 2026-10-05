@@ -4,7 +4,9 @@
 //! [`Coeff`] only. `Log` (`so3`) still evaluates `r` inline and does not read `R_F64`.
 //!
 //! The correct subject also runs `Exp` and `Log` of SO(3) over `so3_exp` and `so3_log` (`so3`), on
-//! the generated `k`; the planted `Log` defects run over `so3_log` only. It runs SE_N(3)'s `Exp`,
+//! the generated `k`; the planted `Log` defects run over `so3_log` only. SO(3)'s `J_r` and `J_l`
+//! over `so3_jr` and `so3_jl` are the rotation block of the SE_N(3) ones, on the generated `a, b`
+//! (`se3::so3_jacobian`), and no planted defect reaches them. It runs SE_N(3)'s `Exp`,
 //! `J_r` and `J_l` over `sen3_{exp,jr,jl}_n{1,2,3}` (`se3`) on the generated `k, a, b, d, e`; the
 //! planted SE(3) defects run over `sen3_exp_n{1,2,3}` and over the two Jacobians.
 //!
@@ -327,7 +329,7 @@ impl Subject for Seeded {
             None => {
                 Swept::of_fn(fn_id).is_some()
                     || sen3.is_some()
-                    || matches!(fn_id, "so3_exp" | "so3_log")
+                    || matches!(fn_id, "so3_exp" | "so3_log" | "so3_jr" | "so3_jl")
             }
             Some(Defect::LogAcos | Defect::LogNoFlip) => fn_id == "so3_log",
             Some(Defect::Se3ExpTranslationFirst) => sen3.is_some_and(|(op, _)| op == se3::Op::Exp),
@@ -353,6 +355,9 @@ impl Subject for Seeded {
             },
             (None, Precision::F64) if fn_id == "so3_exp" => self.exp(record),
             (None, Precision::F64) if fn_id == "so3_log" => self.log(record),
+            (None, Precision::F64) if matches!(fn_id, "so3_jr" | "so3_jl") => {
+                self.so3_jac(fn_id, record)
+            }
             (None, Precision::F64) => self.sen3(fn_id, record),
             (None, Precision::F32) => Output::new(),
         }
@@ -411,6 +416,23 @@ fn log_at<S: Real + Into<f64> + From<f64>>(record: &Record) -> Output {
     Output::from([("phi".to_string(), phi.to_vec())])
 }
 
+/// `so3_j{r,l}` at the scalar `S`: the dense column-major `J` of the value of one `Dual<S, 1>`
+/// evaluation, which is `se3`'s rotation block alone (`se3::so3_jacobian`).
+fn so3_jac_at<S: Real + Into<f64> + From<f64>>(
+    fn_id: &str,
+    record: &Record,
+    kernels: &se3::Kernels<'_, Dual<S, 1>>,
+    form: se3::W2,
+) -> Output {
+    let Some(&[x, y, z]) = record.input("phi").and_then(|p| p.first_chunk::<3>()) else {
+        return Output::new();
+    };
+    let phi = [x, y, z].map(|c| Dual::constant(S::from(c)));
+    let j = se3::so3_jacobian(phi, fn_id == "so3_jr", kernels, form);
+    let j: Vec<f64> = j.iter().map(|c| c.v.into()).collect();
+    Output::from([("J".to_string(), j)])
+}
+
 /// `sen3_{exp,jr,jl}_n<N>` at the scalar `S`: `q` and `x`, or the dense `J`, of the value of one
 /// `Dual<S, 1>` evaluation. `order` and `half` carry the two planted SE(3) defects; the correct
 /// kernel and the twin pass `NUMERICS.md`'s values.
@@ -461,6 +483,12 @@ fn kernels_of<S: Real>(arms: &[Arm<Dual<S, 1>>; 8]) -> se3::Kernels<'_, Dual<S, 
 impl Seeded {
     fn exp(&self, record: &Record) -> Output {
         exp_at(record, &self.arms[Coeff::K.index()])
+    }
+
+    /// `so3_j{r,l}`, with this subject's `W²` form. No planted defect answers these ids
+    /// (`supports`): `Q`'s `½` and the tangent order are not in the rotation block.
+    fn so3_jac(&self, fn_id: &str, record: &Record) -> Output {
+        so3_jac_at(fn_id, record, &self.kernels(), self.form)
     }
 
     /// `sen3_{exp,jr,jl}_n<N>`, with this subject's two planted SE(3) defects as the arguments of
@@ -709,19 +737,25 @@ mod tests {
     #[test]
     fn so3_ids_belong_to_the_correct_subject_and_the_log_defects_take_so3_log_only(
     ) -> Result<(), String> {
-        let ids = ["so3_exp", "so3_log", "coeff_k", "so3_act", "so3_jr"];
+        // `so3_act` is the control: the corpus holds it and this subject has no action.
+        let ids = [
+            "so3_exp", "so3_log", "coeff_k", "so3_act", "so3_jr", "so3_jl",
+        ];
         let supported = |s: &Seeded| ids.map(|id| s.supports(id));
-        assert_eq!(supported(&subject(None)), [true, true, true, false, false]);
+        assert_eq!(
+            supported(&subject(None)),
+            [true, true, true, false, true, true]
+        );
         for d in Defect::LOG {
             assert_eq!(
                 supported(&subject(Some(d))),
-                [false, true, false, false, false]
+                [false, true, false, false, false, false]
             );
         }
         for d in Defect::COEFFICIENT {
             assert_eq!(
                 supported(&subject(Some(d))),
-                [false, false, true, false, false]
+                [false, false, true, false, false, false]
             );
         }
         let s = subject(None);
@@ -744,6 +778,25 @@ mod tests {
             .is_empty());
         let unit = record(&[("q", &[1.0, 0.0, 0.0, 0.0])], &[])?;
         assert!(s.eval("so3_log", &unit, Precision::F32).is_empty());
+        // `so3_j{r,l}`: the dense `3 x 3`, and `J_l(φ)` the transpose of `J_r(φ)` to the bit. The
+        // sign of the tangent is exact and `W²` is symmetric in the same products, so the two
+        // sides are one program read twice and the corpus's column-major order is pinned here.
+        let turn = record(&[("phi", &[0.3, -1.1, 0.7])], &[])?;
+        let (jr, jl) = (
+            s.eval("so3_jr", &turn, Precision::F64),
+            s.eval("so3_jl", &turn, Precision::F64),
+        );
+        assert_eq!((jr["J"].len(), jl["J"].len()), (9, 9));
+        let transposed: Vec<f64> = (0..3)
+            .flat_map(|c| (0..3).map(move |r| (r, c)))
+            .map(|(r, c)| jr["J"][r * 3 + c])
+            .collect();
+        let bits = |v: &[f64]| v.iter().map(|x| x.to_bits()).collect::<Vec<_>>();
+        assert_eq!(bits(&jl["J"]), bits(&transposed));
+        assert!(s
+            .eval("so3_jr", &record(&[], &[])?, Precision::F64)
+            .is_empty());
+        assert!(s.eval("so3_jl", &turn, Precision::F32).is_empty());
         Ok(())
     }
 
@@ -802,7 +855,14 @@ mod tests {
             ],
             &[],
         )?;
-        let ids = ["coeff_k", "so3_exp", "so3_log", "sen3_exp_n1", "sen3_jr_n1"];
+        let ids = [
+            "coeff_k",
+            "so3_exp",
+            "so3_log",
+            "so3_jr",
+            "sen3_exp_n1",
+            "sen3_jr_n1",
+        ];
         let defects = Defect::COEFFICIENT.into_iter().chain(Defect::LOG);
         for d in defects.chain(Defect::SE3) {
             let s = subject(Some(d));
