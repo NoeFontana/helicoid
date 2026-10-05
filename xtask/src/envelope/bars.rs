@@ -42,6 +42,11 @@ pub(super) enum Bar {
     /// An in-process candidate that wrote no rows.
     Candidate,
     Drift,
+    /// A row of the exception table that no longer excepts anything: the stratum is dominated
+    /// after all, or it is not scored, or the candidate has no row for it
+    /// ([`0046`](../../../../docs/decisions/0046-explained-by-record-needs-a-record-to-point-at.md)
+    /// item 4). An exception is a debt with a test attached and cannot outlive the defect.
+    Exception,
 }
 
 impl Bar {
@@ -56,6 +61,7 @@ impl Bar {
             Bar::Coverage => "coverage",
             Bar::Candidate => "candidate",
             Bar::Drift => "drift",
+            Bar::Exception => "exception",
         }
     }
 
@@ -100,6 +106,21 @@ pub(super) struct Verdict {
     /// Domination failures where only a host-`std` oracle won and the twin has no row to attribute
     /// them with.
     pub(super) dominated_host_std: usize,
+    /// Strata an oracle won that the exception table explains (`0046`). They are **not** failures
+    /// and **not** `paired` wins: the maximum still goes to the baseline and still has to not
+    /// regress, so an excepted stratum is watched more closely than a dominated one, not less.
+    pub(super) excepted: Vec<Excepted>,
+}
+
+/// One stratum the exception table explains, as the evidence page prints it.
+pub(super) struct Excepted {
+    pub(super) key: String,
+    /// The candidate's maximum and the best oracle's, in `u`, and that oracle's name.
+    pub(super) candidate: f64,
+    pub(super) oracle: f64,
+    pub(super) oracle_name: String,
+    pub(super) record: String,
+    pub(super) reason: String,
 }
 
 enum Status {
@@ -202,7 +223,29 @@ pub(super) fn judge_with(
     baseline: Option<&Baseline>,
     twin: Option<&Subject>,
 ) -> Verdict {
+    judge_excepting(
+        candidate,
+        oracles,
+        baseline,
+        twin,
+        &super::exceptions::Exceptions::default(),
+    )
+}
+
+/// [`judge_with`] with the exception table (`0046`): a listed `(fn, stratum, precision)` the
+/// oracle wins is recorded rather than failed, and a listed one it does **not** win fails as a
+/// stale row. It excepts domination and nothing else -- no-regress, non-finite, unscored, corpus
+/// and coverage are untouched by it, which is item 2 and the reason the table is read here and
+/// not at the call site.
+pub(super) fn judge_excepting(
+    candidate: &Subject,
+    oracles: &[Subject],
+    baseline: Option<&Baseline>,
+    twin: Option<&Subject>,
+    exceptions: &super::exceptions::Exceptions,
+) -> Verdict {
     let index = Index::new(oracles);
+    let mut used: BTreeSet<String> = BTreeSet::new();
     // Owned, so the `None` arm can name the twin the run actually read -- the candidate's own
     // where one exists, a stand-in's otherwise -- instead of a fixed name that may blame a subject
     // the run never read.
@@ -261,6 +304,20 @@ pub(super) fn judge_with(
             Some((o, m)) => {
                 v.paired += 1;
                 if max > m {
+                    if let Some(e) = exceptions.get(&key.to_string()) {
+                        used.insert(e.key());
+                        v.excepted.push(Excepted {
+                            key: e.key(),
+                            candidate: max,
+                            oracle: m,
+                            oracle_name: o.name.clone(),
+                            record: e.record.clone(),
+                            reason: e.reason.clone(),
+                        });
+                        let Some(baseline) = baseline else { continue };
+                        no_regress(&mut v, &key, r, max, baseline);
+                        continue;
+                    }
                     // Which oracle won decides what the failure can mean, so it is said here and
                     // not left to a reader with a script (`0036`, draft).
                     // An oracle whose backend is not declared is left unclassified: saying
@@ -306,22 +363,7 @@ pub(super) fn judge_with(
             }
         }
         let Some(baseline) = baseline else { continue };
-        match baseline.get(&key) {
-            None => {
-                let text = format!("{key}: no baseline row; `just envelope --bless` writes it");
-                v.failures.push(Failure::new(Bar::NoRegress, text));
-            }
-            Some(&(n, _)) if n != r.n => {
-                let text = format!("{key}: {} records, the baseline's maximum is over {n}", r.n);
-                let bar = if r.n < n { Bar::Shrunk } else { Bar::NoRegress };
-                v.failures.push(Failure::new(bar, text));
-            }
-            Some(&(_, base)) if max > base => {
-                let text = format!("{key}: {max:e} u, over the baseline's {base:e} u");
-                v.failures.push(Failure::new(Bar::NoRegress, text));
-            }
-            Some(&(_, base)) => v.improved += usize::from(max < base),
-        }
+        no_regress(&mut v, &key, r, max, baseline);
     }
     for key in baseline.into_iter().flat_map(Baseline::keys) {
         if !answered.contains(key) {
@@ -329,7 +371,44 @@ pub(super) fn judge_with(
             v.failures.push(Failure::new(Bar::Shrunk, text));
         }
     }
+    // Every row of the table has to be earning its keep: one that excepted nothing this run is
+    // stale, and the message names it for deletion (`0046` item 4). This catches the three ways a
+    // row stops being needed -- the stratum is dominated after all, it is no longer scored, and the
+    // candidate has no row for it at all -- without having to tell them apart, which is the point:
+    // an exception that explains nothing is to be removed whatever the reason.
+    for e in exceptions.iter() {
+        if !used.contains(&e.key()) {
+            let text = format!(
+                "`{}` excepts `{}` and no oracle wins it: delete the row (it cites `{}`)",
+                super::exceptions::PATH,
+                e.key(),
+                e.record
+            );
+            v.failures.push(Failure::new(Bar::Exception, text));
+        }
+    }
     v
+}
+
+/// The no-regress bar for one scored candidate row, which an excepted stratum pays like any other
+/// (`0046` item 2: the exception touches domination and nothing else).
+fn no_regress(v: &mut Verdict, key: &Key, r: &Row, max: f64, baseline: &Baseline) {
+    match baseline.get(key) {
+        None => {
+            let text = format!("{key}: no baseline row; `just envelope --bless` writes it");
+            v.failures.push(Failure::new(Bar::NoRegress, text));
+        }
+        Some(&(n, _)) if n != r.n => {
+            let text = format!("{key}: {} records, the baseline's maximum is over {n}", r.n);
+            let bar = if r.n < n { Bar::Shrunk } else { Bar::NoRegress };
+            v.failures.push(Failure::new(bar, text));
+        }
+        Some(&(_, base)) if max > base => {
+            let text = format!("{key}: {max:e} u, over the baseline's {base:e} u");
+            v.failures.push(Failure::new(Bar::NoRegress, text));
+        }
+        Some(&(_, base)) => v.improved += usize::from(max < base),
+    }
 }
 
 #[cfg(test)]
@@ -357,6 +436,75 @@ mod tests {
 
     fn bars(v: &Verdict) -> Vec<&str> {
         v.failures.iter().map(|f| f.bar.name()).collect()
+    }
+
+    /// The exception table (`0046`), on the five cases item 2's plan names.
+    ///
+    /// A row excepts **domination and nothing else**: the fourth case is the one that matters, an
+    /// excepted stratum that also regresses, which must still fail. If an exception ever silenced
+    /// no-regress, the table would become the waiver list every waiver list becomes.
+    #[test]
+    fn an_exception_moves_domination_only_and_a_stale_row_fails() -> Result<(), String> {
+        let table = |fn_id: &str, stratum: &str| {
+            super::super::exceptions::Exceptions::parse(&format!(
+                "[[exception]]\nfn = \"{fn_id}\"\nstratum = \"{stratum}\"\n\
+                 precision = \"f64\"\nrecord = \"0046\"\nreason = \"a tie\"\n"
+            ))
+        };
+        let oracles = [one("tf_tree_math", 1.0)];
+        let judged = |cand: f64, base: f64, t: &super::super::exceptions::Exceptions| {
+            let c = subject("c", vec![row("c", "f", S, cand)]);
+            judge_excepting(&c, &oracles, Some(&baseline(base)), None, t)
+        };
+
+        // 1. An excepted failure: no domination failure, one excepted row, and the reason reaches
+        //    the evidence page with both maxima.
+        let t = table("f", S)?;
+        let v = judged(2.0, 2.0, &t);
+        assert_eq!(bars(&v), Vec::<&str>::new());
+        assert_eq!(v.excepted.len(), 1);
+        let e = v.excepted.first().ok_or("no excepted row")?;
+        assert_eq!(
+            (e.key.as_str(), e.record.as_str()),
+            ("f/theta:1e-3/f64", "0046")
+        );
+        assert_eq!(
+            (e.candidate, e.oracle, e.oracle_name.as_str()),
+            (2.0, 1.0, "tf_tree_math")
+        );
+        // The excepted stratum is not counted as a win, and it is still paired.
+        assert_eq!((v.paired, v.unpaired), (1, 0));
+
+        // 2. A stale row: the stratum is dominated after all, so the row fails and is named.
+        let v = judged(0.5, 0.5, &t);
+        assert_eq!(bars(&v), ["exception"]);
+        let text = &v.failures.first().ok_or("no failure")?.text;
+        assert!(
+            text.contains("f/theta:1e-3/f64") && text.contains("delete the row"),
+            "{text}"
+        );
+
+        // 3. A row for a stratum the candidate does not answer is stale too: an exception that
+        //    explains nothing goes, whatever the reason it stopped explaining.
+        let v = judged(2.0, 2.0, &table("other_fn", S)?);
+        assert_eq!(bars(&v), ["domination", "exception"]);
+
+        // 4. **An exception does not touch no-regress.** The stratum is excepted *and* over its
+        //    baseline: domination is silent, no-regress is not.
+        let v = judged(2.0, 1.5, &t);
+        assert_eq!(bars(&v), ["no-regress"]);
+        assert_eq!(v.excepted.len(), 1);
+
+        // 5. Nor the other bars: a non-finite candidate row is excepted by nothing. The
+        //    `no-regress` here is the pre-existing `Shrunk` bar — the row is not scored, so the
+        //    baseline's entry for it goes unanswered — and the exception is stale because a
+        //    stratum with no maximum cannot be dominated.
+        let mut bad = row("c", "f", S, f64::NAN);
+        bad.nonfinite = 1;
+        let c = subject("c", vec![bad]);
+        let v = judge_excepting(&c, &oracles, Some(&baseline(2.0)), None, &t);
+        assert_eq!(bars(&v), ["non-finite", "no-regress", "exception"]);
+        Ok(())
     }
 
     /// A failure is classified by whether **any** `libm`-crate oracle beats the candidate, not by

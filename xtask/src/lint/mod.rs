@@ -6,6 +6,7 @@ mod citations;
 mod closure;
 mod comments;
 mod drafts;
+mod exceptions;
 mod fused;
 mod generated;
 mod kernel;
@@ -66,6 +67,7 @@ type Check = fn(&[File]) -> Vec<Violation>;
 const CHECKS: &[Check] = &[
     citations::check,
     drafts::check,
+    exceptions::check,
     generated::check_registry,
     fused::check,
     kernel::check,
@@ -176,17 +178,23 @@ mod tests {
             File::new("docs/A.md", &line_cite("foo", 3)),
             File::new("crates/a/src/lib.rs", "// settled by 0013\n"),
             File::new("docs/G.md", "<!-- @generated -->\n"),
+            // An exception citing a record this fixture tree does not have (`0046` item 3).
+            File::new(
+                crate::envelope::exceptions::PATH,
+                "[[exception]]\nfn = \"f\"\nstratum = \"s\"\nprecision = \"f64\"\n\
+                 record = \"0046\"\nreason = \"r\"\n",
+            ),
         ];
         files.extend(generated::stubs());
         let out: Vec<String> = check_all(&files).iter().map(ToString::to_string).collect();
-        for tag in ["[citations]", "[drafts]", "[generated]"] {
+        for tag in ["[citations]", "[drafts]", "[exceptions]", "[generated]"] {
             assert_eq!(
                 out.iter().filter(|l| l.contains(tag)).count(),
                 1,
                 "{tag}: {out:?}"
             );
         }
-        assert_eq!(out.len(), 3, "{out:?}");
+        assert_eq!(out.len(), 4, "{out:?}");
     }
 
     /// One violation of each manifest check, so one dropped from `MANIFEST_CHECKS` fails here.

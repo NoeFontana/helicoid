@@ -9,6 +9,35 @@ defined by the status tables in `docs/`; they win over this file.
 
 ### Added
 
+- **`0046`'s exception table**, `conformance/baseline/exceptions.toml`, and the mechanism around
+  it. `PHASE3.md` §10 and `PHASE4.md` §5.2 both say a stratum an oracle wins blocks the phase
+  "until fixed or **explained by record**", and there was nowhere to record an explanation: the
+  escape hatch the specs presuppose did not exist, so `--bless` could never write a first baseline
+  and `just envelope` could never go green. This is that hatch, built so it cannot rot.
+  - **It excepts domination and nothing else.** No-regress, a non-finite output, an unscored row,
+    an oracle over another record count and coverage stay unconditional, and an excepted stratum's
+    maximum still goes to the baseline and is still judged — so it is watched *more* closely than
+    a dominated one, not less. Five tests hold that line, the load-bearing one being an excepted
+    stratum that also regresses and still fails.
+  - **An exception is a citation, and it cannot outlive its defect.** `cargo xtask lint` fails a
+    row whose record is missing, has no `**Status:**` line, or is a `draft` — `0040`: a draft
+    authorises nothing — and `just envelope` fails a row whose stratum turns out to be dominated
+    after all, or is no longer scored, or has no candidate row, naming it for deletion.
+  - `docs/evidence/ENVELOPE.md` grows an **Exceptions** section with the two maxima, the margin and
+    the record, so the page a reader trusts says what it is not claiming. Its runner-measured
+    columns sit last, where `--check` already drops them (EA.13(d)).
+  - The table is read by a strict forty-line parser rather than a TOML crate: the grammar is five
+    string keys and nothing else is accepted, so an unknown key, a missing or repeated field, a
+    duplicate stratum or a `precision` that is not `f64`/`f32` is an error with a line number.
+  - **The record's own exception is measured, and it is one row, not three.** Over the 117
+    domination failures on today's corpus exactly `so3_exp/theta:1e-5/f64` meets both of item 6's
+    stated conditions (both maxima under ½ u, margin **5.2e-11** relative). `0039`'s two PRs
+    regenerated every switch after `0046` was written, so the set it describes has moved; the three
+    near misses are in the table's comment with their numbers, and item 6's "Only those strata" is
+    taken literally. The tightest margin of all 117 — `sen3_log_n1/rho:1e-6/theta=pi-1e-6/f64`,
+    **thirteen** digits — is *not* excepted, both its maxima being above ½ u; it goes to `0038`'s
+    paired instrument like the rest.
+
 - **`0044`'s four primitives**, the names `0041`'s waves need and no spec had: `Quat::dot`,
   `Quat::norm`, `SEn3::renormalize` and `SEn3<S, 1>::mul_inv`.
   - `SEn3::renormalize` closes a real hole, not a convenience: `q` is private, `Mul`'s own rustdoc

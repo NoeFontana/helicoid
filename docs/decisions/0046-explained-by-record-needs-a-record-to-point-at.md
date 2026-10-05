@@ -2,7 +2,7 @@
 
 **Status:** ready
 **Owner:** @NoeFontana
-**Implementation:** none yet; unblocks `PHASE3.md` §10
+**Implementation:** landed. `conformance/baseline/exceptions.toml` and its reader (`xtask/src/envelope/exceptions.rs`), the domination bar's exception and the stale-row failure (`envelope/bars.rs`), the evidence page's section, and the lint check on the cited record's status. Item 6's own exception is measured and is **one row, not three**: over the 117 domination failures on today's corpus exactly `so3_exp/theta:1e-5/f64` meets both of item 6's stated conditions (both maxima under ½ u, margin 5.2e-11 relative). `0039`'s two PRs regenerated every switch after this record was written, so the set moved; the three near misses are listed in the table's own comment with their numbers, and item 6's "Only those strata" is taken literally rather than stretched to cover them. The tightest margin of all 117 — `sen3_log_n1/rho:1e-6/theta=pi-1e-6/f64`, thirteen digits — is **not** excepted, both its maxima being above ½ u
 
 ## Context
 
