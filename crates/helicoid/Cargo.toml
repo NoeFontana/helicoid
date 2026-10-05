@@ -42,3 +42,9 @@ proptest.workspace = true
 [[bench]]
 name = "coeffs"
 harness = false
+
+# A second binary, not more rows in `coeffs`: `bench-gate --against` takes one bench binary, so the
+# groups and the coefficient kernel are gated independently (`PHASE3.md` §11).
+[[bench]]
+name = "groups"
+harness = false

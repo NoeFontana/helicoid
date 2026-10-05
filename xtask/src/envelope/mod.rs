@@ -188,7 +188,13 @@ fn read_oracles(root: &Path, options: &Options) -> Result<Vec<Subject>, String> 
 }
 
 /// The run's opening lines: what was read and what each bar covered.
-fn summary(c: &Subject, oracles: &[Subject], v: &bars::Verdict, has_baseline: bool) -> String {
+fn summary(
+    c: &Subject,
+    oracles: &[Subject],
+    v: &bars::Verdict,
+    has_baseline: bool,
+    twin: Option<&str>,
+) -> String {
     let name = &c.name;
     let versions: Vec<String> = oracles
         .iter()
@@ -216,7 +222,7 @@ fn summary(c: &Subject, oracles: &[Subject], v: &bars::Verdict, has_baseline: bo
              row)",
             v.dominated_same_backend,
             v.dominated_libm_bound,
-            crate::seeded::TWIN,
+            twin.unwrap_or("no twin"),
             v.dominated_unexplained,
             v.dominated_host_std
         ),
@@ -290,8 +296,18 @@ fn execute(root: &Path, options: &Options) -> Result<Report, String> {
     };
     // The twin is optional and never an oracle: it attributes a failure, it does not score one
     // (`0037`, draft). Absent, the failures it would explain are reported unattributed.
-    let twin = match candidate {
-        Some(_) => read_subject(root, crate::seeded::TWIN)?.filter(|s| !s.rows.is_empty()),
+    // A candidate's own program with one variable changed is `<candidate>:host-std` where that
+    // subject exists; `seeded:host-std` is the fallback, which is the stand-in's program and so
+    // can only attribute the ids that program answers. Preferring the candidate's own is what
+    // `bars::judge_with`'s contract says the twin is.
+    let twin = match &candidate {
+        Some(c) => {
+            let own = format!("{}{}", c.name, crate::seeded::TWIN_SUFFIX);
+            match read_subject(root, &own)?.filter(|s| !s.rows.is_empty()) {
+                Some(s) => Some(s),
+                None => read_subject(root, crate::seeded::TWIN)?.filter(|s| !s.rows.is_empty()),
+            }
+        }
         None => None,
     };
 
@@ -302,7 +318,13 @@ fn execute(root: &Path, options: &Options) -> Result<Report, String> {
     };
     let registered = options.registered.iter().any(|r| r == name);
     let mut text = match &candidate {
-        Some(c) => summary(c, &oracles, &verdict, baseline.is_some()),
+        Some(c) => summary(
+            c,
+            &oracles,
+            &verdict,
+            baseline.is_some(),
+            twin.as_ref().map(|t| t.name.as_str()),
+        ),
         None if registered => format!(
             "envelope: no result rows for the candidate `{name}`: nothing is judged, and it is \
              owed\n"

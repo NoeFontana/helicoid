@@ -304,6 +304,77 @@ mod group {
         }
     }
 
+    /// The fused `rminus_jacobians` against the two inversions it replaces, **on the bits**.
+    ///
+    /// `laws::jacobian_rows` bounds this row at `0 u`, which is an *error* bound and so cannot see
+    /// a signed zero: `laws::e` scores `+0` against `−0` as zero. This compares `to_bits`, over a
+    /// random sweep and over the degenerate case the fusion is most likely to part company on — a
+    /// pure translation, `φ = 0`, where every word of `Q` is a zero matrix and only its signs are
+    /// left to disagree about.
+    #[test]
+    fn the_fused_inverses_are_the_separate_ones_to_the_bit() {
+        let mut st = 0x2545_F491_4F6C_DD1D_u64;
+        let mut next = || {
+            st ^= st << 13;
+            st ^= st >> 7;
+            st ^= st << 17;
+            (st >> 11) as f64 / (1u64 << 53) as f64 * 4.0 - 2.0
+        };
+        let dense = |j: &SEn3Jac<f64, 1>| -> [[f64; 6]; 6] {
+            let mut out = [[0.0; 6]; 6];
+            Jac::<f64, Twist<f64>>::write_dense(
+                j,
+                &mut StridedMut::col_major(out.as_flattened_mut(), 6, 6),
+            );
+            out
+        };
+        // Case 0 is a pair with the *same* rotation, whose `rminus` is a pure translation:
+        // `y⁻¹x = (I, Rᵗ(c_x − c_y))`, so `φ = 0`, every word of `Q` is a zero matrix, and only
+        // the signs of those zeros are left to disagree about.
+        let r = SE3::<f64>::exp(&twist([0.3, -0.7, 1.1, 0.0, 0.0, 0.0])).rotation();
+        let mut differing = 0usize;
+        for case in 0..2001 {
+            let (x, y) = match case {
+                0 => (
+                    SE3::from_rt(r, helicoid_linalg::Vector([0.5, -2.0, 0.25])),
+                    SE3::from_rt(r, helicoid_linalg::Vector([-1.0, 4.0, 0.125])),
+                ),
+                _ => {
+                    let a = twist(array::from_fn(|_| next()));
+                    let b = twist(array::from_fn(|_| next()));
+                    (SE3::exp(&a), SE3::exp(&b))
+                }
+            };
+            let tau = x.rminus(&y);
+            let want = (
+                SE3::<f64>::jr_inv(&tau),
+                Jac::<f64, Twist<f64>>::neg(&SE3::<f64>::jl_inv(&tau)),
+            );
+            let got = x.rminus_jacobians(&y);
+            for (g, w) in [(&got.0, &want.0), (&got.1, &want.1)] {
+                let (dg, dw) = (dense(g), dense(w));
+                let same = dg
+                    .as_flattened()
+                    .iter()
+                    .zip(dw.as_flattened())
+                    .all(|(a, b)| a.to_bits() == b.to_bits());
+                if !same {
+                    differing += 1;
+                    for (a, b) in dg.as_flattened().iter().zip(dw.as_flattened()) {
+                        assert!(a.to_bits() == b.to_bits(), "case {case}: {a} vs {b}");
+                    }
+                }
+            }
+        }
+        // Recorded, not asserted at zero: the random sweep agrees to the bit, and the pure
+        // translation is where a zero's sign is all that is left of `Q`.
+        // An exactness claim, and it keeps no headroom: every one of the 4002 blocks matches.
+        // It is `0` *because* each side builds its own `X` with `hat`: negating the other's gave
+        // the `½ρ^` diagonal `−0` where the unfused path has the `+0` `hat` writes, which this
+        // test sees and `laws::jacobian_rows`'s error bound cannot.
+        assert_eq!(differing, 0, "of 4002 blocks");
+    }
+
     fn twist(v: [f64; 6]) -> Twist<f64> {
         Twist::read_dense(&v)
     }

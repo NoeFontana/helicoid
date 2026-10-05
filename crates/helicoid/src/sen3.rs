@@ -2,7 +2,7 @@
 //! (`docs/PHASE3.md` §5). The structured Jacobian `SEn3Jac` is `dualmat`'s.
 
 use crate::coeffs::{jr_coeffs, jr_inv_coeff, q_coeffs};
-use crate::dualmat::SEn3Jac;
+use crate::dualmat::{zero3, SEn3Jac};
 use crate::quat::Quat;
 use crate::side::Side;
 use crate::so3::{norm_sq, SO3Tangent, SO3};
@@ -431,13 +431,95 @@ impl<S: Real> Mul<Point3<S>> for SEn3<S, 1> {
 /// `ρ`, so forming it per column cost `(N − 1) · 27` multiplications for the same bits.
 #[inline]
 fn q_block<S: Real>(x: &Mat3<S>, w: &Mat3<S>, ww: &Mat3<S>, b: S, d: S, e: S) -> Mat3<S> {
-    let (wx, xw, ww) = (*w * *x, *x * *w, *ww);
-    let (wxw, wwx, xww) = (wx * *w, ww * *x, xw * *w);
-    let b_words = (wx + xw) + wxw;
-    let d_words = (wwx + xww) - wxw.scale(S::lit(3.0));
-    let e_words = wxw * *w + wwx * *w;
-    let head = x.scale(S::lit(0.5)) + b_words.scale(b);
-    (head + d_words.scale(d)) + e_words.scale(e)
+    q_assemble(x, &q_words(x, w, ww), b, d, e, false)
+}
+
+/// The matrix words of `Q`, grouped as §5.3 writes them: `W X + X W`, `W X W`, `W W X + X W W`, and
+/// `W X W W + W W X W`.
+///
+/// **Seven `3 x 3` products**, which is all of `Q`'s multiplication beyond the `W²` the caller
+/// hands in. They are separated from the assembly because **both sides read one set of them**:
+/// `Q(−ρ, −φ)`'s words are these up to exact signs, so [`inverses`] forms them once where two
+/// `q_block` calls formed them twice.
+#[derive(Clone, Copy)]
+struct Words<S> {
+    /// `W X + X W`, the first two terms of the `b` word.
+    wx_xw: Mat3<S>,
+    /// `W X W`: the third term of the `b` word, and `-3 ×` it in the `d` word.
+    wxw: Mat3<S>,
+    /// `W W X + X W W`, the first two terms of the `d` word.
+    ww_sum: Mat3<S>,
+    /// `W X W W + W W X W`, the whole `e` word.
+    e: Mat3<S>,
+}
+
+#[inline]
+fn q_words<S: Real>(x: &Mat3<S>, w: &Mat3<S>, ww: &Mat3<S>) -> Words<S> {
+    let (wx, xw) = (*w * *x, *x * *w);
+    let (wxw, wwx, xww) = (wx * *w, *ww * *x, xw * *w);
+    Words {
+        wx_xw: wx + xw,
+        wxw,
+        ww_sum: wwx + xww,
+        e: wxw * *w + wwx * *w,
+    }
+}
+
+/// `Q` from its words, with §5.3's coefficients; `negate` reads them as the *other* side's.
+///
+/// The words of `Q(−ρ, −φ)` are the words of `Q(ρ, φ)` with three exact changes and no new
+/// product: `W X + X W` and the `e` word are unchanged (an even number of negated factors), `W X W`
+/// and `W W X + X W W` flip, and `½ρ^` flips. In IEEE every one of those is exact — `(−a)(−b)` is
+/// `ab`, `(−a) + (−b)` is `−(a + b)` and `(−a) · k` is `−(a · k)` — so `negate` is a different
+/// *reading* of one set of words and not a second rounding. `laws::jacobian_rows` holds the two
+/// readings against separate `jr_inv`/`jl_inv` calls at a bound of exactly `0`.
+#[inline]
+fn q_assemble<S: Real>(x: &Mat3<S>, v: &Words<S>, b: S, d: S, e: S, negate: bool) -> Mat3<S> {
+    let d_word = v.ww_sum - v.wxw.scale(S::lit(3.0));
+    let (half, b_word, d_word) = match negate {
+        false => (x.scale(S::lit(0.5)), v.wx_xw + v.wxw, d_word),
+        true => ((-*x).scale(S::lit(0.5)), v.wx_xw - v.wxw, -d_word),
+    };
+    let head = half + b_word.scale(b);
+    (head + d_word.scale(d)) + v.e.scale(e)
+}
+
+/// `(J_r⁻¹(τ), J_l⁻¹(τ))`, bit-identical to [`LieGroup::jr_inv`] and the provided `jl_inv` called
+/// separately, from **one** set of `Q`'s products per column.
+///
+/// The two sides of `⊖`'s Jacobians are one program read twice: `θ²`, `W`, `W²`, `q_coeffs` and
+/// all **seven** matrix products of [`q_words`] are shared, and only the assembly's signs and the
+/// diagonal block differ. Those products are `7 × 27` multiplications per column, which is most of
+/// what this path costs, and `rminus_jacobians` was paying for them twice.
+///
+/// The diagonal is a **transpose**, not a second closed form: `J_l⁻¹(φ) = J_r⁻¹(φ)ᵗ` bit for bit
+/// (the argument is in `SO3::rminus_jacobians`'s rustdoc, and
+/// `so3_tests::jl_is_jr_transposed_to_the_bit` pins it over 4000 draws), so the second
+/// `SO3::jr_inv` — a `norm_sq`, a `sqrt`, a `jr_inv_coeff` branch, a `hat` and a 27-multiply
+/// product — is a transpose instead.
+#[inline]
+fn inverses<S: Real, const N: usize>(tau: &SEn3Tangent<S, N>) -> (SEn3Jac<S, N>, SEn3Jac<S, N>) {
+    let right = SO3::jr_inv(&SO3Tangent { phi: tau.phi });
+    let left = right.transpose();
+    let (b, d, e) = q_coeffs(norm_sq(tau.phi));
+    let w = hat(-tau.phi);
+    let ww = w * w;
+    let mut jr = SEn3Jac {
+        diag: right,
+        col: [zero3(); N],
+    };
+    let mut jl = SEn3Jac {
+        diag: left,
+        col: [zero3(); N],
+    };
+    for (i, &r) in tau.rho.iter().enumerate() {
+        // The words of `Q(−ρ_i, −φ)`, which `jr_inv` reads directly and `jl_inv` reads negated.
+        let x = hat(-r);
+        let v = q_words(&x, &w, &ww);
+        jr.col[i] = -(right * q_assemble(&x, &v, b, d, e, false) * right);
+        jl.col[i] = -(left * q_assemble(&x, &v, b, d, e, true) * left);
+    }
+    (jr, jl)
 }
 
 impl<S: Real, const N: usize> LieGroup<S> for SEn3<S, N> {
@@ -595,23 +677,23 @@ impl<S: Real, const N: usize> LieGroup<S> for SEn3<S, N> {
     /// do not: `J_l⁻¹(τ)`'s is `Q(ρ, φ)`'s and `J_r⁻¹(τ)`'s is `Q(−ρ, −φ)`'s, and the transpose of
     /// a `SEn3Jac` is block *upper* triangular, so it is not a `SEn3Jac` to return.
     ///
-    /// A fused body is available and not taken here: the two share `θ²`, both coefficient
-    /// branches, `W²`, and six of `Q`'s eight matrix words up to an exact sign, so roughly half of
-    /// this call is recomputation on what `SO3::rminus_jacobians` calls the crate's hottest
-    /// Jacobian path. It is a measurement `PHASE3.md` §11's benches are owed — and a second
-    /// rounding to record against §14 — not a reading of §2.3, so it waits for the bench.
+    /// Fused through this module's `inverses`, which `PHASE3.md` §11's benches decided: `Q`'s
+    /// seven products per column are most of this call and two `q_block` calls formed them twice.
+    /// `the_fused_inverses_are_the_separate_ones_to_the_bit` holds it to the unfused pair, and
+    /// `laws::jacobian_rows` holds this row against separate `jr_inv`/`jl_inv` calls at a bound of
+    /// exactly `0`.
     #[inline]
     fn rminus_jacobians(&self, base: &Self) -> (SEn3Jac<S, N>, SEn3Jac<S, N>) {
-        let tau = self.rminus(base);
-        (Self::jr_inv(&tau), Self::jl_inv(&tau).neg())
+        let (jr, jl) = inverses(&self.rminus(base));
+        (jr, jl.neg())
     }
 
     /// `(J_l⁻¹(τ), −J_r⁻¹(τ))` at `τ = self ⊖_L base` (`NUMERICS.md` §2.3); see
     /// [`rminus_jacobians`](LieGroup::rminus_jacobians) for the two inversions.
     #[inline]
     fn lminus_jacobians(&self, base: &Self) -> (SEn3Jac<S, N>, SEn3Jac<S, N>) {
-        let tau = self.lminus(base);
-        (Self::jl_inv(&tau), Self::jr_inv(&tau).neg())
+        let (jr, jl) = inverses(&self.lminus(base));
+        (jl, jr.neg())
     }
 
     /// Right `(Ad_Y⁻¹, I)`, left `(I, Ad_X)` (`NUMERICS.md` §2.3), selected by `Sd::IS_RIGHT` at

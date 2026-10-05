@@ -59,6 +59,11 @@ pub(crate) use so3::takes_series_arm;
 /// transcendentals, which the envelope reads to attribute a domination failure.
 pub(crate) const TWIN: &str = host::NAME;
 
+/// The scalar those twins run on, and the suffix that names one: an `f64` whose transcendentals
+/// are the host's. Public to the crate so a twin of *any* candidate generic over `Real` — the
+/// shipped library included — is that candidate's own program at this scalar.
+pub(crate) use host::{Host, SUFFIX as TWIN_SUFFIX};
+
 /// The assembly-form twin's subject name (`0037`, draft): `seeded:correct` with `J_l`'s `W²` by
 /// `φφᵀ − θ²I` instead of `W·W`, and nothing else changed.
 pub(crate) const TWIN_W2: &str = "seeded:w2-identity";

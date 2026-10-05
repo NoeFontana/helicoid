@@ -36,6 +36,14 @@ use super::{answer, exp_at, kernels_of, log_at, se3, sen3_at, so3_jac_at, Arm};
 /// The subject's name, and the value of `--subject`.
 pub(super) const NAME: &str = "seeded:host-std";
 
+/// The suffix a candidate's own host-`std` twin carries: `<candidate>:host-std`.
+///
+/// `seeded:correct`'s twin is [`NAME`] for historical reasons — it was the only candidate when
+/// this module was written. The envelope looks for the suffixed name first, so a candidate that
+/// has a twin of its own program is attributed by *that* and not by a stand-in's
+/// (`judge_with`'s own words: "the candidate's own program with one variable changed").
+pub(crate) const SUFFIX: &str = ":host-std";
+
 /// An `f64` whose transcendentals come from Rust `std`, i.e. from the host's libm.
 ///
 /// `std` has no `sincos`, so [`Real::sin_cos`] is two calls where the `libm` crate's is one.
@@ -43,7 +51,7 @@ pub(super) const NAME: &str = "seeded:host-std";
 /// here to explain, is Rust `std` and calls `sin()` and `cos()` separately too
 /// (`conformance::Backend::HostStd`).
 #[derive(Clone, Copy, Debug, PartialEq, PartialOrd)]
-pub(super) struct Host(f64);
+pub(crate) struct Host(f64);
 
 impl From<f64> for Host {
     fn from(x: f64) -> Self {

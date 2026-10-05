@@ -59,6 +59,9 @@ impl Registered {
 /// (`crate::seeded`). The harness's own oracles are test subjects and never rows a bar reads.
 pub(crate) fn registry() -> Vec<Registered> {
     let mut all = vec![crate::shipped::registered()];
+    // The candidate's own host-`std` twin, beside the seeded stand-in's: the envelope prefers a
+    // candidate's own (`seeded::TWIN_SUFFIX`).
+    all.push(crate::shipped::host_std());
     all.extend(crate::seeded::registry());
     all
 }
