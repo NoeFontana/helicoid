@@ -44,16 +44,13 @@
 //! switches (`k` and `d` at `f64`; `k`, `a`…`e` at `f32`) are `θ² = 1`, the top of the sweep's grid
 //! (`grid_index` 1024), not a measured optimum (0014 (draft) question 9).
 //!
-//! SO(3) is the first consumer (`lib.rs`): `exp_coeffs`, `jr_coeffs`, `jr_inv_coeff` and
-//! `log_ratio` are on a default build's path from `SO3`.
+//! Every grouped entry point is on a default build's path: `exp_coeffs`, `jr_coeffs`,
+//! `jr_inv_coeff` and `log_ratio` from `SO3`, and `q_coeffs` — Barfoot's `Q` — from `SEn3`, which
+//! is `PHASE3.md` §5 and the last of the five to arrive.
 
 mod generated;
 mod kernel;
-pub(crate) use kernel::{exp_coeffs, jr_coeffs, jr_inv_coeff, log_ratio};
-// `q_coeffs` is SE_N(3)'s alone, so only the tests and the sweep name it until §5 lands; the
-// function itself stays compiled (`kernel.rs` says why), so its exact arms do not split.
-#[cfg(any(test, feature = "__sweep"))]
-pub(crate) use kernel::q_coeffs;
+pub(crate) use kernel::{exp_coeffs, jr_coeffs, jr_inv_coeff, log_ratio, q_coeffs};
 #[cfg(feature = "__sweep")]
 pub mod sweep;
 #[cfg(test)]

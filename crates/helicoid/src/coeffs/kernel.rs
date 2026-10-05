@@ -163,10 +163,7 @@ pub(crate) fn jr_inv_coeff<S: Real>(z: S) -> S {
 }
 
 /// `(b, d, e)` at `θ² = z`: Barfoot's `Q` block (`NUMERICS.md` §5.3).
-// SO(3) reaches every other grouped entry point; this one is SE_N(3)'s alone and has no consumer
-// until `PHASE3.md` §5 lands. Allowed rather than `cfg`'d, because a `cfg` would take `exact_b_d_e`
-// and its `d_from`/`e_from` with it and split the kernel's exact arms across two builds.
-#[allow(dead_code)]
+// SE_N(3)'s alone: `SEn3::jr` and `jr_inv` are its only consumers (`PHASE3.md` §5).
 pub(crate) fn q_coeffs<S: Real>(z: S) -> (S, S, S) {
     let arms = table::<S, _>(
         [B_F64.arm(), D_F64.arm(), E_F64.arm()],

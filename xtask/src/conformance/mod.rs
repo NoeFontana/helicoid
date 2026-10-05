@@ -560,21 +560,35 @@ mod tests {
         let of = |id: &str| registered(Fixed::new("p", |_| Output::new()).only(id));
         assert_eq!(split(&[of("so3_log")])?.1, ["so3_log"]);
         assert!(split(&[of("coeff_k")])?.1.is_empty());
-        // The correct seeded subject answers `so3_*` and `sen3_*`, which have no `@f32` stratum.
+        // The correct seeded subject and `helicoid` answer `so3_*` and `sen3_*`, which have no
+        // `@f32` stratum. The `ad`, `log` and `*_inv` widths are `helicoid`'s alone: the seeded
+        // kernel is `PHASE1.md` §10's `exp`, `jr` and `jl`.
         let plain: Vec<Registered> = subject::registry()
             .into_iter()
             .filter(|r| !r.planted)
             .collect();
         let want = [
+            "sen3_ad_n1",
+            "sen3_ad_n2",
+            "sen3_ad_n3",
             "sen3_exp_n1",
             "sen3_exp_n2",
             "sen3_exp_n3",
+            "sen3_jl_inv_n1",
+            "sen3_jl_inv_n2",
+            "sen3_jl_inv_n3",
             "sen3_jl_n1",
             "sen3_jl_n2",
             "sen3_jl_n3",
+            "sen3_jr_inv_n1",
+            "sen3_jr_inv_n2",
+            "sen3_jr_inv_n3",
             "sen3_jr_n1",
             "sen3_jr_n2",
             "sen3_jr_n3",
+            "sen3_log_n1",
+            "sen3_log_n2",
+            "sen3_log_n3",
             // Every `so3_*` id the `helicoid` subject answers. None has an `@f32` stratum until a
             // record extends `0016`, so a plain `f32` run names them all and runs none.
             "so3_act",

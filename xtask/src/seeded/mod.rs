@@ -427,8 +427,16 @@ fn so3_jac_at<S: Real + Into<f64> + From<f64>>(
     let Some(&[x, y, z]) = record.input("phi").and_then(|p| p.first_chunk::<3>()) else {
         return Output::new();
     };
+    // The side is read from the id by name, both spelled: `fn_id == "so3_jr"` would answer every
+    // other id with `J_l` under its own name, and an id this subject does not compute must answer
+    // with nothing (`Subject::eval`).
+    let right = match fn_id {
+        "so3_jr" => true,
+        "so3_jl" => false,
+        _ => return Output::new(),
+    };
     let phi = [x, y, z].map(|c| Dual::constant(S::from(c)));
-    let j = se3::so3_jacobian(phi, fn_id == "so3_jr", kernels, form);
+    let j = se3::so3_jacobian(phi, right, kernels, form);
     let j: Vec<f64> = j.iter().map(|c| c.v.into()).collect();
     Output::from([("J".to_string(), j)])
 }

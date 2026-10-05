@@ -53,7 +53,7 @@ pub use dualmat::SEn3Jac;
 pub use product::{Product, ProductJac};
 pub use quat::Quat;
 pub use rn::{Rn, RnJac, RnTangent};
-pub use sen3::{SEn3Tangent, Twist};
+pub use sen3::{SEn3, SEn3Tangent, Twist, SE23, SE3};
 pub use side::{Left, Right, Side};
 pub use so3::{SO3Tangent, SO3};
 pub use traits::{Jac, LieGroup, Tangent};
