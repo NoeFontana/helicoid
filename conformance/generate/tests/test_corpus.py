@@ -286,16 +286,23 @@ class ManifestTest(unittest.TestCase):
             self.assertEqual(data.count(b"\n"), entry["records"], name)
 
     def test_committed_kinds_say_what_the_checked_count_means(self):
-        """`rechecked` is records recomputed at 150 digits; `coeff_series` has `verified` instead."""
+        """`rechecked` is records recomputed at 150 digits; `coeff_series` has `verified` instead.
+
+        Three kinds, and only `corpus` holds (in, out, stratum) records a subject is scored on:
+        `series` supplies the generated files' literals and `switch-ref` the right-hand side of
+        docs/maths/coefficients.md CO.12 (docs/decisions/0039 plan step 0).
+        """
+        kinds = {"coeff_series.jsonl": "series", "coeff_switch_ref.jsonl": "switch-ref"}
         files = json.loads((COMMITTED / "MANIFEST.json").read_text())["files"]
         for name, entry in files.items():
-            series_file = name == "coeff_series.jsonl"
-            self.assertEqual(entry["kind"], "series" if series_file else "corpus", name)
-            self.assertEqual("verified" in entry, series_file, name)
-            self.assertEqual("rechecked" in entry, not series_file, name)
+            kind = kinds.get(name, "corpus")
+            self.assertEqual(entry["kind"], kind, name)
+            self.assertEqual("verified" in entry, kind == "series", name)
+            self.assertEqual("rechecked" in entry, kind != "series", name)
             for line in (COMMITTED / name).read_text().splitlines():
                 record = json.loads(line)
-                self.assertEqual({"in", "out", "stratum"} <= record.keys(), not series_file, name)
+                has = {"in", "out", "stratum"} <= record.keys()
+                self.assertEqual(has, kind == "corpus", name)
 
     def test_committed_manifest_names_this_generator(self):
         """Provenance only: any edit to the sources fails it; it says nothing about behaviour."""

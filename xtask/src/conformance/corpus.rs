@@ -199,7 +199,10 @@ pub(crate) fn manifest(dir: &Path) -> Result<Vec<Entry>, String> {
                 fn_id: name.strip_suffix(".jsonl").unwrap_or(&name).to_string(),
                 records: f.records,
             }),
-            "series" => {}
+            // Neither is a function id, so neither is an `Entry` a bar or a subject can reach:
+            // `series` supplies the generated files' literals, `switch-ref` the right-hand side of
+            // `docs/maths/coefficients.md` CO.12 (`docs/PHASE1.md` §4.2, §6).
+            "series" | "switch-ref" => {}
             kind => return Err(format!("{}: `{name}` has kind `{kind}`", path.display())),
         }
     }

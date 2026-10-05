@@ -141,6 +141,10 @@ struct Chosen<'a> {
     decimal: String,
     value: &'a str,
     deriv: &'a str,
+    /// The search space the choice was made in, as one comment line (`docs/decisions/0039`
+    /// item 9). An objective reported alone reads as an optimum even when it is the edge of the
+    /// box, which is how eight switches sat on a wall for the file's whole existence.
+    feasibility: String,
 }
 
 /// The choice in `row`, the `precision` row of `id`, of at most `max_terms` terms.
@@ -182,6 +186,12 @@ fn chosen<'a>(
             "{name}: switch_bits and switch_z disagree or are not a z >= 0"
         ));
     }
+    let binding = cell(row, "binding")?;
+    if !["none", "domain", "terms", "domain+terms"].contains(&binding) {
+        return Err(format!(
+            "{name}: binding `{binding}` is not one of the four"
+        ));
+    }
     Ok(Chosen {
         terms,
         bits,
@@ -189,6 +199,13 @@ fn chosen<'a>(
         decimal,
         value: number(row, "value_max_u")?,
         deriv: number(row, "deriv_max_u")?,
+        feasibility: format!(
+            "grid [{}, {}] of {} per decade searched below π², terms <= {}; binding: {binding}",
+            cell(row, "grid_lo")?,
+            cell(row, "grid_hi")?,
+            64,
+            cell(row, "term_cap")?,
+        ),
     })
 }
 
@@ -222,11 +239,13 @@ fn constant(
     let p = precision_name(precision);
     Ok(format!(
         "// Objective (max u): value {}, derivative {}.\n\
+         // Feasibility: {}.\n\
          pub(crate) const {}: Switch<{p}, {}> = Switch {{\n    \
          below: {p}::from_bits({}), // {} < {}\n    \
          {literals}\n}};\n",
         c.value,
         c.deriv,
+        c.feasibility,
         const_name(id, precision),
         c.terms,
         grouped(c.bits, c.hex),
@@ -317,11 +336,13 @@ pub(super) fn render_helicoid(
         let p = precision_name(precision);
         out.push_str(&format!(
             "\n// Objective (max u): value {}, derivative {}.\n\
+             // Feasibility: {}.\n\
              pub(crate) const {name}: Switch<{p}, {}> = Switch::first(\n    \
              {p}::from_bits({}), // {} < {}\n    \
              &SWEPT_{name},\n);\n",
             c.value,
             c.deriv,
+            c.feasibility,
             c.terms,
             grouped(c.bits, c.hex),
             variable(id),
@@ -406,6 +427,10 @@ mod tests {
                         "switch_z" => shown(precision, z),
                         "value_max_u" => "1.5e0".to_string(),
                         "deriv_max_u" => "2.5e1".to_string(),
+                        "grid_lo" => "1e-16".to_string(),
+                        "grid_hi" => "1e1".to_string(),
+                        "term_cap" => TERMS.to_string(),
+                        "binding" => "none".to_string(),
                         _ => "0".to_string(),
                     })
                     .collect();
@@ -449,6 +474,8 @@ mod tests {
         // `b`: three terms, one literal per line, its switch's four words in order.
         let want = format!(
             "// Objective (max u): value 1.5e0, derivative 2.5e1.\n\
+             // Feasibility: grid [1e-16, 1e1] of 64 per decade searched below π², terms <= 16; \
+             binding: none.\n\
              pub(crate) const B_F64: Switch<f64, 3> = Switch {{\n    \
              below: f64::from_bits(0x3fc0_1234_5678_9abc), // θ² < {}\n    \
              series: [\n        {},\n        {},\n        {},\n    ],\n}};\n",
@@ -461,6 +488,8 @@ mod tests {
         // The same at `f32`: two words of bits, literals of binary32's own rounding.
         let want32 = format!(
             "// Objective (max u): value 1.5e0, derivative 2.5e1.\n\
+             // Feasibility: grid [1e-16, 1e1] of 64 per decade searched below π², terms <= 16; \
+             binding: none.\n\
              pub(crate) const B_F32: Switch<f32, 3> = Switch {{\n    \
              below: f32::from_bits(0x3c01_2345), // θ² < {}\n    \
              series: [{}, {}, {}],\n}};\n",
@@ -681,6 +710,8 @@ mod tests {
         // `b`: three terms of the swept eight, its switch's words in order, at both precisions.
         let want = format!(
             "// Objective (max u): value 1.5e0, derivative 2.5e1.\n\
+             // Feasibility: grid [1e-16, 1e1] of 64 per decade searched below π², terms <= 16; \
+             binding: none.\n\
              pub(crate) const B_F64: Switch<f64, 3> = Switch::first(\n    \
              f64::from_bits(0x3fc0_1234_5678_9abc), // θ² < {:e}\n    \
              &SWEPT_B_F64,\n);\n",
@@ -699,15 +730,16 @@ mod tests {
             .find("pub(crate) const SWEPT_K_F64")
             .ok_or("no series")?;
         assert!(text[..switches].contains("_F32: Switch<f32,") && text.ends_with("];\n"));
-        // A file that is not a sweep's says so, and a series longer than the eight swept is refused.
+        // A file that is not a sweep's says so, and a series longer than the swept ones is refused.
         assert!(!text.contains("Placeholder"));
         let holder = render_helicoid(&csv, &jsonl, (&wide, &narrow), true)?;
         assert!(holder
             .lines()
             .nth(3)
             .is_some_and(|l| l.starts_with("// Placeholder switches")));
-        let e = render_helicoid(&synthetic([9; 8]), &jsonl, (&wide, &narrow), false).err();
-        assert!(e.is_some_and(|e| e.contains("9 terms of a 8-term series")));
+        let over = render_helicoid(&synthetic([TERMS + 1; 8]), &jsonl, (&wide, &narrow), false);
+        let want = format!("{} terms of a {TERMS}-term series", TERMS + 1);
+        assert!(over.err().is_some_and(|e| e.contains(&want)));
         Ok(())
     }
 

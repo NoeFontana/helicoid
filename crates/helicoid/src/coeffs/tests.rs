@@ -134,9 +134,39 @@ fn bits<S: Real>(x: S) -> u64 {
 struct Recorded {
     terms: usize,
     bits: u64,
-    /// The exact arm's and the series arm's `(value, derivative)` maxima, in units of `u`.
-    exact: (f64, f64),
-    series: (f64, f64),
+}
+
+/// The **true** value and `d/dz` of `name` at the grid point `z`, from
+/// `conformance/corpus/coeff_switch_ref.jsonl` (`docs/decisions/0039` plan step 0): the reference
+/// at every point of `docs/PHASE1.md` §6's grid, so at every switch the sweep can return.
+///
+/// Matched on the bit pattern of `z`, which is the record's key: a grid that drifted apart from
+/// `xtask/src/thresholds/grid.rs` is a missing key here, not two nearly equal numbers that pass.
+/// Each 30-digit decimal is read as one `f64`, so the reference carries at most half an ulp —
+/// `2^-53` relative, which [`branch_continuity`] charges to its bound explicitly.
+fn reference(name: &str, precision: &str, z: f64) -> Result<(f64, f64), String> {
+    const REF: &str = include_str!("../../../../conformance/corpus/coeff_switch_ref.jsonl");
+    let key = format!("\"bits\":\"{:016x}\"", z.to_bits());
+    let want = (
+        key.as_str(),
+        format!("\"coeff\":\"{name}\""),
+        format!("\"precision\":\"{precision}\""),
+    );
+    let line = REF
+        .lines()
+        .find(|l| l.contains(want.0) && l.contains(&want.1) && l.contains(&want.2))
+        .ok_or_else(|| format!("no {name} {precision} reference at z = {z:e} ({})", want.0))?;
+    let field = |name: &str| -> Result<f64, String> {
+        let at = line
+            .find(&format!("\"{name}\":\""))
+            .ok_or_else(|| format!("no {name} in `{line}`"))?;
+        let rest = &line[at + name.len() + 4..];
+        let end = rest
+            .find('"')
+            .ok_or_else(|| format!("no {name} in `{line}`"))?;
+        rest[..end].parse().map_err(|e| format!("{name}: {e}"))
+    };
+    Ok((field("value")?, field("d_branch")?))
 }
 
 fn recorded(name: &str, precision: &str) -> Result<Recorded, String> {
@@ -153,23 +183,10 @@ fn recorded(name: &str, precision: &str) -> Result<Recorded, String> {
         i.and_then(|i| row.get(i).copied())
             .ok_or_else(|| format!("no {column}"))
     };
-    let number = |column: &str| -> Result<f64, String> {
-        cell(column)?
-            .parse::<f64>()
-            .map_err(|e| format!("{column}: {e}"))
-    };
     let bits = cell("switch_bits")?.trim_start_matches("0x");
     Ok(Recorded {
         terms: cell("terms")?.parse().map_err(|e| format!("terms: {e}"))?,
         bits: u64::from_str_radix(bits, 16).map_err(|e| e.to_string())?,
-        exact: (
-            number("at_switch_exact_value_u")?,
-            number("at_switch_exact_deriv_u")?,
-        ),
-        series: (
-            number("at_switch_series_value_u")?,
-            number("at_switch_series_deriv_u")?,
-        ),
     })
 }
 
@@ -432,30 +449,53 @@ fn the_series_answers_at_zero_f32() {
 }
 
 /// `docs/maths/coefficients.md` CO.12: at a switch the arms differ by at most the sum of their
-/// errors there, in the value and in the derivative through `Dual`. The errors are those
-/// `conformance/sweeps/thresholds.csv` records for the chosen switch: each arm's larger error at the
-/// two corpus records that bracket it, a sample and not a bound over the interval between them, and
-/// not `NUMERICS.md` §4's wording, that the jump is at most the recorded error of the coefficient,
-/// an arm's alone (0015 (draft) NU.4). The jump is taken relative to the exact arm's value and the
-/// errors to the true one, so the plain sum can be exceeded, by `E_x u` of itself, and the bound is
-/// `(E_x + E_s)/(1 - E_x u)`, `E` in units of `u`, and a few roundings of this test's own. It is
-/// tight, not slack: the jump is the sum to three decimals for `a` at `f64` in the derivative (47.234
-/// against 47.238 `u`) and exceeds the plain sum for `d` at `f32` (638.380 against 638.360 `u`).
+/// errors there, in the value and in the derivative through `Dual`. The jump is taken relative to
+/// the exact arm's value and the errors to the true one, so the plain sum can be exceeded, by
+/// `E_x u` of itself: the bound is `(E_x + E_s)/(1 - E_x u)`, `E` in units of `u`, and a few
+/// roundings of this test's own. Not `NUMERICS.md` §4's wording, that the jump is at most the
+/// recorded error of the coefficient, an arm's alone (0015 (draft) NU.4).
+///
+/// **Both errors are measured at the switch, against a reference at the switch.** They used to be
+/// the sample `conformance/sweeps/thresholds.csv` records — each arm's larger error at the two
+/// corpus records bracketing the switch — and `0039` measured what that costs: at `d`'s lifted
+/// switch the jump read 22.104 `u` against a recorded right-hand side of 6.3, while at 60 digits
+/// CO.12 *held exactly* there, the arms' true errors being 19.178 and 2.926 and summing to 22.104.
+/// The kernel was right and the test's right-hand side was 3.5x low. No density of corpus records
+/// repairs it, because the exact arm's error is a sawtooth that swings 195x over 0.8% of `θ`.
+///
+/// So the reference is `conformance/corpus/coeff_switch_ref.jsonl`, the true value and `d/dz` at
+/// every point of `PHASE1.md` §6's grid — hence at every switch the sweep can return, and a
+/// function of the grid alone rather than of the sweep (`0039` plan step 0).
+///
+/// The reference is read as one `f64`, so it carries at most half an ulp, `2^-53` relative. That
+/// is `1 u` at `f64` and `2^-29 u` at `f32`, and it is **charged to the bound**, once per arm:
+/// without it this test would be comparing a tight inequality against a right-hand side whose own
+/// uncertainty is a per cent of it.
 fn branch_continuity<S: Real + Into<f64>>(precision: &str) -> Result<(), String> {
     let u = match S::PRECISION {
         Precision::F64 => 2f64.powi(-53),
         Precision::F32 => 2f64.powi(-24),
     };
-    let bound = |ex: f64, es: f64| (ex + es) / (1.0 - ex * u) * (1.0 + 8.0 * f64::EPSILON);
+    // Half an ulp of the `f64` reference, in units of this precision's `u`: `1` at `f64`, nothing
+    // at `f32`. Charged once per arm, because each arm's error is measured against it.
+    let reference_u = 2f64.powi(-53) / u;
+    let bound = |ex: f64, es: f64| {
+        (ex + es + 2.0 * reference_u) / (1.0 - ex * u) * (1.0 + 8.0 * f64::EPSILON)
+    };
     for (i, (below, _, terms)) in chosen::<S>().into_iter().enumerate() {
-        let r = recorded(NAMES[i], precision)?;
         let (exact, series) = arms(i, D::variable(at::<S>(below), 0), terms);
         let jump = |e: S, s: S| {
             let (e, s) = (e.value_f64(), s.value_f64());
             ((e - s) / e).abs() / u
         };
         let (value, deriv) = (jump(exact.v, series.v), jump(exact.d[0], series.d[0]));
-        let (max_value, max_deriv) = (bound(r.exact.0, r.series.0), bound(r.exact.1, r.series.1));
+        // Each arm's error at the switch, against the reference there. The difference of two
+        // nearby `f64`s is exact (Sterbenz), so the only inexactness is the reference's own.
+        let (true_v, true_d) = reference(NAMES[i], precision, at::<S>(below).value_f64())?;
+        let err = |got: S, truth: f64| ((got.value_f64() - truth) / truth).abs() / u;
+        let re = (err(exact.v, true_v), err(exact.d[0], true_d));
+        let rs = (err(series.v, true_v), err(series.d[0], true_d));
+        let (max_value, max_deriv) = (bound(re.0, rs.0), bound(re.1, rs.1));
         let name = NAMES[i];
         assert!(
             value <= max_value,
@@ -765,15 +805,41 @@ fn a_group_below_its_smallest_switch_runs_no_exact_arm_f32() {
 fn a_group_runs_each_exact_arm_once<const F32: bool>() {
     // (sqrt, sin_cos, atan2) of `exp`, `jr`, `jr_inv`, `q`, `log`.
     let above = [(1, 1, 0), (1, 2, 0), (1, 1, 0), (1, 2, 0), (1, 0, 1)];
-    for z in [2.0, 6.0, 9.8] {
-        assert_eq!(calls::<F32>(z), above, "z = {z}");
+    // **Read from the table, not typed.** `0039` lifted the sweep's grid to span the domain and
+    // the switches moved from `z <= 1` to within a few per cent of `π²`, which turned three typed
+    // `z` here into series-arm samples testing nothing. The largest switch plus the top of
+    // `NUMERICS.md` §12's domain are where every exact arm runs, whatever the sweep chooses next.
+    let most = table::<F32>()
+        .iter()
+        .map(|&(switch, _, _)| switch)
+        .fold(0.0_f64, f64::max);
+    let domain = core::f64::consts::PI * core::f64::consts::PI;
+    assert!(
+        most < domain,
+        "a switch at or above the domain bound: {most:e}"
+    );
+    // Strictly above: the kernel's comparison is `z < below`, so the switch itself is the series
+    // arm's last point.
+    for z in [most.next_up(), 0.5 * (most + domain), domain] {
+        assert_eq!(calls::<F32>(z), above, "z = {z:e}");
     }
-    // `cos θ/2` alone is exact between its switch and `k`'s: at both precisions, at `z = 1e-3`.
-    assert_eq!(calls::<F32>(1e-3)[0], (1, 1, 0));
-    if !F32 {
-        // The one `sin_cos` for nothing (`super`): `b` on its series arm, `a` not, and `d` likewise.
-        assert_eq!(calls::<false>(0.8)[1], (1, 2, 0));
-        assert_eq!(calls::<false>(0.97)[3], (1, 2, 0));
+    // **A group pays for the member that is exact, and no more.** Between a group's smallest and
+    // largest member switch some members are exact and some are not, and the count there is what
+    // says the sharing holds: `exp` takes `cos θ/2`'s one `sqrt` and `sin_cos` while `k` is still
+    // a series, and `jr` and `q` take their second `sin_cos` for one member.
+    //
+    // The `z` is the midpoint of the group's own member switches, **read from the table rather
+    // than typed**: `0039` lifted the sweep's grid to span the domain, every switch moved from
+    // `z <= 1` to within a few per cent of `π²`, and the three typed `z` that used to be here had
+    // become samples of the series arm, asserting nothing. A group whose members share one switch
+    // has no such window and is skipped — which `b` and `d` now do at both precisions.
+    let t = table::<F32>();
+    for (g, want) in [(0, (1, 1, 0)), (1, (1, 2, 0)), (3, (1, 2, 0))] {
+        let of = |f: fn(f64, f64) -> f64, init| MEMBERS[g].iter().map(|&i| t[i].0).fold(init, f);
+        let (lo, hi) = (of(f64::min, f64::INFINITY), of(f64::max, 0.0));
+        if lo < hi {
+            assert_eq!(calls::<F32>(0.5 * (lo + hi))[g], want, "group {g}");
+        }
     }
 }
 

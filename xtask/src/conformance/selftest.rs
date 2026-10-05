@@ -713,17 +713,23 @@ mod tests {
         Ok(())
     }
 
+    /// The swept candidates: `TERMS` series lengths times the admissible grid, which `0039`'s
+    /// domain rule ends at the last point below `π²`. Derived rather than typed, so that lifting
+    /// either limit again moves this with it.
+    const SWEPT: usize = 17408;
+
     #[test]
     fn the_planted_c_is_detected_by_the_sweeps_ranking_and_only_by_it() -> Result<(), String> {
         let report = run_cases(cases(), WINDOW)?;
         assert_eq!(report.failures, Vec::<String>::new());
-        // The correct kernel's `c` is the chosen candidate: first of the 8200 swept, ratio 1.
+        // The correct kernel's `c` is the chosen candidate: first of the swept candidates,
+        // `TERMS` lengths times the admissible grid (`0039`), ratio 1.
         let silent = lines(
             &report,
             "seeded:correct -> sweep ranks c dominated -> silent ok c ",
         );
         assert!(
-            silent.len() == 1 && silent[0].ends_with("rank 1 of 8200"),
+            silent.len() == 1 && silent[0].ends_with(&format!("rank 1 of {SWEPT}")),
             "{silent:?}"
         );
         // The planted one is far beyond the margin, among the last of them; the other defects
@@ -791,7 +797,7 @@ mod tests {
             objective,
             chosen: 2.0,
             rank: 1,
-            of: 8200,
+            of: SWEPT,
         };
         assert_eq!(DOMINATED_BY, 1e6);
         assert!(!dominated(&at(2.0)) && !dominated(&at(2.0 * DOMINATED_BY)));

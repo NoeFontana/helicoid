@@ -938,7 +938,10 @@ mod tests {
             .text
             .contains(&format!("{tied} strata paired with an oracle")));
         // The planted `c` ties where its series is the correct kernel's and is beaten from
-        // `theta:1e-8`, whose `z` is the first at its switch, to `theta:1e-1`, and on `theta:dense`.
+        // `theta:1e-8`, whose `z` is the first at its switch, to `theta:1e0`, and on
+        // `theta:dense`. `theta:1e0` joined the list with `0039`: lifting the sweep's search space
+        // took the correct kernel's maximum there from 7.4e3 `u` to 94.5, which is now below the
+        // defect's 1.8e3, so the stratum went from unpaired-in-effect to a clean loss.
         let r = go(&scratch, "seeded:c-two-terms-1e-8", &["seeded:correct"], "")?;
         let beaten: Vec<&str> = r
             .text
@@ -947,6 +950,7 @@ mod tests {
             .filter_map(|l| l.split_once("/f64: ").map(|(stratum, _)| stratum))
             .collect();
         let mut want: Vec<String> = (1..=8).rev().map(|k| format!("theta:1e-{k}")).collect();
+        want.push("theta:1e0".into());
         want.push("theta:dense".into());
         assert_eq!(beaten, want, "{}", r.text);
         assert!(beaten.len() < tied);
