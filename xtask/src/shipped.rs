@@ -239,14 +239,20 @@ fn sen3_of<S: Real + From<f64>, const N: usize>(record: &Record) -> Option<SEn3<
     Some(SEn3::from_parts(SO3::from_quat_unchecked(q), cols))
 }
 
-/// The dense `(3 + 3N)`-square matrix of a `SEn3Jac`, column-major as the corpus holds it
-/// (`PHASE1.md` §4.3), through `Jac::write_dense` -- the shipped path, structural zeros included.
-fn sen3_jac_out<S: Real + Into<f64>, const N: usize>(j: &SEn3Jac<S, N>) -> Output {
+/// The dense `(3 + 3N)`-square matrix of a `SEn3Jac` under `field`, column-major as the corpus
+/// holds it (`PHASE1.md` §4.3), through `Jac::write_dense` -- the shipped path, structural zeros
+/// included.
+///
+/// `field` is a parameter because the corpus names the adjoint `Ad` and the Jacobians `J`: building
+/// one key and renaming it would answer `{"Ad": []}` on a mismatch, which is non-empty, so the
+/// harness would score a committed row holding no numbers -- the silent-mislabel failure this
+/// module's `So3` note is about.
+fn sen3_jac_out<S: Real + Into<f64>, const N: usize>(field: &str, j: &SEn3Jac<S, N>) -> Output {
     let d = 3 + 3 * N;
     let mut buf = vec![S::zero(); d * d];
     Jac::<S, SEn3Tangent<S, N>>::write_dense(j, &mut StridedMut::col_major(&mut buf, d, d));
     Output::from([(
-        "J".to_string(),
+        field.to_string(),
         buf.into_iter().map(Into::into).collect::<Vec<f64>>(),
     )])
 }
@@ -290,10 +296,7 @@ fn sen3_answer<S: Real + Into<f64> + From<f64>, const N: usize>(
             let Some(x) = sen3_of::<S, N>(record) else {
                 return Output::new();
             };
-            let mut out = sen3_jac_out(&x.adjoint());
-            // The corpus names the adjoint `Ad`, not `J`.
-            let j = out.remove("J").unwrap_or_default();
-            Output::from([("Ad".to_string(), j)])
+            sen3_jac_out("Ad", &x.adjoint())
         }
         Sen3::Jr | Sen3::Jl | Sen3::JrInv | Sen3::JlInv => {
             let Some(tau) = record.input("tau").filter(|t| t.len() == 3 + 3 * N) else {
@@ -301,13 +304,17 @@ fn sen3_answer<S: Real + Into<f64> + From<f64>, const N: usize>(
             };
             let tau: Vec<S> = tau.iter().map(|&t| S::from(t)).collect();
             let tau = SEn3Tangent::<S, N>::read_dense(&tau);
+            // Every arm spelled, no `_`: a variant added to the outer pattern without its own arm
+            // here would otherwise be answered with `J_l⁻¹` under its own name, which is the
+            // mislabel the `So3` note above describes. A non-exhaustive match is a build error.
             let j = match op {
                 Sen3::Jr => SEn3::<S, N>::jr(&tau),
                 Sen3::Jl => SEn3::<S, N>::jl(&tau),
                 Sen3::JrInv => SEn3::<S, N>::jr_inv(&tau),
-                _ => SEn3::<S, N>::jl_inv(&tau),
+                Sen3::JlInv => SEn3::<S, N>::jl_inv(&tau),
+                Sen3::Exp | Sen3::Log | Sen3::Ad => return Output::new(),
             };
-            sen3_jac_out(&j)
+            sen3_jac_out("J", &j)
         }
     }
 }
@@ -489,6 +496,48 @@ mod tests {
         for (id, _) in So3::ALL {
             assert!(Helicoid.eval(id, &empty, Precision::F64).is_empty(), "{id}");
             assert!(Helicoid.eval(id, &empty, Precision::F32).is_empty(), "{id}");
+        }
+        // Every `sen3_*` id: the fields the corpus names, the dense width, nothing from a record
+        // without its input or at `f32`, and -- for `Ad` at the identity rotation, where the
+        // adjoint is `I + ε[x]_×` -- the column-major order and the block the corpus puts it in.
+        for n in 1..=3usize {
+            let d = 3 + 3 * n;
+            let tau: Vec<f64> = (0..d).map(|i| 0.1 * (i as f64 + 1.0)).collect();
+            let x: Vec<f64> = (0..3 * n).map(|i| 0.25 * (i as f64 + 1.0)).collect();
+            let rec = record(
+                &[("tau", &tau), ("q", &[1.0, 0.0, 0.0, 0.0]), ("x", &x)],
+                &[],
+            )?;
+            for (op, field, len) in [
+                ("exp", "q", 4),
+                ("log", "tau", d),
+                ("ad", "Ad", d * d),
+                ("jr", "J", d * d),
+                ("jl", "J", d * d),
+                ("jr_inv", "J", d * d),
+                ("jl_inv", "J", d * d),
+            ] {
+                let id = format!("sen3_{op}_n{n}");
+                let out = Helicoid.eval(&id, &rec, Precision::F64);
+                let keys: Vec<&str> = out.keys().map(String::as_str).collect();
+                let want: Vec<&str> = match op {
+                    "exp" => vec!["q", "x"],
+                    _ => vec![field],
+                };
+                assert_eq!(keys, want, "{id}");
+                assert_eq!(out[field].len(), len, "{id}");
+                assert!(Helicoid.eval(&id, &rec, Precision::F32).is_empty(), "{id}");
+                assert!(
+                    Helicoid.eval(&id, &empty, Precision::F64).is_empty(),
+                    "{id}"
+                );
+            }
+            // `[x₁]_×` sits at block row 1, block column 0: entries `(4, 0)` and `(5, 0)` of the
+            // dense matrix are `x_z` and `−x_y`, at flat indices `4` and `5` column-major.
+            let ad = Helicoid.eval(&format!("sen3_ad_n{n}"), &rec, Precision::F64);
+            assert_eq!(ad["Ad"][4].to_bits(), x[2].to_bits(), "n{n}");
+            assert_eq!(ad["Ad"][5].to_bits(), (-x[1]).to_bits(), "n{n}");
+            assert_eq!(ad["Ad"][0].to_bits(), 1.0_f64.to_bits(), "n{n}");
         }
         // `r` reads `n` and `w`, the others `theta`; a record without them is answered with nothing.
         let theta = record(&[("theta", &[0.5])], &[])?;

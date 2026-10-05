@@ -244,9 +244,10 @@ impl<S: Real> SEn3Tangent<S, 1> {
 /// ([`SE23`]), whose columns are the velocity and then the position (`docs/maths/se3.md` SE.1).
 /// Composition is `a * b = T_a_x · T_x_b` (`0002`) and the action is `Mul<Point3<S>>` at `N = 1`.
 ///
-/// The fields are private. Layout is not a semver contract (D2) — a consumer keeps its own storage
-/// format — and the stored quaternion carries the unit invariant that
-/// [`SO3::from_quat_unchecked`]'s `debug_assert!` guards at the boundary. A value is built by
+/// The fields are private and `repr(C)` is `PHASE3.md` §5's spelling, not a promise: layout is not
+/// a semver contract (D2) and a consumer keeps its own storage format. The stored quaternion
+/// carries the unit invariant, guarded where a raw one enters — [`SE3::from_quat_translation`]'s
+/// `debug_assert!` — and nowhere else, since `Exp` and composition produce it. A value is built by
 /// [`exp`](LieGroup::exp), [`SE3::from_rt`] or [`SE3::from_quat_translation`] and read by
 /// [`rotation`](Self::rotation), the `N`-specific accessors and [`log`](LieGroup::log).
 #[repr(C)]
@@ -304,13 +305,18 @@ impl<S: Real> SEn3<S, 1> {
 
     /// The rigid transform of a quaternion and a translation.
     ///
-    /// Through [`SO3::from_quat_unchecked`], so a caller claiming a unit `q` gets that
-    /// constructor's `debug_assert!` of the `NUMERICS.md` §3.6 bound and no release check (D11).
     /// The normalizing path is `from_rt` of [`SO3::from_quat_normalized`], which divides by the
-    /// norm (`0027`): this one does not, and a non-unit `q` here is a scaled rotation, not an
-    /// error.
+    /// norm (`0027`); this one does not.
+    ///
+    /// # Domain
+    ///
+    /// `q` is unit within `NUMERICS.md` §3.6's bound, by `debug_assert!` and no release check
+    /// (D11). The assert is reached through [`Quat::from_wxyz_unchecked`], which is the item that
+    /// carries it — [`SO3::from_quat_unchecked`] is a move and checks nothing, so routing through
+    /// it would have made this constructor's stated domain unenforced.
     #[inline]
     pub fn from_quat_translation(q: Quat<S>, t: Vec3<S>) -> Self {
+        let q = Quat::from_wxyz_unchecked(q.w, q.x, q.y, q.z);
         Self::from_rt(SO3::from_quat_unchecked(q), t)
     }
 
@@ -420,9 +426,12 @@ impl<S: Real> Mul<Point3<S>> for SEn3<S, 1> {
 /// for operand (`docs/maths/coefficients.md` CO.6, `0010`): the `xtask` subject that scores the
 /// `sen3_j*` corpus ids runs this same sequence, so a parity gap between them is a coefficient's
 /// and not an association's.
+///
+/// `W²` is passed in, not formed here: it is the one word of the eight that does not depend on
+/// `ρ`, so forming it per column cost `(N − 1) · 27` multiplications for the same bits.
 #[inline]
-fn q_block<S: Real>(x: &Mat3<S>, w: &Mat3<S>, b: S, d: S, e: S) -> Mat3<S> {
-    let (wx, xw, ww) = (*w * *x, *x * *w, *w * *w);
+fn q_block<S: Real>(x: &Mat3<S>, w: &Mat3<S>, ww: &Mat3<S>, b: S, d: S, e: S) -> Mat3<S> {
+    let (wx, xw, ww) = (*w * *x, *x * *w, *ww);
     let (wxw, wwx, xww) = (wx * *w, ww * *x, xw * *w);
     let b_words = (wx + xw) + wxw;
     let d_words = (wwx + xww) - wxw.scale(S::lit(3.0));
@@ -525,9 +534,10 @@ impl<S: Real, const N: usize> LieGroup<S> for SEn3<S, N> {
     fn jr(tau: &SEn3Tangent<S, N>) -> SEn3Jac<S, N> {
         let (b, d, e) = q_coeffs(norm_sq(tau.phi));
         let w = hat(-tau.phi);
+        let ww = w * w;
         SEn3Jac {
             diag: SO3::jr(&SO3Tangent { phi: tau.phi }),
-            col: tau.rho.map(|r| q_block(&hat(-r), &w, b, d, e)),
+            col: tau.rho.map(|r| q_block(&hat(-r), &w, &ww, b, d, e)),
         }
     }
 
@@ -548,20 +558,28 @@ impl<S: Real, const N: usize> LieGroup<S> for SEn3<S, N> {
         let ai = SO3::jr_inv(&SO3Tangent { phi: tau.phi });
         let (b, d, e) = q_coeffs(norm_sq(tau.phi));
         let w = hat(-tau.phi);
+        let ww = w * w;
         SEn3Jac {
             diag: ai,
-            col: tau.rho.map(|r| -(ai * q_block(&hat(-r), &w, b, d, e) * ai)),
+            col: tau
+                .rho
+                .map(|r| -(ai * q_block(&hat(-r), &w, &ww, b, d, e) * ai)),
         }
     }
 
     /// `(Ad_Exp(τ)⁻¹, J_r(τ))` (`NUMERICS.md` §2.3).
     ///
-    /// `Ad⁻¹` through `Ad` of the group inverse, not [`Jac::inverse`]: `Ad` is a homomorphism, so
-    /// `Ad_X⁻¹ = Ad_{X⁻¹}`, and that path is a conjugate and `N` sandwiches with no division —
-    /// where the dual-matrix inverse would divide twice by a computed `det A`.
+    /// `Ad_Exp(τ)⁻¹` as `Ad_Exp(−τ)`, not as [`Jac::inverse`] of `Ad` and not as `Ad` of the group
+    /// inverse. All three are the same dual matrix — `Ad` is a homomorphism and `Exp(−τ)` is
+    /// `Exp(τ)⁻¹` — and this one is the cheapest *and* the exact one: `Exp(−τ)`'s quaternion is
+    /// `Exp(τ)`'s conjugate to the bit (the coefficients are even in `θ` and a negation is exact),
+    /// so the saving is the group inverse's `N` sandwiches, and the result is bit-identical to the
+    /// row `laws::jacobian_rows` checks against, which is why `rows` is recorded at exactly `0`.
+    /// Through `Ad` of the inverse it was 2.182 `u`: `inverse` reaches its columns as `−Rᵗ(J_l ρ)`
+    /// where this reaches them as `−J_r ρ`, equal in exact arithmetic and not in the bits.
     #[inline]
     fn rplus_jacobians(&self, tau: &SEn3Tangent<S, N>) -> (SEn3Jac<S, N>, SEn3Jac<S, N>) {
-        (Self::exp(tau).inverse().adjoint(), Self::jr(tau))
+        (Self::exp(&tau.neg()).adjoint(), Self::jr(tau))
     }
 
     /// `(Ad_Exp(τ), J_l(τ))` (`NUMERICS.md` §2.3).
@@ -572,11 +590,16 @@ impl<S: Real, const N: usize> LieGroup<S> for SEn3<S, N> {
 
     /// `(J_r⁻¹(τ), −J_l⁻¹(τ))` at `τ = self ⊖_R base` (`NUMERICS.md` §2.3).
     ///
-    /// Two inversions, where [`SO3::rminus_jacobians`] takes one and transposes it: the transpose
-    /// of a `SEn3Jac` is block *upper* triangular, so it is not a `SEn3Jac`, and `J_l⁻¹(τ)` is
-    /// `Q(ρ, φ)`'s where `J_r⁻¹(τ)` is `Q(−ρ, −φ)`'s. The shared `θ²` means the two calls
-    /// evaluate the same coefficients twice; fusing them is a measurement `PHASE3.md` §11's
-    /// benches are owed, not a reading of §2.3.
+    /// Two inversions, where [`SO3::rminus_jacobians`] takes one and transposes it. The *diagonal*
+    /// blocks do transpose into each other exactly, as that method's note proves, but the columns
+    /// do not: `J_l⁻¹(τ)`'s is `Q(ρ, φ)`'s and `J_r⁻¹(τ)`'s is `Q(−ρ, −φ)`'s, and the transpose of
+    /// a `SEn3Jac` is block *upper* triangular, so it is not a `SEn3Jac` to return.
+    ///
+    /// A fused body is available and not taken here: the two share `θ²`, both coefficient
+    /// branches, `W²`, and six of `Q`'s eight matrix words up to an exact sign, so roughly half of
+    /// this call is recomputation on what `SO3::rminus_jacobians` calls the crate's hottest
+    /// Jacobian path. It is a measurement `PHASE3.md` §11's benches are owed — and a second
+    /// rounding to record against §14 — not a reading of §2.3, so it waits for the bench.
     #[inline]
     fn rminus_jacobians(&self, base: &Self) -> (SEn3Jac<S, N>, SEn3Jac<S, N>) {
         let tau = self.rminus(base);

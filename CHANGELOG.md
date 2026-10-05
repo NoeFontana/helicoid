@@ -92,9 +92,19 @@ defined by the status tables in `docs/`; they win over this file.
   (3.437 at `N = 2` `f64`, 3.243/3.132/3.166 at `N = 1`, 3.258 at `N = 3`).
   Under every generic law of `laws.rs` at `f64`, `f32` and `Dual` for `N = 1, 2`, with bounds twice
   the worst of 60 000 draws per law per scalar: `adjoint` 8.279 `u`, `ad` 7.855, `plus_minus` 7.561,
-  `axioms` 6.085 down to `sides` 1.118, and `tangent_order` exactly `0` at `f64`. `rows` is **2.182
-  and not `0`** as SO(3)'s is, because this group's `Ad_Y⁻¹` is `Ad` of the group inverse where
-  SO(3)'s is a transpose: an exactness claim would be false, so a measured bound stands there.
+  `axioms` 6.085 down to `sides` 1.118, and `tangent_order` and `rows` **exactly `0`**.
+  `rows = 0` is an exactness claim -- every §2.3 row reproduced bit for bit, held over 200 000 cases
+  at `Dual<f64, 9>` -- and it is what taking `Ad_Exp(τ)⁻¹` as **`Ad_Exp(−τ)`** buys, rather than as
+  `Ad` of the group inverse: `Exp(−τ)`'s quaternion is `Exp(τ)`'s conjugate to the bit, since the
+  coefficients are even in `θ` and a negation is exact, so the inverse's `N` sandwiches are saved
+  *and* the row becomes bit-identical to `laws::jacobian_rows`'s own reference. Through the group
+  inverse the same law read 2.182 `u` (`inverse` reaches its columns as `−Rᵗ(J_l ρ)` where
+  `Ad_Exp(−τ)` reaches them as `−J_r ρ`). Review finding.
+  Two more from the same review: `SE3::from_quat_translation` stated the §3.6 unit-norm domain and
+  **enforced nothing** -- `SO3::from_quat_unchecked` is a move, and `Quat::from_wxyz_unchecked` is
+  the item that carries that `debug_assert!`, so the constructor now goes through it; and `q_block`
+  formed `W²` once per translation column, `(N − 1) · 27` multiplications for the same bits, so it
+  is formed once per call and passed in.
   Scored over **all 21 `sen3_*` corpus ids** at `N = 1, 2, 3`, no non-finite output, which takes the
   envelope from 170 paired strata to **484**.
   `from_parts`/`parts` land with it (`0042`, draft): `PHASE3.md` §5 names the accessors per `N`, and
@@ -103,6 +113,15 @@ defined by the status tables in `docs/`; they win over this file.
   reader would retire `0006`'s external-consumer guarantee for every id at once.
 
 ### Fixed
+
+- Two silent-mislabel hazards in the conformance subjects, both the shape `shipped.rs`'s own `So3`
+  note was written about. `Sen3::Ad` built its output under the key `J` and renamed it, so a key
+  change would have answered `{"Ad": []}` -- non-empty, therefore scored, therefore a committed
+  conformance row holding no numbers; the field name is now a parameter of `sen3_jac_out`. And the
+  Jacobian dispatch's `_ =>` arm answered any unlisted variant with `J_l⁻¹` under its own name;
+  every arm is spelled, so a new variant is a build error. In the seeded twin, `so3_jac_at` read its
+  side from `fn_id == "so3_jr"`, which answered every other id with `J_l`: both ids are now spelled
+  and anything else answers with nothing. Review findings.
 
 - `SEn3Jac::inverse`'s `debug_assert!` **panicked on a NaN determinant**. It read "every lane has
   `0 < |det| < ∞`"; it now reads "no lane has `det = 0` and none has `|det| = ∞`". The two spellings

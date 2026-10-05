@@ -150,11 +150,14 @@ impl<S: Real, const N: usize> Jac<S, SEn3Tangent<S, N>> for SEn3Jac<S, N> {
         let (inv, det) = self.diag.inverse_adj();
         // "No lane has `det = 0`, and none has `|det| = ∞`" -- not "every lane has
         // `0 < |det| < ∞`", which the two spellings differ from only on NaN. A NaN determinant is
-        // a NaN matrix, whose inverse is NaN: the answer a value function owes, not a panic
-        // (`Mat3`'s `Jac::inverse` says the same, and `coeffs`'s `nonnegative` assert reads the
-        // same way). An infinite one still fires, because `adj/det` is then a finite, wrong zero
-        // and that is a domain violation with a finite input to blame. `|det|` is bound, not taken
-        // twice: for a `Dual` scalar `abs` is a select and a negation per derivative lane.
+        // a NaN matrix, whose inverse is NaN: the answer a value function owes, not a panic. That
+        // half is `Mat3`'s `Jac::inverse`'s reading, and `coeffs`'s `nonnegative` assert's.
+        // The infinite half is this method's own -- `Mat3`'s checks `det = 0` alone, so an
+        // overflowed `det` there returns an all-zero inverse unreported, which is the same defect
+        // one level down and is owed a fix in `inverse_adj`'s own caller, not papered over here.
+        // It fires because `adj/det` is then a finite, wrong zero with a finite input to blame.
+        // `|det|` is bound, not taken twice: for a `Dual` scalar `abs` is a select and a negation
+        // per derivative lane.
         let m = det.abs();
         debug_assert!(
             !m.le(S::zero()).or(S::lit(f64::INFINITY).le(m)).any(),

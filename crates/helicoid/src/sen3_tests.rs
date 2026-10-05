@@ -204,20 +204,20 @@ mod group {
     use helicoid_linalg::{Mat3, Point, StridedMut};
 
     // Measured maxima over the six runs, in `u`: axioms 6.085, exp_log 4.171, adjoint 8.279,
-    // jl_ad_jr 4.490, plus_minus 7.561, rows 2.182, ad 7.855, sides 1.118, tangent_order 0 at
+    // jl_ad_jr 4.490, plus_minus 7.561, rows 0 (exact), ad 7.855, sides 1.118, tangent_order 0 at
     // `f64` and `Dual` / 2.694 at `f32`, jac_order 3.882, sandwich 3.644.
     //
-    // `rows` is **not** `0` here, where SO(3) records exactly `0`: that group's `Ad_Y⁻¹` is a
-    // transpose, which reproduces the dense chain bit for bit, while this one's is `Ad` of the
-    // group inverse — a conjugate and `N` sandwiches, whose rounding is its own. An exactness
-    // claim would be false, so a measured bound stands in its place.
+    // `rows` is `0`: an exactness claim, and it keeps no headroom. Every §2.3 row is reproduced
+    // bit for bit, which is what taking `Ad_Exp(τ)⁻¹` as `Ad_Exp(−τ)` buys — through `Ad` of the
+    // group inverse the same law read 2.182 `u`, because `inverse` reaches its columns as
+    // `−Rᵗ(J_l ρ)` where `Ad_Exp(−τ)` reaches them as `−J_r ρ`.
     const F64: Bounds = Bounds {
         axioms: 13.0,
         exp_log: 9.0,
         adjoint: 17.0,
         jl_ad_jr: 9.0,
         plus_minus: 16.0,
-        rows: 5.0,
+        rows: 0.0,
         ad: 16.0,
         sides: 3.0,
         tangent_order: 0.0,
@@ -252,6 +252,14 @@ mod group {
     ///
     /// `7` is twice the worst of 60 000 draws per scalar (15 000 at `N = 3`): 3.437 at `N = 2`
     /// `f64`, 3.243/3.132/3.166 at `N = 1` for `f64`/`f32`/`Dual`, 3.258 at `N = 3`.
+    ///
+    /// # Validity
+    ///
+    /// The twin's own forward error is `O(κ u)` in the conditioning of the *dense* matrix, which
+    /// is why `sen3jac_inverse_matches_reference` rejects draws with `κ u > 1e-3`. A flat bound is
+    /// sound here only because `laws::sample` caps every entry at `|m| 2^0`, so `θ <= √3` and
+    /// `J_r` stays far from the `θ = 2π` singularity that `jr_inv`'s *Domain* names. Widening the
+    /// sample toward `2π` would need the `κ` filter, and would be measuring the twin.
     fn jr_inv_vs_reference<S: Sample, const N: usize, const D: usize>(v: &[f64; D]) -> f64 {
         let t = law_tangent::<S, SEn3<S, N>, D>(v);
         let (j, fast) = (
@@ -283,10 +291,16 @@ mod group {
         fn sen3_jr_inv_matches_reference_n2(v in crate::laws::sample::<9>()) {
             crate::laws::within(jr_inv_vs_reference::<f64, 2, 9>(&v), 7.0)?;
             crate::laws::within(jr_inv_vs_reference::<f32, 2, 9>(&v), 7.0)?;
+            crate::laws::within(jr_inv_vs_reference::<Dual<f64, 9>, 2, 9>(&v), 7.0)?;
         }
+        // `N = 3` at every scalar: it is the only width where `col` holds more than two blocks, so
+        // the only one where a per-block index swap or a per-lane `Dual` error cannot hide behind
+        // symmetry (`0042` (draft) says so itself), and the generic laws are not instantiated there.
         #[test]
         fn sen3_jr_inv_matches_reference_n3(v in crate::laws::sample::<12>()) {
             crate::laws::within(jr_inv_vs_reference::<f64, 3, 12>(&v), 7.0)?;
+            crate::laws::within(jr_inv_vs_reference::<f32, 3, 12>(&v), 7.0)?;
+            crate::laws::within(jr_inv_vs_reference::<Dual<f64, 12>, 3, 12>(&v), 7.0)?;
         }
     }
 
@@ -345,17 +359,37 @@ mod group {
         close(&(a * p).0, &want.0, 1e-14);
     }
 
-    /// `act_many` is the matrix action per point, where `act` is the quaternion sandwich: the two
-    /// differ in the bits, which is why §14 keeps SO(3)'s `act_many` row.
+    /// `act_many` against its two references: the per-point action, which is what §14's row for
+    /// `SO3::act_many` names and the only one that can catch a swapped order, a skipped point or a
+    /// translation applied before the rotation; and `SO3::act_many` plus the translation, which is
+    /// the same matrix path through a different function and so holds to the bit.
+    ///
+    /// `NUMERICS.md` §14 has no row for `SEn3::act_many` and the corpus no id, so D6 is owed one;
+    /// re-deriving this function's own loop body and asserting bit equality would have proved
+    /// nothing, which is what a first version of this test did.
     #[test]
-    fn act_many_is_the_matrix_action() {
+    fn act_many_is_the_matrix_action_and_agrees_with_the_per_point_one() {
         let x = SE3::<f64>::exp(&twist([0.3, -0.7, 1.1, 0.5, -2.0, 0.25]));
-        let pts = [Point([1.5, -0.5, 2.0]), Point([0.0, 1.0, -3.0])];
+        let pts = [
+            Point([1.5, -0.5, 2.0]),
+            Point([0.0, 1.0, -3.0]),
+            Point([-4.25, 0.125, 0.0]),
+        ];
         let mut many = pts;
         x.act_many(&mut many);
-        let m = x.rotation().to_matrix();
+        // The per-point action rounds a sandwich per point where this rounds `R(q)` once, so the
+        // two differ in the bits: `3 u` is §14's tolerance for the SO(3) row this follows.
+        let u = 3.0 * f64::EPSILON;
         for (got, p) in many.iter().zip(&pts) {
-            let want = m * Vector(p.0) + x.translation();
+            let want = x * *p;
+            let scale = want.0.iter().fold(1.0_f64, |m, v| m.max(v.abs()));
+            close(&got.0, &want.0, u * scale);
+        }
+        // And bit for bit against the rotation's own batch path plus the translation.
+        let mut rotated = pts.map(|p| Vector(p.0));
+        x.rotation().act_many(&mut rotated);
+        for (got, r) in many.iter().zip(&rotated) {
+            let want = *r + x.translation();
             assert_eq!(got.0.map(f64::to_bits), want.0.map(f64::to_bits));
         }
     }

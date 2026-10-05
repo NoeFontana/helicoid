@@ -32,8 +32,10 @@ N])`**, `0029`'s names at `0029`'s level, with the fields staying private.
 - By value, not by reference, where `0029` returns `(&A, &B)`: `SO3` and `[Vec3<S>; N]` are `Copy`
   and at most thirteen scalars, and `rotation()` already returns by value.
 - `from_parts` takes an `SO3`, not a `Quat`, so the unit invariant is carried by the type that
-  states it and the `debug_assert!` of `NUMERICS.md` §3.6 stays at
-  `SO3::from_quat_unchecked`/`from_quat_normalized` — one boundary, not two (`0027`).
+  states it. That is a *typing* argument and not a checking one: `SO3::from_quat_unchecked` is a
+  move with no assertion of its own (`Quat::from_wxyz_unchecked` carries `NUMERICS.md` §3.6's
+  `debug_assert!`), so a constructor that states the §3.6 domain must reach that item — which
+  `SE3::from_quat_translation` now does, and `from_parts` does not state a domain at all.
 - The named accessors stay and stay preferred: `from_rt` and `from_quat_translation` read as what
   they are at the width where a reader knows what `t` means.
 - `API.md` §6 governs a new public item; the pair is additive, names the operation as the move it
