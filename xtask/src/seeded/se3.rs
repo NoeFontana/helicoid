@@ -1,5 +1,6 @@
 //! The seeded SE_N(3) subject: `Exp` (`docs/NUMERICS.md` §5.1) and the Jacobians `J_l`, `J_r` with
-//! Barfoot's block `Q` (§5.3) over `sen3_{exp,jr,jl}_n{1,2,3}`, and the two planted defects of
+//! Barfoot's block `Q` (§5.3) over `sen3_{exp,jr,jl}_n{1,2,3}` — and, the rotation block alone,
+//! over `so3_j{r,l}` ([`so3_jacobian`]) — and the two planted defects of
 //! `docs/PHASE1.md` §10 (`Order::TranslationFirst`, the `half` of [`jacobian`]). Generic over
 //! `Real`; the harness runs it at `f64`. Tangents are rotation-first `[φ; ρ₁; …; ρ_N]`, the dense
 //! `J` is column-major in that order (`conformance/generate/README.md`).
@@ -218,6 +219,37 @@ pub(crate) fn jacobian<S: Real>(
     Some(dense)
 }
 
+/// `J_l(φ)`, or `J_r(φ) = J_l(−φ)` where `right` (`NUMERICS.md` §3.5), as the dense column-major
+/// `3 x 3` of `so3_j{r,l}`.
+///
+/// The rotation block of [`jacobian`] and not a second program: one reading of §3.5, one `W²`
+/// form and one transcendental backend serve both ids, which is what lets a twin of either
+/// variable attribute a failure on `so3_j{r,l}` and on `sen3_j{r,l}_n*` with the same evidence
+/// (`the_so3_jacobian_is_the_rotation_block_of_the_sen3_one`).
+pub(crate) fn so3_jacobian<S: Real>(
+    phi: [S; 3],
+    right: bool,
+    kernels: &Kernels<S>,
+    form: W2,
+) -> Vec<S> {
+    // The sign of the tangent, exact, as `jacobian` takes it for the same reason (SE.9(a)).
+    let phi = match right {
+        true => phi.map(|c| -c),
+        false => phi,
+    };
+    let z = norm_sq(phi);
+    let (a, b) = (kernels.at(Coeff::A, z), kernels.at(Coeff::B, z));
+    column_major(&jl_so3(&hat(phi), a, b, form, phi, z))
+}
+
+/// A `Mat` in the order the corpus holds a dense matrix: column-major
+/// (`conformance/generate/README.md`), the order [`jacobian`]'s block writes reach entry by entry.
+fn column_major<S: Real>(m: &Mat<S>) -> Vec<S> {
+    (0..3)
+        .flat_map(|c| m.iter().map(move |row| row[c]))
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -252,6 +284,52 @@ mod tests {
 
     fn jac64(tau: &[f64], right: bool, half: f64) -> Result<Vec<f64>, String> {
         jac_form(tau, right, half, W2::Product)
+    }
+
+    /// `so3_j{r,l}` and `sen3_j{r,l}_n*` are one program. The standalone rotation block is, bit for
+    /// bit and under both `W²` forms and both sides, the block [`jacobian`] writes — so a twin's
+    /// reading on either id is a reading on the other, which is what `0032` (draft) open question 1
+    /// asks of a per-function cost.
+    #[test]
+    fn the_so3_jacobian_is_the_rotation_block_of_the_sen3_one() -> Result<(), String> {
+        let generated = Seeded::generated();
+        // `tangent` is `[φ; ρ₁; ρ₂]`, so the dense matrix `jacobian` writes is 9-square.
+        let m = 9;
+        for theta in [
+            0.0,
+            1e-9,
+            1e-3,
+            0.5,
+            0.95,
+            1.4,
+            2.6,
+            std::f64::consts::PI - 1e-6,
+        ] {
+            let tau = tangent(theta);
+            let phi = <[f64; 3]>::try_from(&tau[..3]).map_err(|e| e.to_string())?;
+            for form in [W2::Product, W2::Identity] {
+                for right in [false, true] {
+                    let block = values(&so3_jacobian(
+                        phi.map(D1::constant),
+                        right,
+                        &generated.kernels(),
+                        form,
+                    ));
+                    let dense = jac_form(&tau, right, 0.5, form)?;
+                    let want: Vec<f64> = (0..3)
+                        .flat_map(|c| (0..3).map(move |r| (c, r)))
+                        .map(|(c, r)| dense[c * m + r])
+                        .collect();
+                    let bits = |v: &[f64]| v.iter().map(|x| x.to_bits()).collect::<Vec<_>>();
+                    assert_eq!(
+                        bits(&block),
+                        bits(&want),
+                        "θ {theta}, right {right}, {form:?}"
+                    );
+                }
+            }
+        }
+        Ok(())
     }
 
     /// The twin's control. `W·W` and `φφᵀ − θ²I` are one matrix in real arithmetic, so the two

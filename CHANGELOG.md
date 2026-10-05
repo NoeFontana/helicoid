@@ -72,6 +72,23 @@ defined by the status tables in `docs/`; they win over this file.
 
 ### Added
 
+- The seeded subject and its host-`std` twin answer **`so3_jr` and `so3_jl`**, the two ids SO(3)
+  brought that no subject but `helicoid` scored. The program is the rotation block of the SE_N(3)
+  Jacobian (`se3::so3_jacobian`) and not a second reading of §3.5: it is, bit for bit and under both
+  `W²` forms and both sides, the block `se3::jacobian` writes
+  (`the_so3_jacobian_is_the_rotation_block_of_the_sen3_one`), so one `W²` twin and one backend twin
+  serve both id families. With those rows, **every domination failure of `helicoid` is attributed**:
+  5 the program's, 2 D16's, **16 neither** and **0 unattributed**, where the 16 `so3_j{r,l}` strata
+  near π previously had no twin row to read (`0032`, draft, open question 1; `0037`, draft).
+  They are not D16's for a measured reason, not an assumed one: of the 2466 records of each id's 28
+  strata, 33 reach a `sin`/`cos` argument where the `libm` crate and glibc disagree, and **not one of
+  them is on a `theta:pi-1e*` stratum** -- which is where all 16 failures are
+  (`the_swap_has_no_power_near_pi_on_the_so3_jacobians`, the reading
+  `the_swap_has_no_power_on_the_strata_near_pi` already records for `sen3_jl_n1`). The twin's rows on
+  those strata are `helicoid`'s to the bit, so what is left is 1.3--1.7x against sophus-rs on 64
+  records per stratum: a resolved comparison, and the assembly's rather than the backend's.
+  `power` takes the record's input key, `phi` for these ids where the `sen3_*` ids hold `tau`.
+
 - `helicoid`: **`SO3<S>` and `SO3Tangent<S>`** (`docs/PHASE3.md` §4), the first group with a
   non-trivial `Exp`, and the coefficient kernel's first consumer — so `mod coeffs` loses the
   `cfg(any(test, feature = "__sweep"))` it carried and a default build reaches `exp_coeffs`,

@@ -31,7 +31,7 @@ use crate::conformance::subject::{Output, Registered, Subject};
 
 use super::generated::{A_F64, B_F64, COS_HALF_F64, C_F64, D_F64, E_F64, K_F64, R_F64};
 use super::kernel::{Candidate, Coeff, Swept};
-use super::{answer, exp_at, kernels_of, log_at, se3, sen3_at, Arm};
+use super::{answer, exp_at, kernels_of, log_at, se3, sen3_at, so3_jac_at, Arm};
 
 /// The subject's name, and the value of `--subject`.
 pub(super) const NAME: &str = "seeded:host-std";
@@ -186,7 +186,7 @@ impl Subject for Twin {
     fn supports(&self, fn_id: &str) -> bool {
         Swept::of_fn(fn_id).is_some()
             || se3::parse(fn_id).is_some()
-            || matches!(fn_id, "so3_exp" | "so3_log")
+            || matches!(fn_id, "so3_exp" | "so3_log" | "so3_jr" | "so3_jl")
     }
 
     fn eval(&self, fn_id: &str, record: &Record, precision: Precision) -> Output {
@@ -197,6 +197,9 @@ impl Subject for Twin {
             Some(id) => answer(None, id, &self.arms[id.index()], record),
             None if fn_id == "so3_exp" => exp_at(record, &self.arms[Coeff::K.index()]),
             None if fn_id == "so3_log" => log_at::<Host>(record),
+            None if matches!(fn_id, "so3_jr" | "so3_jl") => {
+                so3_jac_at(fn_id, record, &kernels_of(&self.arms), se3::W2::Product)
+            }
             None => sen3_at(
                 fn_id,
                 record,
@@ -266,15 +269,16 @@ mod tests {
 
     /// Per stratum of `fn_id`: how many records reach a `sin`/`cos` argument where the two
     /// libraries disagree, out of how many. The arguments are `kernel::exact`'s: `θ = sqrt(z)`
-    /// and `θ/2`, `z = |φ|²` formed as `so3::norm_sq` forms it.
-    fn power(fn_id: &str) -> Result<BTreeMap<String, (usize, usize)>, String> {
+    /// and `θ/2`, `z = |φ|²` formed as `so3::norm_sq` forms it, read from the record's `key` —
+    /// `tau` for the `sen3_*` ids, `phi` for `so3_j{r,l}`.
+    fn power(fn_id: &str, key: &str) -> Result<BTreeMap<String, (usize, usize)>, String> {
         let path = corpus_dir()?.join(format!("{fn_id}.jsonl"));
         let text =
             std::fs::read_to_string(&path).map_err(|e| format!("{}: {e}", path.display()))?;
         let mut out: BTreeMap<String, (usize, usize)> = BTreeMap::new();
         for line in text.lines() {
             let r = corpus::parse_line(line)?;
-            let Some(&[x, y, z]) = r.input("tau").and_then(|t| t.first_chunk::<3>()) else {
+            let Some(&[x, y, z]) = r.input(key).and_then(|t| t.first_chunk::<3>()) else {
                 continue;
             };
             let th = norm_sq([x, y, z]).sqrt();
@@ -299,7 +303,7 @@ mod tests {
     /// reading depends on, and `0034` (draft) asks to hear about it.
     #[test]
     fn the_swap_has_no_power_on_the_strata_near_pi() -> Result<(), String> {
-        let per_stratum = power("sen3_jl_n1")?;
+        let per_stratum = power("sen3_jl_n1", "tau")?;
         assert_eq!(per_stratum.len(), 52);
         let near_pi = |name: &str| name.contains("pi-1e");
         for (stratum, (diverged, records)) in &per_stratum {
@@ -311,6 +315,33 @@ mod tests {
         let total: usize = per_stratum.values().map(|&(d, _)| d).sum();
         assert_eq!(total, 1, "divergent records of sen3_jl_n1's 312");
         assert_eq!(per_stratum.get("theta:1e0").map(|&(d, _)| d), Some(1));
+        Ok(())
+    }
+
+    /// The same reading for `so3_j{r,l}`, the two ids this twin gained with SO(3).
+    ///
+    /// Of the 2466 records of each id's 28 strata, 33 reach a `sin`/`cos` argument where the two
+    /// libraries disagree — and **not one is on a `theta:pi-1e*` stratum**, which is where all 16
+    /// of the pair's domination failures are (2026-10-04). So the swap cannot change an answer
+    /// where they fail, and none of the 16 is D16's cost, whatever else it is (`0037`, draft).
+    ///
+    /// Pinned, not bounded, for the reason `the_swap_has_no_power_on_the_strata_near_pi` is.
+    #[test]
+    fn the_swap_has_no_power_near_pi_on_the_so3_jacobians() -> Result<(), String> {
+        for fn_id in ["so3_jr", "so3_jl"] {
+            let per_stratum = power(fn_id, "phi")?;
+            assert_eq!(per_stratum.len(), 28, "{fn_id}");
+            let mut near_pi = 0usize;
+            for (stratum, (diverged, _)) in &per_stratum {
+                if stratum.contains("pi-1e") {
+                    near_pi += 1;
+                    assert_eq!(*diverged, 0, "{fn_id} {stratum}");
+                }
+            }
+            let total: usize = per_stratum.values().map(|&(d, _)| d).sum();
+            let records: usize = per_stratum.values().map(|&(_, n)| n).sum();
+            assert_eq!((near_pi, total, records), (12, 33, 2466), "{fn_id}");
+        }
         Ok(())
     }
 
