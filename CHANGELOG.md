@@ -70,6 +70,30 @@ defined by the status tables in `docs/`; they win over this file.
 - `eig3`'s three private helpers gain `#[inline]`, the convention the rest of the crate keeps; it
   also picks up `pi` as a literal, which it was paying as a `libm::atan2` per call.
 
+### Added
+
+- **`PHASE3.md` §8's second check: every §2.3 row against `Dual<S, DOF>` differentiation of the
+  operation it is the Jacobian of** (`laws::jacobians_match_dual`), instantiated by `laws_for!`'s
+  per-group arm on SO(3), SE(3), SE₂(3), `Rn`, the test-only Heisenberg group and the four product
+  groups. The first check, `laws::jacobian_rows`, compares each closed form with a chain of the
+  crate's *own* primitives, so a sign carried consistently through `jr`, `jl` and `Ad` satisfies it;
+  this differentiates `X ⊕ τ`, `Y ⊖ X`, `X Y`, `X⁻¹`, `Exp` and `Log` in the side's own convention
+  -- a group-valued row through `Log` of the correction, a tangent-valued one directly -- and so
+  answers "is this matrix the derivative" from outside the closed forms entirely.
+
+  Bounds twice the worst of 10 000--20 000 draws: `Rn` and `Rn x Rn` **exactly `0`** (every row is
+  `±I` or `k I` and the operations are additions), Heisenberg 0.408, the products 0.316, SO(3)
+  5.485, SE(3) 6.946, SE₂(3) 5.274. Not `0` for a group with a non-trivial `Exp`: the comparison
+  carries `Log`'s conditioning, which the closed forms do not.
+
+- `helicoid`: **`SO3::act_jacobians::<Sd>`** (`NUMERICS.md` §2.4, right `(−R [p]_×, R)`, left
+  `(−[R p]_×, R)`). `API.md` §4 lists `act_jacobians` for this group and §2.4 states its rows, so it
+  was the one specified item SO(3) was missing. Both groups' action rows are now checked against
+  `Dual` differentiation of the action itself (`act_jacobians_differentiate_the_action`), bound 11
+  from a measured 5.066 `u` over 20 000 draws -- which is not a differentiation error alone, since
+  `act` is §3.3's quaternion sandwich where the closed form goes through `to_matrix`, the same
+  difference §14's `act_many` row records.
+
 ### Changed
 
 - **Every hat-structured product in the crate skips `hat`'s three structural zeros**, through

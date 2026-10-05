@@ -27,11 +27,14 @@ const F64: Bounds = Bounds {
     tangent_order: 0.0,
     jac_order: 2.0,
     sandwich: 0.0,
+    // `PHASE3.md` §8's second check, exactly `0`: every row is `±I` or `k I` and the operations are additions, so the dual derivative is the closed form.
+    dual_rows: 0.0,
 };
 const F32: Bounds = Bounds {
     axioms: 6.0,
     tangent_order: 4.0,
     sandwich: 4.0,
+    dual_rows: 0.0,
     ..F64
 };
 

@@ -267,6 +267,26 @@ impl<S: Real> SO3<S> {
         }
     }
 
+    /// `(∂(R p)/∂R, ∂(R p)/∂p)` in the convention of `Sd` (`NUMERICS.md` §2.4): right
+    /// `(−R [p]_×, R)`, left `(−[R p]_×, R)`.
+    ///
+    /// `API.md` §4 lists `act_jacobians` for this group and §2.4 states its rows; `PHASE3.md` §8
+    /// is where both are checked against `Dual` differentiation of the action, which
+    /// `so3_tests::act_jacobians_differentiate_the_action` does.
+    ///
+    /// The first element is `Self::Jac` here only because `DOF` is `3`: it is a dense `3 x 3` and
+    /// not a structured Jacobian, as `SE3`'s is a dense `3 x 6` (`0005` permits it — the tangent of
+    /// no group is its row space).
+    #[inline]
+    pub fn act_jacobians<Sd: Side>(&self, p: Vec3<S>) -> (Mat3<S>, Mat3<S>) {
+        let r = self.to_matrix();
+        let left = match Sd::IS_RIGHT {
+            true => -mul_hat(&r, p),
+            false => -hat(r * p),
+        };
+        (left, r)
+    }
+
     /// One Newton step back onto the unit sphere (`NUMERICS.md` §3.6).
     #[inline]
     pub fn renormalize(&mut self) {

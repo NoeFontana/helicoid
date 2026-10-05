@@ -223,6 +223,8 @@ mod group {
         tangent_order: 0.0,
         jac_order: 8.0,
         sandwich: 8.0,
+        // `PHASE3.md` §8's second check, measured 6.946 at `N = 1` and 5.274 at `N = 2` over 10 000 draws each.
+        dual_rows: 14.0,
     };
     // `tangent_order` is one rounding at `f32` where it is exact at `f64`, as for SO(3); every
     // other law agrees within 25% across the precisions, so one set serves them.
