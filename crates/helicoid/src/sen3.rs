@@ -271,7 +271,7 @@ impl<S: Real, const N: usize> SEn3<S, N> {
     }
 
     /// The element of a rotation and its columns, exactly: a move of `3 + 4` numbers, no
-    /// transcendental and no round trip through `Exp`/`Log` (`0042` draft, which is `0029` one
+    /// transcendental and no round trip through `Exp`/`Log` (`0042`, which is `0029` one
     /// level down — the same question `Product::from_parts` answered, for the concrete group).
     ///
     /// The named forms are the ones to prefer where they exist: [`SE3::from_rt`],
@@ -283,7 +283,7 @@ impl<S: Real, const N: usize> SEn3<S, N> {
     }
 
     /// The rotation and the columns, exactly: the inverse of [`from_parts`](Self::from_parts), and
-    /// the only way to read an `N > 2` element without a `Log` (`0042` draft).
+    /// the only way to read an `N > 2` element without a `Log` (`0042`).
     #[inline]
     pub fn parts(&self) -> (SO3<S>, [Vec3<S>; N]) {
         (self.rotation(), self.x)

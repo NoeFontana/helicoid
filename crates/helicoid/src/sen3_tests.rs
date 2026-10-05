@@ -295,7 +295,7 @@ mod group {
         }
         // `N = 3` at every scalar: it is the only width where `col` holds more than two blocks, so
         // the only one where a per-block index swap or a per-lane `Dual` error cannot hide behind
-        // symmetry (`0042` (draft) says so itself), and the generic laws are not instantiated there.
+        // symmetry (`0042` says so itself), and the generic laws are not instantiated there.
         #[test]
         fn sen3_jr_inv_matches_reference_n3(v in crate::laws::sample::<12>()) {
             crate::laws::within(jr_inv_vs_reference::<f64, 3, 12>(&v), 7.0)?;

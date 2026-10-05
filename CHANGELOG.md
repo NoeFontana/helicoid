@@ -107,7 +107,7 @@ defined by the status tables in `docs/`; they win over this file.
   is formed once per call and passed in.
   Scored over **all 21 `sen3_*` corpus ids** at `N = 1, 2, 3`, no non-finite output, which takes the
   envelope from 170 paired strata to **484**.
-  `from_parts`/`parts` land with it (`0042`, draft): `PHASE3.md` §5 names the accessors per `N`, and
+  `from_parts`/`parts` land with it (`0042`, ready): `PHASE3.md` §5 names the accessors per `N`, and
   the corpus's `sen3_log_n3` and `sen3_ad_n3` records *are* an element's parts, so without them the
   shipped code could not answer its own ids -- and making the conformance subject a privileged
   reader would retire `0006`'s external-consumer guarantee for every id at once.

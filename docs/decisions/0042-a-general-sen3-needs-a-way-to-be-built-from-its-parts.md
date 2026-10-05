@@ -1,9 +1,9 @@
 # 0042: a general `SEn3` needs a way to be built from its parts
 
-**Status:** draft (awaiting a decision)
+**Status:** ready
 **Owner:** @NoeFontana
-**Implementation:** `crates/helicoid/src/sen3.rs` (`SEn3::from_parts`, `SEn3::parts`), landed with
-the SE_N(3) PR under the reading below; this record is the question written out.
+**Implementation:** `crates/helicoid/src/sen3.rs` (`SEn3::from_parts`, `SEn3::parts`), in the
+SE_N(3) PR (#85) as the plan below states.
 
 ## Context
 
@@ -61,14 +61,47 @@ per-block bug cannot hide behind symmetry.
 - `parts` is the first public reader of all `N` columns. A consumer storing an `SE23` can now
   recover `v` and `p` without `Log`, which is `0029`'s argument unchanged.
 
-## Open questions
+## The §6 check
 
-1. Should `from_rt` become `from_parts`'s alias rather than its own body? They differ only in the
-   array literal today.
-2. `SE23` has no `from_parts`-shaped named constructor (`from_rvp`?), which `PHASE3.md` §5 does not
-   list either. Left unasked until a consumer holds a velocity and a position.
+[`API.md`](../API.md) §6's seven lines, which a PR adding public API answers:
+
+1. **Which rule of §1 could it violate?** **R3** — order is stated, never inferred. `parts` returns
+   `[Vec3<S>; N]`, and an array's meaning is positional. It is not a flat array in R3's sense: the
+   entries are the group's own columns in the group's own order, `x₁ … x_N`, which is the struct's
+   field order and `NUMERICS.md` §5's, and for the one width whose columns have names the named
+   readers exist and are documented as preferred (`SE23::velocity`, `SE23::position`,
+   `docs/maths/se3.md` SE.1). `write_dense`/`read_dense` remain the only flat path.
+2. **Corpus stratum or reference twin?** Neither applies: both are exact moves of `Copy` values with
+   no arithmetic in them, so there is no rounding to score and nothing for a twin to disagree with.
+   What they owe instead is a bit-equality round trip, which `sen3_tests`'
+   `parts_round_trip_and_the_se23_accessors_name_their_columns` is.
+3. **Domain stated and `debug_assert!`ed?** Neither has a domain: `from_parts` takes an `SO3`, whose
+   type carries the unit invariant, and an array of three-vectors, and every `[Vec3; N]` is a valid
+   set of columns. So no `# Domain` section, by R6 read as written. The constructor that *does* have
+   one, `SE3::from_quat_translation`, states it and reaches
+   `Quat::from_wxyz_unchecked`'s assert for it.
+4. **A `bool` from a float, a dense Jacobian, or an unlabeled array?** No, no, and no — see line 1
+   for the array.
+5. **Does it duplicate an existing path?** At `N = 1`, `from_parts(r, [t])` reaches what
+   `from_rt(r, t)` reaches. §6 asks for the existing one to be documented instead, and it is: both
+   methods say the named forms are preferred where they exist.
+6. **Ownership (`0009`)?** A group's own constructor and reader. Nothing of a consumer's is in it.
+7. **`no_std`, allocation-free, dependency-free, bit-identical across targets?** Yes — `3 + 3N`
+   scalar moves, no arithmetic, so D16 is satisfied by there being nothing to round.
+
+## Implementation plan
+
+1. `SEn3::from_parts` and `SEn3::parts` with the SE_N(3) group (#85), the fields staying
+   `private` — verified by `parts_round_trip_and_the_se23_accessors_name_their_columns` (bit
+   equality both ways, and the `N = 2` accessors reading the columns `parts` returns), and by the
+   `helicoid` subject answering all seven `sen3_*_n3` corpus ids, which is the need this record is
+   about and which no other surface can meet.
+2. `PHASE3.md` §5's accessor bullet, written per `N`, gains the generic pair — in this PR, now that
+   the record is `ready`.
 
 ## Further work
 
-1. `PHASE3.md` §5's accessor bullet is written per `N`; it gains the generic pair when this record
-   is `ready`.
+1. Should `from_rt` become `from_parts`'s alias rather than its own body? They differ only in the
+   array literal today. The Decision does not depend on it: both methods exist either way.
+2. `SE23` has no `from_parts`-shaped named constructor (`from_rvp`?), which `PHASE3.md` §5 does not
+   list either. Left unasked until a consumer holds a velocity and a position.
