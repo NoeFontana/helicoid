@@ -203,6 +203,18 @@ pub(super) fn judge_with(
     twin: Option<&Subject>,
 ) -> Verdict {
     let index = Index::new(oracles);
+    // Owned, so the `None` arm can name the twin the run actually read -- the candidate's own
+    // where one exists, a stand-in's otherwise -- instead of a fixed name that may blame a subject
+    // the run never read.
+    let no_row = match twin {
+        Some(t) => format!(
+            " [only a host-`std` oracle beats this; `{}` has no row to attribute it]",
+            t.name
+        ),
+        None => {
+            " [only a host-`std` oracle beats this; no twin was read to attribute it]".to_string()
+        }
+    };
     let mut v = Verdict::default();
     let mut answered = BTreeSet::new();
     if baseline.is_none() {
@@ -278,8 +290,10 @@ pub(super) fn judge_with(
                             }
                             None => {
                                 v.dominated_host_std += 1;
-                                " [only a host-`std` oracle beats this; `seeded:host-std` has no \
-                                 row to attribute it]"
+                                // The twin that has no row is named by the caller: it is the
+                                // candidate's own where one exists and a stand-in's otherwise, so
+                                // a fixed name here would blame a subject the run never read.
+                                &no_row
                             }
                         }
                     };
@@ -377,8 +391,7 @@ mod tests {
         assert_eq!((v.dominated_same_backend, v.dominated_host_std), (0, 1));
         assert!(
             v.failures[0].text.ends_with(
-                "[only a host-`std` oracle beats this; `seeded:host-std` has no row to \
-                            attribute it]"
+                "[only a host-`std` oracle beats this; no twin was read to attribute it]"
             ),
             "{:?}",
             v.failures[0].text

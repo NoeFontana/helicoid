@@ -437,9 +437,10 @@ fn q_block<S: Real>(x: &Mat3<S>, w: &Mat3<S>, ww: &Mat3<S>, b: S, d: S, e: S) ->
 /// The matrix words of `Q`, grouped as §5.3 writes them: `W X + X W`, `W X W`, `W W X + X W W`, and
 /// `W X W W + W W X W`.
 ///
-/// Six `3 x 3` products, which is all of `Q`'s multiplication. They are separated from the
-/// assembly because **both sides read one set of them**: `Q(−ρ, −φ)`'s words are these up to exact
-/// signs, so [`inverses`] forms them once where two `q_block` calls formed them twice.
+/// **Seven `3 x 3` products**, which is all of `Q`'s multiplication beyond the `W²` the caller
+/// hands in. They are separated from the assembly because **both sides read one set of them**:
+/// `Q(−ρ, −φ)`'s words are these up to exact signs, so [`inverses`] forms them once where two
+/// `q_block` calls formed them twice.
 #[derive(Clone, Copy)]
 struct Words<S> {
     /// `W X + X W`, the first two terms of the `b` word.
@@ -487,16 +488,19 @@ fn q_assemble<S: Real>(x: &Mat3<S>, v: &Words<S>, b: S, d: S, e: S, negate: bool
 /// separately, from **one** set of `Q`'s products per column.
 ///
 /// The two sides of `⊖`'s Jacobians are one program read twice: `θ²`, `W`, `W²`, `q_coeffs` and
-/// all six matrix products of [`q_words`] are shared, and only the assembly's signs and the
-/// `SO3::jr_inv` of `±φ` differ. Those products are `6 × 27` multiplications per column, which is
-/// most of what this path costs, and `rminus_jacobians` was paying for them twice.
+/// all **seven** matrix products of [`q_words`] are shared, and only the assembly's signs and the
+/// diagonal block differ. Those products are `7 × 27` multiplications per column, which is most of
+/// what this path costs, and `rminus_jacobians` was paying for them twice.
+///
+/// The diagonal is a **transpose**, not a second closed form: `J_l⁻¹(φ) = J_r⁻¹(φ)ᵗ` bit for bit
+/// (the argument is in `SO3::rminus_jacobians`'s rustdoc, and
+/// `so3_tests::jl_is_jr_transposed_to_the_bit` pins it over 4000 draws), so the second
+/// `SO3::jr_inv` — a `norm_sq`, a `sqrt`, a `jr_inv_coeff` branch, a `hat` and a 27-multiply
+/// product — is a transpose instead.
 #[inline]
 fn inverses<S: Real, const N: usize>(tau: &SEn3Tangent<S, N>) -> (SEn3Jac<S, N>, SEn3Jac<S, N>) {
-    // `SO3::jr_inv` of `±φ`, each through its own call: the SO(3) closed form stays in SO(3), and
-    // its own `norm_sq`, `hat` and `jr_inv_coeff` are cheap beside `Q`'s products. `W²` is the same
-    // matrix for both signs, entry for entry, so the columns share one.
     let right = SO3::jr_inv(&SO3Tangent { phi: tau.phi });
-    let left = SO3::jr_inv(&SO3Tangent { phi: -tau.phi });
+    let left = right.transpose();
     let (b, d, e) = q_coeffs(norm_sq(tau.phi));
     let w = hat(-tau.phi);
     let ww = w * w;
@@ -673,11 +677,11 @@ impl<S: Real, const N: usize> LieGroup<S> for SEn3<S, N> {
     /// do not: `J_l⁻¹(τ)`'s is `Q(ρ, φ)`'s and `J_r⁻¹(τ)`'s is `Q(−ρ, −φ)`'s, and the transpose of
     /// a `SEn3Jac` is block *upper* triangular, so it is not a `SEn3Jac` to return.
     ///
-    /// Fused through this module's `inverses`, which `PHASE3.md` §11's benches decided: `Q`'s six
-    /// products per column are most of this call, two `q_block` calls formed them twice, and
-    /// `Q(−ρ, −φ)`'s words are `Q(ρ, φ)`'s up to exact signs. Not a second rounding —
-    /// `laws::jacobian_rows` holds the
-    /// fused pair against separate `jr_inv`/`jl_inv` calls at a bound of exactly `0`.
+    /// Fused through this module's `inverses`, which `PHASE3.md` §11's benches decided: `Q`'s
+    /// seven products per column are most of this call and two `q_block` calls formed them twice.
+    /// `the_fused_inverses_are_the_separate_ones_to_the_bit` holds it to the unfused pair, and
+    /// `laws::jacobian_rows` holds this row against separate `jr_inv`/`jl_inv` calls at a bound of
+    /// exactly `0`.
     #[inline]
     fn rminus_jacobians(&self, base: &Self) -> (SEn3Jac<S, N>, SEn3Jac<S, N>) {
         let (jr, jl) = inverses(&self.rminus(base));

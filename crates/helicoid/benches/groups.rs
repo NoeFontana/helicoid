@@ -13,9 +13,18 @@
 //!
 //! Fixtures are the three strata of §9 — near-identity, generic, near-π — with `|φ| = θ` along
 //! `(1, 2, 2)/3` and the translation columns fixed, so a row differs from its neighbour in `θ`
-//! alone. The `f32` fixture is the `f64` one rounded, which is what a caller at `f32` holds;
+//! alone. A `⊖` row is the one that takes care: `x.rminus_jacobians(&base)` evaluates at
+//! `τ = Log(base⁻¹ x)`, so two elements of the labelled `θ` about *different* axes would put it on
+//! another stratum entirely — at `θ = π − 1e-6` about axes 63.6° apart, `τ` comes out near
+//! 2.22 rad and the near-π arm is never reached. Those rows take `base = x · Exp(−τ)`, which makes
+//! `Log(base⁻¹ x)` the labelled tangent itself. The `f32` fixture is the `f64` one rounded, which
+//! is what a caller at `f32` holds;
 //! `Real::lit` is not used, because `7.5e-8` and `π − 1e-6` are no binary32 and `lit` states its
 //! argument is exactly representable.
+//!
+//! A baseline binary for `--against` is built **in this tree**, with only the bodies under test
+//! reverted. Built in a separate git worktree instead, identical `se3/jr` code read 0.97 — a build
+//! directory alone moves a row 2–3%, which is the layout effect `xtask::bench`'s docs warn about.
 //!
 //! Timing is a function of the host, not of the output bits, so nothing here is a D16 claim. The
 //! gate is `cargo xtask bench-gate --against`, whose bracketed A/A control says how much of a ratio
@@ -33,7 +42,7 @@ use core::time::Duration;
 
 use criterion::measurement::WallTime;
 use criterion::{criterion_group, criterion_main, BatchSize, BenchmarkGroup, Criterion};
-use helicoid::{Jac, LieGroup, SEn3Tangent, SO3Tangent, SE3, SO3};
+use helicoid::{Jac, LieGroup, SEn3Tangent, SO3Tangent, Tangent, SE3, SO3};
 use helicoid_linalg::{Point, Point3, Real, Vec3, Vector};
 
 /// `(name, θ)`: §9's three strata.
@@ -102,6 +111,9 @@ fn so3<S: Fixture>(g: &mut BenchmarkGroup<'_, WallTime>, name: &str, theta: f64)
         },
     );
     let (x, y) = (SO3::<S>::exp(&ta), SO3::<S>::exp(&tb));
+    // `x ⊖ base = Log(base⁻¹ x)`, so this `base` makes the `⊖` row's tangent `ta` and its stratum
+    // the label's; `y` is a second element about another axis, which is what the other rows want.
+    let base = x * SO3::<S>::exp(&SO3Tangent { phi: -ta.phi });
     let (ja, jb) = (SO3::<S>::jr(&ta), y.adjoint());
     let v = phi::<S>(1.0, true);
     let pts = points::<S>();
@@ -137,7 +149,7 @@ fn so3<S: Fixture>(g: &mut BenchmarkGroup<'_, WallTime>, name: &str, theta: f64)
         b.iter(|| Jac::<S, SO3Tangent<S>>::mul(black_box(&ja), black_box(&jb)));
     });
     g.bench_function(format!("so3/rminus_jacobians/{name}"), |b| {
-        b.iter(|| black_box(&x).rminus_jacobians(black_box(&y)));
+        b.iter(|| black_box(&x).rminus_jacobians(black_box(&base)));
     });
 }
 
@@ -162,6 +174,9 @@ fn sen3<S: Fixture, const N: usize>(
         <helicoid::SEn3<S, N> as LieGroup<S>>::exp(&ta),
         <helicoid::SEn3<S, N> as LieGroup<S>>::exp(&tb),
     );
+    // As in `so3`: the `⊖` row's tangent is `ta` itself, not `Log(y⁻¹ x)` of two same-`θ`
+    // elements about different axes, which lands on another stratum.
+    let base = x * <helicoid::SEn3<S, N> as LieGroup<S>>::exp(&ta.neg());
     let (ja, jb) = (<helicoid::SEn3<S, N> as LieGroup<S>>::jr(&ta), x.adjoint());
     g.bench_function(format!("{tag}/exp/{name}"), |b| {
         b.iter(|| <helicoid::SEn3<S, N> as LieGroup<S>>::exp(black_box(&ta)));
@@ -185,7 +200,7 @@ fn sen3<S: Fixture, const N: usize>(
         b.iter(|| Jac::<S, SEn3Tangent<S, N>>::mul(black_box(&ja), black_box(&jb)));
     });
     g.bench_function(format!("{tag}/rminus_jacobians/{name}"), |b| {
-        b.iter(|| black_box(&x).rminus_jacobians(black_box(&y)));
+        b.iter(|| black_box(&x).rminus_jacobians(black_box(&base)));
     });
 }
 

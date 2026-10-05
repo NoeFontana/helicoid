@@ -536,19 +536,46 @@ mod tests {
             assert!(twin.supports(&id), "{id}");
         }
         assert!(!twin.supports("so3_jl_jr"));
-        // A `θ` where `Log` is on its exact arm, so `atan2` is reached and the two libraries can
-        // disagree: the quaternion of a quarter turn about `(1, 2, 2)/3`.
-        let (s, c) = (core::f64::consts::FRAC_PI_4).sin_cos();
-        let q = [c, s / 3.0, 2.0 * s / 3.0, 2.0 * s / 3.0];
-        let rec = record(&[("q", &q), ("x", &[0.5, -2.0, 0.25])], &[])?;
-        let (mine, theirs) = (
-            Helicoid.eval("sen3_log_n1", &rec, Precision::F64),
-            twin.eval("sen3_log_n1", &rec, Precision::F64),
-        );
-        assert_eq!(mine.keys().collect::<Vec<_>>(), ["tau"]);
-        assert_eq!(theirs.keys().collect::<Vec<_>>(), ["tau"]);
+        // Sampled, not one point: two libms agreeing to the bit at a given argument is ordinary,
+        // so a single quaternion would make this test a property of the host's libc. The claim is
+        // that *some* `θ` differs, which is what `host::the_scalar_differs_from_the_libm_crate_
+        // in_the_transcendentals_only` asserts of the scalar; this asserts it of the group path.
+        let mut state = 0x9E37_79B9_7F4A_7C15_u64;
+        let mut next = || {
+            state = state
+                .wrapping_mul(6_364_136_223_846_793_005)
+                .wrapping_add(1_442_695_040_888_963_407);
+            (state >> 11) as f64 / (1u64 << 53) as f64
+        };
         let bits = |o: &Output| o["tau"].iter().map(|x| x.to_bits()).collect::<Vec<_>>();
-        assert_ne!(bits(&mine), bits(&theirs), "the swap changed nothing");
+        let mut differed = 0usize;
+        for _ in 0..2000 {
+            // A unit quaternion at a random `θ` in `(0, π)` about a random axis, so `Log` is on
+            // its exact arm and reaches `atan2`.
+            let theta = core::f64::consts::PI * next();
+            let v = [next() - 0.5, next() - 0.5, next() - 0.5];
+            let n = v
+                .iter()
+                .map(|c| c * c)
+                .sum::<f64>()
+                .sqrt()
+                .max(f64::MIN_POSITIVE);
+            let (sin, cos) = (theta * 0.5).sin_cos();
+            let q = [cos, sin * v[0] / n, sin * v[1] / n, sin * v[2] / n];
+            let rec = record(&[("q", &q), ("x", &[0.5, -2.0, 0.25])], &[])?;
+            let (mine, theirs) = (
+                Helicoid.eval("sen3_log_n1", &rec, Precision::F64),
+                twin.eval("sen3_log_n1", &rec, Precision::F64),
+            );
+            assert_eq!(mine.keys().collect::<Vec<_>>(), ["tau"]);
+            assert_eq!(theirs.keys().collect::<Vec<_>>(), ["tau"]);
+            differed += usize::from(bits(&mine) != bits(&theirs));
+        }
+        assert!(differed > 0, "the swap changed nothing over 2000 draws");
+        let rec = record(
+            &[("q", &[1.0, 0.0, 0.0, 0.0]), ("x", &[0.5, -2.0, 0.25])],
+            &[],
+        )?;
         // `f64` only, for the reason the subject's doc gives.
         assert!(twin.eval("sen3_log_n1", &rec, Precision::F32).is_empty());
         assert!(twin.eval("so3_exp", &rec, Precision::F32).is_empty());

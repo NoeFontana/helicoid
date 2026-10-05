@@ -80,7 +80,10 @@ defined by the status tables in `docs/`; they win over this file.
   gate run claims nothing from it.
   The A/A floor over the 27 rows two pending optimisations would move was **worst 1.25%, median
   0.32%** on a `taskset`-pinned core, against the 0.6864 that one session of `0033` (draft)
-  recorded. The rows then reordered both: `se3/jr` is **6.8x** `so3/jr` (445 ns against 65), and
+  recorded. `--bless` and the report path cover a whole target, so `--only` is refused there rather
+  than silently ignored, the committed samples are keyed on the target (blessing one would have
+  emptied the other's directory), and the default path clears its criterion slot, which only
+  mattered once a second target shared the tree. The rows then reordered both: `se3/jr` is **6.8x** `so3/jr` (445 ns against 65), and
   its near-identity row -- every coefficient on its series arm, so not one `sin_cos` -- is only
   30 ns cheaper, so the transcendentals are **~7% of that row** and Barfoot's `Q` is the cost.
 
@@ -99,16 +102,28 @@ defined by the status tables in `docs/`; they win over this file.
 - **`SEn3`'s `rminus_jacobians`/`lminus_jacobians` fuse their two inversions**, 0.645--0.661 of the
   time at `N = 1` and 0.621--0.634 at `N = 2` -- on what `SO3::rminus_jacobians` calls the crate's
   hottest Jacobian path, one per residual per solver iteration. Both sides share `θ²`, `W`, `W²`,
-  the `q_coeffs` branch and **all six of `Q`'s matrix products**, which is most of what the call
-  costs: `Q(−ρ, −φ)`'s words are `Q(ρ, φ)`'s with three exact sign changes and no new product, so
-  `q_words` forms them once and `q_assemble` reads the signs off the side.
-  **Not a second rounding:** `laws::jacobian_rows` holds the fused pair against separate
-  `jr_inv`/`jl_inv` calls at a bound of exactly `0`, over 100 000 cases, and the whole corpus
-  re-scores byte-identically -- 1559 rows, every failing row's maximum unmoved. Measured with
-  `bench-gate --against` against the pre-change binary, each ratio far below its own concurrent A/A
-  floor, with the untouched `jr`, `jr_inv` and `so3` rows at 0.987--1.020 inside theirs.
-  `q_block` keeps one code path through the same two functions, so the standalone `jr`/`jr_inv` are
-  bit-identical to what they were.
+  the `q_coeffs` branch, the `SO3::jr_inv` (the left diagonal block is the right one **transposed**,
+  bit for bit, which `so3_tests::jl_is_jr_transposed_to_the_bit` pins over 4000 draws and
+  `SO3::rminus_jacobians` has always taken) and **all seven of `Q`'s matrix products**, which is
+  most of what the call costs: `Q(−ρ, −φ)`'s words are `Q(ρ, φ)`'s with two sign changes and no new
+  product, so `q_words` forms them once and `q_assemble` reads the signs off a `const` side.
+  **Bit-identical, and pinned as such:** `the_fused_inverses_are_the_separate_ones_to_the_bit`
+  compares `to_bits` over 4002 blocks -- a random sweep plus the pure translation where `φ = 0`,
+  every word of `Q` is a zero matrix and only the signs of those zeros are left -- and finds **0**
+  differing. `laws::jacobian_rows` bounds the same pair at `0 u`, but that is an *error* bound and
+  cannot see a signed zero, which is why the bit test exists: each side builds its own `X` with
+  `hat`, because negating the other's gave the `½ρ^` diagonal `−0` where the unfused path has the
+  `+0` `hat` writes. The whole corpus re-scores byte-identically -- 1559 rows, every failing row's
+  maximum unmoved.
+  Measured with `bench-gate --against`, the baseline binary built **in this tree from this bench
+  file** with only the two method bodies reverted, so nothing but the implementation differs:
+  `se3` **0.5953--0.5981**, `se23` **0.5945--0.5964**, floors 0.006--0.009. Every control --
+  `so3/*`, which does not reach `Q`, and `se3/jr`/`jr_inv`, which the change does not touch -- sat
+  at 0.993--1.024 inside its own floor.
+  A first pass measured the baseline in a **separate git worktree** and read 0.97 on `se3/jr`,
+  code that is identical in both trees: a build directory is enough to move a row 2--3%, which is
+  the layout effect this module's docs already warn about. A baseline for a latency claim is built
+  in the tree it is compared against.
 
 ### Added
 

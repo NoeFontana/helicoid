@@ -105,8 +105,21 @@ const AA_SLOTS: (&str, &str) = ("aa-1", "aa-2");
 /// over a shorter span than the comparison, which is the asymmetry that licenses a false verdict.
 const BRACKET_SLOT: &str = "aa-3";
 
-/// Where `--bless` keeps the committed samples the gate compares against.
+/// Where `--bless` keeps the committed samples the gate compares against, for the default target.
+///
+/// `samples::write_all` empties the directory first, so a target writing into another's would
+/// delete it: [`baseline_dir`] keys the path on the target, and only the default keeps this path,
+/// which is the one already committed.
 const BASELINE: &str = "baseline/bench";
+
+/// The committed-samples directory of `bench`: [`BASELINE`] for the default target, and
+/// `baseline/bench-<target>` for any other.
+fn baseline_dir(bench: &str) -> String {
+    match bench == BENCH {
+        true => BASELINE.to_string(),
+        false => format!("{BASELINE}-{bench}"),
+    }
+}
 
 /// How many adjacent pairs a benchmark measures. In `--aa` the **least disturbed** one carries the
 /// verdict; in `--against` every triplet's pairs must agree, and the triplets are a pass apart.
@@ -222,6 +235,31 @@ fn parse_args(args: &[String]) -> Result<Options, String> {
             "`--record` persists what `--against` measures; pass `--against` too".to_string(),
         );
     }
+    // A subset decides one change against the rows that change can move. It cannot report the
+    // suite's worst and must not persist one: the report path and `--bless` read and write every
+    // row of the target, so `--only` there would be silently ignored or, worse, write a floor and
+    // a baseline measured over a few rows under the whole target's name.
+    if !o.only.is_empty() && !(o.aa || o.against.is_some()) {
+        return Err(
+            "`--only` is for `--aa` or `--against`, which judge per benchmark; the report \
+             and `--bless` paths cover the whole target"
+                .to_string(),
+        );
+    }
+    if !o.only.is_empty() && o.bless {
+        return Err(
+            "`--only` measures a subset and `--bless` persists a target's floor and \
+             baseline; they do not go together"
+                .to_string(),
+        );
+    }
+    if o.replay.is_some() && (!o.only.is_empty() || o.bench != BENCH) {
+        return Err(
+            "`--replay` runs the rule over a recording and builds nothing, so `--bench` \
+             and `--only` have nothing to select"
+                .to_string(),
+        );
+    }
     Ok(o)
 }
 
@@ -303,21 +341,26 @@ pub(crate) fn run(args: &[String]) -> Result<(), String> {
         );
     }
 
+    // The slot persists and `read_all` reads every benchmark that has one, so a run of another
+    // target would otherwise fold its rows into this candidate -- harmless when there was one
+    // target, a wrong baseline or a misleading "benched different sets" once there are two.
+    clear_slots(&criterion)?;
     bench(&root, &mine, AA_SLOTS.1, None)?;
     let candidate = samples::read_all(&criterion, AA_SLOTS.1)?;
 
+    let rel = baseline_dir(&o.bench);
     if o.bless {
-        let dir = root.join(BASELINE);
+        let dir = root.join(&rel);
         if o.dry_run {
             eprintln!(
-                "bench-gate --dry-run: would write {} benchmark(s) under {BASELINE}",
+                "bench-gate --dry-run: would write {} benchmark(s) under {rel}",
                 candidate.len()
             );
             return Ok(());
         }
         samples::write_all(&dir, &candidate)?;
         eprintln!(
-            "bench-gate --bless: wrote {} benchmark(s) under {BASELINE} ({})",
+            "bench-gate --bless: wrote {} benchmark(s) under {rel} ({})",
             candidate.len(),
             host_line()
         );
@@ -325,7 +368,7 @@ pub(crate) fn run(args: &[String]) -> Result<(), String> {
     }
 
     let floor = last_max(&read_host(&root.join(HOST))?);
-    let baseline = samples::read_committed(&root.join(BASELINE))?;
+    let baseline = samples::read_committed(&root.join(&rel))?;
     let report = compare(&baseline, &candidate)?;
     eprintln!("{}", report.text(Some(floor)));
     // Reported, not gated: see the module doc. The counts are printed so the drift is visible and
