@@ -54,8 +54,8 @@ const F64: Bounds = Bounds {
     sandwich: 8.0,
     // `PHASE3.md` §8's second check, measured 5.485 over 20 000 draws.
     dual_rows: 11.0,
-    // `PHASE4.md` §1 and §3's six legs, over 10^6 draws of `laws::Rng`'s own geodesic stream (`measure_geodesic`), twice the worst of the three scalars, rounded up: symmetry 10.719 / 10.768, left 12.537 / 12.143, right 11.424 / 12.311, `t=1` 6.756 / 7.319. The `velocity` leg is exactly 0 on every group -- it is `rminus` against itself until a group overrides -- and `t=0` is `gerr`'s floor for two **bitwise equal** elements, not a geodesic error: `q* q` leaves a residue of about one `u` in the vector part, so it reads 1.118 whatever the curve does; `geodesic_at_zero_is_the_left_endpoint_bit_for_bit` is the statement that has no floor.
-    geodesic: 26.0,
+    // `PHASE4.md` §1 and §3's seven legs, in `GEODESIC_LEGS`'s order, each twice the worst of 10^6 draws of `laws::Rng::shaped` -- `laws::sample`'s own distribution, which is what the proptest draws -- rounded up: `t=1` 6.339 / 7.160, symmetry 8.521 / 8.951, velocity 5.803 / 6.505, left 8.637 / 9.122, right 8.285 / 9.663. `t=0` and `twin` are both 1.118, `gerr`'s floor for two bitwise equal quaternions (`Bounds::geodesic` says why); `SO3` overrides nothing, so `twin` compares a call with itself.
+    geodesic: [3.0, 15.0, 18.0, 14.0, 19.0, 20.0, 3.0],
 };
 const F32: Bounds = Bounds {
     tangent_order: 3.0,
@@ -657,4 +657,27 @@ fn geodesic_at_zero_is_the_left_endpoint_bit_for_bit() {
             "t = 0 moved {w:?} along {d:?}"
         );
     }
+    // The one exception, which `LieGroup::geodesic`'s rustdoc states: a `−0.0` in the
+    // representation can come back `+0.0`, because `w₀ − x₀·(−0) − …` sums signed zeros and a sum
+    // of zeros is negative only when every term is. The value is unchanged; for `w` the bit is
+    // load-bearing, since `NUMERICS.md` §3.2 keeps `w = +0` and `Log`'s flip reads it.
+    let x0 = q([-0.0, 0.6, 0.0, 0.8]);
+    let x1 = x0.rplus(&SO3Tangent {
+        phi: Vector([-0.3, -0.5, -0.7]),
+    });
+    let got = SO3::geodesic(&x0, &x1, 0.0).quat();
+    assert_eq!(x0.quat().w.to_bits(), (-0.0_f64).to_bits());
+    // A value comparison, not a float `==`: `+0.0` and `-0.0` compare equal and clippy's
+    // `float_cmp` is denied.
+    assert_eq!(
+        got.w.partial_cmp(&x0.quat().w),
+        Some(core::cmp::Ordering::Equal),
+        "the value is unchanged"
+    );
+    assert_eq!(
+        got.w.to_bits(),
+        0.0_f64.to_bits(),
+        "a `−0.0` `w` is expected back as `+0.0`; if this ever keeps the sign, the rustdoc caveat \
+         on `LieGroup::geodesic` can be dropped"
+    );
 }

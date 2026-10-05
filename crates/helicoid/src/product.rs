@@ -372,7 +372,10 @@ impl<S: Real, A: LieGroup<S>, B: LieGroup<S>> LieGroup<S> for Product<A, B> {
     /// Under this law the curve is left- **and** right-invariant, exactly, because
     /// `Ad_H = diag(Ad_{H_A}, Ad_{H_B})` is block diagonal; read as an SE(3) pose it is
     /// left-invariant only, which `PHASE4.md` §3 asserts as a positive failure against *that*
-    /// composition and not against this one (`docs/maths/geodesics.md` GE.5, `0045`).
+    /// composition and not against this one:
+    /// `product_tests::so3_r3::the_se3_reading_fails_right_invariance_by_ge5bs_closed_form` checks
+    /// the gap against GE.5(b)'s closed form `R_0 M_s t_H`, so it cannot pass on an unrelated
+    /// defect (`docs/maths/geodesics.md` GE.5, `0045` item 4).
     #[inline]
     fn geodesic(x0: &Self, x1: &Self, t: S) -> Self {
         Self(A::geodesic(&x0.0, &x1.0, t), B::geodesic(&x0.1, &x1.1, t))

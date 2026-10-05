@@ -189,11 +189,20 @@ pub trait LieGroup<S: Real>: Copy + Blend<S> + Mul<Output = Self> {
     /// The group geodesic `γ(x0, x1, t) = x0 · Exp(t · (x1 ⊖_R x0))` (`NUMERICS.md` §10).
     ///
     /// The provided body **is** [`reference::geodesic`](crate::reference::geodesic) and calls it,
-    /// so a group that overrides this with a fast twin is proptested against the one expression
-    /// this returns and the two cannot drift apart (`PHASE4.md` §1.1, D6).
+    /// so a group that overrides this with a fast twin is measured against the one expression this
+    /// returns -- `laws::geodesic_legs`'s `twin` leg, which every group carries because it costs
+    /// nothing where there is no override (`PHASE4.md` §1.1, D6).
     ///
-    /// `t` outside `[0, 1]` extrapolates along the same curve; `t = 0` returns `x0` and `t = 1`
-    /// returns `x1` to rounding (exactly, at `t = 0`, for every group that ships).
+    /// `t` outside `[0, 1]` extrapolates along the same curve, and `t = 1` returns `x1` to
+    /// rounding.
+    ///
+    /// At `t = 0` the answer is `x0` **bit for bit**, on every group that ships, with one
+    /// exception: a component of `x0`'s representation that is `-0.0` can come back `+0.0`.
+    /// `d.scale(0)` is `±0` per component, so the composition adds signed zeros, and a sum of
+    /// zeros is negative only when every term is. The value is unchanged either way; the bit is
+    /// not, and for a quaternion's `w` that sign is load-bearing, since `NUMERICS.md` §3.2 keeps
+    /// `w = +0` and `Log`'s flip reads it. `sen3_tests`'s
+    /// `geodesic_at_zero_is_the_left_endpoint_bit_for_bit` pins both halves.
     ///
     /// # Domain
     ///

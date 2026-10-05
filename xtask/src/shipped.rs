@@ -480,11 +480,7 @@ impl Subject for HostStd {
             return id.answer::<Host>(record);
         }
         if let Some(id) = Geodesic::of_fn(fn_id) {
-            // `f64` as for the other vector ids: the geodesic strata have no `@f32` twin.
-            return match precision {
-                Precision::F64 => id.answer::<f64>(record),
-                Precision::F32 => Output::new(),
-            };
+            return id.answer::<Host>(record);
         }
         if let Some((op, n)) = Sen3::of_fn(fn_id) {
             return sen3_at::<Host>(op, n, record);

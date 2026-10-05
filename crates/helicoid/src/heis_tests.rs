@@ -227,8 +227,8 @@ const F64: Bounds = Bounds {
     sandwich: 12.0,
     // `PHASE3.md` §8's second check, measured 0.408 over 10 000 draws.
     dual_rows: 1.0,
-    // `PHASE4.md` §1 and §3's six legs, over 10^6 draws of `laws::Rng`'s own geodesic stream (`measure_geodesic`), twice the worst of the three scalars, rounded up: symmetry 4.243 / 5.967, left 6.796 / 8.132, right 6.824 / 9.304. The `velocity` leg is exactly 0 on every group -- it is `rminus` against itself until a group overrides -- and `t=0` is `gerr`'s floor for two **bitwise equal** elements, not a geodesic error: the Heisenberg inverse is exact, so it reads 0.
-    geodesic: 19.0,
+    // `PHASE4.md` §1 and §3's seven legs, in `GEODESIC_LEGS`'s order, each twice the worst of 10^6 draws of `laws::Rng::shaped` -- `laws::sample`'s own distribution, which is what the proptest draws -- rounded up: `t=1` 2.000, symmetry 3.980, velocity 5.015, left 4.648, right 5.036. `t=0` and `twin` are **exactly 0**, the Heisenberg inverse being exact.
+    geodesic: [0.0, 4.0, 8.0, 11.0, 10.0, 11.0, 0.0],
 };
 const F32: Bounds = Bounds {
     axioms: 9.0,

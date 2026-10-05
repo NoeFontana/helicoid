@@ -29,8 +29,8 @@ const F64: Bounds = Bounds {
     sandwich: 0.0,
     // `PHASE3.md` §8's second check, exactly `0`: every row is `±I` or `k I` and the operations are additions, so the dual derivative is the closed form.
     dual_rows: 0.0,
-    // `PHASE4.md` §1 and §3's six legs, over 10^6 draws of `laws::Rng`'s own geodesic stream (`measure_geodesic`), twice the worst of the three scalars, rounded up: symmetry 2.432 / 4.217, left and right 4.035 / 4.911 (`f64` and `Dual` / `f32`). The `velocity` leg is exactly 0 on every group -- it is `rminus` against itself until a group overrides -- and `t=0` is `gerr`'s floor for two **bitwise equal** elements, not a geodesic error: `Rn`'s inverse is exact, so it reads 0.
-    geodesic: 10.0,
+    // `PHASE4.md` §1 and §3's seven legs, in `GEODESIC_LEGS`'s order, each twice the worst of 10^6 draws of `laws::Rng::shaped` -- `laws::sample`'s own distribution, which is what the proptest draws -- rounded up: symmetry 3.288 / 3.269, velocity 3.538 / 3.288, left and right 4.031 / 3.947 (`f64` and `Dual` / `f32`). `t=0`, `t=1` and `twin` are **exactly 0**: `Rn`'s inverse is exact, so both endpoints come back unmoved and the provided body is `reference::geodesic` to the bit.
+    geodesic: [0.0, 0.0, 7.0, 8.0, 9.0, 9.0, 0.0],
 };
 const F32: Bounds = Bounds {
     axioms: 6.0,

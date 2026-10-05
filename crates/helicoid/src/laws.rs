@@ -244,55 +244,83 @@ pub(crate) fn plus_minus<S: Real, G: LieGroup<S>, const D: usize>(
     .fold(0.0, worst)
 }
 
-/// `PHASE4.md` §1 and §3's invariances on one fixture: the endpoints, GE.2(c)'s symmetry, the
-/// velocity, and GE.4's left and right invariance.
+/// `PHASE4.md` §1 and §3's names for [`geodesic_legs`]'s seven, in the order it returns them.
+///
+/// One bound per leg, not one over their maximum: `0006` asks for the bar on the max *per
+/// quantity*, and folding seven identities into one number lets the tight ones rot -- at `SEn3`
+/// the `symmetry` leg sets 71 `u` while `velocity` is exactly `0`, so a broken endpoint could
+/// grow sixty-fold under a single folded bound and pass.
+pub(crate) const GEODESIC_LEGS: [&str; 7] = [
+    "t=0", "t=1", "symmetry", "velocity", "left", "right", "twin",
+];
+
+/// The reciprocal of the parameter step the `velocity` leg takes: the step is `1 / 3`, formed as a
+/// division because `Real::lit` takes **exactly representable** constants and `1.0 / 3.0` is not
+/// one at either precision (it fired on `f32` in the dev profile, which is what that assert is
+/// for). `step * theta(d) < pi` for every drawn tangent, so the identity's own `Log` takes no
+/// branch, and a non-dyadic step keeps a rounding in `scale` that `0.25` would remove.
+const VELOCITY_STEP_RECIP: f64 = 3.0;
+
+/// `PHASE4.md` §1 and §3's identities on one fixture, each leg measured and bounded apart: the
+/// two endpoints, GE.2(c)'s symmetry, the velocity, GE.4's left and right invariance, and D6's tie
+/// to `reference::geodesic`.
+///
+/// [`GEODESIC_LEGS`] names them and the return type is its length, so a leg added without a name
+/// fails the build instead of being dropped silently by a `zip`.
 ///
 /// `x1` is `x0 ⊕_R d` and not a second draw, so `θ(d)` is the drawn tangent's and the curve stays
-/// inside [`LieGroup::geodesic`]'s domain: two independent draws of `[-1, 1)^D` compose to a
-/// relative rotation of up to `2√3 > π`, where the answer is the quaternion sign's and the law
-/// would be measuring GE.13(d)'s conditioning instead of the identity. It is also how
+/// inside [`LieGroup::geodesic`]'s domain: two independent draws of `sample`'s distribution
+/// compose to a relative rotation of up to `2√3 > π`, where the answer is the quaternion sign's
+/// and the law would be measuring GE.13(d)'s conditioning instead of the identity. It is also how
 /// `geo:consecutive` builds its records, for the same reason.
 ///
 /// Right invariance holds for **every** group, not only SE(3): `γ(x0 h, x1 h, t) = γ(x0, x1, t) h`
 /// follows from `Log(h⁻¹ Δ h) = Ad_{h⁻¹} d` and `h Exp(Ad_{h⁻¹} ξ) = Exp(ξ) h`, with no
 /// commutativity used. `Product<SO3, R3>`'s famous failure is against the **SE(3) reading** of
-/// `(R, t)`, a different composition from `Product`'s own `Mul`, which `PHASE4.md` §3 asserts
-/// separately (`0045` item 4).
+/// `(R, t)`, a different composition from `Product`'s own `Mul`, which
+/// `product_tests::the_so3_r3_product_is_slerp_and_lerp_and_fails_se3_right_invariance` asserts
+/// on the group §1.3 names (`0045` item 4).
+///
+/// `h` is drawn at the fixture's own scale here; `0045` item 5 asks for the left-invariance bound
+/// at `‖t_G‖ ∈ {0, 1, 1e4}`, which that same test measures, since the scales are an `SEn3`
+/// quantity and this law is generic.
 ///
 /// # Domain
 ///
-/// `θ(d) < π`, and `θ(Ad_{h⁻¹} d) < π`, which is the same angle on every group that ships.
-pub(crate) fn geodesic<S: Real, G: LieGroup<S>, const D: usize>(
-    x0: &G,
-    d: &G::Tangent,
-    h: &G,
-    t: S,
-) -> f64 {
-    geodesic_legs::<S, G, D>(x0, d, h, t)
-        .into_iter()
-        .fold(0.0, worst)
-}
-
-/// [`geodesic`]'s six legs apart, in the order [`GEODESIC_LEGS`] names them: the measurement
-/// prints them per group so the bound says which identity set it, and the law folds them.
-pub(crate) const GEODESIC_LEGS: [&str; 6] = ["t=0", "t=1", "symmetry", "velocity", "left", "right"];
-
+/// `θ(d) < π`, `θ(Ad_{h⁻¹} d) < π` (the same angle on every group that ships), and
+/// `θ((t + 1/3) d) < π` for the velocity leg.
 pub(crate) fn geodesic_legs<S: Real, G: LieGroup<S>, const D: usize>(
     x0: &G,
     d: &G::Tangent,
     h: &G,
     t: S,
-) -> [f64; 6] {
+) -> [f64; GEODESIC_LEGS.len()] {
     let x1 = x0.rplus(d);
     let at = |a: &G, b: &G, s: S| G::geodesic(a, b, s);
     let one = S::one();
+    // One evaluation of the curve at `t` for the four legs that compare against it: recomputing
+    // it was two thirds of the measurement's work.
+    let here = at(x0, &x1, t);
+    let step = S::one() / S::lit(VELOCITY_STEP_RECIP);
     [
         gerr::<S, G, D>(&at(x0, &x1, S::zero()), x0),
         gerr::<S, G, D>(&at(x0, &x1, one), &x1),
-        gerr::<S, G, D>(&at(x0, &x1, t), &at(&x1, x0, one - t)),
-        terr::<S, G, D>(&G::geodesic_velocity(x0, &x1), &x1.rminus(x0)),
-        gerr::<S, G, D>(&at(&(*h * *x0), &(*h * x1), t), &(*h * at(x0, &x1, t))),
-        gerr::<S, G, D>(&at(&(*x0 * *h), &(x1 * *h), t), &(at(x0, &x1, t) * *h)),
+        gerr::<S, G, D>(&here, &at(&x1, x0, one - t)),
+        // GE.2(b) in finite form: the body displacement over a fixed parameter interval is
+        // `step * velocity` wherever the interval starts. Comparing `geodesic_velocity` against
+        // `rminus` instead would be a tautology -- `rminus` *is* its body, and `Product`'s
+        // override is `rminus` per factor -- so it would read exactly `0` however wrong the
+        // returned tangent was.
+        terr::<S, G, D>(
+            &at(x0, &x1, t + step).rminus(&here),
+            &G::geodesic_velocity(x0, &x1).scale(step),
+        ),
+        gerr::<S, G, D>(&at(&(*h * *x0), &(*h * x1), t), &(*h * here)),
+        gerr::<S, G, D>(&at(&(*x0 * *h), &(x1 * *h), t), &(here * *h)),
+        // D6's tie: a group that overrides `geodesic` is measured against the expression the
+        // provided body is. Exactly `0` for a group that does not override, the two being the
+        // same call -- which is what makes it free to carry everywhere.
+        gerr::<S, G, D>(&here, &crate::reference::geodesic(x0, &x1, t)),
     ]
 }
 
@@ -660,8 +688,19 @@ pub(crate) struct Bounds {
     pub(crate) sandwich: f64,
     /// [`jacobians_match_dual`]'s bound, `PHASE3.md` §8's second check.
     pub(crate) dual_rows: f64,
-    /// [`geodesic`]'s bound, `PHASE4.md` §1 and §3.
-    pub(crate) geodesic: f64,
+    /// One bound per leg of [`geodesic_legs`], in [`GEODESIC_LEGS`]'s order (`PHASE4.md` §1
+    /// and §3).
+    ///
+    /// Two legs read a fixed number on every group, and the comments that record a group's own
+    /// figures do not repeat why. **`twin`** is exactly `0` unless the group overrides
+    /// [`LieGroup::geodesic`]: the provided body and `reference::geodesic` are then the same call.
+    /// **`t=0`** is [`gerr`]'s floor for two *bitwise equal* elements -- about `1.118` on a
+    /// quaternion group, where `q* q` leaves one `u` in the vector part, and `0` where the inverse
+    /// is exact -- so it is not a geodesic error. The statement it cannot make, that the answer
+    /// *is* the left endpoint bit for bit, is made by
+    /// `geodesic_at_zero_is_the_left_endpoint_bit_for_bit` in the groups whose representation a
+    /// test can read.
+    pub(crate) geodesic: [f64; GEODESIC_LEGS.len()],
 }
 
 /// splitmix64, seeded; `unif` is uniform on `[-1, 1)`.
@@ -688,6 +727,22 @@ impl Rng {
     /// stream: a helper whose visiting order is unspecified would put the reproducibility of every
     /// recorded figure at the mercy of its implementation. No allocation, so a `10^6`-case
     /// measurement does not pay one per draw-set per iteration.
+    /// `N` draws of [`sample`]'s distribution -- `m 2^e`, `|m| < 1`, `-6 <= e <= 0` -- which is
+    /// **not** [`arr`](Self::arr)'s uniform `[-1, 1)`.
+    ///
+    /// A bound is a measurement of what the bar samples (`0006`), so a measurement feeding a
+    /// proptest's bound has to draw the proptest's distribution: `sample`'s `2^e` factor reaches
+    /// `theta = 0.02` in one draw of seven per component, where uniform `[-1, 1)^3` reaches it
+    /// about once in `10^6`. Two draws per entry, the mantissa then the exponent, in that order.
+    pub(crate) fn shaped<const N: usize>(&mut self) -> [f64; N] {
+        let mut out = [0.0; N];
+        for x in &mut out {
+            let m = self.unif();
+            *x = m * 2_f64.powi(-((self.next() % 7) as i32));
+        }
+        out
+    }
+
     pub(crate) fn arr<const N: usize>(&mut self) -> [f64; N] {
         let mut out = [0.0; N];
         for x in &mut out {
@@ -732,6 +787,11 @@ pub(crate) fn within(v: f64, bound: f64) -> Result<(), TestCaseError> {
             "worst error {v} u exceeds {bound} u"
         )))
     }
+}
+
+/// [`within`], naming the leg it came from: a folded bound says only that *something* moved.
+pub(crate) fn within_leg(name: &str, v: f64, bound: f64) -> Result<(), TestCaseError> {
+    within(v, bound).map_err(|e| TestCaseError::fail(format!("leg `{name}`: {e}")))
 }
 
 /// Every law above as a proptest in a module `$p`, for `f64`, `f32` and `Dual<f64, $D>` (which takes
@@ -822,7 +882,12 @@ macro_rules! laws_for {
                 #[test]
                 fn geodesic(a in sample::<D>(), b in sample::<D>(), c in sample::<D>()) {
                     let at = S::sample(c[0], 0);
-                    within(laws::geodesic::<S, Gp, D>(&g(&a), &t(&b), &g(&c), at), $B.geodesic)?;
+                    let legs = laws::geodesic_legs::<S, Gp, D>(&g(&a), &t(&b), &g(&c), at);
+                    for ((name, v), bound) in
+                        laws::GEODESIC_LEGS.iter().zip(legs).zip($B.geodesic)
+                    {
+                        laws::within_leg(name, v, bound)?;
+                    }
                 }
             }
 
@@ -834,10 +899,12 @@ macro_rules! laws_for {
             #[allow(clippy::print_stdout)]
             fn measure_geodesic() {
                 let mut rng = $crate::laws::Rng(0x6765_6F64_6573_6963);
-                let mut w = [0.0_f64; 6];
+                let mut w = [0.0_f64; laws::GEODESIC_LEGS.len()];
                 for _ in 0..1_000_000 {
-                    let (a, b, c) = (rng.arr::<D>(), rng.arr::<D>(), rng.arr::<D>());
-                    let s = S::sample(rng.unif(), 0);
+                    // `shaped`, not `arr`, and `t` from the third draw as the proptest takes it:
+                    // the measurement has to sample what the bound bounds.
+                    let (a, b, c) = (rng.shaped::<D>(), rng.shaped::<D>(), rng.shaped::<D>());
+                    let s = S::sample(c[0], 0);
                     let legs = laws::geodesic_legs::<S, Gp, D>(&g(&a), &t(&b), &g(&c), s);
                     for (acc, v) in w.iter_mut().zip(legs) {
                         *acc = laws::worst(*acc, v);
