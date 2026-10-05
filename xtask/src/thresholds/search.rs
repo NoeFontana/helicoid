@@ -22,13 +22,16 @@ pub(super) struct Errors {
     pub(super) deriv: f64,
 }
 
-/// One record: its branch variable and the error of each arm there.
+/// One record: its branch variable, the error of each arm there, and each series arm's own bits.
 #[derive(Clone, Copy, Debug)]
 pub(super) struct Sample {
     pub(super) z: f64,
     pub(super) exact: Errors,
     /// `series[m - 1]` is the arm of `m` terms.
     pub(super) series: [Errors; TERMS],
+    /// `bits[m - 1]` is the `(value, d/dz)` of the arm of `m` terms, widened to binary64 — which
+    /// is injective, so two arms share these bits exactly when they share their own.
+    pub(super) bits: [(u64, u64); TERMS],
 }
 
 /// The field of a record's error that a maximum is over.
@@ -293,6 +296,94 @@ pub(super) fn search(
     })
 }
 
+/// The **second**, shorter series arm (`docs/decisions/0039` items 5, 6 and 10): the first
+/// `terms` of the chosen arm's series, taken below `switch`.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(super) struct Short {
+    pub(super) terms: usize,
+    /// `0` where no prefix is cheaper than the chosen arm: the kernel's second switch is then
+    /// unreachable, every branch variable being `>= 0`.
+    pub(super) switch: f64,
+    /// The position of `switch` in the grid, `0` for no second arm — which a chosen one is never
+    /// at, since a second switch on the grid's floor serves no record and so costs more than none.
+    pub(super) index: usize,
+    /// The corpus-weighted term count of the kernel, one term one unit (`0039` item 10), over the
+    /// records the series arm serves.
+    pub(super) cost: usize,
+    /// The same with one arm: the chosen arm's terms times those records.
+    pub(super) cost_one: usize,
+}
+
+/// Stage 2 of `docs/PHASE1.md` §6: the cheapest prefix of the chosen arm's series, taken as far up
+/// as it stays **bit-identical** to the whole arm.
+///
+/// Stage 2 cannot change the objective — a maximum the long arm attains wherever it is selected,
+/// which a shorter arm underneath can only raise (`0039` item 6) — so it is a cost degree of
+/// freedom and is searched after the objective, not with it. The feasibility rule is stricter than
+/// item 6's "holds the objective", and the two are within a fraction of a decade of one another
+/// because a prefix's truncation crosses half an ulp and the objective's two or three `u` at
+/// nearly the same `z`: a prefix is admitted only where it agrees with the whole arm **to the
+/// bit**, at every grid point and every corpus record below the second switch, in the value and
+/// in `d/dz` alike. So the second arm moves no measured row, which is what lets it land without
+/// re-blessing a baseline (`0047`).
+///
+/// `O(m · n)` over a prefix maximum per term count: no `grid²`. A switch of `0` at index `0` when
+/// no prefix is cheaper, which no branch variable is below.
+pub(super) fn second(
+    samples: &[Sample],
+    grid: &[f64],
+    at_grid: &[[(u64, u64); TERMS]],
+    chosen: &Score,
+) -> Short {
+    let (long, switch) = (chosen.terms, chosen.switch);
+    let served = |z0: f64| samples.iter().filter(|s| s.z < z0).count();
+    let total = served(switch);
+    let cost_one = total * long;
+    let mut best: Option<Short> = None;
+    for terms in 1..long {
+        // The smallest branch variable below the switch at which the prefix and the whole arm
+        // disagree: the grid is dense and reference-free, the records are what every bar is read
+        // from, and the second switch has to be below both.
+        let over = |x: f64| x >= switch;
+        let on_grid = grid
+            .iter()
+            .zip(at_grid)
+            .filter(|&(&g, b)| !over(g) && b[terms - 1] != b[long - 1])
+            .map(|(&g, _)| g);
+        let on_record = samples
+            .iter()
+            .filter(|s| !over(s.z) && s.bits[terms - 1] != s.bits[long - 1])
+            .map(|s| s.z);
+        let limit = on_grid
+            .chain(on_record)
+            .min_by(f64::total_cmp)
+            .unwrap_or(switch);
+        // The second switch is a grid point, as the first is (`0004`): the largest at or below
+        // the limit, since `z < switch` is the kernel's own comparison and so excludes it.
+        let Some(index) = grid.iter().rposition(|&g| g <= limit) else {
+            continue;
+        };
+        let cost = terms * served(grid[index]) + long * (total - served(grid[index]));
+        let short = Short {
+            terms,
+            switch: grid[index],
+            index,
+            cost,
+            cost_one,
+        };
+        if best.is_none_or(|b| cost < b.cost) {
+            best = Some(short);
+        }
+    }
+    best.filter(|b| b.cost < cost_one).unwrap_or(Short {
+        terms: long,
+        switch: 0.0,
+        index: 0,
+        cost: cost_one,
+        cost_one,
+    })
+}
+
 #[cfg(test)]
 #[allow(clippy::float_cmp)]
 mod tests {
@@ -302,6 +393,12 @@ mod tests {
 
     fn at(value: f64, deriv: f64) -> Errors {
         Errors { value, deriv }
+    }
+
+    /// One `(value, d/dz)` per term count, all different: no prefix is bit-identical to the whole
+    /// arm, so [`second`] finds nothing to shorten.
+    fn distinct() -> [(u64, u64); TERMS] {
+        std::array::from_fn(|i| (i as u64, i as u64))
     }
 
     /// An error of `x` in the derivative and half of it in the value: the derivative decides.
@@ -319,6 +416,9 @@ mod tests {
             z,
             exact: exact(z),
             series: std::array::from_fn(|i| series(i + 1, z)),
+            // Every prefix its own bits: a synthetic sample is for stage 1, and stage 2 admits
+            // only a prefix that agrees with the whole arm, so none of these admits one.
+            bits: distinct(),
         };
         grid.iter().map(sample).collect()
     }
@@ -439,6 +539,59 @@ mod tests {
         Ok(())
     }
 
+    /// Stage 2: the cheapest prefix that agrees with the chosen arm to the bit, and nothing when
+    /// no prefix is cheaper (`docs/decisions/0039` items 5, 6 and 10).
+    #[test]
+    fn the_second_arm_is_the_cheapest_prefix_that_agrees_to_the_bit() -> Result<(), String> {
+        let g = grid(Precision::F64);
+        // Stage 1: `TERMS` terms below `g[600]`, as `the_search_finds_a_known_optimum` sets up.
+        let t = g[600];
+        let mut samples = synthetic(
+            &g,
+            |z| deriv(if z < t { 1e6 } else { 1.0 }),
+            |m, z| deriv(if z < t { (TERMS + 1 - m) as f64 } else { 1e9 }),
+        );
+        let chosen = search(&samples, &g, (4, g[10]))?.chosen;
+        assert_eq!(
+            (chosen.terms, chosen.switch.to_bits()),
+            (TERMS, t.to_bits())
+        );
+        // Every prefix of 4 or more terms agrees with the whole arm below `g[300]` and none does
+        // at or above it, at the records and on the grid alike. The grid is the admissible one,
+        // so a bad point above the first switch cannot bound the second: `g[700]` is ignored.
+        let agrees = |m: usize, z: f64| m >= 4 && (z < g[300] || z >= t);
+        let bits = |m: usize, z: f64| match agrees(m, z) {
+            true => (0, 0),
+            false => (m as u64 + 1, 0),
+        };
+        for s in &mut samples {
+            s.bits = std::array::from_fn(|i| bits(i + 1, s.z));
+        }
+        let at_grid: Vec<_> = g
+            .iter()
+            .map(|&z| std::array::from_fn(|i| bits(i + 1, z)))
+            .collect();
+        let short = second(&samples, &g, &at_grid, &chosen);
+        // The cheapest feasible prefix is the shortest, and its switch is the last grid point at
+        // or below the first disagreement — `g[300]` itself, which `z < switch` excludes.
+        assert_eq!((short.terms, short.index), (4, 300));
+        assert_eq!(short.switch.to_bits(), g[300].to_bits());
+        // Half of the 600 records the series arm serves move from `TERMS` terms to four — the
+        // records strictly below each switch, which is the comparison the kernel makes.
+        assert_eq!(short.cost_one, 600 * TERMS);
+        assert_eq!(short.cost, 300 * 4 + 300 * TERMS);
+        // No prefix agreeing anywhere: the search returns none, which no `z >= 0` is below.
+        for s in &mut samples {
+            s.bits = distinct();
+        }
+        let none = second(&samples, &g, &at_grid, &chosen);
+        assert_eq!(
+            (none.terms, none.index, none.switch, none.cost),
+            (TERMS, 0, 0.0, none.cost_one)
+        );
+        Ok(())
+    }
+
     #[test]
     fn a_candidate_selects_by_the_kernels_own_comparison() {
         let (bad, good) = (at(9.0, 0.0), at(1.0, 0.0));
@@ -446,6 +599,7 @@ mod tests {
             z,
             exact,
             series: [series; TERMS],
+            bits: distinct(),
         };
         let two = [sample(0.5, bad, good), sample(1.0, good, bad)];
         // `z < switch` is strict: the record at the switch is the exact arm's.
@@ -460,6 +614,7 @@ mod tests {
             z,
             exact,
             series: [series; TERMS],
+            bits: distinct(),
         };
         let s = [
             sample(0.1, at(1.0, 2.0), at(9.0, 3.0)),

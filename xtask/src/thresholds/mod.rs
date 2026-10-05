@@ -89,7 +89,7 @@ use helicoid_linalg::{Dual, Precision, Real};
 use crate::conformance::root;
 use crate::seeded::{d12, Coeff, Series, Swept, D1, SERIES_FILE};
 use measure::{HelicoidArms, SeededArms};
-use search::{Errors, Field, Sweep};
+use search::{Errors, Field, Short, Sweep};
 
 const USAGE: &str = "usage: cargo xtask thresholds [--check] [seeded|helicoid]";
 /// The committed sweep of the seeded kernels, relative to the repository root.
@@ -100,7 +100,7 @@ const HEADER: &str = "coeff,precision,terms,switch_bits,switch_z,switch_theta,gr
 value_max_u,deriv_max_u,objective,argmax_field,argmax_stratum,argmax_id,argmax_z,below_objective,\
 above_objective,top_objective,prior_objective,prior_rank,tied,next_objective,at_switch_exact_value_u,\
 at_switch_exact_deriv_u,at_switch_series_value_u,at_switch_series_deriv_u,grid_lo,grid_hi,\
-term_cap,binding";
+term_cap,binding,short_terms,short_switch_bits,short_switch_z,short_grid_index,cost_one,cost_two";
 
 /// What a sweep measures.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -149,6 +149,8 @@ struct Row {
     z: f64,
     /// The chosen candidate's exact arm's and series arm's errors at the switch (`search::at_switch`).
     arms: (Errors, Errors),
+    /// Stage 2's second, shorter arm and what the two cost (`search::second`).
+    short: Short,
 }
 
 /// The sweep of `ids` over the corpus in `dir` at the precision of `S`, of `target`'s arms.
@@ -178,6 +180,13 @@ fn sweep_at<S: Real + Into<f64>>(
             let (stratum, record) = m.records[at].clone();
             let z = m.samples[at].z;
             let arms = search::at_switch(&m.samples, sweep.chosen.terms, sweep.chosen.switch);
+            // Stage 2 (`docs/PHASE1.md` §6, `0039` items 5, 6 and 10), after the objective and
+            // never with it: the cheapest prefix of the chosen arm that is bit-identical to it.
+            let at_grid = match target {
+                Target::Seeded => measure::grid_arms(&SeededArms(&series), id, &grid),
+                Target::Helicoid => measure::grid_arms::<S>(&HelicoidArms, id, &grid),
+            };
+            let short = search::second(&m.samples, &grid, &at_grid, &sweep.chosen);
             Ok(Row {
                 id,
                 precision: S::PRECISION,
@@ -187,6 +196,7 @@ fn sweep_at<S: Real + Into<f64>>(
                 record,
                 z,
                 arms,
+                short,
             })
         })
         .collect()
@@ -223,16 +233,21 @@ fn root_of(precision: Precision, z: f64) -> f64 {
     }
 }
 
+/// `z`'s bit pattern at `precision`, as the CSV's two switch columns print it.
+fn bits_of(precision: Precision, z: f64) -> String {
+    match precision {
+        Precision::F64 => format!("0x{:016x}", z.to_bits()),
+        Precision::F32 => format!("0x{:08x}", (z as f32).to_bits()),
+    }
+}
+
 /// The CSV of `rows`.
 fn render(rows: &[Row]) -> String {
     let mut out = format!("{HEADER}\n");
     let opt = |x: Option<f64>| x.map_or(String::new(), |x| format!("{x:e}"));
     for r in rows {
         let (s, z, p) = (&r.sweep, r.sweep.chosen.switch, r.precision);
-        let bits = match p {
-            Precision::F64 => format!("0x{:016x}", z.to_bits()),
-            Precision::F32 => format!("0x{:08x}", (z as f32).to_bits()),
-        };
+        let bits = bits_of(p, z);
         let cells = [
             r.id.name().to_string(),
             precision_name(p).to_string(),
@@ -263,6 +278,12 @@ fn render(rows: &[Row]) -> String {
             shown(p, s.grid_hi),
             s.term_cap.to_string(),
             s.binding.name().to_string(),
+            r.short.terms.to_string(),
+            bits_of(p, r.short.switch),
+            shown(p, r.short.switch),
+            r.short.index.to_string(),
+            r.short.cost_one.to_string(),
+            r.short.cost.to_string(),
         ];
         out.push_str(&cells.join(","));
         out.push('\n');
@@ -393,6 +414,11 @@ fn bootstrap(dir: &Path) -> Result<String, String> {
                 // bootstrap row from reading as a swept one.
                 "binding" => "none",
                 "term_cap" => "16",
+                // No second arm: the emitter reads `short_terms` as a count and the rest as a
+                // switch that nothing is below, so a placeholder row stays one.
+                "short_terms" => "16",
+                "short_switch_bits" => zero,
+                "short_grid_index" => "0",
                 _ => "0e0",
             });
             csv.push_str(&cells.collect::<Vec<_>>().join(","));

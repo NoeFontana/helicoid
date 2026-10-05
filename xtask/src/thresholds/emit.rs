@@ -145,6 +145,12 @@ struct Chosen<'a> {
     /// item 9). An objective reported alone reads as an optimum even when it is the edge of the
     /// box, which is how eight switches sat on a wall for the file's whole existence.
     feasibility: String,
+    /// Stage 2's prefix: its term count, its switch's bits and its decimal.
+    short_terms: usize,
+    short_bits: u64,
+    short_decimal: String,
+    /// What the two arms cost, as one comment line (`docs/decisions/0039` item 10).
+    cost: String,
 }
 
 /// The choice in `row`, the `precision` row of `id`, of at most `max_terms` terms.
@@ -192,6 +198,43 @@ fn chosen<'a>(
             "{name}: binding `{binding}` is not one of the four"
         ));
     }
+    let short_terms: usize = cell(row, "short_terms")?
+        .parse()
+        .map_err(|e| format!("{name}: short_terms: {e}"))?;
+    if !(1..=terms).contains(&short_terms) {
+        return Err(format!(
+            "{name}: a second arm of {short_terms} terms under one of {terms}"
+        ));
+    }
+    let short_bits = cell(row, "short_switch_bits")?
+        .strip_prefix("0x")
+        .filter(|h| h.len() == hex)
+        .and_then(|h| u64::from_str_radix(h, 16).ok())
+        .ok_or_else(|| format!("{name}: short_switch_bits is not 0x and {hex} hex digits"))?;
+    let short = match precision {
+        Precision::F64 => f64::from_bits(short_bits),
+        Precision::F32 => f64::from(f32::from_bits(short_bits as u32)),
+    };
+    let short_decimal = shown(precision, short);
+    // A second switch at or above the first would put the prefix where the whole arm is not
+    // selected at all; `0` is the "no second arm" the search returns, which no `z` is below.
+    if !short.is_finite()
+        || short < 0.0
+        || short > switch
+        || short_decimal != cell(row, "short_switch_z")?
+    {
+        return Err(format!(
+            "{name}: short_switch_bits and short_switch_z disagree, or the second switch is not a \
+             z in [0, {decimal}]"
+        ));
+    }
+    let none = short_bits == 0 && short_terms == terms;
+    if !none && (short_bits == 0 || short_terms == terms) {
+        return Err(format!(
+            "{name}: a second arm is a switch **and** a shorter prefix, or neither"
+        ));
+    }
+    let (cost_one, cost_two) = (number(row, "cost_one")?, number(row, "cost_two")?);
     Ok(Chosen {
         terms,
         bits,
@@ -199,6 +242,15 @@ fn chosen<'a>(
         decimal,
         value: number(row, "value_max_u")?,
         deriv: number(row, "deriv_max_u")?,
+        short_terms,
+        short_bits,
+        short_decimal,
+        cost: match none {
+            true => "none; no prefix of this arm is cheaper".to_string(),
+            false => {
+                format!("{short_terms} terms, {cost_two} term-units of corpus against {cost_one}")
+            }
+        },
         feasibility: format!(
             "grid [{}, {}] of {} per decade searched below π², terms <= {}; binding: {binding}",
             cell(row, "grid_lo")?,
@@ -337,16 +389,23 @@ pub(super) fn render_helicoid(
         out.push_str(&format!(
             "\n// Objective (max u): value {}, derivative {}.\n\
              // Feasibility: {}.\n\
+             // Second arm: {}.\n\
              pub(crate) const {name}: Switch<{p}, {}> = Switch::first(\n    \
-             {p}::from_bits({}), // {} < {}\n    \
+             {p}::from_bits({}), // {v} < {}\n    \
+             {p}::from_bits({}), // {v} < {}\n    \
+             {},\n    \
              &SWEPT_{name},\n);\n",
             c.value,
             c.deriv,
             c.feasibility,
+            c.cost,
             c.terms,
             grouped(c.bits, c.hex),
-            variable(id),
             c.decimal,
+            grouped(c.short_bits, c.hex),
+            c.short_decimal,
+            c.short_terms,
+            v = variable(id),
             name = const_name(id, precision),
         ));
     }
@@ -401,6 +460,12 @@ mod tests {
     /// each id `i` at both precisions, except `b`'s (`B_SWITCH_BITS`, `B_SWITCH_BITS32`); the
     /// objectives `1.5e0` and `2.5e1`, and `0` in every other cell.
     fn synthetic(terms: [usize; 8]) -> String {
+        synthetic_with(terms, None)
+    }
+
+    /// [`synthetic`], with a second arm of `short` terms below a quarter of each switch when one
+    /// is asked for.
+    fn synthetic_with(terms: [usize; 8], short: Option<usize>) -> String {
         let mut out = format!("{HEADER}\n");
         for precision in [Precision::F64, Precision::F32] {
             for (i, id) in Swept::ALL.iter().enumerate() {
@@ -431,6 +496,18 @@ mod tests {
                         "grid_hi" => "1e1".to_string(),
                         "term_cap" => TERMS.to_string(),
                         "binding" => "none".to_string(),
+                        // Without `short`, no second arm — the shape every seeded row takes,
+                        // that file having one arm (`docs/PHASE1.md` §6).
+                        "short_terms" => short.unwrap_or(terms[i]).to_string(),
+                        "short_switch_bits" => match (short, precision) {
+                            (None, Precision::F64) => "0x0000000000000000".to_string(),
+                            (None, Precision::F32) => "0x00000000".to_string(),
+                            (Some(_), Precision::F64) => format!("0x{:016x}", (z / 4.0).to_bits()),
+                            (Some(_), Precision::F32) => {
+                                format!("0x{:08x}", (z as f32 / 4.0).to_bits())
+                            }
+                        },
+                        "short_switch_z" => shown(precision, short.map_or(0.0, |_| z / 4.0)),
                         _ => "0".to_string(),
                     })
                     .collect();
@@ -712,14 +789,18 @@ mod tests {
             "// Objective (max u): value 1.5e0, derivative 2.5e1.\n\
              // Feasibility: grid [1e-16, 1e1] of 64 per decade searched below π², terms <= 16; \
              binding: none.\n\
+             // Second arm: none; no prefix of this arm is cheaper.\n\
              pub(crate) const B_F64: Switch<f64, 3> = Switch::first(\n    \
              f64::from_bits(0x3fc0_1234_5678_9abc), // θ² < {:e}\n    \
+             f64::from_bits(0x0000_0000_0000_0000), // θ² < 0e0\n    \
+             3,\n    \
              &SWEPT_B_F64,\n);\n",
             f64::from_bits(B_SWITCH_BITS)
         );
         assert!(text.contains(&format!("\n{want}\n")), "{text}");
         assert!(text.contains(&format!(
-            "f32::from_bits(0x3c01_2345), // θ² < {}\n    &SWEPT_B_F32,\n);\n",
+            "f32::from_bits(0x3c01_2345), // θ² < {}\n    \
+             f32::from_bits(0x0000_0000), // θ² < 0e0\n    3,\n    &SWEPT_B_F32,\n);\n",
             lit32(f32::from_bits(B_SWITCH_BITS32))
         )));
         // `r`'s is in `n²/w²`, and every constant is there once: 16 switches, then 16 series.
@@ -740,6 +821,44 @@ mod tests {
         let over = render_helicoid(&synthetic([TERMS + 1; 8]), &jsonl, (&wide, &narrow), false);
         let want = format!("{} terms of a {TERMS}-term series", TERMS + 1);
         assert!(over.err().is_some_and(|e| e.contains(&want)));
+        Ok(())
+    }
+
+    /// A row with a second arm emits both switches, the prefix's length and what the two cost; a
+    /// row with one of the two and not the other is refused, because a prefix below no switch and
+    /// a switch under no prefix are each a half-written stage 2 (`docs/decisions/0039` item 10).
+    #[test]
+    fn a_second_arm_emits_both_switches_and_half_of_one_is_refused() -> Result<(), String> {
+        let (wide, narrow) = series()?;
+        let jsonl = series_file()?;
+        let two = synthetic_with([3; 8], Some(2));
+        let text = render_helicoid(&two, &jsonl, (&wide, &narrow), false)?;
+        let want = format!(
+            "// Second arm: 2 terms, 0 term-units of corpus against 0.\n\
+             pub(crate) const B_F64: Switch<f64, 3> = Switch::first(\n    \
+             f64::from_bits(0x3fc0_1234_5678_9abc), // θ² < {:e}\n    \
+             f64::from_bits(0x3fa0_1234_5678_9abc), // θ² < {:e}\n    \
+             2,\n    \
+             &SWEPT_B_F64,\n);\n",
+            f64::from_bits(B_SWITCH_BITS),
+            f64::from_bits(B_SWITCH_BITS) / 4.0,
+        );
+        assert!(text.contains(&want), "{text}");
+        // A prefix as long as the arm, under a switch: not a second arm, and not none either.
+        let half = synthetic_with([8; 8], Some(8));
+        let err = render_helicoid(&half, &jsonl, (&wide, &narrow), false)
+            .err()
+            .unwrap_or_default();
+        assert!(
+            err.contains("a switch **and** a shorter prefix, or neither"),
+            "{err}"
+        );
+        // And a second switch above the first.
+        let above = two.replace("0x3fa0123456789abc", "0x3fe0123456789abc");
+        let err = render_helicoid(&above, &jsonl, (&wide, &narrow), false)
+            .err()
+            .unwrap_or_default();
+        assert!(err.contains("the second switch is not a"), "{err}");
         Ok(())
     }
 

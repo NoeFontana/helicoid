@@ -79,3 +79,4 @@
 - [0044: Four primitives the first consumer names and no spec does](decisions/0044-four-primitives-the-first-consumer-names-and-no-spec-does.md)
 - [0045: Two Phase 4 checks cannot be taken as written](decisions/0045-two-phase-4-checks-cannot-be-taken-as-written.md)
 - [0046: "Explained by record" needs a record to point at](decisions/0046-explained-by-record-needs-a-record-to-point-at.md)
+- [0047: The second arm is admitted by agreement, not by the objective](decisions/0047-the-second-arm-is-admitted-by-agreement-not-by-the-objective.md)

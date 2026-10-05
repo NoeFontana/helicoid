@@ -2,7 +2,7 @@
 
 **Status:** ready
 **Owner:** @NoeFontana
-**Implementation:** plan step 0 and decisions 1 to 4 and 7 to 9 have landed (the grid spans the domain, the cap is the corpus's series length, a grid-end choice fails the run, every switch carries its feasibility, and `coeff_switch_ref` is the reference at each switch). Decisions 5, 6 and 10 — the **second** switch — are open; the catalogue has config E's accuracy and not yet its cost.
+**Implementation:** every decision has landed. Plan step 0 and decisions 1 to 4 and 7 to 9 first (the grid spans the domain, the cap is the corpus's series length, a grid-end choice fails the run, every switch carries its feasibility, and `coeff_switch_ref` is the reference at each switch); then decisions 5, 6 and 10, the **second** switch, with item 6's feasibility rule amended by [`0047`](./0047-the-second-arm-is-admitted-by-agreement-not-by-the-objective.md) — a prefix is admitted where it agrees with the whole arm to the bit, not where it holds the objective, because the objective is one maximum and a bar is per stratum. Corpus-weighted term count 1.87x lower at binary64 and 1.99x at binary32, with every conformance row byte-identical.
 
 ## Context
 
