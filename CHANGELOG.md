@@ -9,6 +9,18 @@ defined by the status tables in `docs/`; they win over this file.
 
 ### Added
 
+- **Release prep for `0.0.1`** (`0049` step 2). The version moves `0.0.0` → `0.0.1`; both crates
+  gain a `readme` key and a per-crate `README.md`, which crates.io shows and neither manifest had.
+  Each README's example is wired in as a `#[cfg(doctest)] #[doc = include_str!(..)] mod readme {}`,
+  so the front-page example is compiled and asserted by `just test` and cannot rot — it is not on
+  the rustdoc front page, which stays each `lib.rs`'s own header, and not in the built library.
+  A new `just publish-check` runs what is checkable, in the order that is forced: `cargo package`
+  resolves a `path` dependency carrying a `version` from the index, so **`helicoid` cannot be
+  packaged at all — not even `--no-verify` — until `helicoid-linalg 0.0.1` is on crates.io.**
+  `helicoid-linalg`'s dry-run packages, verifies and compiles (30 files, 108 KiB compressed);
+  `helicoid`'s check is its file list until the first publish lands. The 37 MB corpus is at the
+  workspace root and in neither package. **`cargo publish` itself is not run here.**
+
 - **`0049`: the boundary is what removes a way to be wrong, and the consumer comes before the rest
   of Phase 4.** Amends `0041`. Docs only; no code change.
   - `0009`'s ownership test says what `helicoid` may not own and is silent on what it should

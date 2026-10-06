@@ -200,9 +200,14 @@ whole reason `0041` decision 7 chose `0.0.1` over `0.1.0`.
 1. This record; `0041`'s amendment banner and its corrected wave lists; `API.md` §6 question 8;
    `PHASE4.md` §5.1's note on decision 4; `PHASE5.md` §6's corrected instrument path — verified by
    `just lint` and the row in `decisions/README.md`.
-2. Release prep: `0.0.1`, the `readme` keys and per-crate READMEs both manifests lack, then
-   `cargo package --list` and `cargo publish --dry-run` for both crates — verified by those two
-   commands. **`cargo publish` itself waits for the owner's word.**
+2. Release prep: `0.0.1`, and the `readme` keys and per-crate READMEs both manifests lack — each
+   README's example wired as a `cfg(doctest)` module so it cannot rot — verified by `just
+   publish-check`, a new recipe. **The order inside it is a constraint, not a preference:**
+   `cargo package` resolves a `path` dependency carrying a `version` from the index, so `helicoid`
+   cannot be packaged at all — not even with `--no-verify` — until `helicoid-linalg 0.0.1` is on
+   crates.io. `helicoid-linalg`'s dry-run packages, verifies and compiles today; `helicoid`'s check
+   is its file list until the first publish lands. **`cargo publish` itself waits for the owner's
+   word.**
 3. Publish, then Wave 1 behind `tf_tree_math`'s `helicoid` feature — verified by
    `just oracle-tf-tree-math` parity on the `so3_*` ids and `tf_tree`'s own reference twins passing
    under both feature arms.
