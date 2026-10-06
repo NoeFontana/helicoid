@@ -17,7 +17,11 @@ fn record_number(path: &str) -> Option<&str> {
 }
 
 /// First word of the value of the record's `**Status:**` line, lowercased.
-fn status(text: &str) -> Option<String> {
+///
+/// Shared with [`super::exceptions`], which has the same question to ask of the record an
+/// exception cites: `0046` item 3 says the check reuses this reader rather than spelling the
+/// `**Status:**` convention twice.
+pub(super) fn status(text: &str) -> Option<String> {
     let value = text.lines().find_map(|l| l.strip_prefix("**Status:**"))?;
     let word = value.split_whitespace().next()?;
     Some(

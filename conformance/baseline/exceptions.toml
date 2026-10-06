@@ -1,0 +1,27 @@
+# Domination exceptions (`docs/decisions/0046-explained-by-record-needs-a-record-to-point-at.md`).
+#
+# One row per `(fn, stratum, precision)` an oracle wins and a `ready` record explains. A row
+# excepts the domination bar and nothing else: the maximum is still written to the baseline and
+# still judged by no-regress, so an excepted stratum is watched more closely than a dominated one.
+# `cargo xtask lint` fails a row whose record is missing or is a draft; `just envelope` fails a row
+# whose stratum turns out to be dominated after all, and names it for deletion.
+#
+# Measured 2026-10-05, over 117 domination failures. `0046` item 6 excepts "the ten-digit ties" on
+# two stated conditions — both programs' maxima below 1/2 u, and a relative margin of about 5e-11 —
+# and on today's corpus **exactly one** row satisfies both. The record was written before `0039`'s
+# two PRs regenerated every switch, so the set it describes as three has moved; item 6's "Only
+# those strata" is taken literally here rather than stretched to the near misses:
+#
+#   sen3_log_n1/rho:1e-6/theta=pi-1e-6/f64  0.62868 vs 0.62868  relative margin 1.4e-13
+#       Thirteen digits, the tightest of all 117 — but both maxima are above 1/2 u, so the
+#       record's stated ground does not cover it. Left to `0038` decision 2's paired instrument.
+#   sen3_log_n1/rho:1e-3/theta=pi-1e-6/f64  0.79550 vs 0.79550  relative margin 6.6e-8
+#   sen3_log_n1/theta:1e-4/f64              0.39677 vs 0.39677  relative margin 8.0e-6
+#       Below 1/2 u but three to five orders looser than ten digits: not a tie.
+
+[[exception]]
+fn = "so3_exp"
+stratum = "theta:1e-5"
+precision = "f64"
+record = "0046"
+reason = "ten-digit tie: 0.4952463054990 against 0.4952463054734, both under 1/2 u, margin 5.2e-11 relative"

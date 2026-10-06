@@ -39,6 +39,7 @@
 mod bars;
 mod coverage;
 mod evidence;
+pub(crate) mod exceptions;
 mod rows;
 
 use std::fmt::Write;
@@ -227,9 +228,19 @@ fn summary(
             v.dominated_host_std
         ),
     };
+    // An excepted stratum is a stratum an oracle wins, printed where the reader is counting
+    // failures so it cannot be mistaken for one that was dominated (`0046` item 2).
+    let excepted = match v.excepted.len() {
+        0 => String::new(),
+        n => format!(
+            "\n  excepted: {n} strata an oracle wins, explained by record (`{}`); their \
+             maxima are still in the baseline and still judged",
+            exceptions::PATH
+        ),
+    };
     format!(
         "envelope: candidate `{name}` ({}), {} rows; oracles: {}\n  \
-         domination: {} strata paired with an oracle, {} with none{split}\n  \
+         domination: {} strata paired with an oracle, {} with none{split}{excepted}\n  \
          no-regress: {no_regress}\n  \
          not scored: {} rows\n",
         c.version,
@@ -311,9 +322,12 @@ fn execute(root: &Path, options: &Options) -> Result<Report, String> {
         None => None,
     };
 
+    // `0046`: the committed explanation for a stratum an oracle wins. Absent, an empty table, so
+    // a checkout with nothing excepted behaves exactly as before.
+    let excepted = exceptions::Exceptions::read(root)?;
     let mut failures = cover.failures;
     let verdict = match &candidate {
-        Some(c) => bars::judge_with(c, &oracles, baseline.as_ref(), twin.as_ref()),
+        Some(c) => bars::judge_excepting(c, &oracles, baseline.as_ref(), twin.as_ref(), &excepted),
         None => bars::Verdict::default(),
     };
     let registered = options.registered.iter().any(|r| r == name);
@@ -357,7 +371,7 @@ fn execute(root: &Path, options: &Options) -> Result<Report, String> {
     // What `--bless` writes, and what `--check` holds the committed files to.
     let mut files = vec![(
         evidence::PATH.to_string(),
-        evidence::page(name, candidate.as_ref(), &oracles),
+        evidence::page(name, candidate.as_ref(), &oracles, &verdict.excepted),
     )];
     if let Some(c) = &candidate {
         let scored: Vec<Row> = c
