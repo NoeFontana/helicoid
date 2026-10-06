@@ -292,6 +292,13 @@ $X(t) = X_0\,\mathrm{Exp}(t\,d)$ with $d = X_1 \ominus_R X_0$ and $\Delta = X_0^
   1.738 / 1.642 `u`) and losing two of them (1.572 / 2.721 / 2.429). $\lVert\mathbf v\rVert = 0$
   is the two rotations being equal and returns $q_0$; the domain below is unchanged, as the blend
   has none of its own.
+- **Below `r`'s second switch the provided body is taken instead** ([`0051`](./decisions/0051-two-arms-on-the-switch-the-sweep-already-chose.md)), because it is
+  both cheaper there — its coefficients are on their series arms, polynomials with no transcendental
+  — and *more* accurate, 1.572 against 1.644 `u` at `geo:consecutive`. The boundary is
+  `s = \tan^2\alpha <` `short_below`, `r`'s own generated number and not a new one, and
+  $t \ge 1$ takes the blend on **both** sides of it, since only the blend is exact there. The two
+  spellings are the same function (GE.14), so this is one routine with two arms and not two
+  routines.
 - **Invariance.** The SE(3) geodesic is left- and right-invariant:
   $X_0 H\,\mathrm{Exp}(t\,\mathrm{Ad}_{H^{-1}} d) = X_0\,\mathrm{Exp}(t\,d)\,H$. For
   `Product<SO3, R3>` **the answer depends on which law $a\cdot H$ uses**: under the product's own

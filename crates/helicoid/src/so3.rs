@@ -10,7 +10,7 @@
 //! `Ad_R = R`), so there is no structure to exploit below a dense `3 x 3` and `0005`'s structured
 //! type is the matrix itself.
 
-use crate::coeffs::{exp_coeffs, jr_coeffs, jr_inv_coeff, log_ratio};
+use crate::coeffs::{exp_coeffs, jr_coeffs, jr_inv_coeff, log_ratio, log_ratio_takes_short_arm};
 use crate::quat::Quat;
 use crate::side::Side;
 use crate::traits::{tie_dof, Jac, LieGroup, Tangent};
@@ -511,8 +511,31 @@ impl<S: Real> LieGroup<S> for SO3<S> {
         }
     }
 
-    /// GE.14's blend, `[sin((1−t)α) q₀ + sin(tα) q₁] / sin α`, overriding the provided body
-    /// (`0050`).
+    /// Two arms of the one function GE.14 equates, dispatched on `log_ratio`'s own **second**
+    /// generated switch (`0051`): the provided body below it, GE.14's blend above.
+    ///
+    /// Why two. `0050` measured the blend 1.18x / 1.10x faster at `geo:generic` / `geo:near-pi` and
+    /// **1.56x slower** at `geo:consecutive` at `f64`, because the provided body's `log_ratio` and
+    /// `exp_coeffs` take their *series* arms there — polynomials, no transcendental — where the
+    /// blend pays `atan2` and three `sin` whatever the angle.
+    ///
+    /// Which switch, measured. The provided body stays the *faster* arm up to `r`'s series/exact
+    /// boundary (`θ ≈ 0.58`) but stops being the more *accurate* one almost immediately above
+    /// identity, so the two crossovers are decades apart and the accuracy one binds (`0006`).
+    /// Dispatching on the series/exact switch reads `2.5019 u` at `geo:generic` and **loses** the
+    /// stratum; `r`'s second switch, `0047`'s short arm, is four decades of `s` lower and reads the
+    /// best cell of every column — 1.5721 / 1.7382 / 1.6417 `u` — while keeping the faster arm on
+    /// every bench row. Every smaller threshold reads identically, so the choice has decades of
+    /// slack; `measure_geodesic`'s scan is the table and its test is the guard.
+    ///
+    /// No switch of its own: `0004` forbids typing one, and this needs none.
+    ///
+    /// # Arms
+    ///
+    /// Below: `q₀ Exp(t Log(q₀* q₁))`, the provided body, which is also
+    /// [`reference::geodesic`](crate::reference::geodesic).
+    ///
+    /// Above: GE.14's blend, `[sin((1−t)α) q₀ + sin(tα) q₁] / sin α` (`0050`).
     ///
     /// The same function: GE.14 proves this equal to `q₀ Exp(t Log(q₀* q₁))`, which is what
     /// [`reference::geodesic`](crate::reference::geodesic) and the provided body compute, so the
@@ -539,42 +562,66 @@ impl<S: Real> LieGroup<S> for SO3<S> {
     #[inline]
     fn geodesic(x0: &Self, x1: &Self, t: S) -> Self {
         // `Log`'s own flip, on the relative quaternion, so the arc is the short one: this is the
-        // sign rule GE.14 assumes and `log` applies, read from the same quantity.
+        // sign rule GE.14 assumes and `log` applies, read from the same quantity. The product is
+        // computed once and both arms read it -- the provided body would form it again inside
+        // `rminus`, so the shared prefix is the dispatch's cost and not an extra one.
         let d = x0.0.conjugate() * x1.0;
         let flip = S::one().copysign(d.w);
         let (w, x, y, z) = (flip * d.w, flip * d.x, flip * d.y, flip * d.z);
-        let nv = ((x * x + y * y) + z * z).sqrt();
-        let alpha = nv.atan2(w);
-        let (sin_alpha, _) = alpha.sin_cos();
-        let point = nv.le(S::zero());
-        // The safe argument: `1` where the arc is a point, so the exact arm's `0/0` never happens
-        // and the branch below, not a NaN, decides the answer (`0003`).
-        let den = S::select(point, S::one(), sin_alpha);
+        let n2 = (x * x + y * y) + z * z;
+        // The provided body below the switch, **except at `t >= 1`**, where only the blend is
+        // exact: its right weight is `sin(1*a)/sin a`, one number over itself. `0050` shipped that
+        // bit-exactness and `PHASE4.md` §0.0 records it, and giving it up at `geo:consecutive` is
+        // backwards -- consecutive keyframes are exactly where a query *at* the later one happens.
+        // One `le` buys it. `t > 1` is extrapolation, which GE.14 covers and the blend computes, so
+        // the same arm serves it.
+        //
+        // The predicate reads `t`, which is safe here and would not be in an early return: both
+        // arms are implementations of the same function, so a `Dual` takes the selected arm's
+        // derivative and both are right. Returning the constant `x1` would zero it, which is what
+        // `0050` warned of and this is not.
+        let fast = log_ratio_takes_short_arm(n2, w).and(S::one().le(t).not());
         let q0 = x0.0;
-        let q1 = Quat {
-            w: flip * x1.0.w,
-            x: flip * x1.0.x,
-            y: flip * x1.0.y,
-            z: flip * x1.0.z,
-        };
-        Self(S::branch(
-            point,
-            || q0,
+        S::branch(
+            fast,
             || {
+                // The provided body, at its own safe argument: `log_ratio`'s series arm needs
+                // `w > 0`, which `fast` asserts, so there is nothing to select here (`0003`).
+                let r = log_ratio(n2, w);
+                let phi = Vector([r * x, r * y, r * z]);
+                x0.rplus(&SO3Tangent { phi }.scale(t))
+            },
+            || {
+                let nv = n2.sqrt();
+                let alpha = nv.atan2(w);
+                let (sin_alpha, _) = alpha.sin_cos();
+                // `nv = 0` reaches this arm two ways: a `w <= 0` quaternion, which is not a
+                // rotation, and two bitwise equal rotations at `t >= 1` -- where `q0` *is* the
+                // answer, both endpoints of a point arc being it. The safe argument covers both:
+                // `1` keeps the division finite and the select, not a NaN, gives the answer.
+                let point = nv.le(S::zero());
+                let den = S::select(point, S::one(), sin_alpha);
+                let q1 = Quat {
+                    w: flip * x1.0.w,
+                    x: flip * x1.0.x,
+                    y: flip * x1.0.y,
+                    z: flip * x1.0.z,
+                };
                 // Three `sin`s at three arguments, not one and an angle-addition identity: the
-                // identity is exact in `R` and a different rounding here, and `0050` measured
-                // this spelling (its *Further work* 2 holds the other).
+                // identity is exact in `R` and a different rounding here, and `0050` measured this
+                // spelling (its *Further work* 3 holds the other).
                 let (s0, _) = ((S::one() - t) * alpha).sin_cos();
                 let (s1, _) = (t * alpha).sin_cos();
                 let (a, b) = (s0 / den, s1 / den);
-                Quat {
+                let blend = Quat {
                     w: a * q0.w + b * q1.w,
                     x: a * q0.x + b * q1.x,
                     y: a * q0.y + b * q1.y,
                     z: a * q0.z + b * q1.z,
-                }
+                };
+                Self(S::branch(point, || q0, || blend))
             },
-        ))
+        )
     }
     /// `Ad_R = R` (`NUMERICS.md` §3.5).
     #[inline]

@@ -9,6 +9,55 @@ defined by the status tables in `docs/`; they win over this file.
 
 ### Changed
 
+- **`SO3::geodesic` is two arms** (`0051`, superseding `0050` decision 2): the provided body below
+  `log_ratio`'s **second** generated switch, GE.14's blend above it, with `t ≥ 1` taking the blend
+  on both sides.
+  - **Why.** `0050`'s step 3 found the blend **1.56× slower** at `f64` `near-identity`
+    (19.7 → 30.7 ns, `bench-gate` exit 1 on a resolvable row) while 1.10–1.19× faster at `generic`
+    and `near-pi`: below the switch the provided body's `log_ratio` and `exp_coeffs` are on their
+    *series* arms — polynomials, no transcendental — where the blend pays `atan2` and three `sin`
+    whatever the angle.
+  - **`0050` *Further work* 1 was wrong by four decades**, and the measurement is why this is a
+    record and not an amendment. Dispatching on `r`'s *series/exact* switch (`s < 8.977e-2`,
+    `θ ≈ 0.58`) leaves **50 of `geo:generic`'s 60 records** on the provided body, reads `2.5019 u`
+    against oracle #1's `1.834` and takes `envelope` back to **114**. The provided body stays the
+    *faster* arm to `θ ≈ 0.58` but stops being the more *accurate* one almost immediately above
+    identity — two mechanisms with no reason to share a boundary.
+  - **So the threshold is measured.** A new `measure_geodesic::scan` reads the per-stratum max of
+    "provided body where `s < T`, blend elsewhere" over eight candidates. `r`'s **second** switch —
+    `0047`'s short arm, `s < 5.048e-5`, `θ ≈ 1.4e-2` — reads the **best cell of every column**,
+    **1.5721 / 1.7382 / 1.6417** `u`, while keeping the faster arm on every bench row. Every
+    smaller threshold reads identically, so the boundary has five decades of slack.
+    `just envelope` stays at **113**.
+  - **The borrowing is named, not silent.** `0004` is satisfied by borrowing rather than typing, but
+    `r`'s second switch is chosen by the sweep to minimise a corpus-weighted term count, not to
+    place this boundary. So `coeffs::log_ratio_takes_short_arm` is the one definition of the
+    predicate, and `the_shipped_dispatch_threshold_still_dominates` **fails** if a later sweep moves
+    that number into the region the scan says loses.
+  - **Both endpoints stay bit-exact.** `t ≥ 1` takes the blend on both sides because only the blend
+    is exact there; the predicate may read `t` because both arms implement the same function, so a
+    `Dual` takes the selected arm's derivative and both are right — returning the constant `x₁`
+    would zero it, which is the trap and this is not. `t = 0` needs no clause: the provided body is
+    already exact there.
+  - **One cost, structural.** GE.2(c)'s `symmetry` swaps `t` for `1−t`, so at `t = 0` the swapped
+    call is at `t = 1` and takes the arm the original does not: SO(3)'s leg goes 6.013 → **7.670**
+    `u` at `f32` and `Product<SO3, Rn<3>>`'s 5.4233 → 6.4564, both bounds re-recorded. No other leg
+    moves, and `left_invariance_at_three_translation_scales` returns to its pre-`0050` figures **to
+    the digit** — itself a check that the arm below the switch *is* what shipped before.
+  - **Latency, measured and not fully won.** Against the pre-`0050` provided body, both binaries
+    built in this tree: `near-identity` **1.1162** `f64` / **1.1251** `f32`, `generic` 0.9139 /
+    0.8889, `near-pi` 0.9797 / 0.9684. So the `f64` regression is cut from 1.56× to **1.12×**
+    (19.7 → 22.0 ns) — a third of what remained came from spelling the predicate `n² < T w²` rather
+    than `n²/w² < T`, which `log_ratio` would otherwise compute twice — and the wins above the switch
+    shrink, because the dispatch is paid on the blend's side too. **At `f32` the single blend was
+    better on every row**, so the two arms are an `f64` improvement and an `f32` cost;
+    `Real::PRECISION` makes "blend alone at binary32" a one-line `const` choice and `0051` *Further
+    work* 1 declines it until an `f32` consumer exists.
+  - A finding about the gate rather than the routine: the `f64` `near-identity` row **failed at a
+    0.0030 A/A floor and passed at a 0.0814 one**, same code, two runs differing only in how many
+    benchmarks shared the machine, point estimate 1.1162 either way. That row needs §9's quiet
+    machine and the pass is not read as a pass.
+
 - **`SO3::geodesic` is overridden with GE.14's blend** (`0050` step 2), with the denominator
   `sin α` recomputed from `α` and never `‖v‖`.
   - **`just envelope` 115 → 113**, the figure `0050` predicted. `so3_geodesic` reads

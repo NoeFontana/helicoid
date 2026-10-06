@@ -214,11 +214,12 @@ const CORPUS: &str = concat!(
 /// The committed rows this measurement is read against (`PHASE4.md` §0.0), in `u`, so the control
 /// is checked by the test and not by a reader.
 ///
-/// `shipped` is [`route_s`]'s row and moved with `0050`; it read 1.572 / 2.721 / 2.429 while the
-/// provided body shipped, which is [`route_a`]'s column and what the record's table quotes.
+/// `shipped` is [`route_s`]'s row. It read 1.572 / 2.721 / 2.429 while the provided body shipped
+/// alone — [`route_a`]'s column — and 1.644 / 1.738 / 1.642 under `0050`'s single blend; `0051`'s
+/// two arms take the better cell of each, which is what this row is.
 const COMMITTED: [(&str, f64, f64); 3] = [
-    // stratum, shipped (= route S, = route E), `tf_tree_math::slerp`
-    ("geo:consecutive", 1.644, 2.187),
+    // stratum, shipped (= `0051`'s two arms), `tf_tree_math::slerp`
+    ("geo:consecutive", 1.572, 2.187),
     ("geo:generic", 1.738, 1.834),
     ("geo:near-pi", 1.642, 1.642),
 ];
@@ -240,6 +241,29 @@ type Worst = (f64, u64);
 
 /// Every route's [`Worst`] per stratum, in [`ROUTES`]' order.
 type Table = BTreeMap<String, Vec<Worst>>;
+/// `R_F64`'s **second** switch, which `SO3::geodesic` dispatches on (`0051`).
+///
+/// A literal here and generated there, which is the only way a test outside the crate can state the
+/// rule: `coeffs` is `pub(crate)`, so this is a transcription, and
+/// [`tests::the_shipped_route_is_the_arm_the_rule_picks`] fails the moment the two disagree — which
+/// is exactly what a sweep moving the number should do.
+const R_SHORT_F64: f64 = 5.048065716667471e-5;
+
+/// Candidate dispatch thresholds on `s = tan²α = n²/w²`, for [`scan`].
+///
+/// The two `R_F64` arms are the only *generated* numbers a two-arm `geodesic` could borrow without
+/// a sweep of its own (`0051`); the decades are there to show where the accuracy crossover is, so
+/// the two can be compared rather than one assumed.
+const THRESHOLDS: [(&str, f64); 8] = [
+    ("R_F64.below (θ≈5.8e-1)", 8.976871324473142e-2),
+    ("R_F64.short (θ≈1.4e-2)", R_SHORT_F64),
+    ("s<1e-6  (θ≈2.0e-3)", 1e-6),
+    ("s<1e-7  (θ≈6.3e-4)", 1e-7),
+    ("s<1e-8  (θ≈2.0e-4)", 1e-8),
+    ("s<1e-10 (θ≈2.0e-5)", 1e-10),
+    ("s<1e-12 (θ≈2.0e-6)", 1e-12),
+    ("s<0     (blend only)", 0.0),
+];
 
 /// Every route's maximum `u` per stratum over the committed corpus, plus the worst record's id.
 fn measure() -> Result<Table, String> {
@@ -262,6 +286,51 @@ fn measure() -> Result<Table, String> {
             let got = out_of(route(q0, q1, t));
             match rule.score(&rec, &got, Precision::F64)? {
                 Score::Finite(u) if u > slot.0 => *slot = (u, rec.id),
+                Score::Finite(_) => {}
+                other => return Err(format!("record {} scored {other:?}", rec.id)),
+            }
+        }
+    }
+    Ok(out)
+}
+
+/// For each [`THRESHOLDS`] entry, the per-stratum max of a two-arm routine that takes [`route_a`]
+/// where `s < T` and [`route_e`] elsewhere.
+///
+/// This is the evidence a dispatch threshold needs and the thing `0050` *Further work* 1 asserted
+/// without: that the provided body is both the faster *and* the more accurate arm below some
+/// switch. It is faster up to `R_F64.below`; whether it is more accurate that far is this scan's
+/// question, and the answer decides whether a two-arm needs a sweep of its own.
+fn scan() -> Result<BTreeMap<String, Vec<f64>>, String> {
+    let text = std::fs::read_to_string(CORPUS).map_err(|e| format!("{CORPUS}: {e}"))?;
+    let rule = metric::rule("so3_geodesic").ok_or("no metric rule for `so3_geodesic`")?;
+    let mut out: BTreeMap<String, Vec<f64>> = BTreeMap::new();
+    for line in text.lines().filter(|l| !l.trim().is_empty()) {
+        let rec = parse_line(line)?;
+        let (Some(q0), Some(q1)) = (quat_of(&rec, "q0"), quat_of(&rec, "q1")) else {
+            return Err(format!("record {} holds no `q0`/`q1`", rec.id));
+        };
+        let &[t] = rec
+            .input("t")
+            .and_then(|v| v.first_chunk::<1>())
+            .ok_or_else(|| format!("record {} holds no `t`", rec.id))?;
+        // `s` exactly as `log_ratio_takes_series` forms it, from the same product.
+        let (d, _) = rel(q0, q1);
+        let n2 = d[1..].iter().map(|x| x * x).sum::<f64>();
+        let s = n2 / (d[0] * d[0]);
+        let row = out
+            .entry(rec.stratum.clone())
+            .or_insert_with(|| vec![0.0; THRESHOLDS.len()]);
+        for (slot, (_, limit)) in row.iter_mut().zip(THRESHOLDS) {
+            // `t >= 1` goes to the blend on every threshold, as the shipped dispatch does: only
+            // the blend is exact there, and that is not a property to trade for a threshold.
+            let q = if s < limit && t < 1.0 {
+                route_a(q0, q1, t)
+            } else {
+                route_e(q0, q1, t)
+            };
+            match rule.score(&rec, &out_of(q), Precision::F64)? {
+                Score::Finite(u) if u > *slot => *slot = u,
                 Score::Finite(_) => {}
                 other => return Err(format!("record {} scored {other:?}", rec.id)),
             }
@@ -328,21 +397,45 @@ mod tests {
         Ok(())
     }
 
-    /// `SO3::geodesic` **is** [`route_e`], bit for bit on every corpus record.
+    /// `SO3::geodesic` **is** one of the two routes on every corpus record, bit for bit, and which
+    /// one follows `0051`'s rule.
     ///
-    /// `0050` decision 1 is a claim about the shipped code, and the table alone cannot make it: two
-    /// columns agreeing to three decimals is not the same as one being the other. This is what ties
-    /// the record's measurement to the routine it decided.
+    /// The tables alone cannot say this: columns agreeing to three decimals is not one being the
+    /// other. This is what ties the records' measurements to the routine they decided — and it
+    /// pins the dispatch rule itself, since it recomputes the predicate from `s` and `t` rather
+    /// than trusting whichever arm happens to match.
     #[test]
-    fn the_shipped_route_is_route_e_to_the_bit() -> Result<(), String> {
+    fn the_shipped_route_is_the_arm_the_rule_picks() -> Result<(), String> {
+        let (mut a_arm, mut e_arm) = (0usize, 0usize);
         for line in lines()? {
             let (q0, q1, t, id) = case(&line)?;
-            let (s, e) = (route_s(q0, q1, t), route_e(q0, q1, t));
+            let (d, _) = rel(q0, q1);
+            let n2 = d[1..].iter().map(|x| x * x).sum::<f64>();
+            let s = n2 / (d[0] * d[0]);
+            // `0051`: the provided body below `r`'s second switch, except at `t >= 1`.
+            let provided = d[0] > 0.0 && s < R_SHORT_F64 && t < 1.0;
+            let want = if provided {
+                a_arm += 1;
+                route_a(q0, q1, t)
+            } else {
+                e_arm += 1;
+                route_e(q0, q1, t)
+            };
+            let got = route_s(q0, q1, t);
             assert!(
-                s.iter().zip(&e).all(|(a, b)| a.to_bits() == b.to_bits()),
-                "record {id} at t = {t}: shipped {s:?} is not route E's {e:?}"
+                got.iter()
+                    .zip(&want)
+                    .all(|(a, b)| a.to_bits() == b.to_bits()),
+                "record {id} at t = {t}, s = {s:e}: shipped {got:?} is not the \
+                 {} arm's {want:?}",
+                if provided { "provided" } else { "blend" }
             );
         }
+        // Both arms are exercised, or the test is checking one of them against itself.
+        assert!(
+            a_arm > 0 && e_arm > 0,
+            "arms taken: {a_arm} provided, {e_arm} blend"
+        );
         Ok(())
     }
 
@@ -387,6 +480,64 @@ mod tests {
             "the provided body is now exact at t = 1 on every record; \
              `PHASE4.md` §0.0's one-sided claim and this test's reasoning both need rereading"
         );
+        Ok(())
+    }
+
+    /// The shipped dispatch threshold still dominates oracle #1 on every stratum.
+    ///
+    /// `SO3::geodesic` dispatches on `r`'s **second** switch, which the sweep owns: it is chosen to
+    /// minimise a corpus-weighted term count, not to place this boundary, so a later sweep may move
+    /// it. `scan`'s table says the move that would matter — `R_F64.below`, four decades of `s`
+    /// higher, reads `2.5019 u` at `geo:generic` and loses it — and every threshold at or below the
+    /// shipped one reads identically, so there are decades of slack. This test is what turns that
+    /// slack from a hope into a check: it reads the shipped `so3_geodesic` figures through the
+    /// shipped routine and fails if any stratum stops dominating.
+    #[test]
+    fn the_shipped_dispatch_threshold_still_dominates() -> Result<(), String> {
+        let got = measure()?;
+        for (stratum, _, oracle) in COMMITTED {
+            let (u, id) = *got
+                .get(stratum)
+                .and_then(|r| r.get(SHIPPED))
+                .ok_or_else(|| format!("no `{stratum}` in the corpus"))?;
+            assert!(
+                u <= oracle,
+                "{stratum}: the shipped geodesic reads {u} u at record #{id}, over oracle #1's \
+                 {oracle} — if a sweep moved `r`'s second switch, `scan`'s table says where to"
+            );
+        }
+        Ok(())
+    }
+
+    /// Where a two-arm's threshold may sit: the per-stratum max for each [`THRESHOLDS`] entry.
+    ///
+    /// `cargo test -p xtask -- --ignored --nocapture scan_the_dispatch_threshold`.
+    #[test]
+    #[ignore = "a measurement, printed for a record to cite"]
+    #[allow(clippy::print_stdout)]
+    fn scan_the_dispatch_threshold() -> Result<(), String> {
+        let got = scan()?;
+        println!(
+            "so3_geodesic, binary64: max u per stratum of `route_a where s < T, else route_e`"
+        );
+        println!(
+            "{:<26} {:>16} {:>14} {:>14}   verdict",
+            "T", "consecutive", "generic", "near-pi"
+        );
+        for (i, (name, _)) in THRESHOLDS.iter().enumerate() {
+            let cell = |st: &str| got.get(st).and_then(|r| r.get(i)).copied().unwrap_or(0.0);
+            let (c, g, n) = (
+                cell("geo:consecutive"),
+                cell("geo:generic"),
+                cell("geo:near-pi"),
+            );
+            // Domination is per stratum against oracle #1, which is what `0006` reads.
+            let beats = c <= 2.187 && g <= 1.834 && n <= 1.642;
+            println!(
+                "{name:<26} {c:>16.4} {g:>14.4} {n:>14.4}   {}",
+                if beats { "dominates" } else { "LOSES" }
+            );
+        }
         Ok(())
     }
 
