@@ -9,6 +9,38 @@ defined by the status tables in `docs/`; they win over this file.
 
 ### Added
 
+- **`0049`: the boundary is what removes a way to be wrong, and the consumer comes before the rest
+  of Phase 4.** Amends `0041`. Docs only; no code change.
+  - `0009`'s ownership test says what `helicoid` may not own and is silent on what it should
+    *decline* to own — `Quat::dot` passes it cleanly, which is how `0044` shipped two items `0048`
+    removed one PR later. The rule: `helicoid` owns an operation when a consumer writing it could
+    get a **convention or a numerical choice** wrong in a way the consumer's own tests cannot see,
+    and declines one whose only failure mode is arithmetic over its own public fields. The question
+    is neither `0009`'s nor "could the consumer write it" but **"does `helicoid`'s version remove a
+    way to be wrong"**. `API.md` §6 gains question 8.
+  - Two more `0041` wave items come off the delegation list, for a reason `0048` does not supply:
+    `Quat::normalize` and `Iso3::normalized` are **not the operation `helicoid` ships** — the exact
+    `q/‖q‖` with a `1e-300` guard against `renormalize`'s single Newton step, which is accurate only
+    while `|‖q‖² − 1|` is at most `2^-26.29` (`f64`) or `2^-11.79` (`f32`). Delegating is a silent
+    behaviour change for every argument outside that band, and nothing in the signature restricts
+    one. `helicoid` adds no exact `normalize` (R3).
+  - `quat_from_rot3` delegates and **changes its output**: it returns an un-normalized quaternion by
+    its own rustdoc where `SO3::from_matrix` normalizes. `PHASE4.md` §5.1's row now says so, since a
+    parity table that calls this parity is claiming agreement it is not measuring.
+  - **The integration is re-ordered: publish → Wave 1 → Wave 2 → screw twin → Wave 3.** Every Wave 1
+    and Wave 2 item maps onto surface that has shipped, and `0043`'s `geodesic_jacobians` gates no
+    wave at all — no `tf_tree_math` function takes a geodesic Jacobian — so it becomes `0041`'s step
+    8 alongside the first blessed envelope. D7 one layer up: Wave 1 is the first time a crate
+    `helicoid` does not own compiles against it, and this record is the evidence, since reading two
+    consumers is what found three wrong rows in `0041`'s own inventory.
+  - Names locus-tag's gate rather than leaving it a vague second: five production items, of which
+    `Pose::adjoint` exists only to sandwich a 6×6 that `Jac::sandwich` never materializes; two
+    needing `helicoid` surface that does not exist (`Decoupled`, the translation-first `Π Σ Πᵗ`);
+    and one constraint no document carried — `Pose`'s rotation field is a public `Matrix3<f64>`
+    against a quaternion-backed `SE3`, so the migration is a conversion per LM iteration or a
+    locus-tag published-API change, and which one is a measurement. `PHASE5.md` §6's
+    `scripts/bench_gate.py` does not exist; the instrument is `tools/bench/`.
+
 - **`0048`: the relative-transform pair earns the surface; `dot` and `norm` do not.** `0044` added
   four public items because `0041` names them, and its own *Rationale* concedes that for two of the
   four the adapter should write them — it picked the wrong two.

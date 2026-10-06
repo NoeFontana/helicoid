@@ -4,6 +4,15 @@
 **Owner:** @NoeFontana
 **Implementation:** steps 2 and 4's `helicoid` halves have landed (`SO3`, `SEn3`); the rest is open
 
+> **Amended 2026-10-06 by [`0049`](./0049-the-boundary-is-what-removes-a-way-to-be-wrong.md), which is the signed edit the index's rules allow.** Decision 4's
+> Wave 1 and Wave 2 lists lose two further items (`Quat::normalize`, `Iso3::normalized` — a
+> *different* operation from `Quat::renormalize`, not a non-group one), decision 4's
+> `quat_from_rot3` row is a recorded behaviour change rather than a port, and **decision 7's
+> publish moves ahead of the remainder of plan step 4**: every Wave 1 and Wave 2 item maps onto
+> shipped surface, so the publish is the only thing between here and a consumer compiling against
+> this crate. The decision this record takes is unchanged; what changed is its order and three rows
+> of its inventory.
+
 ## Context
 
 `PROJECT.md` §4 names Phase 4 "geodesics and the `tf_tree` migration" and D1 says `helicoid`
@@ -66,11 +75,17 @@ What is genuinely constraining:
    `PHASE4.md` §5's parity table rather than a separate exercise.
 4. **Three waves, ordered by what `helicoid` ships**, each a PR on each side:
    - **Wave 1 — SO(3)** (`PHASE3.md` §4): `exp_so3`, `log_so3`, `quat_from_rot3`, `slerp`,
-     `Quat::{normalize, rotate, dot, norm, norm_squared}` — of which `dot` and `norm` stay
-     `tf_tree_math`'s own bodies, as they are not group operations and D1 does not reach them
-     ([`0048`](./0048-the-relative-transform-pair-earns-the-surface-dot-and-norm-do-not.md)).
-   - **Wave 2 — SE(3)** (`PHASE3.md` §5): `exp_se3`, `log_se3`, `Iso3::{inverse, mul_inv,
-     normalized}` and `Mul`, `Twist::{adjoint, adjoint_inv, to_spatial}`.
+     `Quat::rotate`. Four of the nine items first listed here stay `tf_tree_math`'s own bodies, for
+     two different reasons: `dot` and `norm` are not group operations and D1 does not reach them
+     ([`0048`](./0048-the-relative-transform-pair-earns-the-surface-dot-and-norm-do-not.md)), and
+     `normalize` with `norm_squared` is a *different operation* from the one `helicoid` ships —
+     the exact projection `q/‖q‖` against `renormalize`'s single Newton step, which is accurate
+     only inside the drift band ([`0049`](./0049-the-boundary-is-what-removes-a-way-to-be-wrong.md) decision 3). `quat_from_rot3` delegates and **changes its
+     output**: it returns an un-normalized quaternion where `SO3::from_matrix` normalizes, so that
+     row of the parity table is a recorded behaviour change ([`0049`](./0049-the-boundary-is-what-removes-a-way-to-be-wrong.md) decision 4).
+   - **Wave 2 — SE(3)** (`PHASE3.md` §5): `exp_se3`, `log_se3`, `Iso3::{inverse, mul_inv}` and
+     `Mul`, `Twist::{adjoint, adjoint_inv, to_spatial}`. `Iso3::normalized` is Wave 1's
+     `normalize` one level up and stays with it.
    - **Wave 3 — the screw path** (`PHASE4.md` §1.2's dual-quaternion fast twin): `sclerp`,
      `screw_pow`, `screw_twist`, `screw_pow_with_twist`, `ScLerp`, `LerpSlerp`.
    **The whole latency risk is in Wave 3**: Waves 1 and 2 prove the mechanism on paths the 300 ns
@@ -136,9 +151,11 @@ Phase 3 is not ready to make; the feature flag removes that dependency without p
    ids, and the `tf_tree_math` runner extended from four ids to the rows §5.1 actually names —
    `so3_from_matrix`, `so3_act`, `sen3_ad_n1` and the two geodesics — verified by `just
    oracle-tf-tree-math` writing them and `just envelope` pairing them.
-4. **`helicoid` Phase 4 §1–§3**: the provided `geodesic`/`geodesic_velocity` and
-   `reference::geodesic`, `geodesic_jacobians`, the invariance tests — verified by `just test` and
-   the new corpus ids under `just conformance`.
+4. **`helicoid` Phase 4 §1 and §3**: the provided `geodesic`/`geodesic_velocity`,
+   `reference::geodesic` and the invariance tests — verified by `just test` and the new corpus ids
+   under `just conformance`. ~~`geodesic_jacobians`~~ was step 4's third item and is **step 8**:
+   [`0049`](./0049-the-boundary-is-what-removes-a-way-to-be-wrong.md) decision 5 found that no `tf_tree_math` function takes a geodesic Jacobian, so it gates
+   no wave and was serialising the integration behind work the consumer does not call.
 5. `tf_tree_math`'s `helicoid` feature scaffold and **Wave 1** behind it, after decision 7's
    publish — verified by `just oracle-tf-tree-math` parity on the `so3_*` ids and `tf_tree`'s own
    reference twins passing under both features.
@@ -146,10 +163,13 @@ Phase 3 is not ready to make; the feature flag removes that dependency without p
    regression.
 7. `PHASE4.md` §1.2's dual-quaternion twin and **Wave 3** — verified by the 300 ns / 25 % gate, and
    a re-derived `NS_PER_STEP_ESTIMATE` if the median moves.
+8. `0043`'s `geodesic_jacobians` and the first blessed envelope, which gate no wave of this
+   integration and serve Phase 5's consumers — verified by `just test` and `just envelope --bless`.
 
-Steps 3 and 4 are `helicoid`'s alone and gate every later step; §5.2's domination precondition is
-measured against oracle #1 as part of step 3, and what it finds is settled before step 5, not
-after.
+Steps 3 and 4 are `helicoid`'s alone and gate every later step, and both have **landed** (#92, #93,
+#94); §5.2's domination precondition is measured against oracle #1 as part of step 3, and what it
+finds is settled before step 5, not after — with three geodesic strata still losing to oracle #1
+and [`0049`](./0049-the-boundary-is-what-removes-a-way-to-be-wrong.md) *Further work* 1 holding what the split by stratum says about them.
 
 ## Open questions
 
