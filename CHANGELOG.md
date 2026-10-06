@@ -9,6 +9,65 @@ defined by the status tables in `docs/`; they win over this file.
 
 ### Added
 
+- **`0048`: the relative-transform pair earns the surface; `dot` and `norm` do not.** `0044` added
+  four public items because `0041` names them, and its own *Rationale* concedes that for two of the
+  four the adapter should write them — it picked the wrong two.
+  - **`Quat::dot` and `Quat::norm` are removed.** Neither had a caller in either library crate,
+    neither reaches anything private (`w, x, y, z` are `pub`, `norm_sq` is public), and `dot`'s
+    stated purpose — `cos(α/2)` for the angle between two rotations, for picking the shorter arc —
+    is a worse-conditioned spelling of `x1.rminus(x0)`, whose norm *is* that angle through D5's
+    `atan2`. GE.14 and `0045` took slerp off the geodesic path, so the caller they were added for
+    is not coming. Both also shipped a `# Domain` that R6 cannot enforce (no `NUMERICS.md` §12 row
+    to name, no `debug_assert!`), and `norm`'s was one-sided: `q = (1e-170, 0, 0, 0)` returned
+    `0.0` for a quaternion of norm `1e-170` while meeting the stated contract word for word.
+  - **`SEn3::mul_inv` at every `N`, its mirror `SEn3::inv_mul`, and `rminus`/`lminus` *are* those
+    two.** As landed, `mul_inv` earned none of its surface: `lminus`'s shipped body was the very
+    composition it replaces and `SEn3` overrode neither side, so the saved rotation was offered to
+    an external caller and declined for the library; the direction a tree walk takes
+    (`T_w_a⁻¹ · T_w_b`, i.e. `rminus`) was the one **not** added; and `N = 1` was an arbitrary cut
+    across algebra that holds column by column. `inv_mul` also subtracts *before* rotating, where
+    for two nearby frames the subtraction is exact.
+  - **Judged on the corpus, not an operation count** (D7, `0006`). `se3_geodesic` reads `rminus`:
+    `geo:consecutive` 2.556 → **1.572 u**, `geo:generic` 3.239 → **2.721 u**, `geo:near-pi`
+    3.466 → **2.429 u**. All three maxima now equal `so3_geodesic`'s to every digit, which is the
+    sharper statement — the **translation block is no longer the scored maximum on any geodesic
+    stratum** — and two of the three move from losing to oracle #1 to dominating it.
+  - **What it cost, recorded rather than omitted.** Two of the seven geodesic identity legs moved
+    the other way: `symmetry` 13.352 → 16.111 u and `left` 9.775 → 10.731 u, both at `f32`,
+    against `velocity` 8.353 → 7.768 and every leg of `N = 1` at `f64` and `Dual` improving. Those
+    legs compare a call with its own swap or conjugation, not with a reference, so they measure
+    how well two roundings line up; the corpus measures error against 110 digits. Bounds
+    re-recorded at twice the new worst.
+  - **`laws::e_at`, a scale-relative scorer.** `mul_inv`'s only bound was `laws::e`, which divides
+    by `max(‖want‖, 1)` — the *difference* of two nearby frames — so the recorded `7.052 u` was a
+    fact about translations drawn in `[-1, 1)`: the same code reads `106.32 u` once they reach
+    `10³`, where against the input scale it stays `7.94 u`. The twin proptest now scores per
+    column against `max(‖x_a‖, ‖x_b‖, 1)` at three translation scales per draw, at `f64`, `f32`
+    and `Dual` and at `N ∈ {1, 2}`. A bound is a property of the routine only if its denominator
+    is one.
+
+### Fixed
+
+- **`just lint` now checks that a cited symbol resolves** (`xtask`'s `[symbols]` check). "Cite a
+  symbol, never a line number" was only half a rule: the existing check matches
+  `<name>.rs:<digits>`, so a renamed symbol passed silently — and a stale citation is worse than a
+  line number, because `grep` returns nothing and the reader cannot tell whether the claim moved
+  or was deleted. A `<module>_tests::<name>` citation is now resolved against that module's file.
+  It found three stale citations on the first run, two of which a review had already named and one
+  it had missed (`laws::geodesic_legs` cited a `product_tests` name that no longer exists).
+- `Rng::arr`'s rustdoc, which `Rng::shaped` was inserted above and left attached to, so `arr`
+  shipped undocumented and `shaped` carried two openings.
+- Two sub-ulp "tolerances" that were exact float equality in disguise: `|x − 1| < 1e-18` and
+  `< 1e-16` against an `f64` whose ulp below 1 is `1.11e-16`, one of them passing only because
+  `sqrt` hit a round-half-to-even tie. The surviving check compares `to_bits`, which is what it
+  meant.
+- `SEn3::renormalize`'s rustdoc, which claimed an `SEn3` "could not be renormalized from outside at
+  all" where `0044`'s own *Context* gives the `parts`/`from_parts` route, named a
+  `SO3::renormalize` layer the body skips, and carried three paragraphs of provenance that belong
+  in the record.
+- Two `for i in 0..2` column loops over an `[_; N]`, where retargeting the test to another `N`
+  would have panicked on an index inside a crate that denies `panic`.
+
 - **`0046`'s exception table**, `conformance/baseline/exceptions.toml`, and the mechanism around
   it. `PHASE3.md` §10 and `PHASE4.md` §5.2 both say a stratum an oracle wins blocks the phase
   "until fixed or **explained by record**", and there was nowhere to record an explanation: the

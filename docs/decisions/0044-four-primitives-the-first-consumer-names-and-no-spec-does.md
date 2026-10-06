@@ -2,7 +2,7 @@
 
 **Status:** ready
 **Owner:** @NoeFontana
-**Implementation:** landed. `Quat::{dot, norm}`, `SEn3::renormalize`, `SEn3<S, 1>::mul_inv`, `API.md` §3's two rows, `NUMERICS.md` §14's `mul_inv` row and its twin test. Item 5's debt stands: no corpus id for any of the four, owed before `0.1.0`
+**Implementation:** landed, then **partly superseded by [`0048`](./0048-the-relative-transform-pair-earns-the-surface-dot-and-norm-do-not.md)**: decision 1's `Quat::{dot, norm}` are removed and decision 3's `N = 1` restriction is lifted, `mul_inv` gaining a mirror `inv_mul` and both becoming `SEn3`'s `rminus`/`lminus`. Decision 2 (`SEn3::renormalize`) stands as written, and so does item 5's debt — a corpus id for `renormalize` and `SEn3::renormalize`, owed before `0.1.0`
 
 ## Context
 
@@ -72,8 +72,8 @@ the first consumer.
    consumer asks (`PROJECT.md` §5.1 is where that argument goes, not here).
 4. **It is a `NUMERICS.md` §14 row with a reference twin**, the twin being `a * b.inverse()` —
    the composition it is *not* bit-identical to, which is exactly what makes the twin worth having.
-   `mul_inv_matches_reference` is the proptest, its bound measured and then no-regress, following
-   `sen3_jr_inv_matches_reference_n1`'s shape.
+   `sen3_mul_inv_matches_reference_n1` is the proptest, its bound measured and then no-regress,
+   following `sen3_jr_inv_matches_reference_n1`'s shape (`0048` decision 4 fixes the denominator).
 5. **No corpus id for any of the four.** `PHASE3.md` §0.0 already owes "a `renormalize` corpus id
    and any `Quat` stratum of its own"; these four join that debt rather than inventing a stratum
    family each, which §4.4 makes a record in its own right. D7's bar is that a *public numeric
@@ -114,7 +114,7 @@ goldens), so two more members with stated summation order cost less than two con
    `f64`, `f32` and `Dual<f64, 4>`, as `quat_tests.rs` already covers the rest of the type.
 3. `SEn3::renormalize` — verified by a test that a drifted product returns to unit norm with
    `0027`'s quadratic convergence, mirroring `so3_tests`' step test.
-4. `SEn3::mul_inv`, its §14 row and `mul_inv_matches_reference` — verified by the proptest with its
+4. `SEn3::mul_inv`, its §14 row and its twin proptest — verified by the proptest with its
    measured bound, and by a test that it is **not** bit-identical to `a * b.inverse()` on at least
    one pair, so the claim in this record stays true.
 

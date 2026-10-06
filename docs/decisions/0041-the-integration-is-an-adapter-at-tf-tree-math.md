@@ -66,7 +66,9 @@ What is genuinely constraining:
    `PHASE4.md` §5's parity table rather than a separate exercise.
 4. **Three waves, ordered by what `helicoid` ships**, each a PR on each side:
    - **Wave 1 — SO(3)** (`PHASE3.md` §4): `exp_so3`, `log_so3`, `quat_from_rot3`, `slerp`,
-     `Quat::{normalize, rotate, dot, norm, norm_squared}`.
+     `Quat::{normalize, rotate, dot, norm, norm_squared}` — of which `dot` and `norm` stay
+     `tf_tree_math`'s own bodies, as they are not group operations and D1 does not reach them
+     ([`0048`](./0048-the-relative-transform-pair-earns-the-surface-dot-and-norm-do-not.md)).
    - **Wave 2 — SE(3)** (`PHASE3.md` §5): `exp_se3`, `log_se3`, `Iso3::{inverse, mul_inv,
      normalized}` and `Mul`, `Twist::{adjoint, adjoint_inv, to_spatial}`.
    - **Wave 3 — the screw path** (`PHASE4.md` §1.2's dual-quaternion fast twin): `sclerp`,

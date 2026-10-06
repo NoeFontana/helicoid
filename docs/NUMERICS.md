@@ -385,7 +385,8 @@ row spells the composition and the proptest writes it inline
 | `*_jacobians` (§2.3 closed forms) | chains of primitive Jacobians, dense | 3 |
 | `SO3::act_many` | per-point `act` | 3 |
 | `SEn3Jac::mul`, `inverse` | dense product / Gauss–Jordan | 3 |
-| `SEn3<S, 1>::mul_inv` | the composition `a * b.inverse()`, which it is **not** bit-identical to ([`0044`](./decisions/0044-four-primitives-the-first-consumer-names-and-no-spec-does.md)) | 4 |
+| `SEn3::mul_inv` ($a\,b^{-1}$, one rotation per column) | the composition `a * b.inverse()`, which it is **not** bit-identical to; it is `lminus`'s body ([`0048`](./decisions/0048-the-relative-transform-pair-earns-the-surface-dot-and-norm-do-not.md)) | 4 |
+| `SEn3::inv_mul` ($b^{-1}a$, subtracting before the rotation) | the composition `b.inverse() * a`; it is `rminus`'s body ([`0048`](./decisions/0048-the-relative-transform-pair-earns-the-surface-dot-and-norm-do-not.md)) | 4 |
 | `SEn3Jac::apply`, `apply_transpose` | dense $J x$ and $J^\top x$ | 3 |
 | `SEn3Jac::sandwich` | dense $J\,\Sigma\,J^\top$; also the twin the `Gaussian` row below asks for | 3 |
 | `ProductJac::sandwich` | dense $J\,\Sigma\,J^\top$ of the block-diagonal $J$ | 3 |
