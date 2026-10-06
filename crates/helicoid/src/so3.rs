@@ -510,6 +510,72 @@ impl<S: Real> LieGroup<S> for SO3<S> {
             phi: Vector([r * x, r * y, r * z]),
         }
     }
+
+    /// GE.14's blend, `[sin((1−t)α) q₀ + sin(tα) q₁] / sin α`, overriding the provided body
+    /// (`0050`).
+    ///
+    /// The same function: GE.14 proves this equal to `q₀ Exp(t Log(q₀* q₁))`, which is what
+    /// [`reference::geodesic`](crate::reference::geodesic) and the provided body compute, so the
+    /// `twin` leg of `laws::geodesic` now compares two genuinely different expressions.
+    ///
+    /// **The denominator is `sin α` recomputed from `α`, never `‖v‖`**, although the two are the
+    /// same number for a unit quaternion. That one token is the whole of `0050`'s measurement: at
+    /// `t = 0` the left weight is `sin α / den`, which is exactly one only when `den` *is* that
+    /// same `sin α`, and at `t = 1` the mirror — so this form reproduces **both** endpoints bit
+    /// for bit where the provided body reproduces only `t = 0`, and every maximum the `‖v‖`
+    /// spelling scored sat on or beside an endpoint. Measured over `so3_geodesic`: 1.644 / 1.738 /
+    /// 1.642 `u` at `geo:consecutive` / `geo:generic` / `geo:near-pi`, against the provided body's
+    /// 1.572 / 2.721 / 2.429 and `tf_tree_math::slerp`'s 2.187 / 1.834 / 1.642 — oracle #1
+    /// dominated on all three where it won two, for 1.046x at `geo:consecutive`.
+    ///
+    /// The `-0.0` exception is the provided body's and for the same reason: a weight of exactly
+    /// zero times a `-0.0` component is added to it, and `-0.0 + 0.0` is `+0.0`.
+    ///
+    /// # Domain
+    ///
+    /// None. `‖v‖ = 0` is the two rotations being equal, where the arc is a point and the answer is
+    /// `q₀` — both of its endpoints — taken through `S::branch` with `0003`'s safe argument in the
+    /// division, so the exact arm never divides by that zero.
+    #[inline]
+    fn geodesic(x0: &Self, x1: &Self, t: S) -> Self {
+        // `Log`'s own flip, on the relative quaternion, so the arc is the short one: this is the
+        // sign rule GE.14 assumes and `log` applies, read from the same quantity.
+        let d = x0.0.conjugate() * x1.0;
+        let flip = S::one().copysign(d.w);
+        let (w, x, y, z) = (flip * d.w, flip * d.x, flip * d.y, flip * d.z);
+        let nv = ((x * x + y * y) + z * z).sqrt();
+        let alpha = nv.atan2(w);
+        let (sin_alpha, _) = alpha.sin_cos();
+        let point = nv.le(S::zero());
+        // The safe argument: `1` where the arc is a point, so the exact arm's `0/0` never happens
+        // and the branch below, not a NaN, decides the answer (`0003`).
+        let den = S::select(point, S::one(), sin_alpha);
+        let q0 = x0.0;
+        let q1 = Quat {
+            w: flip * x1.0.w,
+            x: flip * x1.0.x,
+            y: flip * x1.0.y,
+            z: flip * x1.0.z,
+        };
+        Self(S::branch(
+            point,
+            || q0,
+            || {
+                // Three `sin`s at three arguments, not one and an angle-addition identity: the
+                // identity is exact in `R` and a different rounding here, and `0050` measured
+                // this spelling (its *Further work* 2 holds the other).
+                let (s0, _) = ((S::one() - t) * alpha).sin_cos();
+                let (s1, _) = (t * alpha).sin_cos();
+                let (a, b) = (s0 / den, s1 / den);
+                Quat {
+                    w: a * q0.w + b * q1.w,
+                    x: a * q0.x + b * q1.x,
+                    y: a * q0.y + b * q1.y,
+                    z: a * q0.z + b * q1.z,
+                }
+            },
+        ))
+    }
     /// `Ad_R = R` (`NUMERICS.md` §3.5).
     #[inline]
     fn adjoint(&self) -> Mat3<S> {

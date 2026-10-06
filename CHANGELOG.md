@@ -7,6 +7,35 @@ defined by the status tables in `docs/`; they win over this file.
 
 ## [Unreleased]
 
+### Changed
+
+- **`SO3::geodesic` is overridden with GE.14's blend** (`0050` step 2), with the denominator
+  `sin α` recomputed from `α` and never `‖v‖`.
+  - **`just envelope` 115 → 113**, the figure `0050` predicted. `so3_geodesic` reads
+    **1.6440 / 1.7382 / 1.6417** `u` at `geo:consecutive` / `geo:generic` / `geo:near-pi` against
+    oracle #1's 2.187 / 1.834 / 1.642 — **dominated on all three** where it won two — and matches
+    the measurement to every digit. The `host-std` twin reads the same, so the override costs D16
+    nothing. The one geodesic failure left is `se3_geodesic/geo:generic`, which `SEn3`'s own path
+    reads and `SO3::geodesic` does not reach (`0050` decision 6).
+  - **`γ(x₀, x₁, 1)` is now `x₁` bit for bit**, up to `Log`'s sign, including past `π` where the
+    flip makes it `−q₁`. A new test pins it; the law leg says the same from the other side, falling
+    from 7.160 `u` to **1.118**, `gerr`'s floor for two bitwise equal quaternions. No group claimed
+    the right endpoint before.
+  - Reported with the cost: the `twin` leg rose 1.118 → **7.233** `u`, which is the same fact —
+    `SO3::geodesic` is an override now, so the leg compares two genuinely different expressions
+    instead of a call with itself, which is what D6 asks of a §14 row. `symmetry` improved
+    8.951 → 6.013, `velocity` and `right` degraded 6.505 → 7.107 and 9.663 → 10.979. All are
+    identity legs; `0006` makes the corpus the bar. SO(3)'s and `Product<SO3, Rn<3>>`'s bounds are
+    re-recorded at twice the new worst, and `0045` item 5's three left-invariance bounds with them
+    (6.585 / 5.812 / 3.800, the largest moving from `‖t_G‖ = 1` to `0`).
+  - `product_tests::so3_r3::the_geodesic_is_slerp_and_lerp_to_the_bit` still passes, which is
+    `0050` *Further work* 3 answered: `Product` delegates per factor, so the assertion is about
+    delegation and both sides moved together.
+  - `NUMERICS.md` §10 carries the formula with the denominator's spelling marked **NORMATIVE**, and
+    GE.14 says which of its three spellings ships. The measurement gained the shipped route as a
+    seventh column and two tests: that it reproduces the committed rows, and that it **is** route E
+    bit for bit on every corpus record.
+
 ### Added
 
 - **`0050`: the geodesic's denominator is the whole domination gap.** A measurement

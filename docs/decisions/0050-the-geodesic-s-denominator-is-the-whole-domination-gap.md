@@ -2,7 +2,20 @@
 
 **Status:** ready
 **Owner:** @NoeFontana
-**Implementation:** the measurement and this record land together; the override is step 2
+**Implementation:** #100 (the measurement and this record); steps 2 and 3 as noted below
+
+> **Step 2 landed, and the predictions held.** `just envelope` **115 → 113**, the number this
+> record's *Consequences* named, with `se3_geodesic/geo:generic` the only geodesic failure left.
+> The corpus reads **1.6440 / 1.7382 / 1.6417** `u` at `geo:consecutive` / `geo:generic` /
+> `geo:near-pi`, matching the measurement's figures to every digit it printed, and the `host-std`
+> twin reads the same, so the override costs D16 nothing. Two law legs moved and they are one fact:
+> SO(3)'s `t=1` leg fell from 7.160 `u` to **1.118**, `gerr`'s floor for two bitwise equal
+> quaternions — the endpoint exactness, read by the laws without the corpus — and `twin` rose from
+> 1.118 to **7.233**, because the leg now compares two genuinely different expressions instead of a
+> call with itself. `symmetry` improved (8.951 → 6.013) and `velocity` and `right` degraded
+> (6.505 → 7.107, 9.663 → 10.979); all are identity legs, and `0006` makes the corpus the bar.
+> `Product<SO3, Rn<3>>` inherited the same pair of moves through its per-factor delegation, and its
+> bit-for-bit slerp-and-lerp assertion still passes, which is *Further work* 3 answered.
 
 ## Context
 

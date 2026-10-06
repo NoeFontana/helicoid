@@ -75,15 +75,37 @@ fn rel(q0: [f64; 4], q1: [f64; 4]) -> ([f64; 4], [f64; 4]) {
     }
 }
 
-/// The shipped provided body: `q0 Exp(t Log(q0* q1))`, through `SO3::geodesic` itself.
+/// Lift a stored quaternion into `SO3` as the subject does.
 ///
-/// Built with `from_quat_unchecked` for `shipped.rs`'s stated reason: the reference is the geodesic
-/// between the two rotations the records *denote*, and the half `u` of `|‖q‖² − 1|` a program
-/// carrying the stored quaternion reads for it is the shipped behaviour the row measures.
-fn route_a(q0: [f64; 4], q1: [f64; 4], t: f64) -> [f64; 4] {
-    let lift = |[w, x, y, z]: [f64; 4]| SO3::from_quat_unchecked(Quat { w, x, y, z });
-    let q = SO3::geodesic(&lift(q0), &lift(q1), t).quat();
+/// `from_quat_unchecked` for `shipped.rs`'s stated reason: the reference is the geodesic between the
+/// two rotations the records *denote*, and the half `u` of `|‖q‖² − 1|` a program carrying the
+/// stored quaternion reads for it is the shipped behaviour the row measures.
+fn lift(q: [f64; 4]) -> SO3<f64> {
+    let [w, x, y, z] = q;
+    SO3::from_quat_unchecked(Quat { w, x, y, z })
+}
+
+/// `w` first, as the corpus holds it.
+fn wxyz(q: &Quat<f64>) -> [f64; 4] {
     [q.w, q.x, q.y, q.z]
+}
+
+/// The **provided body**, `q0 Exp(t Log(q0* q1))`, which is what `SO3::geodesic` was until `0050`.
+///
+/// Taken through `reference::geodesic`, which *is* that body — `x0.rplus(&x1.rminus(x0).scale(t))`
+/// — so this column keeps measuring the route the override replaced, and keeps doing so after the
+/// override. Reading it from `SO3::geodesic` instead is what [`route_s`] is for, and conflating the
+/// two is what made both of this module's tests fire the moment the override landed.
+fn route_a(q0: [f64; 4], q1: [f64; 4], t: f64) -> [f64; 4] {
+    wxyz(&helicoid::reference::geodesic(&lift(q0), &lift(q1), t).quat())
+}
+
+/// What **ships**: `SO3::geodesic` itself, which `0050` made [`route_e`].
+///
+/// Its column is the control, and it being a separate column from [`route_a`] is the point: the one
+/// asserts the harness against the committed rows, the other keeps the superseded route measurable.
+fn route_s(q0: [f64; 4], q1: [f64; 4], t: f64) -> [f64; 4] {
+    wxyz(&SO3::geodesic(&lift(q0), &lift(q1), t).quat())
 }
 
 /// GE.14's grouped form: `q0 (cos t·alpha, varpi_t v)` with `varpi_t = sin(t·alpha)/sin(alpha)`.
@@ -191,18 +213,27 @@ const CORPUS: &str = concat!(
 
 /// The committed rows this measurement is read against (`PHASE4.md` §0.0), in `u`, so the control
 /// is checked by the test and not by a reader.
+///
+/// `shipped` is [`route_s`]'s row and moved with `0050`; it read 1.572 / 2.721 / 2.429 while the
+/// provided body shipped, which is [`route_a`]'s column and what the record's table quotes.
 const COMMITTED: [(&str, f64, f64); 3] = [
-    // stratum, `helicoid` (= route A), `tf_tree_math::slerp`
-    ("geo:consecutive", 1.572, 2.187),
-    ("geo:generic", 2.721, 1.834),
-    ("geo:near-pi", 2.429, 1.642),
+    // stratum, shipped (= route S, = route E), `tf_tree_math::slerp`
+    ("geo:consecutive", 1.644, 2.187),
+    ("geo:generic", 1.738, 1.834),
+    ("geo:near-pi", 1.642, 1.642),
 ];
 
 /// One spelling: `(q0, q1, t)` to the quaternion at parameter `t`.
 type Route = fn([f64; 4], [f64; 4], f64) -> [f64; 4];
 
-/// The spellings scored, in the order every table below prints them.
-const ROUTES: [Route; 6] = [route_a, route_b, route_c, route_d, route_e, route_g];
+/// The spellings scored, in the order every table below prints them. [`route_s`] is last so the
+/// six studied spellings keep their columns and the shipped one is read beside them.
+const ROUTES: [Route; 7] = [
+    route_a, route_b, route_c, route_d, route_e, route_g, route_s,
+];
+
+/// [`route_s`]'s index in [`ROUTES`]: the control's column.
+const SHIPPED: usize = 6;
 
 /// One route's worst reading on one stratum: the maximum in `u`, and the record that attained it.
 type Worst = (f64, u64);
@@ -276,33 +307,51 @@ mod tests {
             .collect())
     }
 
-    /// The control, which runs in `just test`: [`route_a`] reproduces the committed `helicoid` row
-    /// of every stratum to the three decimals `PHASE4.md` §0.0 quotes.
+    /// The control, which runs in `just test`: [`route_s`] -- what ships -- reproduces the
+    /// committed `helicoid` row of every stratum to the three decimals `PHASE4.md` §0.0 quotes.
     ///
-    /// Without this the figures the measurement prints are unreadable -- a harness that mis-scores
-    /// would mis-score all six routes and still look self-consistent.
+    /// Without this the figures the measurement prints are unreadable: a harness that mis-scores
+    /// would mis-score every route and still look self-consistent.
     #[test]
     fn the_shipped_route_reproduces_the_committed_rows() -> Result<(), String> {
         let got = measure()?;
-        for (stratum, helicoid, _) in COMMITTED {
+        for (stratum, shipped, _) in COMMITTED {
             let (u, _) = *got
                 .get(stratum)
-                .and_then(|r| r.first())
+                .and_then(|r| r.get(SHIPPED))
                 .ok_or_else(|| format!("no `{stratum}` in the corpus"))?;
             assert!(
-                (u - helicoid).abs() < 5e-4,
-                "{stratum}: route A reads {u} u, `PHASE4.md` §0.0 says {helicoid}"
+                (u - shipped).abs() < 5e-4,
+                "{stratum}: the shipped route reads {u} u, `PHASE4.md` §0.0 says {shipped}"
+            );
+        }
+        Ok(())
+    }
+
+    /// `SO3::geodesic` **is** [`route_e`], bit for bit on every corpus record.
+    ///
+    /// `0050` decision 1 is a claim about the shipped code, and the table alone cannot make it: two
+    /// columns agreeing to three decimals is not the same as one being the other. This is what ties
+    /// the record's measurement to the routine it decided.
+    #[test]
+    fn the_shipped_route_is_route_e_to_the_bit() -> Result<(), String> {
+        for line in lines()? {
+            let (q0, q1, t, id) = case(&line)?;
+            let (s, e) = (route_s(q0, q1, t), route_e(q0, q1, t));
+            assert!(
+                s.iter().zip(&e).all(|(a, b)| a.to_bits() == b.to_bits()),
+                "record {id} at t = {t}: shipped {s:?} is not route E's {e:?}"
             );
         }
         Ok(())
     }
 
     /// Why [`route_e`] wins the two losing strata: it reproduces **both** endpoints bit for bit,
-    /// where the shipped body reproduces only `t = 0`.
+    /// where the **provided** body ([`route_a`]) reproduces only `t = 0`.
     ///
     /// At `t = 0` every route's left weight is `sin(a)/den`; only when `den` is that same `sin(a)`
     /// is the ratio exactly one. At `t = 1` the mirror holds. The corpus pins this rather than the
-    /// argument doing: every record at `t = 0` or `t = 1`, all three strata, and the shipped route
+    /// argument doing: every record at `t = 0` or `t = 1`, all three strata, and the provided body
     /// asserted to **fail** at `t = 1` on at least one of them -- if it ever stops failing, the
     /// asymmetry `PHASE4.md` §0.0 records has gone and this reasoning needs rereading.
     #[test]
@@ -335,7 +384,7 @@ mod tests {
         );
         assert!(
             a_fails_at_one > 0,
-            "the shipped route is now exact at t = 1 on every record; \
+            "the provided body is now exact at t = 1 on every record; \
              `PHASE4.md` §0.0's one-sided claim and this test's reasoning both need rereading"
         );
         Ok(())
@@ -346,13 +395,14 @@ mod tests {
     #[ignore = "a measurement, printed for a record to cite; the two tests above are the checks"]
     #[allow(clippy::print_stdout)]
     fn measure_the_geodesic_spellings() -> Result<(), String> {
-        const NAMES: [&str; 6] = [
-            "A shipped",
+        const NAMES: [&str; ROUTES.len()] = [
+            "A provided",
             "B grouped",
             "C blend/|v|",
             "D dot/|v|",
             "E blend/sin",
             "G chord/sin",
+            "S shipped",
         ];
         let got = measure()?;
         println!("so3_geodesic, binary64, max u per stratum (worst record id)");

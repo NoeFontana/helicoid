@@ -279,6 +279,19 @@ $X(t) = X_0\,\mathrm{Exp}(t\,d)$ with $d = X_1 \ominus_R X_0$ and $\Delta = X_0^
 
 - **Definition = reference twin.** For SE(3) this is ScLERP; the unit-dual-quaternion power is the
   fast twin (`PHASE4.md` §1). For `Product<SO3, R3>` it is slerp + lerp, i.e. `tf2`'s semantics.
+- **SO(3) ships GE.14's blend, and the denominator's spelling is NORMATIVE** ([`0050`](./decisions/0050-the-geodesic-s-denominator-is-the-whole-domination-gap.md)):
+  $$\gamma(q_0, q_1, t) = \frac{\sin((1-t)\alpha)\,q_0 + \sin(t\alpha)\,q_1}{\sin\alpha},
+  \qquad (w, \mathbf v) = q_0^{*}q_1 \text{ with } w \ge 0,\quad
+  \alpha = \mathrm{atan2}(\lVert\mathbf v\rVert, w),$$
+  with the denominator **$\sin\alpha$ recomputed from $\alpha$, never $\lVert\mathbf v\rVert$**,
+  although for a unit quaternion the two are the same number. GE.14 proves this equal to
+  $q_0\mathrm{Exp}(t\,\mathrm{Log}(q_0^{*}q_1))$, so it is not a different function and the
+  definition above stands as the reference twin; what is normative is the spelling, because only the
+  recomputed form makes both $t = 0$ and $t = 1$ exact — one number divided by itself — and that is
+  the whole difference between dominating oracle #1 on all three `so3_geodesic` strata (1.644 /
+  1.738 / 1.642 `u`) and losing two of them (1.572 / 2.721 / 2.429). $\lVert\mathbf v\rVert = 0$
+  is the two rotations being equal and returns $q_0$; the domain below is unchanged, as the blend
+  has none of its own.
 - **Invariance.** The SE(3) geodesic is left- and right-invariant:
   $X_0 H\,\mathrm{Exp}(t\,\mathrm{Ad}_{H^{-1}} d) = X_0\,\mathrm{Exp}(t\,d)\,H$. For
   `Product<SO3, R3>` **the answer depends on which law $a\cdot H$ uses**: under the product's own
@@ -390,6 +403,7 @@ row spells the composition and the proptest writes it inline
 | `SEn3Jac::apply`, `apply_transpose` | dense $J x$ and $J^\top x$ | 3 |
 | `SEn3Jac::sandwich` | dense $J\,\Sigma\,J^\top$; also the twin the `Gaussian` row below asks for | 3 |
 | `ProductJac::sandwich` | dense $J\,\Sigma\,J^\top$ of the block-diagonal $J$ | 3 |
+| `SO3::geodesic` (GE.14's blend, §10) | $q_0\,\mathrm{Exp}(t\,\mathrm{Log}(q_0^{*}q_1))$ — `reference::geodesic`, which is also `LieGroup::geodesic`'s **provided** body, so the `twin` leg of `laws::geodesic` is this row's proptest and reads 7.233 `u` where it read `gerr`'s 1.118 floor while the two were one expression ([`0050`](./decisions/0050-the-geodesic-s-denominator-is-the-whole-domination-gap.md)) | 4 |
 | `SE3::geodesic` (dual-quaternion power) | $X_0\,\mathrm{Exp}(t\,\mathrm{Log}(X_0^{-1}X_1))$ | 4 |
 | `geodesic_jacobians` | `Dual` through the reference geodesic | 4 |
 | `Gaussian::to_left` / `to_right` | dense $\mathrm{Ad}\,\Sigma\,\mathrm{Ad}^\top$: `reference::sen3jac_sandwich` with $J = \mathrm{Ad}$ | 5 |

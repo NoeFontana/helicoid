@@ -54,8 +54,8 @@ const F64: Bounds = Bounds {
     sandwich: 8.0,
     // `PHASE3.md` §8's second check, measured 5.485 over 20 000 draws.
     dual_rows: 11.0,
-    // `PHASE4.md` §1 and §3's seven legs, in `GEODESIC_LEGS`'s order, each twice the worst of 10^6 draws of `laws::Rng::shaped` -- `laws::sample`'s own distribution, which is what the proptest draws -- rounded up: `t=1` 6.339 / 7.160, symmetry 8.521 / 8.951, velocity 5.803 / 6.505, left 8.637 / 9.122, right 8.285 / 9.663. `t=0` and `twin` are both 1.118, `gerr`'s floor for two bitwise equal quaternions (`Bounds::geodesic` says why); `SO3` overrides nothing, so `twin` compares a call with itself.
-    geodesic: [3.0, 15.0, 18.0, 14.0, 19.0, 20.0, 3.0],
+    // `PHASE4.md` §1 and §3's seven legs, in `GEODESIC_LEGS`'s order, each twice the worst of 10^6 draws of `laws::Rng::shaped` -- `laws::sample`'s own distribution, which is what the proptest draws -- rounded up, `f64` / `f32`: symmetry 5.000 / 6.013, velocity 7.024 / 7.107, left 9.276 / 8.140, right 10.979 / 9.289, twin 7.213 / 7.233. **`t=0` and `t=1` are both 1.118**, `gerr`'s floor for two bitwise equal quaternions (`Bounds::geodesic` says why), and `t=1` reading the floor is `0050`: the override is exact at both endpoints where the provided body was exact only at `t=0`, which took that leg from 7.160 to the floor. `twin` moved the other way, 1.118 -> 7.233, and that is the same fact: `SO3::geodesic` is now an override, so the leg compares two genuinely different expressions instead of a call with itself -- which is what D6 asks of a §14 row and what this leg could not say before.
+    geodesic: [3.0, 3.0, 13.0, 15.0, 19.0, 22.0, 15.0],
 };
 const F32: Bounds = Bounds {
     tangent_order: 3.0,
@@ -625,6 +625,48 @@ fn adjoint_is_the_rotation_and_ad_is_the_hat() {
     let got = SO3::<f64>::ad(&tan(phi));
     for c in 0..3 {
         close(&got.col(c).0, &w.col(c).0, 0.0);
+    }
+}
+
+/// `γ(x₀, x₁, 1)` is `x₁` **bit for bit**, up to `Log`'s sign — the property `0050`'s override
+/// adds and the whole reason it dominates oracle #1.
+///
+/// It holds by the arithmetic, not by luck: the right weight is `sin(1·α)/sin α`, and `1·α` is `α`
+/// exactly, so it is one number divided by **itself** and therefore exactly `1`; the left weight is
+/// `sin(0·α)/sin α`, an exact `+0`. Dividing by `‖v‖` instead -- the same number for a unit
+/// quaternion, and the spelling `0050` measured and rejected -- gives `1 + ε` here, which is the
+/// entire 2.721 -> 1.738 `u` at `geo:generic`.
+///
+/// The sign is `Log`'s: at `q₀·q₁ < 0` the answer is `−q₁`, the same rotation on the short arc,
+/// which is what `tf_tree_math::slerp` documents for its own `s = 1`. The `−0.0` exception is the
+/// `t = 0` test's, for the same reason.
+#[test]
+fn geodesic_at_one_is_the_right_endpoint_bit_for_bit() {
+    let q =
+        |v: [f64; 4]| SO3::from_quat_unchecked(Quat::from_wxyz_normalized(v[0], v[1], v[2], v[3]));
+    let cases = [
+        ([1.0, 0.0, 0.0, 0.0], [0.3, -0.5, 0.7]),
+        ([0.2, 0.3, -0.5, 0.78], [1.0, -2.0, 0.5]),
+        ([0.0, 0.6, 0.0, 0.8], [1e-9, 0.0, -1e-9]),
+        // `θ(d) = 0`: the arc is a point, which takes the `‖v‖ = 0` branch and not the blend.
+        ([-0.4, 0.1, 0.9, -0.2], [0.0, 0.0, 0.0]),
+        // Past `π`, so `Log`'s flip fires and the expected endpoint is `−q₁`.
+        ([1.0, 0.0, 0.0, 0.0], [2.6, 0.0, 0.0]),
+    ];
+    for (w, d) in cases {
+        let x0 = q(w);
+        let x1 = x0.rplus(&SO3Tangent { phi: Vector(d) });
+        let got = SO3::geodesic(&x0, &x1, 1.0).quat();
+        let (a, b) = (x0.quat(), x1.quat());
+        // The sign `Log` would choose, read off the relative quaternion as `geodesic` reads it.
+        let dot = ((a.w * b.w + a.x * b.x) + a.y * b.y) + a.z * b.z;
+        let f = 1.0_f64.copysign(dot);
+        let want = [f * b.w, f * b.x, f * b.y, f * b.z];
+        assert_eq!(
+            [got.w, got.x, got.y, got.z].map(f64::to_bits),
+            want.map(f64::to_bits),
+            "t = 1 moved {w:?} along {d:?}"
+        );
     }
 }
 
