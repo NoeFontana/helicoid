@@ -135,3 +135,7 @@ A PR adding public API answers each line in its description:
 5. Does it duplicate an existing path (a second spelling)? Document the one that exists instead.
 6. Does it pass the ownership test ([`0009`](./decisions/0009-what-helicoid-does-not-own.md))?
 7. Is it `no_std`, allocation-free, dependency-free, and bit-identical across targets?
+8. Does it **remove a way to be wrong** that the consumer cannot see — a tangent order, a side, a
+   chart, a switch point, a series, a branch cut, a quaternion sign — or does it only relocate code
+   the consumer already has right? ([`0049`](./decisions/0049-the-boundary-is-what-removes-a-way-to-be-wrong.md); question 6 asks whether `helicoid` *may* own it, which is
+   a different thing, and three items have now shipped past it.)

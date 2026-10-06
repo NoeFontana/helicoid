@@ -141,9 +141,19 @@ pub struct Gaussian<S: Real, G: LieGroup<S>, Sd: Side, const D: usize> {
 - **locus-tag**: `Pose::retract` becomes `WithChart<SE3<f64>, Decoupled>`; its `[v, ω]` LM delta
   crosses into `helicoid` through `Twist::from_translation_first` at the LM boundary only;
   `quat_from_so3` becomes `SO3::from_matrix` and its Müller-hang regression test moves with it;
-  nalgebra types convert through `mint`. Gate: `scripts/bench_gate.py` paired-CI no regression on
+  nalgebra types convert through `mint`. Gate: the paired-CI comparison under `tools/bench/`
+  (`compare/`, `metrics.py`, `strata.py`), driven through `tools/cli.py bench` — no regression on
   every reported metric, **rotation p95 included**. Bit identity is not expected (nalgebra's
   `Rotation3::new` vs `SO3::exp` differ in rounding), so the gate is statistical by design.
+  Measured scope, as of [`0049`](./decisions/0049-the-boundary-is-what-removes-a-way-to-be-wrong.md) decision 6: the whole *production* Lie surface is five
+  items — `Pose::{retract, inverse, adjoint}`, the two covariance reframes and `quat_from_so3` (two
+  non-test callers, both in `locus-py`) — and everything else matching `retract`/`Rotation3` under
+  `crates/locus-core/src/` is a test. `Pose::adjoint` exists **only** to sandwich a 6x6, so
+  `Jac::sandwich` replaces it and the dense `Matrix6` never materializes (`0005`). The unrecorded
+  constraint is representation: `Pose`'s `rotation` field is a public `Matrix3<f64>` where
+  `helicoid` is quaternion-backed, so either the retract converts per LM iteration — up to twenty
+  per pose, each paying `from_matrix`'s pivot selection — or `Pose`'s representation changes, which
+  is a locus-tag published-API change. Which one is a measurement on that gate, not a reading.
 - **locus_fusion**: if the estimator is Rust, it uses `SE23`, Γ, both sides and `Gaussian`
   directly. If it stays C++, its test suite consumes the corpus JSONL through a Sophus-order
   converter; a failing C++ stratum is a locus_fusion bug report, not a `helicoid` change.

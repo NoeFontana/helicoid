@@ -120,7 +120,7 @@ answer is $X_0$ with zero deviation.
 | `dualquat::screw_pow` | fast twin of `SE3::geodesic` | §1.2 |
 | `slerp` | `SO3::geodesic` | |
 | `LerpSlerp` | stays in `tf_tree` | §0 |
-| `quat_from_rot3` | `SO3::from_matrix` | Shepperd, closed form |
+| `quat_from_rot3` | `SO3::from_matrix` | Shepperd, closed form — and **not a parity row**: `quat_from_rot3` returns an un-normalized quaternion by its own rustdoc where `SO3::from_matrix` normalizes, so this row records a behaviour change with a number on it ([`0049`](./decisions/0049-the-boundary-is-what-removes-a-way-to-be-wrong.md) decision 4). Nothing breaks: `tf_tree_c::layout::read` rejects `|det R - 1| > 1e-6` upstream, so every reachable argument is already a rotation to that tolerance |
 | `Interp` trait | stays in `tf_tree` | `tf_tree`'s API, implemented over `helicoid` |
 
 ### 5.2 Envelope precondition
