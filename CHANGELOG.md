@@ -28,6 +28,18 @@ defined by the status tables in `docs/`; they win over this file.
     identity legs; `0006` makes the corpus the bar. SO(3)'s and `Product<SO3, Rn<3>>`'s bounds are
     re-recorded at twice the new worst, and `0045` item 5's three left-invariance bounds with them
     (6.585 / 5.812 / 3.800, the largest moving from `‖t_G‖ = 1` to `0`).
+  - **`benches/groups.rs` gains the geodesic rows `PHASE4.md` §0.0 owed** — six per precision,
+    `so3`/`se3`/`se23` at the three strata, each built from `base` to `x` so the labelled `θ(d)` is
+    the row's own. They did not exist, which is why the first bench-gate run could say only that
+    nothing *else* regressed. With them, and a baseline built in this tree from the pre-override
+    `so3.rs`: `so3/geodesic` is **1.10–1.19× faster** at `generic` and `near-pi` on both precisions
+    and **2.05× faster** at `f32` `near-identity`, and **1.56× slower** at `f64` `near-identity`
+    (19.7 → 30.7 ns). All twelve `se3`/`se23` rows sit at 0.99–1.01, the control that says the rows
+    measure what they claim and that the SE(3) path carrying `tf_tree`'s 300 ns gate is untouched.
+    **`cargo xtask bench-gate` exits 1** on that one row — at least 1.5525 in all 6 pairs against a
+    0.0044 floor, so resolvable and not noise. `0050` *Further work* 1 records what the two-arm
+    would be and that it needs no sweep, since route B is bit-identical to route A there and rides
+    switches that already exist.
   - `product_tests::so3_r3::the_geodesic_is_slerp_and_lerp_to_the_bit` still passes, which is
     `0050` *Further work* 3 answered: `Product` delegates per factor, so the assertion is about
     delegation and both sides moved together.
