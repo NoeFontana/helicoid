@@ -295,10 +295,14 @@ $X(t) = X_0\,\mathrm{Exp}(t\,d)$ with $d = X_1 \ominus_R X_0$ and $\Delta = X_0^
 - **Below `r`'s second switch the provided body is taken instead** ([`0051`](./decisions/0051-two-arms-on-the-switch-the-sweep-already-chose.md)), because it is
   both cheaper there — its coefficients are on their series arms, polynomials with no transcendental
   — and *more* accurate, 1.572 against 1.644 `u` at `geo:consecutive`. The boundary is
-  `s = \tan^2\alpha <` `short_below`, `r`'s own generated number and not a new one, and
-  $t \ge 1$ takes the blend on **both** sides of it, since only the blend is exact there. The two
-  spellings are the same function (GE.14), so this is one routine with two arms and not two
-  routines.
+  `s = \tan^2\alpha <` `short_below`, `r`'s own generated number and not a new one, and **exactly**
+  $t = 1$ takes the blend on both sides of it, since only the blend is exact there. Not $t \ge 1$:
+  extrapolation below the switch belongs to the provided body, whose error does not grow with $t$
+  where the blend's weights do — it forms $\approx -(t-1)q_0 + t q_1$, and the cancellation reads
+  about $1.2\times10^6\,u$ at $t = 10^6$, $\theta(d) = 10^{-9}$. The two spellings are the same
+  function (GE.14), so this is one routine with two arms and not two routines. At
+  $\lVert v\rVert = 0$ the blend's own limit $(1-t)q_0 + t q_1$ is taken, which is exact at both
+  endpoints even where $n^2$ underflows on a pair that still differs.
 - **Invariance.** The SE(3) geodesic is left- and right-invariant:
   $X_0 H\,\mathrm{Exp}(t\,\mathrm{Ad}_{H^{-1}} d) = X_0\,\mathrm{Exp}(t\,d)\,H$. For
   `Product<SO3, R3>` **the answer depends on which law $a\cdot H$ uses**: under the product's own
@@ -410,7 +414,7 @@ row spells the composition and the proptest writes it inline
 | `SEn3Jac::apply`, `apply_transpose` | dense $J x$ and $J^\top x$ | 3 |
 | `SEn3Jac::sandwich` | dense $J\,\Sigma\,J^\top$; also the twin the `Gaussian` row below asks for | 3 |
 | `ProductJac::sandwich` | dense $J\,\Sigma\,J^\top$ of the block-diagonal $J$ | 3 |
-| `SO3::geodesic` (GE.14's blend, §10) | $q_0\,\mathrm{Exp}(t\,\mathrm{Log}(q_0^{*}q_1))$ — `reference::geodesic`, which is also `LieGroup::geodesic`'s **provided** body, so the `twin` leg of `laws::geodesic` is this row's proptest and reads 7.233 `u` where it read `gerr`'s 1.118 floor while the two were one expression ([`0050`](./decisions/0050-the-geodesic-s-denominator-is-the-whole-domination-gap.md)) | 4 |
+| `SO3::geodesic` (GE.14's blend, §10) | $q_0\,\mathrm{Exp}(t\,\mathrm{Log}(q_0^{*}q_1))$ — `reference::geodesic`, which is also `LieGroup::geodesic`'s **provided** body, so the `twin` leg of `laws::geodesic` is this row's proptest and reads 7.213 `u` at binary64 and 7.089 at binary32, where it read `gerr`'s 1.118 floor while the two were one expression ([`0050`](./decisions/0050-the-geodesic-s-denominator-is-the-whole-domination-gap.md)) | 4 |
 | `SE3::geodesic` (dual-quaternion power) | $X_0\,\mathrm{Exp}(t\,\mathrm{Log}(X_0^{-1}X_1))$ | 4 |
 | `geodesic_jacobians` | `Dual` through the reference geodesic | 4 |
 | `Gaussian::to_left` / `to_right` | dense $\mathrm{Ad}\,\Sigma\,\mathrm{Ad}^\top$: `reference::sen3jac_sandwich` with $J = \mathrm{Ad}$ | 5 |

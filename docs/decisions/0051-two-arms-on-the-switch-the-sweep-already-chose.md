@@ -119,16 +119,35 @@ five decades of slack: this is a choice, but not a delicate one.
    `measure_geodesic::tests::the_shipped_dispatch_threshold_still_dominates` **fails** if a later
    sweep moves that number into the region the table says loses.
 
-3. **`t ≥ 1` takes the blend on both sides of the switch.** Only the blend is exact there — its
-   right weight is `sin(1·α)/sin α`, one number over itself — and `0050` shipped that bit-exactness
-   with `PHASE4.md` §0.0 recording it. Giving it up at `geo:consecutive` would be backwards:
-   consecutive keyframes are exactly where a query *at* the later one happens. One `le` buys it, and
-   `t > 1` is extrapolation, which GE.14 covers and the blend computes, so the same arm serves it.
+3. **Exactly `t = 1` takes the blend on both sides of the switch** — not `t ≥ 1`. Only the blend is
+   exact there, its right weight being `sin(1·α)/sin α`, one number over itself, and `0050` shipped
+   that bit-exactness with `PHASE4.md` §0.0 recording it. Giving it up at `geo:consecutive` would be
+   backwards: consecutive keyframes are exactly where a query *at* the later one happens. Two `le`
+   buy it.
+
+   **`t ≥ 1` was this record's own defect, found by its review and corrected here.** Extrapolation
+   below the switch belongs to the provided body, whose error does not grow with `t`, where the
+   blend's weights do: it forms `≈ −(t−1) q₀ + t q₁` and the two `O(t)` terms cancel. At
+   `x₁ = x₀ Exp([10⁻⁹, 0, 0])` the blend reads a relative `1.1×10⁻¹⁴` at `t = 10³` and `2.6×10⁻¹⁰`
+   at `t = 10⁶` — about `1.2×10⁶ u` — against a provided body exact to its own roundings, and the
+   amplification has no bound as `θ → 0`. `LieGroup::geodesic` states that `t` outside `[0, 1]`
+   extrapolates along the same curve, so the argument is reachable, and nothing in the gate saw it:
+   the corpus holds no `t > 1` record and the bench passes `t = 1/3`.
+   `so3_tests::extrapolation_below_the_switch_does_not_grow_with_t` is the check.
+
+   The defect was costing accuracy on the laws too, not only on unmeasured extrapolation: with
+   `t ≥ 1` the `symmetry` leg read 5.919 / 7.670 `u` and with `t = 1` it reads **5.000 / 6.013**,
+   `0050`'s own figure.
 
    The predicate reads `t`, which is safe here and would not be in an early return. Both arms are
    implementations of the same function, so a `Dual` takes the selected arm's derivative and both
    are right; returning the constant `x₁` would zero it, which is the trap `PHASE4.md` warns of and
-   this is not.
+   this is not. **The degenerate arm is held to the same standard**: `‖v‖ = 0` returns the blend's
+   own limit `(1 − t) q₀ + t q₁`, not the constant `q₀`. The constant would zero `∂γ/∂x₁` — the
+   mirror trap — and would return the *left* endpoint at `t = 1` whenever `n²` **underflows** while
+   the two quaternions still differ, a vector component near `10⁻¹⁷⁰` squaring to zero. The limit is
+   exact at both endpoints for any input, and replacing the inner branch with two `select`s takes a
+   branch off the arm as well.
 
 4. **The `t = 0` arm is not special-cased**, because it does not need to be: `scale(0)` gives `±0`,
    `Exp` of that is exactly the identity quaternion, and multiplying by it is exact. The provided
@@ -167,15 +186,12 @@ two different boundaries, and no reason for them to coincide.
 
 - `coeffs` gains one `pub(crate)` predicate. It is not a new number and not a new arm: it is the
   comparison `log_ratio` already makes, named so a caller can make the same one.
-- **`symmetry` is this record's one cost**, and it is structural. GE.2(c) asks
-  `γ(x₀, x₁, t) = γ(x₁, x₀, 1−t)`, so at `t = 0` the swapped call is at `t = 1` and takes the blend
-  where the original takes the provided body — two arms differing by about 7 `u` being asked to
-  agree. SO(3)'s leg goes 6.013 → **7.670** `u` at `f32` and `Product<SO3, Rn<3>>`'s 5.4233 →
-  6.4564; both bounds are re-recorded at twice the new worst. No other leg moves.
-- `left_invariance_at_three_translation_scales` returns to its pre-`0050` figures to the digit
-  (5.8658 / 6.8112 / 3.8000), because its draws are near-identity and take the provided body again.
-  That the figures come back *exactly* is itself a check on the dispatch: the arm below the switch
-  **is** what shipped before.
+- **No law leg moves.** Every one of SO(3)'s seven and `Product<SO3, Rn<3>>`'s seven reads `0050`'s
+  figure to the digit, and `left_invariance_at_three_translation_scales` reads `0050`'s
+  6.5853 / 5.8123 / 3.8000. The second arm costs these laws nothing — the draws that fall below the
+  switch are too few to move a maximum — and **this record re-records no bound**. (An earlier draft
+  read `symmetry` 5.919 / 7.670 and attributed it to the dispatch; it was decision 3's `t ≥ 1`
+  defect, and the figures returned the moment that became `t = 1`.)
 - Both endpoints stay bit-exact, so `t=0` and `t=1` both read `gerr`'s 1.118 floor.
 - The `twin` leg stays off the floor (7.213 `u`), because one arm is not `reference::geodesic` — D6
   satisfied on the §14 row `0050` added.
@@ -184,9 +200,10 @@ two different boundaries, and no reason for them to coincide.
 
 ## Implementation plan
 
-1. This record; `coeffs::log_ratio_takes_short_arm`; the two arms; the re-recorded `symmetry`
-   bounds; `measure_geodesic`'s scan and its two guard tests — verified by `just lint`,
-   `just test`, `just conformance` and `just envelope` holding at **113**.
+1. This record; `coeffs::log_ratio_takes_short_arm`; the two arms; `measure_geodesic`'s scan and
+   its guard tests, including one that **builds** a pair either side of the threshold rather than
+   waiting for a corpus record to land in the gap — verified by `just lint`, `just test`,
+   `just conformance` and `just envelope` holding at **113**.
 2. `cargo xtask bench-gate --bench groups --only geodesic --against <baseline built in this tree>`
    showing the `near-identity` regression gone and the `generic` / `near-pi` wins kept — the figure
    recorded here whichever way it goes.
@@ -210,8 +227,11 @@ None.
    `so3_geodesic` has no `f32` stratum. The `f32` threshold is `R_F32.short`, `s < 1.4855×10⁻³`
    (`θ ≈ 7.7×10⁻²`), and the laws' `as_f32` legs are all that cover it. An `@f32` geodesic stratum
    (`0016`) would close it, and §1.2's twin will want one anyway.
-3. **The `symmetry` leg's cost is removable in principle** by dispatching on a quantity symmetric
-   in `t ↔ 1−t`, which the `t ≥ 1` clause is not. Whether that is worth a third predicate is a
-   question for a record with a measurement, not this one.
+3. **`Real` has no `sin`, so the blend pays three `sin_cos` and throws away three cosines.**
+   `libm::sincos` evaluates both kernels after one argument reduction, so a `Real::sin` —
+   `libm::sin`/`sinf` in `float.rs`, the value lane only for `Dual` — would cut this arm's
+   transcendental work by about a third while moving no measured figure, the three sines being
+   bit-identical either way. That is new `Real` surface, so `PHASE2.md` §2 plus a record of its own;
+   it is also the largest remaining latency item on this path, with step 2's 1.12x to work against.
 4. `0050` *Further work* 1's successor: **the SE(3) analogue** is still the last geodesic failure,
    and `SEn3::geodesic` reaches none of this.

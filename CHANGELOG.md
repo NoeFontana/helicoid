@@ -39,11 +39,28 @@ defined by the status tables in `docs/`; they win over this file.
     `Dual` takes the selected arm's derivative and both are right — returning the constant `x₁`
     would zero it, which is the trap and this is not. `t = 0` needs no clause: the provided body is
     already exact there.
-  - **One cost, structural.** GE.2(c)'s `symmetry` swaps `t` for `1−t`, so at `t = 0` the swapped
-    call is at `t = 1` and takes the arm the original does not: SO(3)'s leg goes 6.013 → **7.670**
-    `u` at `f32` and `Product<SO3, Rn<3>>`'s 5.4233 → 6.4564, both bounds re-recorded. No other leg
-    moves, and `left_invariance_at_three_translation_scales` returns to its pre-`0050` figures **to
-    the digit** — itself a check that the arm below the switch *is* what shipped before.
+  - **No law leg moves and no bound is re-recorded**: every one of SO(3)'s seven and
+    `Product<SO3, Rn<3>>`'s seven reads `0050`'s figure to the digit. The second arm's draws below
+    the switch are too few to move a maximum.
+  - **Exactly `t = 1` takes the blend, not `t ≥ 1`** — the one defect this change's own review
+    found, and it was costing more than extrapolation. Below the switch the blend forms
+    `≈ −(t−1) q₀ + t q₁`, two `O(t)` terms that cancel: at `θ(d) = 1e-9` it reads a relative
+    `2.6e-10` at `t = 1e6`, about **1.2e6 u**, where the provided body is exact to its own
+    roundings, with no bound on the amplification as `θ → 0`. `LieGroup::geodesic` documents that
+    `t` outside `[0, 1]` extrapolates, so the argument is reachable, and nothing in the gate saw it:
+    the corpus holds no `t > 1` record and the bench passes `t = 1/3`. Fixing it also returned the
+    `symmetry` leg from 5.919 / 7.670 `u` to `0050`'s 5.000 / 6.013.
+  - **The degenerate arm is the blend's limit `(1 − t) q₀ + t q₁`, not the constant `q₀`.** The
+    constant zeroed `∂γ/∂x₁` under `Dual` — the mirror of the trap the `t` clause avoids — and
+    returned the *left* endpoint at `t = 1` whenever `n²` **underflows** while the quaternions still
+    differ, a component near `1e-170` squaring to zero. Two `select`s replace the inner branch, so
+    the arm loses a branch as well.
+  - **`γ(x₀, x₁, 1) = x₁` holds up to the sign of a zero**, the mirror of the exception `t = 0`
+    already documented and previously unrecorded: the left weight is an exact `+0`, so a `−0.0`
+    component of `q₁` comes back `+0.0`. It is reachable only when `Log`'s flip fires — and the
+    test's "past π" case was at `‖φ‖ = 2.6 < π`, so none of its five cases flipped and the `−q₁`
+    half of the property three documents claim was **untested**. The case is now `3.5` and the test
+    asserts that at least one case flips.
   - **Latency, measured and not fully won.** Against the pre-`0050` provided body, both binaries
     built in this tree: `near-identity` **1.1162** `f64` / **1.1251** `f32`, `generic` 0.9139 /
     0.8889, `near-pi` 0.9797 / 0.9684. So the `f64` regression is cut from 1.56× to **1.12×**
@@ -72,9 +89,10 @@ defined by the status tables in `docs/`; they win over this file.
     the right endpoint before.
   - Reported with the cost: the `twin` leg rose 1.118 → **7.233** `u`, which is the same fact —
     `SO3::geodesic` is an override now, so the leg compares two genuinely different expressions
-    instead of a call with itself, which is what D6 asks of a §14 row. `symmetry` improved
-    8.951 → 6.013, `velocity` and `right` degraded 6.505 → 7.107 and 9.663 → 10.979. All are
-    identity legs; `0006` makes the corpus the bar. SO(3)'s and `Product<SO3, Rn<3>>`'s bounds are
+    instead of a call with itself, which is what D6 asks of a §14 row. Per precision, `f64` / `f32`:
+    `symmetry` improved 8.521 / 8.951 → 5.000 / 6.013, `velocity` degraded 5.803 / 6.505 →
+    7.024 / 7.107, `right` degraded 8.285 / 9.663 → 10.979 / 9.289, `left` 8.637 / 9.122 →
+    9.276 / 8.140. All are identity legs; `0006` makes the corpus the bar. SO(3)'s and `Product<SO3, Rn<3>>`'s bounds are
     re-recorded at twice the new worst, and `0045` item 5's three left-invariance bounds with them
     (6.585 / 5.812 / 3.800, the largest moving from `‖t_G‖ = 1` to `0`).
   - **`benches/groups.rs` gains the geodesic rows `PHASE4.md` §0.0 owed** — six per precision,

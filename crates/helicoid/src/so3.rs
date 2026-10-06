@@ -514,18 +514,21 @@ impl<S: Real> LieGroup<S> for SO3<S> {
     /// Two arms of the one function GE.14 equates, dispatched on `log_ratio`'s own **second**
     /// generated switch (`0051`): the provided body below it, GE.14's blend above.
     ///
-    /// Why two. `0050` measured the blend 1.18x / 1.10x faster at `geo:generic` / `geo:near-pi` and
-    /// **1.56x slower** at `geo:consecutive` at `f64`, because the provided body's `log_ratio` and
-    /// `exp_coeffs` take their *series* arms there — polynomials, no transcendental — where the
-    /// blend pays `atan2` and three `sin` whatever the angle.
+    /// Why two. `0050` measured the blend **1.56x slower** at `f64` on the bench's
+    /// `near-identity-7.5e-8` row and 1.18x / 1.10x faster on `generic-1` / `near-pi`, because the
+    /// provided body's `log_ratio` and `exp_coeffs` take their *series* arms near identity —
+    /// polynomials, no transcendental — where the blend pays `atan2` and three `sin` whatever the
+    /// angle. Those are `benches/groups.rs` rows at one `θ` each, not the 180-record `geo:*`
+    /// conformance strata the accuracy figures below come from; the two vocabularies are kept apart
+    /// here because they are different fixtures.
     ///
     /// Which switch, measured. The provided body stays the *faster* arm up to `r`'s series/exact
     /// boundary (`θ ≈ 0.58`) but stops being the more *accurate* one almost immediately above
     /// identity, so the two crossovers are decades apart and the accuracy one binds (`0006`).
-    /// Dispatching on the series/exact switch reads `2.5019 u` at `geo:generic` and **loses** the
-    /// stratum; `r`'s second switch, `0047`'s short arm, is four decades of `s` lower and reads the
-    /// best cell of every column — 1.5721 / 1.7382 / 1.6417 `u` — while keeping the faster arm on
-    /// every bench row. Every smaller threshold reads identically, so the choice has decades of
+    /// Dispatching on the series/exact switch reads `2.5019 u` at the `geo:generic` stratum and
+    /// **loses** it; `r`'s second switch, `0047`'s short arm, is four decades of `s` lower and reads
+    /// the best cell of every stratum — 1.5721 / 1.7382 / 1.6417 `u` over `geo:consecutive` /
+    /// `geo:generic` / `geo:near-pi` — while keeping the faster arm on every bench row. Every smaller threshold reads identically, so the choice has decades of
     /// slack; `measure_geodesic`'s scan is the table and its test is the guard.
     ///
     /// No switch of its own: `0004` forbids typing one, and this needs none.
@@ -569,18 +572,27 @@ impl<S: Real> LieGroup<S> for SO3<S> {
         let flip = S::one().copysign(d.w);
         let (w, x, y, z) = (flip * d.w, flip * d.x, flip * d.y, flip * d.z);
         let n2 = (x * x + y * y) + z * z;
-        // The provided body below the switch, **except at `t >= 1`**, where only the blend is
-        // exact: its right weight is `sin(1*a)/sin a`, one number over itself. `0050` shipped that
-        // bit-exactness and `PHASE4.md` §0.0 records it, and giving it up at `geo:consecutive` is
-        // backwards -- consecutive keyframes are exactly where a query *at* the later one happens.
-        // One `le` buys it. `t > 1` is extrapolation, which GE.14 covers and the blend computes, so
-        // the same arm serves it.
+        // The provided body below the switch, **except at exactly `t = 1`**, where only the blend
+        // is exact: its right weight is `sin(1*a)/sin a`, one number over itself. `0050` shipped
+        // that bit-exactness and `PHASE4.md` §0.0 records it, and giving it up at `geo:consecutive`
+        // is backwards -- consecutive keyframes are exactly where a query *at* the later one
+        // happens. Two `le` buy it.
+        //
+        // `t = 1` and not `t >= 1`: **extrapolation below the switch belongs to the provided
+        // body**, whose error there is a few `u` whatever `t` is, where the blend's weights grow
+        // like `t` and cancel. At `x1 = x0 Exp([1e-9, 0, 0])` the blend reads a relative `1.1e-14`
+        // at `t = 1e3` and `2.6e-10` at `t = 1e6` -- about `1.2e6 u` -- against a provided body
+        // that is exact to its own roundings, and the amplification has no bound as `theta -> 0`.
+        // `LieGroup::geodesic` states that `t` outside `[0, 1]` extrapolates along the same curve,
+        // so this is a reachable argument and not a hypothetical.
         //
         // The predicate reads `t`, which is safe here and would not be in an early return: both
         // arms are implementations of the same function, so a `Dual` takes the selected arm's
         // derivative and both are right. Returning the constant `x1` would zero it, which is what
         // `0050` warned of and this is not.
-        let fast = log_ratio_takes_short_arm(n2, w).and(S::one().le(t).not());
+        let one = S::one();
+        let at_one = one.le(t).and(t.le(one));
+        let fast = log_ratio_takes_short_arm(n2, w).and(at_one.not());
         let q0 = x0.0;
         S::branch(
             fast,
@@ -595,10 +607,20 @@ impl<S: Real> LieGroup<S> for SO3<S> {
                 let nv = n2.sqrt();
                 let alpha = nv.atan2(w);
                 let (sin_alpha, _) = alpha.sin_cos();
-                // `nv = 0` reaches this arm two ways: a `w <= 0` quaternion, which is not a
-                // rotation, and two bitwise equal rotations at `t >= 1` -- where `q0` *is* the
-                // answer, both endpoints of a point arc being it. The safe argument covers both:
-                // `1` keeps the division finite and the select, not a NaN, gives the answer.
+                // `nv = 0` reaches this arm three ways: a `w <= 0` quaternion, which is not a
+                // rotation; two bitwise equal rotations at `t = 1`; and `n2` **underflowing**
+                // while the two quaternions still differ -- a vector component near `1e-170`
+                // squares to zero, and `q1 = (1, 1e-170, 0, 0)` is a different quaternion from
+                // `q0`. So the arm cannot return the constant `q0`: it would contradict
+                // `geodesic_at_one_is_the_right_endpoint_bit_for_bit` on that third case, and under
+                // `Dual` it would zero the derivative in `x1`, the mirror of the trap the comment
+                // above rejects for `x0`.
+                //
+                // It returns the blend's own limit instead, `(1 - t) q0 + t q1`, which is what
+                // `sin((1-t)a)/sin a` and `sin(ta)/sin a` tend to as `a -> 0`: exact at both
+                // endpoints for any inputs, and the true geodesic to `O(a^2)`. The safe argument
+                // keeps the division finite on the lane that is not selected (`0003`), and a
+                // `select` on each weight replaces a branch.
                 let point = nv.le(S::zero());
                 let den = S::select(point, S::one(), sin_alpha);
                 let q1 = Quat {
@@ -610,16 +632,18 @@ impl<S: Real> LieGroup<S> for SO3<S> {
                 // Three `sin`s at three arguments, not one and an angle-addition identity: the
                 // identity is exact in `R` and a different rounding here, and `0050` measured this
                 // spelling (its *Further work* 3 holds the other).
-                let (s0, _) = ((S::one() - t) * alpha).sin_cos();
+                let (s0, _) = ((one - t) * alpha).sin_cos();
                 let (s1, _) = (t * alpha).sin_cos();
-                let (a, b) = (s0 / den, s1 / den);
-                let blend = Quat {
+                let (a, b) = (
+                    S::select(point, one - t, s0 / den),
+                    S::select(point, t, s1 / den),
+                );
+                Self(Quat {
                     w: a * q0.w + b * q1.w,
                     x: a * q0.x + b * q1.x,
                     y: a * q0.y + b * q1.y,
                     z: a * q0.z + b * q1.z,
-                };
-                Self(S::branch(point, || q0, || blend))
+                })
             },
         )
     }

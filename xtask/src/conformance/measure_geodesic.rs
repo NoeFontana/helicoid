@@ -1,15 +1,16 @@
 //! A measurement, not a routine ([`0049`] *Further work* 1): which spelling of `SO3::geodesic` is
 //! the most accurate, per stratum, over the committed `so3_geodesic` corpus.
 //!
-//! `helicoid` wins `geo:consecutive` against `tf_tree_math::slerp` and loses `geo:generic` and
-//! `geo:near-pi`, and `0006` reads the maximum per stratum, so the question is whether the losses
-//! are the *route* or the arithmetic. Four spellings of the one function GE.14 proves them all
+//! `helicoid` won `geo:consecutive` against `tf_tree_math::slerp` and lost `geo:generic` and
+//! `geo:near-pi`, and `0006` reads the maximum per stratum, so the question was whether the losses
+//! were the *route* or the arithmetic. Seven spellings of the one function GE.14 proves them all
 //! equal to, scored by the same exact-rational metric the conformance runner uses
 //! ([`metric::rule`]), so the figures are comparable with the committed rows without a conversion:
 //!
-//! - [`route_a`] is the shipped provided body, `q0 Exp(t Log(q0* q1))`. It is the **control**: its
-//!   figures have to reproduce the committed `helicoid` rows, or the harness is wrong and nothing
-//!   below means anything.
+//! - [`route_s`] is what **ships**, and it is the **control**: its figures have to reproduce the
+//!   committed `helicoid` rows, or the harness is wrong and nothing else here means anything.
+//! - [`route_a`] is the **provided body**, `q0 Exp(t Log(q0* q1))`, which shipped alone until
+//!   `0050` and is `0051`'s arm below the switch.
 //! - [`route_b`] is GE.14's grouped middle expression, `q0 (cos t·alpha, varpi_t v)`. This is the
 //!   rotation part of GE.12, i.e. of `PHASE4.md` §1.2's screw twin, so what it measures is whether
 //!   that twin can fix these two strata.
@@ -24,9 +25,15 @@
 //! No `acos` anywhere, in any route: `Real` has no `acos` (`0022`) and D5 bans it on this path, so
 //! a candidate spelled with one could not ship and measuring it would answer nothing.
 //!
-//! Scored at **binary64 only**, which is where the three committed domination failures are. A
-//! switch between two of these arms would be a `0004` sweep and owes its own binary32 column; this
-//! measurement does not provide it and does not authorise one.
+//! [`scan`] then answers the question `0051` needed: at which threshold a *two-arm* routine takes
+//! the provided body, measured per stratum rather than assumed.
+//!
+//! Scored at **binary64 only**, which is where the three committed domination failures are, and
+//! that is this module's standing gap: `0051` ships a switch whose `f32` boundary is
+//! `R_F32.short_below`, 29x the `f64` one, and **no scan covers it**, because `so3_geodesic` has no
+//! `f32` stratum to score. [`THRESHOLDS`] carries the `f32` value so the gap is at least bracketed
+//! at `f64`; closing it needs an `@f32` geodesic stratum (`0016`), which `0051` *Further work* 2
+//! owes. `0006` reads the bars per precision and this module reads one.
 //!
 //! [`0049`]: ../../../docs/decisions/0049-the-boundary-is-what-removes-a-way-to-be-wrong.md
 
@@ -68,11 +75,12 @@ fn mul(a: [f64; 4], b: [f64; 4]) -> [f64; 4] {
 fn rel(q0: [f64; 4], q1: [f64; 4]) -> ([f64; 4], [f64; 4]) {
     let conj = [q0[0], -q0[1], -q0[2], -q0[3]];
     let d = mul(conj, q1);
-    if d[0] < 0.0 {
-        (d.map(|x| -x), q1.map(|x| -x))
-    } else {
-        (d, q1)
-    }
+    // `copysign`, not `d[0] < 0.0`: the shipped `geodesic` and `SO3::log` both flip on
+    // `1.0.copysign(w)`, which is `-1` at `w = -0.0` where `<` is false. A `-0.0` product is
+    // reachable, and the two spellings would then blend `q1` against `-q1` -- a different
+    // quaternion, and a bit-equality test comparing two different functions.
+    let flip = 1.0_f64.copysign(d[0]);
+    (d.map(|x| flip * x), q1.map(|x| flip * x))
 }
 
 /// Lift a stored quaternion into `SO3` as the subject does.
@@ -163,7 +171,7 @@ fn route_e(q0: [f64; 4], q1: [f64; 4], t: f64) -> [f64; 4] {
     let (d, q1) = rel(q0, q1);
     let nv = libm::sqrt(d[1..].iter().map(|x| x * x).sum::<f64>());
     let alpha = libm::atan2(nv, d[0]);
-    blend(q0, q1, t, alpha, libm::sin(alpha))
+    blend(q0, q1, t, alpha, libm::sincos(alpha).0)
 }
 
 /// [`route_e`] with `alpha` from the **chord**, so no Hamilton product and no `1 - d^2`.
@@ -186,7 +194,7 @@ fn route_g(q0: [f64; 4], q1: [f64; 4], t: f64) -> [f64; 4] {
             .sum::<f64>();
     let nv = libm::sqrt(h * (2.0 - h));
     let alpha = libm::atan2(nv, 1.0 - h);
-    blend(q0, q1, t, alpha, libm::sin(alpha))
+    blend(q0, q1, t, alpha, libm::sincos(alpha).0)
 }
 
 /// The shared tail of the four blends: the two sines over `den`, which is `sin(alpha)` by one
@@ -198,9 +206,12 @@ fn blend(q0: [f64; 4], q1: [f64; 4], t: f64, alpha: f64, den: f64) -> [f64; 4] {
     if den == 0.0 {
         return q0;
     }
+    // `sincos(..).0` and not `sin(..)`: the shipped routine goes through `Real::sin_cos`, and a
+    // bit-equality test between the two would be asserting that `libm`'s `sin` and `sincos` agree
+    // -- true today, promised by nothing. Same call, no assumption.
     let (s0, s1) = (
-        libm::sin((1.0 - t) * alpha) / den,
-        libm::sin(t * alpha) / den,
+        libm::sincos((1.0 - t) * alpha).0 / den,
+        libm::sincos(t * alpha).0 / den,
     );
     [0, 1, 2, 3].map(|i| s0 * q0[i] + s1 * q1[i])
 }
@@ -217,11 +228,14 @@ const CORPUS: &str = concat!(
 /// `shipped` is [`route_s`]'s row. It read 1.572 / 2.721 / 2.429 while the provided body shipped
 /// alone — [`route_a`]'s column — and 1.644 / 1.738 / 1.642 under `0050`'s single blend; `0051`'s
 /// two arms take the better cell of each, which is what this row is.
+/// The oracle column is at **full precision**, not the three decimals the prose quotes: the shipped
+/// route reads `1.6417` at `geo:near-pi` against an oracle of `1.6417180974225531`, so a bound of
+/// `1.642` would leave less margin than its own rounding and could not tell dominating from losing.
 const COMMITTED: [(&str, f64, f64); 3] = [
     // stratum, shipped (= `0051`'s two arms), `tf_tree_math::slerp`
-    ("geo:consecutive", 1.572, 2.187),
-    ("geo:generic", 1.738, 1.834),
-    ("geo:near-pi", 1.642, 1.642),
+    ("geo:consecutive", 1.572, 2.1873313039389336),
+    ("geo:generic", 1.738, 1.8341289492373978),
+    ("geo:near-pi", 1.642, 1.6417180974225531),
 ];
 
 /// One spelling: `(q0, q1, t)` to the quaternion at parameter `t`.
@@ -233,8 +247,10 @@ const ROUTES: [Route; 7] = [
     route_a, route_b, route_c, route_d, route_e, route_g, route_s,
 ];
 
-/// [`route_s`]'s index in [`ROUTES`]: the control's column.
-const SHIPPED: usize = 6;
+/// [`route_s`]'s index in [`ROUTES`]: the control's column, which is the last by that array's own
+/// stated invariant — a literal `6` would silently repoint both controls at `route_g` the moment a
+/// route is appended, which is the failure the controls exist to prevent.
+const SHIPPED: usize = ROUTES.len() - 1;
 
 /// One route's worst reading on one stratum: the maximum in `u`, and the record that attained it.
 type Worst = (f64, u64);
@@ -254,8 +270,12 @@ const R_SHORT_F64: f64 = 5.048065716667471e-5;
 /// The two `R_F64` arms are the only *generated* numbers a two-arm `geodesic` could borrow without
 /// a sweep of its own (`0051`); the decades are there to show where the accuracy crossover is, so
 /// the two can be compared rather than one assumed.
-const THRESHOLDS: [(&str, f64); 8] = [
+const THRESHOLDS: [(&str, f64); 9] = [
     ("R_F64.below (θ≈5.8e-1)", 8.976871324473142e-2),
+    // `R_F32.short_below`, the boundary the `f32` build actually ships, 29x the `f64` one. Scored
+    // here at `f64` because no `f32` stratum exists to score it at: it brackets the gap rather than
+    // closing it, and it is the only entry between the two above and below it.
+    ("R_F32.short (θ≈7.7e-2)", 1.485508e-3),
     ("R_F64.short (θ≈1.4e-2)", R_SHORT_F64),
     ("s<1e-6  (θ≈2.0e-3)", 1e-6),
     ("s<1e-7  (θ≈6.3e-4)", 1e-7),
@@ -314,7 +334,11 @@ fn scan() -> Result<BTreeMap<String, Vec<f64>>, String> {
             .input("t")
             .and_then(|v| v.first_chunk::<1>())
             .ok_or_else(|| format!("record {} holds no `t`", rec.id))?;
-        // `s` exactly as `log_ratio_takes_series` forms it, from the same product.
+        // `s` from the same product the shipped predicate reads. Not the same *expression*:
+        // `coeffs::log_ratio_takes_short_arm` spells the test `n2 < T w²` to avoid forming the
+        // quotient at all, and the two can part by an ulp exactly at the boundary. That is the
+        // point of the scan rather than a flaw in it -- it asks which decade the threshold belongs
+        // in, and the answer has five decades of slack.
         let (d, _) = rel(q0, q1);
         let n2 = d[1..].iter().map(|x| x * x).sum::<f64>();
         let s = n2 / (d[0] * d[0]);
@@ -377,21 +401,37 @@ mod tests {
     }
 
     /// The control, which runs in `just test`: [`route_s`] -- what ships -- reproduces the
-    /// committed `helicoid` row of every stratum to the three decimals `PHASE4.md` §0.0 quotes.
+    /// committed `helicoid` row of every stratum to the three decimals `PHASE4.md` §0.0 quotes,
+    /// **and** dominates oracle #1 on each.
     ///
-    /// Without this the figures the measurement prints are unreadable: a harness that mis-scores
-    /// would mis-score every route and still look self-consistent.
+    /// Without the first half the figures the measurement prints are unreadable: a harness that
+    /// mis-scores would mis-score every route and still look self-consistent. The second half is
+    /// the bar `0006` reads, and it is a check rather than a hope because `SO3::geodesic` dispatches
+    /// on a number the **sweep** owns: `r`'s second switch is chosen to minimise a corpus-weighted
+    /// term count, not to place this boundary, so a later sweep may move it. [`scan`]'s table says
+    /// which move would matter -- `R_F64.below`, four decades of `s` higher, reads `2.5019 u` at
+    /// `geo:generic` and loses it -- and every threshold at or below the shipped one reads
+    /// identically, so there are five decades of slack.
+    ///
+    /// One `measure()` for both halves: it parses 180 records and scores seven routes through the
+    /// exact-rational metric, 1260 scorings, and two tests asking about the same column would run
+    /// all of it twice in `just test`.
     #[test]
-    fn the_shipped_route_reproduces_the_committed_rows() -> Result<(), String> {
+    fn the_shipped_route_reproduces_the_committed_rows_and_dominates() -> Result<(), String> {
         let got = measure()?;
-        for (stratum, shipped, _) in COMMITTED {
-            let (u, _) = *got
+        for (stratum, shipped, oracle) in COMMITTED {
+            let (u, id) = *got
                 .get(stratum)
                 .and_then(|r| r.get(SHIPPED))
                 .ok_or_else(|| format!("no `{stratum}` in the corpus"))?;
             assert!(
                 (u - shipped).abs() < 5e-4,
                 "{stratum}: the shipped route reads {u} u, `PHASE4.md` §0.0 says {shipped}"
+            );
+            assert!(
+                u <= oracle,
+                "{stratum}: the shipped geodesic reads {u} u at record #{id}, over oracle #1's \
+                 {oracle}"
             );
         }
         Ok(())
@@ -483,27 +523,46 @@ mod tests {
         Ok(())
     }
 
-    /// The shipped dispatch threshold still dominates oracle #1 on every stratum.
+    /// `R_SHORT_F64` is still the number the shipped routine switches on, to the bit.
     ///
-    /// `SO3::geodesic` dispatches on `r`'s **second** switch, which the sweep owns: it is chosen to
-    /// minimise a corpus-weighted term count, not to place this boundary, so a later sweep may move
-    /// it. `scan`'s table says the move that would matter — `R_F64.below`, four decades of `s`
-    /// higher, reads `2.5019 u` at `geo:generic` and loses it — and every threshold at or below the
-    /// shipped one reads identically, so there are decades of slack. This test is what turns that
-    /// slack from a hope into a check: it reads the shipped `so3_geodesic` figures through the
-    /// shipped routine and fails if any stratum stops dominating.
+    /// The transcription is the weak point of every claim in this module: `coeffs` is `pub(crate)`,
+    /// so nothing here can read the generated constant, and
+    /// [`the_shipped_route_is_the_arm_the_rule_picks`] only notices a drift if some corpus record's
+    /// `s` happens to land between the old threshold and the new one. A sweep moving it a few
+    /// percent would leave no record in the gap and every test green.
+    ///
+    /// So this one builds the pair instead of waiting for one: `q0 = 1` and
+    /// `q1 = (w, nv, 0, 0)` with `nv = sqrt(s/(1+s))`, `w = sqrt(1/(1+s))` realise any `s` to
+    /// rounding. One `s` a hair under the threshold has to take the provided body and one a hair
+    /// over has to take the blend; the arms differ by about 7 `u`, so the comparison is decisive,
+    /// and the test says so rather than assuming it.
     #[test]
-    fn the_shipped_dispatch_threshold_still_dominates() -> Result<(), String> {
-        let got = measure()?;
-        for (stratum, _, oracle) in COMMITTED {
-            let (u, id) = *got
-                .get(stratum)
-                .and_then(|r| r.get(SHIPPED))
-                .ok_or_else(|| format!("no `{stratum}` in the corpus"))?;
+    fn the_shipped_threshold_is_where_the_arms_actually_part() -> Result<(), String> {
+        let pair = |s: f64| -> ([f64; 4], [f64; 4]) {
+            let (nv, w) = ((s / (1.0 + s)).sqrt(), (1.0 / (1.0 + s)).sqrt());
+            ([1.0, 0.0, 0.0, 0.0], [w, nv, 0.0, 0.0])
+        };
+        // `t` interior, so neither endpoint's exactness can hide which arm ran.
+        let t = 1.0 / 3.0;
+        for (name, s, want_provided) in [
+            ("just under", R_SHORT_F64 * (1.0 - 1e-9), true),
+            ("just over", R_SHORT_F64 * (1.0 + 1e-9), false),
+        ] {
+            let (q0, q1) = pair(s);
+            let got = route_s(q0, q1, t);
+            let same = |x: &[f64; 4]| got.iter().zip(x).all(|(p, q)| p.to_bits() == q.to_bits());
+            let (took_a, took_e) = (same(&route_a(q0, q1, t)), same(&route_e(q0, q1, t)));
             assert!(
-                u <= oracle,
-                "{stratum}: the shipped geodesic reads {u} u at record #{id}, over oracle #1's \
-                 {oracle} — if a sweep moved `r`'s second switch, `scan`'s table says where to"
+                took_a != took_e,
+                "{name} the threshold at s = {s:e}: the arms agree to the bit, so this test \
+                 cannot see which ran -- choose a `t` or an `s` where they differ"
+            );
+            assert_eq!(
+                took_a,
+                want_provided,
+                "{name} the threshold at s = {s:e}: the shipped routine took the {} arm, so \
+                 `R_SHORT_F64` is no longer `R_F64.short_below` and `scan`'s table is stale",
+                if took_a { "provided" } else { "blend" }
             );
         }
         Ok(())
