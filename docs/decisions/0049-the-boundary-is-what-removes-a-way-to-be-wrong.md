@@ -231,15 +231,21 @@ None.
    — 1.572 `u` against `tf_tree_math::slerp`'s 2.187 — and **loses** `geo:generic` (2.721 against
    1.834) and `geo:near-pi` (2.429 against 1.642). §1.2's twin addresses `se3_geodesic`'s
    translation path, which `0048` already took off the scored maximum, and leaves the shared
-   rotation path untouched. Note what the measurement does to GE.14's argument: it predicts
-   `helicoid` should win **near π**, where slerp's `acos` has infinite slope, and the corpus says
-   the oracle wins there by 1.48×. So either the conditioning gain is real and the
-   `Log` → `scale` → `Exp` round trip's own roundings exceed it, or the argument is incomplete — and
-   the split by stratum says which, because the round trip is cheapest exactly where `helicoid`
-   wins. The candidate is a direct-blend arm above a swept switch: slerp's weights in the `atan2`
-   spelling, no round trip, the series/exact choice made at a generated switch (`0004`). It is also
-   the one `helicoid` optimization that lands directly on `tf_tree`'s benched hot path. Measure
-   first (D7); this is not an authorisation to write it.
+   rotation path untouched.
+
+   **Measured, and answered by [`0050`](./0050-the-geodesic-s-denominator-is-the-whole-domination-gap.md).** Two readings in this item were wrong and the
+   measurement corrects both. GE.14's conditioning argument predicts a `helicoid` win where the
+   quaternions are **nearly equal** — `geo:consecutive` — and the corpus confirms it; `acos`'s slope
+   is infinite at argument `±1`, not at `0`, so there was never a paradox at `geo:near-pi`, where
+   `q₀·q₁ ≈ 0` is `acos`'s best-conditioned point. And the losses are **not** the round trip: six
+   spellings of the one function GE.14 equates, scored over the committed corpus, put the whole gap
+   in one token — the blend's **denominator**, `sin α` recomputed against `‖v‖` — worth
+   2.442 → **1.738** `u` at `geo:generic` and 2.545 → **1.642** at `geo:near-pi`, because only the
+   recomputed form makes `t = 1` exact and every losing maximum sat on or beside an endpoint. The
+   suggested *swept switch* is dropped too: one arm dominates oracle #1 on all three strata, so a
+   switch buys nothing `0006` reads. What this item had right is that the screw twin is not the fix,
+   and the measurement confirms it from the other side — the twin's rotation part is
+   **bit-identical** to the shipped body on the stratum where both are best.
 2. The permutation's shape — a `Jac` method, a free function, or a `Gaussian` constructor — and
    whether locus-tag's 8×8 blocks take the same route (`0041` *Further work* 2).
 3. Whether `Pose` becomes quaternion-backed, which decision 6 measures rather than decides.

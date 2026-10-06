@@ -49,6 +49,8 @@ mod selftest_so3;
 pub(crate) mod subject;
 
 #[cfg(test)]
+mod measure_geodesic;
+#[cfg(test)]
 mod sanity;
 #[cfg(test)]
 pub(crate) mod testkit;
