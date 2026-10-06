@@ -1,0 +1,376 @@
+//! A measurement, not a routine ([`0049`] *Further work* 1): which spelling of `SO3::geodesic` is
+//! the most accurate, per stratum, over the committed `so3_geodesic` corpus.
+//!
+//! `helicoid` wins `geo:consecutive` against `tf_tree_math::slerp` and loses `geo:generic` and
+//! `geo:near-pi`, and `0006` reads the maximum per stratum, so the question is whether the losses
+//! are the *route* or the arithmetic. Four spellings of the one function GE.14 proves them all
+//! equal to, scored by the same exact-rational metric the conformance runner uses
+//! ([`metric::rule`]), so the figures are comparable with the committed rows without a conversion:
+//!
+//! - [`route_a`] is the shipped provided body, `q0 Exp(t Log(q0* q1))`. It is the **control**: its
+//!   figures have to reproduce the committed `helicoid` rows, or the harness is wrong and nothing
+//!   below means anything.
+//! - [`route_b`] is GE.14's grouped middle expression, `q0 (cos t·alpha, varpi_t v)`. This is the
+//!   rotation part of GE.12, i.e. of `PHASE4.md` §1.2's screw twin, so what it measures is whether
+//!   that twin can fix these two strata.
+//! - [`route_c`] is GE.14's right-hand expression, the blend `[sin((1-t)a) q0 + sin(ta) q1]/sin a`,
+//!   with `alpha` from the quaternion product so no `sqrt(1 - d^2)` appears. This is the spelling
+//!   `tf_tree_math::slerp` computes, which is the oracle that wins these two strata.
+//! - [`route_d`] is the same blend with `alpha` from the 4-dot alone,
+//!   `atan2(sqrt(1 - d^2), d)`, which is the cheap form: one dot instead of a Hamilton product.
+//!   It is here to price the cancellation in `1 - d^2`, which is total where the two rotations are
+//!   consecutive.
+//!
+//! No `acos` anywhere, in any route: `Real` has no `acos` (`0022`) and D5 bans it on this path, so
+//! a candidate spelled with one could not ship and measuring it would answer nothing.
+//!
+//! Scored at **binary64 only**, which is where the three committed domination failures are. A
+//! switch between two of these arms would be a `0004` sweep and owes its own binary32 column; this
+//! measurement does not provide it and does not authorise one.
+//!
+//! [`0049`]: ../../../docs/decisions/0049-the-boundary-is-what-removes-a-way-to-be-wrong.md
+
+use std::collections::BTreeMap;
+
+use helicoid::{LieGroup, Quat, SO3};
+use helicoid_linalg::Precision;
+
+use super::corpus::{parse_line, Record};
+use super::metric::{self, Score};
+use super::subject::Output;
+
+/// `q` as the corpus holds it, `w` first, in the shape [`metric`] scores.
+fn out_of(q: [f64; 4]) -> Output {
+    Output::from([("q".to_string(), q.to_vec())])
+}
+
+/// Input `key` as a quaternion, `w` first; nothing when the record does not hold four values.
+fn quat_of(rec: &Record, key: &str) -> Option<[f64; 4]> {
+    rec.input(key).and_then(|v| v.first_chunk::<4>()).copied()
+}
+
+/// The Hamilton product, `w` first, as `Quat`'s `Mul` writes it.
+fn mul(a: [f64; 4], b: [f64; 4]) -> [f64; 4] {
+    let ([aw, ax, ay, az], [bw, bx, by, bz]) = (a, b);
+    [
+        aw * bw - ax * bx - ay * by - az * bz,
+        aw * bx + ax * bw + ay * bz - az * by,
+        aw * by - ax * bz + ay * bw + az * bx,
+        aw * bz + ax * by - ay * bx + az * bw,
+    ]
+}
+
+/// `q0* q1` with `Log`'s sign rule applied (`w >= 0`, GE.14's hypothesis), and the flipped `q1`.
+///
+/// The flip is on the *product*, not on `q0 . q1`: they are the same number — `w(q0* q1)` **is**
+/// the 4-dot — but taking it from the product keeps one spelling for every route below, so a sign
+/// difference between two of them cannot be the flip.
+fn rel(q0: [f64; 4], q1: [f64; 4]) -> ([f64; 4], [f64; 4]) {
+    let conj = [q0[0], -q0[1], -q0[2], -q0[3]];
+    let d = mul(conj, q1);
+    if d[0] < 0.0 {
+        (d.map(|x| -x), q1.map(|x| -x))
+    } else {
+        (d, q1)
+    }
+}
+
+/// The shipped provided body: `q0 Exp(t Log(q0* q1))`, through `SO3::geodesic` itself.
+///
+/// Built with `from_quat_unchecked` for `shipped.rs`'s stated reason: the reference is the geodesic
+/// between the two rotations the records *denote*, and the half `u` of `|‖q‖² − 1|` a program
+/// carrying the stored quaternion reads for it is the shipped behaviour the row measures.
+fn route_a(q0: [f64; 4], q1: [f64; 4], t: f64) -> [f64; 4] {
+    let lift = |[w, x, y, z]: [f64; 4]| SO3::from_quat_unchecked(Quat { w, x, y, z });
+    let q = SO3::geodesic(&lift(q0), &lift(q1), t).quat();
+    [q.w, q.x, q.y, q.z]
+}
+
+/// GE.14's grouped form: `q0 (cos t·alpha, varpi_t v)` with `varpi_t = sin(t·alpha)/sin(alpha)`.
+///
+/// `sin(alpha)` is `‖v‖` exactly for a unit quaternion, so the division is by the norm that was
+/// measured and not by a `sin` recomputed from `alpha` — one rounding fewer and no second
+/// transcendental. This is the rotation part of the screw form (GE.12), which is the whole point of
+/// measuring it: it keeps both Hamilton products that [`route_a`] has and replaces only the
+/// coefficient evaluation.
+fn route_b(q0: [f64; 4], q1: [f64; 4], t: f64) -> [f64; 4] {
+    let (d, _) = rel(q0, q1);
+    let v = [d[1], d[2], d[3]];
+    let nv = libm::sqrt(v.iter().map(|x| x * x).sum::<f64>());
+    let alpha = libm::atan2(nv, d[0]);
+    let (s, c) = libm::sincos(t * alpha);
+    // `0/0` at two bitwise equal rotations: the arc is a point and the answer is `q0` itself.
+    let w = if nv == 0.0 { 0.0 } else { s / nv };
+    mul(q0, [c, w * v[0], w * v[1], w * v[2]])
+}
+
+/// GE.14's right-hand form: `[sin((1-t)alpha) q0 + sin(t alpha) q1] / sin(alpha)`.
+///
+/// `alpha` comes from the quaternion product, as [`route_b`]'s does, so the chord `1 - d^2` never
+/// appears. One Hamilton product instead of [`route_a`]'s two, and a linear blend of two unit
+/// quaternions instead of the second one: every coefficient is `O(1)` and both weights are
+/// non-negative on `[0, 1]`, so the blend cannot cancel there.
+fn route_c(q0: [f64; 4], q1: [f64; 4], t: f64) -> [f64; 4] {
+    let (d, q1) = rel(q0, q1);
+    let nv = libm::sqrt(d[1..].iter().map(|x| x * x).sum::<f64>());
+    let alpha = libm::atan2(nv, d[0]);
+    blend(q0, q1, t, alpha, nv)
+}
+
+/// [`route_c`]'s blend with `alpha` from the 4-dot alone: `atan2(sqrt(1 - d^2), d)`.
+///
+/// The cheap form — one dot, no Hamilton product — and the one that pays for it: `1 - d^2` loses
+/// every digit of `‖v‖` as `d` approaches 1, which is the whole of `geo:consecutive`.
+fn route_d(q0: [f64; 4], q1: [f64; 4], t: f64) -> [f64; 4] {
+    let (d, q1) = rel(q0, q1);
+    let dot = d[0];
+    let nv = libm::sqrt((1.0 - dot * dot).max(0.0));
+    let alpha = libm::atan2(nv, dot);
+    blend(q0, q1, t, alpha, nv)
+}
+
+/// [`route_c`]'s blend dividing by `sin(alpha)` **recomputed**, not by `‖v‖`.
+///
+/// One change, and it is the one the oracle makes: every weight then comes from the same `alpha`
+/// through the same `sin`, so `sin(t a)/sin(a)` is a number divided by **itself** at `t = 1` and the
+/// numerator is an exact zero at `t = 0`. Both endpoints are reproduced bit for bit. Dividing by
+/// `‖v‖` instead mixes a `sqrt`-derived denominator with `sin`-derived numerators, so the ratio at
+/// `t = 1` is `1 + eps` and the endpoint is off by `eps` -- which is why [`route_c`]'s and
+/// [`route_d`]'s worst `geo:generic` records are endpoints.
+fn route_e(q0: [f64; 4], q1: [f64; 4], t: f64) -> [f64; 4] {
+    let (d, q1) = rel(q0, q1);
+    let nv = libm::sqrt(d[1..].iter().map(|x| x * x).sum::<f64>());
+    let alpha = libm::atan2(nv, d[0]);
+    blend(q0, q1, t, alpha, libm::sin(alpha))
+}
+
+/// [`route_e`] with `alpha` from the **chord**, so no Hamilton product and no `1 - d^2`.
+///
+/// `h = ½‖q0 - q1‖²` is `1 - |q0 . q1|` computed from component differences, which is the trick
+/// `tf_tree_math::slerp` opens with and the one this measurement was missing: each difference is
+/// exact by Sterbenz while the two quaternions are within a factor of two of each other, so `h`
+/// carries no cancellation however consecutive they are -- where `1 - d^2` has lost every digit
+/// ([`route_d`] reads `5.1e7 u` at `geo:consecutive` for exactly that). Then `d = 1 - h` and
+/// `‖v‖ = sin(alpha) = sqrt(h(2 - h))`.
+///
+/// Shippable as written: `atan2`, `sqrt`, `sin`, no `acos` (`0022`, D5).
+fn route_g(q0: [f64; 4], q1: [f64; 4], t: f64) -> [f64; 4] {
+    let dot = q0.iter().zip(q1).map(|(a, b)| a * b).sum::<f64>();
+    let q1 = if dot < 0.0 { q1.map(|x| -x) } else { q1 };
+    let h = 0.5
+        * q0.iter()
+            .zip(q1)
+            .map(|(a, b)| (a - b) * (a - b))
+            .sum::<f64>();
+    let nv = libm::sqrt(h * (2.0 - h));
+    let alpha = libm::atan2(nv, 1.0 - h);
+    blend(q0, q1, t, alpha, libm::sin(alpha))
+}
+
+/// The shared tail of the four blends: the two sines over `den`, which is `sin(alpha)` by one
+/// spelling or another and is what the routes above differ in.
+///
+/// At `den == 0` the two rotations are equal and the blend is `0/0`; the arc is a point, so the
+/// answer is `q0`, which is what both endpoints of a degenerate geodesic are.
+fn blend(q0: [f64; 4], q1: [f64; 4], t: f64, alpha: f64, den: f64) -> [f64; 4] {
+    if den == 0.0 {
+        return q0;
+    }
+    let (s0, s1) = (
+        libm::sin((1.0 - t) * alpha) / den,
+        libm::sin(t * alpha) / den,
+    );
+    [0, 1, 2, 3].map(|i| s0 * q0[i] + s1 * q1[i])
+}
+
+/// The corpus this measurement reads, relative to `xtask`'s manifest.
+const CORPUS: &str = concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../conformance/corpus/so3_geodesic.jsonl"
+);
+
+/// The committed rows this measurement is read against (`PHASE4.md` §0.0), in `u`, so the control
+/// is checked by the test and not by a reader.
+const COMMITTED: [(&str, f64, f64); 3] = [
+    // stratum, `helicoid` (= route A), `tf_tree_math::slerp`
+    ("geo:consecutive", 1.572, 2.187),
+    ("geo:generic", 2.721, 1.834),
+    ("geo:near-pi", 2.429, 1.642),
+];
+
+/// One spelling: `(q0, q1, t)` to the quaternion at parameter `t`.
+type Route = fn([f64; 4], [f64; 4], f64) -> [f64; 4];
+
+/// The spellings scored, in the order every table below prints them.
+const ROUTES: [Route; 6] = [route_a, route_b, route_c, route_d, route_e, route_g];
+
+/// One route's worst reading on one stratum: the maximum in `u`, and the record that attained it.
+type Worst = (f64, u64);
+
+/// Every route's [`Worst`] per stratum, in [`ROUTES`]' order.
+type Table = BTreeMap<String, Vec<Worst>>;
+
+/// Every route's maximum `u` per stratum over the committed corpus, plus the worst record's id.
+fn measure() -> Result<Table, String> {
+    let text = std::fs::read_to_string(CORPUS).map_err(|e| format!("{CORPUS}: {e}"))?;
+    let rule = metric::rule("so3_geodesic").ok_or("no metric rule for `so3_geodesic`")?;
+    let mut out: BTreeMap<String, Vec<(f64, u64)>> = BTreeMap::new();
+    for line in text.lines().filter(|l| !l.trim().is_empty()) {
+        let rec = parse_line(line)?;
+        let (Some(q0), Some(q1)) = (quat_of(&rec, "q0"), quat_of(&rec, "q1")) else {
+            return Err(format!("record {} holds no `q0`/`q1`", rec.id));
+        };
+        let &[t] = rec
+            .input("t")
+            .and_then(|v| v.first_chunk::<1>())
+            .ok_or_else(|| format!("record {} holds no `t`", rec.id))?;
+        let row = out
+            .entry(rec.stratum.clone())
+            .or_insert_with(|| vec![(0.0, 0); ROUTES.len()]);
+        for (slot, route) in row.iter_mut().zip(ROUTES) {
+            let got = out_of(route(q0, q1, t));
+            match rule.score(&rec, &got, Precision::F64)? {
+                Score::Finite(u) if u > slot.0 => *slot = (u, rec.id),
+                Score::Finite(_) => {}
+                other => return Err(format!("record {} scored {other:?}", rec.id)),
+            }
+        }
+    }
+    Ok(out)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Bit equality up to the sign of a zero, which is the exception the shipped `geodesic`'s
+    /// rustdoc already names: a `-0.0` component of an endpoint comes back `+0.0` because a weight
+    /// of exactly zero times it is added to it.
+    #[allow(clippy::float_cmp)]
+    fn same(a: &[f64; 4], b: &[f64; 4]) -> bool {
+        a.iter()
+            .zip(b)
+            .all(|(&x, &y)| x.to_bits() == y.to_bits() || (x == 0.0 && y == 0.0))
+    }
+
+    /// `(q0, q1, t)` of one corpus line.
+    fn case(line: &str) -> Result<([f64; 4], [f64; 4], f64, u64), String> {
+        let rec = parse_line(line)?;
+        let (Some(q0), Some(q1)) = (quat_of(&rec, "q0"), quat_of(&rec, "q1")) else {
+            return Err(format!("record {} holds no `q0`/`q1`", rec.id));
+        };
+        let &[t] = rec
+            .input("t")
+            .and_then(|v| v.first_chunk::<1>())
+            .ok_or_else(|| format!("record {} holds no `t`", rec.id))?;
+        Ok((q0, q1, t, rec.id))
+    }
+
+    /// Every non-blank corpus line.
+    fn lines() -> Result<Vec<String>, String> {
+        let text = std::fs::read_to_string(CORPUS).map_err(|e| format!("{CORPUS}: {e}"))?;
+        Ok(text
+            .lines()
+            .filter(|l| !l.trim().is_empty())
+            .map(str::to_string)
+            .collect())
+    }
+
+    /// The control, which runs in `just test`: [`route_a`] reproduces the committed `helicoid` row
+    /// of every stratum to the three decimals `PHASE4.md` §0.0 quotes.
+    ///
+    /// Without this the figures the measurement prints are unreadable -- a harness that mis-scores
+    /// would mis-score all six routes and still look self-consistent.
+    #[test]
+    fn the_shipped_route_reproduces_the_committed_rows() -> Result<(), String> {
+        let got = measure()?;
+        for (stratum, helicoid, _) in COMMITTED {
+            let (u, _) = *got
+                .get(stratum)
+                .and_then(|r| r.first())
+                .ok_or_else(|| format!("no `{stratum}` in the corpus"))?;
+            assert!(
+                (u - helicoid).abs() < 5e-4,
+                "{stratum}: route A reads {u} u, `PHASE4.md` §0.0 says {helicoid}"
+            );
+        }
+        Ok(())
+    }
+
+    /// Why [`route_e`] wins the two losing strata: it reproduces **both** endpoints bit for bit,
+    /// where the shipped body reproduces only `t = 0`.
+    ///
+    /// At `t = 0` every route's left weight is `sin(a)/den`; only when `den` is that same `sin(a)`
+    /// is the ratio exactly one. At `t = 1` the mirror holds. The corpus pins this rather than the
+    /// argument doing: every record at `t = 0` or `t = 1`, all three strata, and the shipped route
+    /// asserted to **fail** at `t = 1` on at least one of them -- if it ever stops failing, the
+    /// asymmetry `PHASE4.md` §0.0 records has gone and this reasoning needs rereading.
+    #[test]
+    fn the_recomputed_denominator_is_what_makes_both_endpoints_exact() -> Result<(), String> {
+        let (mut ends, mut a_fails_at_one) = (0usize, 0usize);
+        for line in lines()? {
+            let (q0, q1, t, id) = case(&line)?;
+            // `rel`'s flip: at `t = 1` the answer is `q1` up to the sign `Log` chose, which is the
+            // same rotation and what the oracle documents for its own `s = 1`.
+            let want = if t.to_bits() == 0.0f64.to_bits() {
+                q0
+            } else if t.to_bits() == 1.0f64.to_bits() {
+                rel(q0, q1).1
+            } else {
+                continue;
+            };
+            ends += 1;
+            let got = route_e(q0, q1, t);
+            assert!(
+                same(&got, &want),
+                "route E, record {id} at t = {t}: {got:?} is not {want:?}"
+            );
+            if t.to_bits() == 1.0f64.to_bits() && !same(&route_a(q0, q1, t), &want) {
+                a_fails_at_one += 1;
+            }
+        }
+        assert!(
+            ends >= 30,
+            "only {ends} endpoint records; the corpus changed"
+        );
+        assert!(
+            a_fails_at_one > 0,
+            "the shipped route is now exact at t = 1 on every record; \
+             `PHASE4.md` §0.0's one-sided claim and this test's reasoning both need rereading"
+        );
+        Ok(())
+    }
+
+    /// `cargo test -p xtask -- --ignored --nocapture measure_the_geodesic_spellings`.
+    #[test]
+    #[ignore = "a measurement, printed for a record to cite; the two tests above are the checks"]
+    #[allow(clippy::print_stdout)]
+    fn measure_the_geodesic_spellings() -> Result<(), String> {
+        const NAMES: [&str; 6] = [
+            "A shipped",
+            "B grouped",
+            "C blend/|v|",
+            "D dot/|v|",
+            "E blend/sin",
+            "G chord/sin",
+        ];
+        let got = measure()?;
+        println!("so3_geodesic, binary64, max u per stratum (worst record id)");
+        print!("{:<16}", "stratum");
+        for n in NAMES {
+            print!("{n:>21}");
+        }
+        println!("{:>10}", "oracle");
+        for (stratum, _, oracle) in COMMITTED {
+            let row = got
+                .get(stratum)
+                .ok_or_else(|| format!("no `{stratum}` in the corpus"))?;
+            print!("{stratum:<16}");
+            for &(u, id) in row {
+                print!("{u:>13.3} u (#{id:>3})");
+            }
+            println!("{oracle:>10.3}");
+        }
+        Ok(())
+    }
+}

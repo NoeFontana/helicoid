@@ -9,6 +9,36 @@ defined by the status tables in `docs/`; they win over this file.
 
 ### Added
 
+- **`0050`: the geodesic's denominator is the whole domination gap.** A measurement
+  (`xtask/src/conformance/measure_geodesic.rs`) and the decision it settles; the override itself is
+  the record's step 2 and is not in this entry.
+  - Two of the project's three remaining domination failures are `so3_geodesic/geo:generic` and
+    `/geo:near-pi`, and `PHASE4.md` §0.0 explained them away with GE.14's conditioning argument.
+    That argument is **confirmed and irrelevant**: "nearly equal quaternions" is `geo:consecutive`,
+    the one stratum `helicoid` wins, and at `geo:near-pi` the argument `q₀·q₁` is near **zero**,
+    `acos`'s best-conditioned point. `0049` *Further work* 1 read it as a near-π prediction and is
+    corrected.
+  - Six spellings of the one function GE.14 proves them all equal to, scored record by record over
+    the committed 180-record corpus through the conformance runner's own exact-rational metric, with
+    the shipped route as a **control** asserted in `just test` to reproduce the committed rows.
+  - **The whole gap is one token:** the blend's denominator, `sin α` recomputed from the same `α`
+    against `‖v‖`. 2.442 → **1.738** `u` at `geo:generic`, 2.545 → **1.642** at `geo:near-pi`; every
+    other difference in the table is worth hundredths. Why: at `t = 0` the left weight is
+    `sin α/den`, exactly one only when `den` *is* that `sin α`. The corpus says so in the record
+    ids — every losing maximum sits on or beside an endpoint (#60 and #90 at `t = 0`, even the
+    shipped route's #104 at `t = 1 − 10⁻⁹`) while the winners' move to the interior.
+  - **§1.2's screw twin cannot fix these rows.** Its rotation part is **bit-identical** to the
+    shipped body at `geo:consecutive` — same `1.572 u`, same record — and worse at `geo:near-pi`
+    (3.253 against 2.429), because `k_t·t·r·v` and `ϖ_t·v` are one product re-associated.
+  - **The 4-dot spelling identifies the oracle**, reproducing `tf_tree_math::slerp`'s `geo:near-pi`
+    row to the digit on the same record and exploding to `5.05e7 u` at `geo:consecutive` — the
+    `1 − d²` cancellation its normalized-LERP fallback exists for.
+  - Decided: `SO3::geodesic` is overridden with the recomputed-denominator blend, **one arm, no
+    switch** — a two-arm would gain `0.072 u` on one stratum for a `0004` sweep, a generated
+    constant and a second twin, and one arm already dominates oracle #1 on all three strata.
+    `se3_geodesic/geo:generic` is **not** closed by it and is not claimed to be: `SEn3`'s geodesic
+    does not route through `SO3::geodesic`.
+
 - **Release prep for `0.0.1`** (`0049` step 2). The version moves `0.0.0` → `0.0.1`; both crates
   gain a `readme` key and a per-crate `README.md`, which crates.io shows and neither manifest had.
   Each README's example is wired in as a `#[cfg(doctest)] #[doc = include_str!(..)] mod readme {}`,
