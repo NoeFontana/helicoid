@@ -225,6 +225,8 @@ mod group {
         sandwich: 8.0,
         // `PHASE3.md` §8's second check, measured 6.946 at `N = 1` and 5.274 at `N = 2` over 10 000 draws each.
         dual_rows: 14.0,
+        // `PHASE4.md` §1 and §3's seven legs, in `GEODESIC_LEGS`'s order, each twice the worst of 10^6 draws of `laws::Rng::shaped` -- `laws::sample`'s own distribution, which is what the proptest draws -- rounded up: the worst of `N = 1` and `N = 2`: `t=1` 6.591, symmetry 13.352, velocity 8.353, left 9.775, right 9.383, `t=0` and `twin` 1.118, the quaternion floor as for SO(3).
+        geodesic: [3.0, 14.0, 27.0, 17.0, 20.0, 19.0, 3.0],
     };
     // `tangent_order` is one rounding at `f32` where it is exact at `f64`, as for SO(3); every
     // other law agrees within 25% across the precisions, so one set serves them.
@@ -504,6 +506,88 @@ mod group {
             for r in 0..3 {
                 close(&dp.row(r).0, &m.row(r).0, 0.0);
             }
+        }
+    }
+
+    /// `γ(x₀, x₁, 0)` returns `x₀` **bit for bit** at both widths, which `laws::geodesic`'s `t=0`
+    /// leg cannot say: `gerr` compares two elements through `Log(x₀⁻¹ x₀)` and the quaternion's
+    /// `q* q` leaves about one `u` in the vector part whatever the curve did.
+    ///
+    /// It holds by the arithmetic: `d.scale(0)` is `±0` per component, `Exp` of that is the
+    /// identity quaternion with signed zeros in `x`, and composing adds those signed zeros to each
+    /// component of `x₀` — exact, at `‖x₀‖ = 1e4` as at `0`.
+    ///
+    /// **With one exception, which the last fixture holds down:** a sum of signed zeros is `−0.0`
+    /// only when every term is, so a `−0.0` *component of `x₀`* can come back `+0.0`. The value is
+    /// unchanged and `gerr` reads its floor either way, but `to_bits` does not — and for the
+    /// quaternion's `w` that sign is load-bearing, since `NUMERICS.md` §3.2 keeps `w = +0` and
+    /// `Log`'s flip reads it. So the claim is bit identity *given no negative zero in the
+    /// representation*, and `LieGroup::geodesic`'s rustdoc says it that way
+    /// (`docs/maths/geodesics.md` GE.7(b), `0045` item 3).
+    #[test]
+    fn geodesic_at_zero_is_the_left_endpoint_bit_for_bit() {
+        // `N = 1` is the width `tf_tree` migrates onto, so it is tested first and not only `N = 2`.
+        let v1: [[f64; 6]; 4] = [
+            [0.3, -0.7, 1.1, 0.5, -2.0, 0.25],
+            [0.0, 0.0, 0.0, 1e4, -1e4, 1e4],
+            [3.0, 0.1, -0.2, 1e-9, 1e-9, 1e-9],
+            [1e-9, 0.0, -1e-9, 0.0, 0.0, 0.0],
+        ];
+        for v in v1 {
+            // The step is a third of the fixture, negated: `d` is neither `0` nor `v`, which the
+            // all-zero fixture of an earlier draft could not say.
+            let d = SEn3Tangent::<f64, 1>::read_dense(&v.map(|c| -c / 3.0));
+            let x0 = SE3::<f64>::exp(&SEn3Tangent::read_dense(&v));
+            same_pose::<1>(&SE3::geodesic(&x0, &x0.rplus(&d), 0.0), &x0, &v);
+        }
+        let v2: [[f64; 9]; 3] = [
+            [0.3, -0.7, 1.1, 0.5, -2.0, 0.25, -1.0, 4.0, 0.125],
+            [0.0, 0.0, 0.0, 1e4, -1e4, 1e4, 1e-9, 0.0, -1e-9],
+            [3.0, 0.1, -0.2, 1e-9, 1e-9, 1e-9, 1.0, -1.0, 0.5],
+        ];
+        for v in v2 {
+            let d = SEn3Tangent::<f64, 2>::read_dense(&v.map(|c| -c / 3.0));
+            let x0 = SE23::<f64>::exp(&SEn3Tangent::read_dense(&v));
+            same_pose::<2>(&SE23::geodesic(&x0, &x0.rplus(&d), 0.0), &x0, &v);
+        }
+
+        // The exception: `w = −0.0` with a negative step, where `aw − ax·(−0) − …` sums to `+0.0`.
+        let q = crate::Quat::<f64>::from_wxyz_normalized(-0.0, 0.6, 0.0, 0.8);
+        let x0 = SE3::from_parts(
+            crate::SO3::from_quat_unchecked(q),
+            [Vector([1.0, 2.0, 3.0])],
+        );
+        let d = SEn3Tangent::<f64, 1>::read_dense(&[-0.3, -0.5, -0.7, -0.1, -0.2, -0.3]);
+        let got = SE3::geodesic(&x0, &x0.rplus(&d), 0.0);
+        let (a, b) = (got.parts().0.quat(), q);
+        // A value comparison, not a float `==`: the two zeros compare equal.
+        assert_eq!(
+            a.w.partial_cmp(&b.w),
+            Some(core::cmp::Ordering::Equal),
+            "the value is unchanged"
+        );
+        assert_eq!(b.w.to_bits(), (-0.0_f64).to_bits());
+        assert_eq!(
+            a.w.to_bits(),
+            0.0_f64.to_bits(),
+            "a `−0.0` `w` is expected to come back `+0.0`; if this ever holds the sign instead, \
+             `LieGroup::geodesic`'s rustdoc caveat can be dropped"
+        );
+    }
+
+    /// Two poses equal component for component, on the bits.
+    fn same_pose<const N: usize>(got: &SEn3<f64, N>, want: &SEn3<f64, N>, at: &[f64]) {
+        let (rg, cg) = got.parts();
+        let (rw, cw) = want.parts();
+        let q =
+            |r: crate::SO3<f64>| [r.quat().w, r.quat().x, r.quat().y, r.quat().z].map(f64::to_bits);
+        assert_eq!(q(rg), q(rw), "t = 0 moved the rotation of {at:?}");
+        for i in 0..N {
+            assert_eq!(
+                cg[i].0.map(f64::to_bits),
+                cw[i].0.map(f64::to_bits),
+                "t = 0 moved column {i} of {at:?}"
+            );
         }
     }
 

@@ -9,6 +9,60 @@ defined by the status tables in `docs/`; they win over this file.
 
 ### Added
 
+- **`LieGroup::geodesic` and `geodesic_velocity`** (`PHASE4.md` §1.1, `NUMERICS.md` §10), provided
+  methods on every group, with `reference::geodesic` as the expression they call — so the provided
+  body **is** the reference twin, as §1.1 asks, and a group's fast twin has something to be
+  measured against that its own override cannot shadow.
+  - `Product` delegates per factor, so **`Product<SO3, Rn<3>>` is slerp and lerp** by construction
+    (§1.3): `tf2`'s semantics without `tf2`'s small-angle fallback, which `0009` leaves to
+    `tf_tree`.
+  - **`SO3::geodesic` is deliberately not overridden.** GE.14 proves the provided body is
+    shortest-arc slerp with `Log`'s sign rule, in the better-conditioned spelling — `atan2` where
+    slerp has `acos`, whose slope is infinite where the two quaternions are nearly equal — and the
+    corpus now says so rather than the maths page alone: **1.572 `u` against
+    `tf_tree_math::slerp`'s 2.187** on `geo:consecutive`, the kilohertz stratum. It also removes
+    `Real::acos` (`0022`, unimplemented) from the path entirely.
+  - **And where it is behind, with the numbers**, because that is the point of having the
+    instrument first: `so3_geodesic` 2.721 / 2.429 `u` against 1.834 / 1.642 at `geo:generic` /
+    `geo:near-pi`, and `se3_geodesic` 2.556 / 3.240 / 3.466 against `ScLerp`'s 2.336 / 2.502 /
+    3.253. Five domination failures, and the motivation for §1.2's screw twin stated in numbers:
+    the provided body is `Log` then `Exp` where `ScLerp` is one `atan2` and one `sin_cos`, so the
+    reference pays for roundings the screw form does not have.
+  - **`laws::geodesic_legs`**, **seven legs bounded apart** for every instantiated group (`Rn`,
+    `SO3`, `SE3`, `SE_2(3)`, the test-only Heisenberg group and the four products) at `f64`, `f32`
+    and `Dual<f64, D>`: both endpoints, GE.2(c)'s symmetry, the velocity, GE.4's left **and**
+    right invariance, and D6's tie to `reference::geodesic`. One bound per leg, not one over their
+    maximum — `0006` asks for the bar per quantity, and folding seven identities into one number
+    lets the tight ones rot behind the loose one.
+  - Right invariance holds on *every* group, not only SE(3) — `Log(h⁻¹Δh) = Ad_{h⁻¹}d` and
+    `h Exp(Ad_{h⁻¹}ξ) = Exp(ξ)h`, no commutativity used — so `Product<SO3, R3>`'s famous failure
+    is against the **SE(3) reading** of `(R, t)`, not against `Product`'s own `Mul`.
+    `product_tests::so3_r3` is that group, which the four generic product instantiations do not
+    cover: it asserts §1.3's **slerp and lerp bit for bit** against the two factor curves, and the
+    positive failure not merely past `1e-6` but **equal to GE.5(b)'s closed form** `R₀M_s t_H`, so
+    it cannot pass on an unrelated defect.
+  - The `velocity` leg is GE.2(b) in finite form, `Log(γ(t)⁻¹γ(t+⅓)) = ⅓·velocity`. Comparing
+    `geodesic_velocity` against `rminus` instead would be a **tautology** — `rminus` *is* its body,
+    and `Product`'s override is `rminus` per factor — so it would read exactly 0 however wrong the
+    returned tangent was. It now reads 3.5 to 8.4 `u`.
+  - `x₁` is `x₀ ⊕ d` and not a second draw, so `θ(d)` stays inside the domain: two draws compose
+    to up to `2√3 > π`, where the law would measure GE.13(d)'s conditioning instead of the
+    identity.
+  - Bounds are twice the worst of **10^6 draws of `laws::sample`'s own distribution** (`Rng::
+    shaped`, not the uniform `Rng::arr`: a bound has to be measured on what the bar samples), per
+    leg, per group, printed by an `#[ignore]`d `measure_geodesic`. `0045` item 5's left-invariance
+    bound is measured per `‖t_G‖ ∈ {0, 1, 1e4}` — 5.866, 6.811, 3.800 `u`, the **largest at 1**:
+    the absolute cancellation does grow with the scale, but §11's metric divides by
+    `max(‖Log b‖, 1)`, which grows with it too.
+  - **`t = 0` returns `x₀` bit for bit, with one exception now pinned**: a `-0.0` component of the
+    representation can come back `+0.0`, because a sum of signed zeros is negative only when every
+    term is. The value is unchanged; the bit is not, and for a quaternion's `w` that sign is
+    load-bearing (§3.2 keeps `w = +0` and `Log`'s flip reads it). Both halves are asserted at
+    `N = 1` and `N = 2` and on SO(3).
+  - `xtask/src/shipped.rs` gains a `Geodesic` family, so the two corpus ids are scored from the
+    moment they exist — answering at `Host` in the planted host-`std` twin, as every other arm
+    does, so a geodesic domination failure can actually be attributed to D16 or not.
+
 - **The geodesic instrument: corpus ids `so3_geodesic` and `se3_geodesic`, 180 records each**
   (`PHASE4.md` §4, [`0045`](docs/decisions/0045-two-phase-4-checks-cannot-be-taken-as-written.md)
   plan steps 2 and 3). D7 puts the instrument before the routine, and Phase 4 had none: these are

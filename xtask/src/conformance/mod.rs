@@ -568,6 +568,8 @@ mod tests {
             .filter(|r| !r.planted)
             .collect();
         let want = [
+            // The geodesic ids, `PHASE4.md` §4's, which the `helicoid` subject answers at `f64`.
+            "se3_geodesic",
             "sen3_ad_n1",
             "sen3_ad_n2",
             "sen3_ad_n3",
@@ -594,6 +596,7 @@ mod tests {
             "so3_act",
             "so3_exp",
             "so3_from_matrix",
+            "so3_geodesic",
             "so3_jl",
             "so3_jl_inv",
             "so3_jr",

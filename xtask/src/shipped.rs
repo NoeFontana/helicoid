@@ -229,10 +229,18 @@ impl Sen3 {
     }
 }
 
-/// The group a `q`/`x` record holds, at `N`.
-fn sen3_of<S: Real + From<f64>, const N: usize>(record: &Record) -> Option<SEn3<S, N>> {
-    let q = quat_of::<S>(record, "q")?;
-    let x = record.input("x").filter(|x| x.len() == 3 * N)?;
+/// The group a record holds under the keys `(q, x)`, at `N`.
+///
+/// The keys are parameters because the geodesic ids hold two poses per record, `(q0, x0)` and
+/// `(q1, x1)` (`PHASE1.md` §4.3), and one builder for all three is one place for the
+/// `from_quat_unchecked` reading below to live.
+fn sen3_of<S: Real + From<f64>, const N: usize>(
+    record: &Record,
+    qk: &str,
+    xk: &str,
+) -> Option<SEn3<S, N>> {
+    let q = quat_of::<S>(record, qk)?;
+    let x = record.input(xk).filter(|x| x.len() == 3 * N)?;
     let cols = core::array::from_fn(|i| Vector(core::array::from_fn(|r| S::from(x[3 * i + r]))));
     // Not through `Quat::from_wxyz_unchecked`'s assert, as `quat_of` says: the `q:*` strata carry
     // quaternions that are unit only to rounding on purpose.
@@ -282,7 +290,7 @@ fn sen3_answer<S: Real + Into<f64> + From<f64>, const N: usize>(
             out
         }
         Sen3::Log => {
-            let Some(x) = sen3_of::<S, N>(record) else {
+            let Some(x) = sen3_of::<S, N>(record, "q", "x") else {
                 return Output::new();
             };
             let mut tau = vec![S::zero(); 3 + 3 * N];
@@ -293,7 +301,7 @@ fn sen3_answer<S: Real + Into<f64> + From<f64>, const N: usize>(
             )])
         }
         Sen3::Ad => {
-            let Some(x) = sen3_of::<S, N>(record) else {
+            let Some(x) = sen3_of::<S, N>(record, "q", "x") else {
                 return Output::new();
             };
             sen3_jac_out("Ad", &x.adjoint())
@@ -330,6 +338,65 @@ fn sen3_at<S: Real + Into<f64> + From<f64>>(op: Sen3, n: usize, record: &Record)
     }
 }
 
+/// A geodesic id this subject answers (`PHASE4.md` §4).
+///
+/// An enum with an exhaustive `answer`, for the reason the [`So3`] note gives: a `_` arm once
+/// scored a committed row under the wrong id's name.
+#[derive(Clone, Copy)]
+enum Geodesic {
+    So3,
+    Se3,
+}
+
+impl Geodesic {
+    const ALL: [(&'static str, Geodesic); 2] = [
+        ("so3_geodesic", Geodesic::So3),
+        ("se3_geodesic", Geodesic::Se3),
+    ];
+
+    fn of_fn(fn_id: &str) -> Option<Self> {
+        Self::ALL
+            .iter()
+            .find(|(name, _)| *name == fn_id)
+            .map(|&(_, id)| id)
+    }
+
+    /// The shipped answer at `S`; nothing when the record holds no usable input.
+    ///
+    /// The poses reach the group as the corpus holds them, through `from_quat_unchecked`: the
+    /// reference is the geodesic between the two rotations the records *denote*, so it normalizes
+    /// both, and a program carrying the stored quaternion reads about half an `u` of `‖q‖² − 1`
+    /// for it. That difference is the shipped behaviour and is what the row measures.
+    fn answer<S: Real + Into<f64> + From<f64>>(self, record: &Record) -> Output {
+        let Some(&[t]) = record.input("t").and_then(|v| v.first_chunk::<1>()) else {
+            return Output::new();
+        };
+        let t = S::from(t);
+        match self {
+            Geodesic::So3 => {
+                let (Some(q0), Some(q1)) = (quat_of::<S>(record, "q0"), quat_of::<S>(record, "q1"))
+                else {
+                    return Output::new();
+                };
+                let (x0, x1) = (SO3::from_quat_unchecked(q0), SO3::from_quat_unchecked(q1));
+                quat_out(&SO3::geodesic(&x0, &x1, t).quat())
+            }
+            Geodesic::Se3 => {
+                let (Some(x0), Some(x1)) = (
+                    sen3_of::<S, 1>(record, "q0", "x0"),
+                    sen3_of::<S, 1>(record, "q1", "x1"),
+                ) else {
+                    return Output::new();
+                };
+                let (r, cols) = SEn3::<S, 1>::geodesic(&x0, &x1, t).parts();
+                let mut out = quat_out(&r.quat());
+                out.insert("x".to_string(), cols[0].0.map(Into::into).to_vec());
+                out
+            }
+        }
+    }
+}
+
 pub(crate) struct Helicoid;
 
 impl Subject for Helicoid {
@@ -338,13 +405,23 @@ impl Subject for Helicoid {
     }
 
     fn supports(&self, fn_id: &str) -> bool {
-        Swept::of_fn(fn_id).is_some() || So3::of_fn(fn_id).is_some() || Sen3::of_fn(fn_id).is_some()
+        Swept::of_fn(fn_id).is_some()
+            || So3::of_fn(fn_id).is_some()
+            || Sen3::of_fn(fn_id).is_some()
+            || Geodesic::of_fn(fn_id).is_some()
     }
 
     fn eval(&self, fn_id: &str, record: &Record, precision: Precision) -> Output {
         if let Some(id) = So3::of_fn(fn_id) {
             // A plain `f32` run skips every `so3_*` id; asking for one by name at `f32` is the
             // harness's error, not this subject's (`So3::answer` says why).
+            return match precision {
+                Precision::F64 => id.answer::<f64>(record),
+                Precision::F32 => Output::new(),
+            };
+        }
+        if let Some(id) = Geodesic::of_fn(fn_id) {
+            // `f64` as for the other vector ids: the geodesic strata have no `@f32` twin.
             return match precision {
                 Precision::F64 => id.answer::<f64>(record),
                 Precision::F32 => Output::new(),
@@ -400,6 +477,9 @@ impl Subject for HostStd {
             return Output::new();
         }
         if let Some(id) = So3::of_fn(fn_id) {
+            return id.answer::<Host>(record);
+        }
+        if let Some(id) = Geodesic::of_fn(fn_id) {
             return id.answer::<Host>(record);
         }
         if let Some((op, n)) = Sen3::of_fn(fn_id) {

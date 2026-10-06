@@ -79,6 +79,8 @@ const F64: Bounds = Bounds {
     sandwich: 12.0,
     // `PHASE3.md` §8's second check, measured 0.316 over the four product groups, 10 000 draws each; `Rn x Rn` is exactly `0`.
     dual_rows: 1.0,
+    // `PHASE4.md` §1 and §3's seven legs, in `GEODESIC_LEGS`'s order, each twice the worst of 10^6 draws of `laws::Rng::shaped` -- `laws::sample`'s own distribution, which is what the proptest draws -- rounded up: the worst of the four groups: `t=1` 2.021, symmetry 4.040, velocity 5.528, left 6.083, right 5.510. **`twin` is exactly 0 on all four**, which is the load-bearing one: `Product`'s override of `LieGroup::geodesic` reproduces `reference::geodesic` bit for bit, so delegating per factor is the definition and not an approximation of it. `t=0` is 0 too.
+    geodesic: [0.0, 5.0, 9.0, 12.0, 13.0, 12.0, 0.0],
 };
 const F32: Bounds = Bounds {
     axioms: 9.0,
@@ -534,4 +536,222 @@ fn a_smaller_jac_view_panics_in_the_strided_access() {
     let mut buf = [0.0; 16];
     let j: <P1<f64> as LieGroup<f64>>::Jac = Jac::identity();
     j.write_dense(&mut StridedMut::col_major(&mut buf, 4, 4));
+}
+
+/// `Product<SO3, Rn<3>>` — the group `PHASE4.md` §1.3 names, and the one the generic laws do not
+/// instantiate (their four products are abelian or Heisenberg; `Heis` is the only non-abelian
+/// factor there).
+///
+/// Four claims, three of them NORMATIVE in §3:
+///
+/// 1. **§1.3: the geodesic is slerp and lerp**, bit for bit — not "by construction" but against
+///    the two factor curves themselves, so a block swap or a parameter dropped on one factor
+///    fails here.
+/// 2. **§3: right-invariant under `Product`'s own componentwise law**, exactly. This is the
+///    generic `right` leg, run on a quaternion factor for the first time.
+/// 3. **§3: right-invariance fails under the SE(3) reading** `a·H = (R_a R_H, R_a t_H + t_a)`,
+///    positively — and not merely by more than `1e-6`: the gap is asserted equal to GE.5(b)'s
+///    closed form `R_0 M_s t_H`, `M_s = (1−s)I + sE − E_s`, so the test cannot pass on an
+///    unrelated defect. **Do not "fix" it:** the lerp is a world-frame straight line while
+///    right-invariance forces the screw coupling `ρ = J_l⁻¹(φ) t`, and fixing it gives `ScLerp`,
+///    a different function.
+/// 4. **`0045` item 5: the left-invariance bound per `‖t_G‖`**, at `0`, `1` and `1e4`, since
+///    `γ(G·a, G·b, s)` forms `a⁻¹G⁻¹Gb` and that cancellation grows with the scale `PHASE4.md`
+///    §4's own strata reach.
+///
+/// GE.5(b)'s inequality is what keeps claim 3 from going vacuous a second way: the gap vanishes
+/// at `s ∈ {0, 1}`, at `θ = 0`, and for a `t_H` parallel to the axis, so the fixture takes
+/// `s = ½`, `θ = 1` about `z`, and `t_H = (1, 2, 3)` whose `(1, 2)` is orthogonal to the axis —
+/// `θ²‖t_{H⊥}‖ ≈ 2.2`, far above the `1e-5` the `1e-6` bar needs.
+mod so3_r3 {
+    use super::*;
+    use crate::{RnTangent, SO3Tangent, SO3};
+
+    type P<S> = Product<SO3<S>, Rn<S, 3>>;
+
+    fn pose(phi: [f64; 3], t: [f64; 3]) -> P<f64> {
+        Product::from_parts(SO3::exp(&SO3Tangent { phi: Vector(phi) }), Rn(Vector(t)))
+    }
+
+    /// `a · H` read as an SE(3) pose, which is **not** `Product`'s `Mul`.
+    fn as_se3(a: &P<f64>, h: &P<f64>) -> P<f64> {
+        let (ra, ta) = a.parts();
+        let (rh, th) = h.parts();
+        Product::from_parts(*ra * *rh, Rn(ra.act(th.0) + ta.0))
+    }
+
+    fn tangent(v: &[f64; 6]) -> <P<f64> as LieGroup<f64>>::Tangent {
+        (
+            SO3Tangent {
+                phi: Vector([v[0], v[1], v[2]]),
+            },
+            RnTangent {
+                rho: Vector([v[3], v[4], v[5]]),
+            },
+        )
+    }
+
+    /// The worst `left` leg over 20 000 draws with `‖t_G‖` at `scale`; `i` picks the stream, so
+    /// the three scales are three independent sweeps and none reorders another's draws.
+    fn left_worst(i: usize, scale: f64) -> f64 {
+        let mut rng = crate::laws::Rng(0x7363_616C_6500_0000 + i as u64);
+        let mut worst = 0.0_f64;
+        for _ in 0..20_000 {
+            let (a, b, c) = (rng.shaped::<6>(), rng.shaped::<6>(), rng.shaped::<6>());
+            let legs = crate::laws::geodesic_legs::<f64, P<f64>, 6>(
+                &pose([a[0], a[1], a[2]], [a[3], a[4], a[5]]),
+                &tangent(&b),
+                &pose(
+                    [c[0], c[1], c[2]],
+                    [c[3] * scale, c[4] * scale, c[5] * scale],
+                ),
+                c[0],
+            );
+            worst = crate::laws::worst(worst, legs[4]);
+        }
+        worst
+    }
+
+    fn flat(p: &P<f64>) -> [f64; 7] {
+        let (r, t) = p.parts();
+        let q = r.quat();
+        [q.w, q.x, q.y, q.z, t.0 .0[0], t.0 .0[1], t.0 .0[2]]
+    }
+
+    #[test]
+    fn the_geodesic_is_slerp_and_lerp_to_the_bit() {
+        let mut rng = crate::laws::Rng(0x736C_6572_705F_6C65);
+        for _ in 0..20_000 {
+            let (a, b, c) = (rng.shaped::<6>(), rng.shaped::<6>(), rng.unif());
+            let x0 = pose([a[0], a[1], a[2]], [a[3], a[4], a[5]]);
+            let x1 = pose([b[0], b[1], b[2]], [b[3], b[4], b[5]]);
+            let got = P::geodesic(&x0, &x1, c);
+            let (r0, t0) = x0.parts();
+            let (r1, t1) = x1.parts();
+            let slerp = SO3::geodesic(r0, r1, c);
+            let lerp = <Rn<f64, 3> as LieGroup<f64>>::geodesic(t0, t1, c);
+            assert_eq!(
+                flat(&got).map(f64::to_bits),
+                flat(&Product::from_parts(slerp, lerp)).map(f64::to_bits)
+            );
+        }
+    }
+
+    /// The worst of each leg over 10^6 draws, and of the left leg at the three scales: the figures
+    /// the two bounds below are recorded from.
+    #[test]
+    #[ignore = "measurement: prints the figures the bounds are recorded from"]
+    #[allow(clippy::print_stdout)]
+    fn measure() {
+        let mut rng = crate::laws::Rng(0x736F_335F_7233_0000);
+        let mut w = [0.0_f64; crate::laws::GEODESIC_LEGS.len()];
+        for _ in 0..1_000_000 {
+            let (a, b, c) = (rng.shaped::<6>(), rng.shaped::<6>(), rng.shaped::<6>());
+            let legs = crate::laws::geodesic_legs::<f64, P<f64>, 6>(
+                &pose([a[0], a[1], a[2]], [a[3], a[4], a[5]]),
+                &tangent(&b),
+                &pose([c[0], c[1], c[2]], [c[3], c[4], c[5]]),
+                c[0],
+            );
+            for (acc, v) in w.iter_mut().zip(legs) {
+                *acc = crate::laws::worst(*acc, v);
+            }
+        }
+        std::print!("so3_r3 legs");
+        for (n, v) in crate::laws::GEODESIC_LEGS.iter().zip(w) {
+            std::print!("  {n} {v:.4}");
+        }
+        std::println!();
+        for (i, scale) in [0.0, 1.0, 1e4].into_iter().enumerate() {
+            std::println!(
+                "so3_r3 left at |t_G| = {scale}: {:.4}",
+                left_worst(i, scale)
+            );
+        }
+    }
+
+    /// Claim 2, and the rest of the generic legs on a quaternion factor.
+    ///
+    /// Bounds are twice the worst of 10^6 draws of [`measure`], rounded up: `t=1` 6.0273,
+    /// symmetry 8.3526, velocity 6.5406, left 8.4010, right 9.4559. `t=0` and `twin` are 1.118,
+    /// `gerr`'s floor for two bitwise equal elements with a quaternion among them — so, unlike the
+    /// four abelian products, this group cannot make the bit-identity claim through `gerr`;
+    /// [`the_geodesic_is_slerp_and_lerp_to_the_bit`] makes it directly instead, and
+    /// `reference::geodesic` on a product *is* the factors' provided bodies side by side.
+    #[test]
+    fn the_generic_legs_hold_on_a_quaternion_factor() {
+        const BOUND: [f64; crate::laws::GEODESIC_LEGS.len()] =
+            [3.0, 13.0, 17.0, 14.0, 17.0, 19.0, 3.0];
+        let mut rng = crate::laws::Rng(0x736F_335F_7233_0000);
+        for _ in 0..20_000 {
+            let (a, b, c) = (rng.shaped::<6>(), rng.shaped::<6>(), rng.shaped::<6>());
+            let legs = crate::laws::geodesic_legs::<f64, P<f64>, 6>(
+                &pose([a[0], a[1], a[2]], [a[3], a[4], a[5]]),
+                &tangent(&b),
+                &pose([c[0], c[1], c[2]], [c[3], c[4], c[5]]),
+                c[0],
+            );
+            for ((name, v), bound) in crate::laws::GEODESIC_LEGS.iter().zip(legs).zip(BOUND) {
+                assert!(v <= bound, "leg `{name}`: {v} u exceeds {bound} u");
+            }
+        }
+    }
+
+    #[test]
+    fn the_se3_reading_fails_right_invariance_by_ge5bs_closed_form() {
+        let s = 0.5;
+        // `θ = 1` about `z`; `t_H`'s `(1, 2)` is orthogonal to the axis, so `t_{H⊥} ≠ 0`.
+        let h = pose([0.0, 0.0, 1.0], [1.0, 2.0, 3.0]);
+        let x0 = pose([0.3, -0.5, 0.7], [2.0, -1.0, 4.0]);
+        let x1 = x0.rplus(&tangent(&[0.0, 0.0, 1.0, 0.5, -0.25, 0.75]));
+        let left = P::geodesic(&as_se3(&x0, &h), &as_se3(&x1, &h), s);
+        let right = as_se3(&P::geodesic(&x0, &x1, s), &h);
+        let gap = {
+            let (a, b) = (flat(&left), flat(&right));
+            let mut acc = 0.0_f64;
+            for (x, y) in a.into_iter().zip(b) {
+                acc = acc.max((x - y).abs());
+            }
+            acc
+        };
+        // §3's bar.
+        assert!(gap > 1e-6, "right-invariance did not fail: gap {gap}");
+
+        // GE.5(b): the translation gap is `R_0 M_s t_H`, `M_s = (1−s)I + sE − E_s`, `E` the
+        // relative rotation and `E_s` its `s`-th power. Nothing else in the pose moves.
+        let (r0, _) = x0.parts();
+        let e = r0.inverse() * *x1.parts().0;
+        let es = SO3::geodesic(&SO3::identity(), &e, s);
+        let th = Vector([1.0, 2.0, 3.0]);
+        let ms = (th.scale(1.0 - s) + e.act(th).scale(s)) - es.act(th);
+        let want = r0.act(ms);
+        let predicted = want.0.into_iter().fold(0.0_f64, |m, x| m.max(x.abs()));
+        assert!(
+            (gap - predicted).abs() <= 8.0 * f64::EPSILON * predicted.max(1.0),
+            "the gap is {gap}, GE.5(b) predicts {predicted}"
+        );
+    }
+
+    /// `0045` item 5: the left-invariance leg at the three translation scales, each bound set from
+    /// its own measurement and not from the `‖t_G‖ = 1` case alone.
+    ///
+    /// Measured 5.8658, 6.8112 and 3.8000 at `‖t_G‖ = 0, 1, 1e4` over 20 000 draws each — and the
+    /// reading at `1e4` is the **smallest**, which answers the worry `0045` item 5 raises. The
+    /// absolute cancellation in `a⁻¹G⁻¹Gb` does grow with `‖t_G‖`, but `gerr` divides by
+    /// `max(‖Log b‖, 1)` and that grows with it too, so the relative figure falls. The bound is
+    /// still recorded per scale, because the record asks for it and because a change of metric
+    /// would show here first.
+    #[test]
+    fn left_invariance_at_three_translation_scales() {
+        // Twice the worst of 20 000 draws per scale, rounded up.
+        const BOUND: [f64; 3] = [12.0, 14.0, 8.0];
+        for (i, scale) in [0.0, 1.0, 1e4].into_iter().enumerate() {
+            let worst = left_worst(i, scale);
+            assert!(
+                worst <= BOUND[i],
+                "left invariance at |t_G| = {scale}: {worst} u exceeds {}",
+                BOUND[i]
+            );
+        }
+    }
 }
