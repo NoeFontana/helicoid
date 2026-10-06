@@ -308,6 +308,76 @@ mod group {
         }
     }
 
+    /// `mul_inv` against the composition it is *not* bit-identical to, `a * b.inverse()`
+    /// (`NUMERICS.md` §14, `0044` item 4): one rotation of a vector against two.
+    ///
+    /// The second half is the load-bearing one. If the two agreed to the bit the routine would be
+    /// a spelling and `0044`'s whole case for it would be wrong, so a sweep asserts they **differ
+    /// somewhere** — `R_a(R_bᵗ t_b)` rounds twice where `R(q_a q_b*) t_b` rounds once.
+    #[test]
+    fn mul_inv_matches_reference_and_is_not_the_composition_to_the_bit() {
+        let mut rng = crate::laws::Rng(0x6D75_6C5F_696E_7600);
+        let (mut worst, mut differed) = (0.0_f64, 0usize);
+        for _ in 0..20_000 {
+            let (a, b) = (rng.arr::<6>(), rng.arr::<6>());
+            let x = SE3::<f64>::exp(&SEn3Tangent::read_dense(&a));
+            let y = SE3::<f64>::exp(&SEn3Tangent::read_dense(&b));
+            let got = x.mul_inv(&y);
+            let want = x * y.inverse();
+            let flat = |g: &SE3<f64>| {
+                let (r, cols) = g.parts();
+                let q = r.quat();
+                [q.w, q.x, q.y, q.z, cols[0].0[0], cols[0].0[1], cols[0].0[2]]
+            };
+            let (gv, wv) = (flat(&got), flat(&want));
+            worst = crate::laws::worst(worst, crate::laws::e::<f64>(&gv, &wv));
+            if gv.map(f64::to_bits) != wv.map(f64::to_bits) {
+                differed += 1;
+            }
+        }
+        // Twice the worst of 20 000 draws, rounded up: measured 7.052 `u`, which is the two
+        // programs' difference and not either one's error — the corpus has no `mul_inv` id, by
+        // `0044` item 5, and the figure is a no-regress tie between the twins.
+        assert!(worst <= 15.0, "mul_inv vs a * b.inverse(): {worst} u");
+        assert!(
+            differed > 10_000,
+            "only {differed} of 20 000 draws differ: `mul_inv` would be a spelling, not a routine"
+        );
+    }
+
+    /// `renormalize` is `SO3::renormalize` on the rotation and nothing on the columns
+    /// (`0044` item 2).
+    #[test]
+    fn renormalize_is_the_rotations_newton_step_and_leaves_the_columns_alone() {
+        let x = SE23::<f64>::exp(&SEn3Tangent::read_dense(&[
+            0.3, -0.7, 1.1, 0.5, -2.0, 0.25, -1.0, 4.0, 0.125,
+        ]));
+        let (r, cols) = x.parts();
+        // Off the unit sphere by `2^-30`, inside `Quat::renormalize`'s domain.
+        let eta = 1.0 + f64::powi(2.0, -30);
+        let q = r.quat();
+        let scaled = crate::Quat {
+            w: q.w * eta,
+            x: q.x * eta,
+            y: q.y * eta,
+            z: q.z * eta,
+        };
+        let mut drifted = SE23::from_parts(crate::SO3::from_quat_unchecked(scaled), cols);
+        drifted.renormalize();
+        let mut alone = crate::SO3::from_quat_unchecked(scaled);
+        alone.renormalize();
+        let (r2, cols2) = drifted.parts();
+        let (a, b) = (r2.quat(), alone.quat());
+        assert_eq!(
+            [a.w, a.x, a.y, a.z].map(f64::to_bits),
+            [b.w, b.x, b.y, b.z].map(f64::to_bits)
+        );
+        for i in 0..2 {
+            assert_eq!(cols2[i].0.map(f64::to_bits), cols[i].0.map(f64::to_bits));
+        }
+        assert!((r2.quat().norm() - 1.0).abs() < 1e-18);
+    }
+
     /// The fused `rminus_jacobians` against the two inversions it replaces, **on the bits**.
     ///
     /// `laws::jacobian_rows` bounds this row at `0 u`, which is an *error* bound and so cannot see

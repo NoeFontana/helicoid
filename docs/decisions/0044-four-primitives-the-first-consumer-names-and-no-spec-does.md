@@ -2,7 +2,7 @@
 
 **Status:** ready
 **Owner:** @NoeFontana
-**Implementation:** none yet; lands with `PHASE4.md` §1
+**Implementation:** landed. `Quat::{dot, norm}`, `SEn3::renormalize`, `SEn3<S, 1>::mul_inv`, `API.md` §3's two rows, `NUMERICS.md` §14's `mul_inv` row and its twin test. Item 5's debt stands: no corpus id for any of the four, owed before `0.1.0`
 
 ## Context
 
