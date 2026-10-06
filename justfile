@@ -184,3 +184,24 @@ corpus-check: && corpus-test
     trap 'rm -rf "$tmp"' EXIT
     (cd conformance/generate && uv run --frozen python -m gen all --out "$tmp")
     diff -rq "$tmp" conformance/corpus
+
+# Everything `cargo publish` checks, without publishing (`0049` step 2). The tree must be clean:
+# no `--allow-dirty`, because a release is cut from committed state.
+#
+# The order is not a preference. `cargo package` resolves a `path` dependency that carries a
+# `version` from the index, so `helicoid` cannot be packaged *at all* -- not even with
+# `--no-verify` -- until `helicoid-linalg` is on crates.io. Until then its only available check is
+# the file list, which is what this prints. Publish `helicoid-linalg` first, wait for the index,
+# then rerun this and publish `helicoid`.
+publish-check:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cargo publish -p helicoid-linalg --dry-run
+    if cargo package -p helicoid --no-verify >/dev/null 2>&1; then
+        cargo publish -p helicoid --dry-run
+    else
+        echo
+        echo "helicoid: dry-run deferred, helicoid-linalg is not on the index yet."
+        echo "What would be packaged:"
+        cargo package -p helicoid --list
+    fi

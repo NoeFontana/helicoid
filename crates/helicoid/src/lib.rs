@@ -58,6 +58,14 @@ pub use side::{Left, Right, Side};
 pub use so3::{SO3Tangent, SO3};
 pub use traits::{Jac, LieGroup, Tangent};
 
+/// The crate README, compiled as a doctest so its example cannot rot.
+///
+/// `cfg(doctest)`, so the module exists only while `cargo test --doc` is collecting: it is not in
+/// the rustdoc front page (which is this file's own header) and not in the built library.
+#[cfg(doctest)]
+#[doc = include_str!("../README.md")]
+mod readme {}
+
 // `proptest` and the `Vec` the tests collect into need `std`; the library itself stays `no_std`.
 #[cfg(test)]
 extern crate std;
