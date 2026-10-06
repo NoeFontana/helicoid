@@ -116,6 +116,7 @@ fn so3<S: Fixture>(g: &mut BenchmarkGroup<'_, WallTime>, name: &str, theta: f64)
     let base = x * SO3::<S>::exp(&SO3Tangent { phi: -ta.phi });
     let (ja, jb) = (SO3::<S>::jr(&ta), y.adjoint());
     let v = phi::<S>(1.0, true);
+    let t = S::of(1.0 / 3.0);
     let pts = points::<S>();
     g.bench_function(format!("so3/exp/{name}"), |b| {
         b.iter(|| SO3::<S>::exp(black_box(&ta)));
@@ -151,6 +152,12 @@ fn so3<S: Fixture>(g: &mut BenchmarkGroup<'_, WallTime>, name: &str, theta: f64)
     g.bench_function(format!("so3/rminus_jacobians/{name}"), |b| {
         b.iter(|| black_box(&x).rminus_jacobians(black_box(&base)));
     });
+    // `base` to `x`, so the relative motion is `ta` and `θ(d)` is the label's, not the angle
+    // between two same-`θ` elements about different axes. `t` is non-dyadic for `laws`'s reason:
+    // `0.25` would remove a rounding the shipped path has.
+    g.bench_function(format!("so3/geodesic/{name}"), |b| {
+        b.iter(|| SO3::<S>::geodesic(black_box(&base), black_box(&x), black_box(t)));
+    });
 }
 
 /// SE_N(3)'s rows at one stratum; `act` and `act_many` are `N = 1`'s alone (`PHASE3.md` §5).
@@ -178,6 +185,7 @@ fn sen3<S: Fixture, const N: usize>(
     // elements about different axes, which lands on another stratum.
     let base = x * <helicoid::SEn3<S, N> as LieGroup<S>>::exp(&ta.neg());
     let (ja, jb) = (<helicoid::SEn3<S, N> as LieGroup<S>>::jr(&ta), x.adjoint());
+    let t = S::of(1.0 / 3.0);
     g.bench_function(format!("{tag}/exp/{name}"), |b| {
         b.iter(|| <helicoid::SEn3<S, N> as LieGroup<S>>::exp(black_box(&ta)));
     });
@@ -201,6 +209,18 @@ fn sen3<S: Fixture, const N: usize>(
     });
     g.bench_function(format!("{tag}/rminus_jacobians/{name}"), |b| {
         b.iter(|| black_box(&x).rminus_jacobians(black_box(&base)));
+    });
+    // `base` to `x`, as in `so3`: the relative motion is `ta`, so the row's `θ(d)` is its label's.
+    // SE_N(3) does not override `geodesic`, so this row is the provided body and the baseline
+    // `PHASE4.md` §1.2's twin will be measured against.
+    g.bench_function(format!("{tag}/geodesic/{name}"), |b| {
+        b.iter(|| {
+            <helicoid::SEn3<S, N> as LieGroup<S>>::geodesic(
+                black_box(&base),
+                black_box(&x),
+                black_box(t),
+            )
+        });
     });
 }
 

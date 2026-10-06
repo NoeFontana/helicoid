@@ -672,16 +672,24 @@ mod so3_r3 {
 
     /// Claim 2, and the rest of the generic legs on a quaternion factor.
     ///
-    /// Bounds are twice the worst of 10^6 draws of [`measure`], rounded up: `t=1` 6.0273,
-    /// symmetry 8.3526, velocity 6.5406, left 8.4010, right 9.4559. `t=0` and `twin` are 1.118,
+    /// Bounds are twice the worst of 10^6 draws of [`measure`], rounded up: symmetry 5.4233,
+    /// velocity 6.1060, left 8.8010, right 9.3204, twin 7.0447. `t=0` and `t=1` are 1.118,
     /// `gerr`'s floor for two bitwise equal elements with a quaternion among them — so, unlike the
     /// four abelian products, this group cannot make the bit-identity claim through `gerr`;
-    /// [`the_geodesic_is_slerp_and_lerp_to_the_bit`] makes it directly instead, and
-    /// `reference::geodesic` on a product *is* the factors' provided bodies side by side.
+    /// [`the_geodesic_is_slerp_and_lerp_to_the_bit`] makes it directly instead.
+    ///
+    /// Three legs moved with `0050` and `0051`, and they are one fact. `t=1` was 6.0273 and is now
+    /// the floor, because `SO3::geodesic` is exact at both endpoints — on both of `0051`'s arms,
+    /// which is why that record routes `t >= 1` to the blend — and `Rn`'s lerp always was. `twin`
+    /// was 1.118 and is now 7.0447, because `reference::geodesic` on a product is the factors'
+    /// **provided** bodies side by side and one factor no longer uses its provided body, so the leg
+    /// compares two different expressions, which is what D6 wants of it. `left` moved too, 8.4010 →
+    /// 8.8010 with its bound 17 → 18. **`0051`'s second arm moves none of them** — every figure is
+    /// `0050`'s to the digit — so the three that moved are that record's alone.
     #[test]
     fn the_generic_legs_hold_on_a_quaternion_factor() {
         const BOUND: [f64; crate::laws::GEODESIC_LEGS.len()] =
-            [3.0, 13.0, 17.0, 14.0, 17.0, 19.0, 3.0];
+            [3.0, 3.0, 11.0, 13.0, 18.0, 19.0, 15.0];
         let mut rng = crate::laws::Rng(0x736F_335F_7233_0000);
         for _ in 0..20_000 {
             let (a, b, c) = (rng.shaped::<6>(), rng.shaped::<6>(), rng.shaped::<6>());
@@ -735,16 +743,22 @@ mod so3_r3 {
     /// `0045` item 5: the left-invariance leg at the three translation scales, each bound set from
     /// its own measurement and not from the `‖t_G‖ = 1` case alone.
     ///
-    /// Measured 5.8658, 6.8112 and 3.8000 at `‖t_G‖ = 0, 1, 1e4` over 20 000 draws each — and the
+    /// Measured 6.5853, 5.8123 and 3.8000 at `‖t_G‖ = 0, 1, 1e4` over 20 000 draws each — and the
     /// reading at `1e4` is the **smallest**, which answers the worry `0045` item 5 raises. The
     /// absolute cancellation in `a⁻¹G⁻¹Gb` does grow with `‖t_G‖`, but `gerr` divides by
     /// `max(‖Log b‖, 1)` and that grows with it too, so the relative figure falls. The bound is
     /// still recorded per scale, because the record asks for it and because a change of metric
     /// would show here first.
+    ///
+    /// `0050` moved the first two in opposite directions — 5.8658 → 6.5853 at `0`, 6.8112 → 5.8123
+    /// at `1` — so the largest is now at `‖t_G‖ = 0` and not at `1`, and `0051`'s second arm moves
+    /// neither. The conclusion the paragraph above draws is about `1e4` and is untouched; what the
+    /// swap shows is that the two small scales were never separated by much, which is why the record
+    /// asked for three bounds rather than one.
     #[test]
     fn left_invariance_at_three_translation_scales() {
         // Twice the worst of 20 000 draws per scale, rounded up.
-        const BOUND: [f64; 3] = [12.0, 14.0, 8.0];
+        const BOUND: [f64; 3] = [14.0, 12.0, 8.0];
         for (i, scale) in [0.0, 1.0, 1e4].into_iter().enumerate() {
             let worst = left_worst(i, scale);
             assert!(

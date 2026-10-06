@@ -2,7 +2,41 @@
 
 **Status:** ready
 **Owner:** @NoeFontana
-**Implementation:** the measurement and this record land together; the override is step 2
+**Implementation:** #100 (the measurement and this record); steps 2 and 3 as noted below
+
+> **Step 2 landed, and the predictions held.** `just envelope` **115 → 113**, the number this
+> record's *Consequences* named, with `se3_geodesic/geo:generic` the only geodesic failure left.
+> The corpus reads **1.6440 / 1.7382 / 1.6417** `u` at `geo:consecutive` / `geo:generic` /
+> `geo:near-pi`, matching the measurement's figures to every digit it printed, and the `host-std`
+> twin reads the same, so the override costs D16 nothing. Two law legs moved and they are one fact:
+> SO(3)'s `t=1` leg fell from 7.160 `u` to **1.118**, `gerr`'s floor for two bitwise equal
+> quaternions — the endpoint exactness, read by the laws without the corpus — and `twin` rose from
+> 1.118 to **7.233**, because the leg now compares two genuinely different expressions instead of a
+> call with itself. `symmetry` improved (8.951 → 6.013) and `velocity` and `right` degraded
+> (6.505 → 7.107, 9.663 → 10.979); all are identity legs, and `0006` makes the corpus the bar.
+> `Product<SO3, Rn<3>>` inherited the same pair of moves through its per-factor delegation, and its
+> bit-for-bit slerp-and-lerp assertion still passes, which is *Further work* 3 answered.
+>
+> **Step 3 ran, and it contests decision 2.** The geodesic had **no bench row at all** — `PHASE4.md`
+> §0.0 owed six and `benches/groups.rs` held none, which is why the first gate run could say only
+> that nothing else regressed (168 benchmarks, none above its own floor). With the rows added and a
+> baseline built in this tree from the pre-override `so3.rs`, `so3/geodesic` reads:
+>
+> | stratum | `f64` | `f32` |
+> |---|---|---|
+> | `near-identity-7.5e-8` | **1.5591x slower** (19.7 -> 30.7 ns) | 0.4886, **2.05x faster** |
+> | `generic-1` | 0.8447, 1.18x faster | 0.8427, 1.19x faster |
+> | `near-pi` | 0.9084, 1.10x faster | 0.9091, 1.10x faster |
+>
+> All twelve `se3`/`se23` rows sit at 0.99–1.01, which is the control: `SEn3` does not route through
+> `SO3::geodesic`, so the rows measure what they claim, and **the SE(3) path where `tf_tree`'s
+> 300 ns gate lives is untouched**. But `cargo xtask bench-gate` **exits 1** on the one row — at
+> least 1.5525 in every one of 6 pairs against a floor of 0.0044 — so this is resolvable, not noise,
+> and `PHASE1.md` §9's rule is per benchmark.
+>
+> Decision 2 weighed `0.072 u` of accuracy against a `0004` sweep and took one arm. It did not know
+> about +11 ns at the stratum a transform tree lives in, because no row existed to say so. *Further
+> work* 4 holds what the two-arm now looks like; the decision is not reversed here.
 
 ## Context
 
@@ -176,13 +210,26 @@ None.
 
 ## Further work
 
-1. **The SE(3) analogue, which is the last geodesic failure.** Decision 6 says why this record does
+1. **Decision 2 is contested by latency, and the cheap two-arm needs no sweep.** The banner's step-3
+   table is the evidence. What makes this different from the two-arm decision 2 declined: route **B**
+   is **bit-identical to route A** at `geo:consecutive`, and route B's coefficients are
+   `r = log_ratio(..)` and `(k_t, cos t\alpha) = exp_coeffs(..)` — already-swept switches. So "route
+   A below the switch, the blend above" is a dispatch on **a generated switch that already exists**,
+   not a new one: no sweep, no typed constant, `0004` satisfied by reading the predicate `coeffs`
+   already computes rather than adding a number. That would read the best accuracy cell of every
+   column (1.572 / 1.738 / 1.642) **and** the best latency of every row. What it costs is a
+   `pub(crate)` predicate out of `coeffs`, a second arm under D6's twin obligation, a second
+   spelling against `API.md` R3, and re-measurement at the switch boundary where the two arms meet —
+   which is exactly where `0047` found a prefix rule can be 50224x wrong, so the boundary is measured
+   and not assumed. Not authorised here: it reverses a decision this record took, so it is its own
+   record.
+2. **The SE(3) analogue, which is the last geodesic failure.** Decision 6 says why this record does
    not reach it. The measurement to run first is the same shape: score candidate spellings of
    `SEn3::geodesic`'s translation block against `se3_geodesic`, with `measure_geodesic.rs` extended
    rather than copied, before §1.2's twin is written.
-2. **Binary32.** Every figure here is binary64, which is where the three failures are. A spelling
+3. **Binary32.** Every figure here is binary64, which is where the three failures are. A spelling
    with a `sin` in the denominator has one more cancellation path at 24 bits than at 53, and §1.2's
    twin will want the column anyway.
-3. **Whether `Rn` and the products want anything.** `Rn`'s geodesic is lerp and exact; `Product`
+4. **Whether `Rn` and the products want anything.** `Rn`'s geodesic is lerp and exact; `Product`
    delegates per factor, so `Product<SO3, Rn<3>>` inherits decision 1 for free and its bit-for-bit
    slerp-and-lerp assertion in `product_tests::so3_r3` has to be re-read against the new body.

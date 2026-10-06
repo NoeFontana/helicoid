@@ -63,7 +63,9 @@
 
 mod generated;
 mod kernel;
-pub(crate) use kernel::{exp_coeffs, jr_coeffs, jr_inv_coeff, log_ratio, q_coeffs};
+pub(crate) use kernel::{
+    exp_coeffs, jr_coeffs, jr_inv_coeff, log_ratio, log_ratio_takes_short_arm, q_coeffs,
+};
 #[cfg(feature = "__sweep")]
 pub mod sweep;
 #[cfg(test)]

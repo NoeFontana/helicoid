@@ -54,8 +54,8 @@ const F64: Bounds = Bounds {
     sandwich: 8.0,
     // `PHASE3.md` §8's second check, measured 5.485 over 20 000 draws.
     dual_rows: 11.0,
-    // `PHASE4.md` §1 and §3's seven legs, in `GEODESIC_LEGS`'s order, each twice the worst of 10^6 draws of `laws::Rng::shaped` -- `laws::sample`'s own distribution, which is what the proptest draws -- rounded up: `t=1` 6.339 / 7.160, symmetry 8.521 / 8.951, velocity 5.803 / 6.505, left 8.637 / 9.122, right 8.285 / 9.663. `t=0` and `twin` are both 1.118, `gerr`'s floor for two bitwise equal quaternions (`Bounds::geodesic` says why); `SO3` overrides nothing, so `twin` compares a call with itself.
-    geodesic: [3.0, 15.0, 18.0, 14.0, 19.0, 20.0, 3.0],
+    // `PHASE4.md` §1 and §3's seven legs, in `GEODESIC_LEGS`'s order, each twice the worst of 10^6 draws of `laws::Rng::shaped` -- `laws::sample`'s own distribution, which is what the proptest draws -- rounded up, `f64` / `f32`: symmetry 5.000 / 6.013, velocity 7.024 / 7.107, left 9.276 / 8.140, right 10.979 / 9.289, twin 7.213 / 7.233. **`t=0` and `t=1` are both 1.118**, `gerr`'s floor for two bitwise equal quaternions (`Bounds::geodesic` says why). `t=1` reading the floor is `0050`'s property and `0051` keeps it on both arms, which is why that record routes exactly `t = 1` to the blend even below the switch: the provided body is exact at `t=0` alone and read 7.160 here. `twin` is 1.118 no longer -- `SO3::geodesic` is two arms of which one is not `reference::geodesic`, so the leg compares genuinely different expressions where it once compared a call with itself. **Every figure is `0050`'s to the digit**, so `0051`'s second arm costs these laws nothing: its draws that fall below the switch are too few to move a maximum. An earlier `0051` read symmetry 5.919 / 7.670 and that was the extrapolation defect its own review found, not the dispatch -- `t >= 1` sent large-`t` draws below the switch to the blend, whose weights grow like `t`, and `t = 1` does not.
+    geodesic: [3.0, 3.0, 13.0, 15.0, 19.0, 22.0, 15.0],
 };
 const F32: Bounds = Bounds {
     tangent_order: 3.0,
@@ -625,6 +625,128 @@ fn adjoint_is_the_rotation_and_ad_is_the_hat() {
     let got = SO3::<f64>::ad(&tan(phi));
     for c in 0..3 {
         close(&got.col(c).0, &w.col(c).0, 0.0);
+    }
+}
+
+/// `γ(x₀, x₁, 1)` is `x₁` **bit for bit**, up to `Log`'s sign — the property `0050`'s override
+/// adds and the whole reason it dominates oracle #1.
+///
+/// It holds by the arithmetic, not by luck: the right weight is `sin(1·α)/sin α`, and `1·α` is `α`
+/// exactly, so it is one number divided by **itself** and therefore exactly `1`; the left weight is
+/// `sin(0·α)/sin α`, an exact `+0`. Dividing by `‖v‖` instead -- the same number for a unit
+/// quaternion, and the spelling `0050` measured and rejected -- gives `1 + ε` here, which is the
+/// entire 2.721 -> 1.738 `u` at `geo:generic`.
+///
+/// The sign is `Log`'s: at `q₀·q₁ < 0` the answer is `−q₁`, the same rotation on the short arc,
+/// which is what `tf_tree_math::slerp` documents for its own `s = 1`.
+///
+/// **Up to the sign of a zero**, which is the `t = 0` test's exception and reaches `t = 1` for the
+/// mirror reason: the left weight is an exact `+0`, so `a·q₀[i] + b·q₁[i]` adds `+0.0` to a `−0.0`
+/// component of `q₁` and `−0.0 + 0.0` is `+0.0`. The flip makes it reachable — `Exp`'s unused
+/// vector components are `+0.0`, so negating `q₁` makes them `−0.0` — which is why the case below
+/// at `‖φ‖ = 3.5` is the one that found this, and why the five cases that were here before (all
+/// with `q₀·q₁ > 0`) did not.
+#[test]
+fn geodesic_at_one_is_the_right_endpoint_bit_for_bit() {
+    let q =
+        |v: [f64; 4]| SO3::from_quat_unchecked(Quat::from_wxyz_normalized(v[0], v[1], v[2], v[3]));
+    let cases = [
+        ([1.0, 0.0, 0.0, 0.0], [0.3, -0.5, 0.7]),
+        ([0.2, 0.3, -0.5, 0.78], [1.0, -2.0, 0.5]),
+        ([0.0, 0.6, 0.0, 0.8], [1e-9, 0.0, -1e-9]),
+        // `θ(d) = 0`: the arc is a point, which takes the `‖v‖ = 0` branch and not the blend.
+        ([-0.4, 0.1, 0.9, -0.2], [0.0, 0.0, 0.0]),
+        // Past `π`, so `Log`'s flip fires and the expected endpoint is `−q₁`. `3.5` and not
+        // `2.6`: `‖φ‖ = 2.6` gives `w = cos(1.3) = +0.267`, which does **not** flip, so the case
+        // that was there exercised none of the sign rule and neither did the other four.
+        ([1.0, 0.0, 0.0, 0.0], [3.5, 0.0, 0.0]),
+    ];
+    let mut flipped = 0;
+    for (w, d) in cases {
+        let x0 = q(w);
+        let x1 = x0.rplus(&SO3Tangent { phi: Vector(d) });
+        let got = SO3::geodesic(&x0, &x1, 1.0).quat();
+        let (a, b) = (x0.quat(), x1.quat());
+        // The sign `Log` would choose, read off the relative quaternion as `geodesic` reads it.
+        let dot = ((a.w * b.w + a.x * b.x) + a.y * b.y) + a.z * b.z;
+        let f = 1.0_f64.copysign(dot);
+        flipped += usize::from(f < 0.0);
+        let want = [f * b.w, f * b.x, f * b.y, f * b.z];
+        // Bits, with `±0.0` equal: the rustdoc's one exception. A `float_cmp` on a zero is what
+        // `partial_cmp` is for, as the `t = 0` test's own `w` check uses.
+        for (i, (g, v)) in [got.w, got.x, got.y, got.z].iter().zip(want).enumerate() {
+            let zeros = g.partial_cmp(&0.0) == Some(core::cmp::Ordering::Equal)
+                && v.partial_cmp(&0.0) == Some(core::cmp::Ordering::Equal);
+            assert!(
+                zeros || g.to_bits() == v.to_bits(),
+                "t = 1 moved {w:?} along {d:?}: component {i} is {g:?}, not {v:?}"
+            );
+        }
+    }
+    assert!(
+        flipped > 0,
+        "no case has `q₀·q₁ < 0`, so the `−q₁` half of this property is untested and the claim \
+         `NUMERICS.md` §10 and `PHASE4.md` §0.0 both make is uncovered"
+    );
+
+    // `n2` underflows while the quaternions still differ: `1e-170` squares to zero, so the blend's
+    // `‖v‖ = 0` arm fires on a pair that is *not* a point arc. It must still be exact here, which
+    // is why that arm is the blend's limit `(1 − t) q₀ + t q₁` and not the constant `q₀`.
+    let x0 = SO3::from_quat_unchecked(crate::Quat {
+        w: 1.0_f64,
+        x: 0.0,
+        y: 0.0,
+        z: 0.0,
+    });
+    let x1 = SO3::from_quat_unchecked(crate::Quat {
+        w: 1.0_f64,
+        x: 1e-170,
+        y: 0.0,
+        z: 0.0,
+    });
+    let got = SO3::geodesic(&x0, &x1, 1.0).quat();
+    assert_eq!(
+        [got.w, got.x].map(f64::to_bits),
+        [1.0_f64, 1e-170].map(f64::to_bits),
+        "an underflowed `n2` returned the left endpoint at t = 1"
+    );
+}
+
+/// Extrapolation below the switch belongs to the **provided body**, whose error does not grow with
+/// `t`, and not to the blend, whose weights do.
+///
+/// `LieGroup::geodesic` states that `t` outside `[0, 1]` extrapolates along the same curve, so this
+/// is a reachable argument. The blend forms `≈ -(t-1) q₀ + t q₁` there and the two `O(t)` terms
+/// cancel: at `θ(d) = 1e-9` it reads a relative `2.6e-10` at `t = 1e6`, about `1.2e6 u`, where the
+/// provided body is exact to its own roundings. So `0051`'s clause is `t = 1` and not `t ≥ 1`, and
+/// this test is what says so — it compares against `Exp(t·Log Δ)` computed from the same inputs,
+/// which is the curve both arms claim to be on.
+#[test]
+fn extrapolation_below_the_switch_does_not_grow_with_t() {
+    let d = SO3Tangent {
+        phi: Vector([1e-9, 0.0, 0.0]),
+    };
+    let x0 = SO3::<f64>::identity();
+    let x1 = x0.rplus(&d);
+    for t in [1.0, 2.0, 1e3, 1e6] {
+        let got = SO3::geodesic(&x0, &x1, t).quat();
+        // The curve itself: `x₀ ⊕ t·d`, which is `reference::geodesic`'s body at this `t`.
+        let want = x0.rplus(&d.scale(t)).quat();
+        let err = [
+            got.w - want.w,
+            got.x - want.x,
+            got.y - want.y,
+            got.z - want.z,
+        ]
+        .iter()
+        .map(|e| e * e)
+        .sum::<f64>()
+        .sqrt()
+            / f64::EPSILON;
+        assert!(
+            err <= 4.0,
+            "t = {t}: {err} u from the curve; the blend's cancellation reads 1.2e6 u at t = 1e6"
+        );
     }
 }
 

@@ -218,6 +218,37 @@ pub(crate) fn q_coeffs<S: Real>(z: S) -> (S, S, S) {
     (b, d, e)
 }
 
+/// Whether [`log_ratio`] would take its **short** arm at `(n2, w)`: `w > 0` and
+/// `s = n²/w² < short_below`, `0047`'s second, shortest series arm.
+///
+/// Exported because `SO3::geodesic` dispatches its two arms on it (`0051`). It is a predicate
+/// [`log_ratio`] already computes and not a second number: `0004` forbids typing a switch point,
+/// and a caller that wanted one would have to, so it reads this instead. One definition, so the
+/// two cannot drift apart — which is the whole reason this is a function and not a copy of the
+/// four lines.
+///
+/// **`below` is the wrong one of `r`'s two switches for that caller**, which is measured and not
+/// argued: dispatching on it leaves 50 of `so3_geodesic/geo:generic`'s 60 records on the provided
+/// body, where it reads `2.5019 u` against oracle #1's `1.834` and loses the stratum
+/// (`measure_geodesic::scan`'s table, `0051`). `short_below` is four decades of `s` lower and
+/// dominates every stratum, with every smaller threshold reading identically — so the choice is
+/// not delicate, but it is a choice, and
+/// `measure_geodesic::tests::the_shipped_dispatch_threshold_still_dominates` fails if a later sweep
+/// moves this number into the region that loses.
+#[inline]
+pub(crate) fn log_ratio_takes_short_arm<S: Real>(n2: S, w: S) -> S::Mask {
+    nonnegative(n2);
+    let r = table::<S, _>(R_F64.arm(), R_F32.arm());
+    let positive = S::zero().lt(w);
+    // `n² < T w²`, not `n²/w² < T`: the same test for `w > 0` and a multiply instead of a divide,
+    // which is 1.1 ns [`log_ratio`] would then spend again on its own copy of the quotient. The two
+    // can part by an ulp exactly at the boundary, and nothing reads them as one number: a caller
+    // dispatching on this picks an arm, both arms are correct, and `0051` measured five decades of
+    // slack either side. `w * w` cannot overflow for a quaternion within a factor of two of unit,
+    // and where it does the comparison is false, which is the arm that assumes nothing.
+    positive.and(n2.lt(r.short_below::<S>() * w * w))
+}
+
 /// `r = 2 atan2(n, w)/n` at `n² = n2` (`NUMERICS.md` §3.2). The series arm is taken iff `w > 0` and
 /// `s = n²/w² < switch`: the reading in `super`. Each arm is at its safe argument, the series arm's
 /// `w` (`CO.16(d)`) too, and the mask forms `s` from `w² = 1` where `w` is not positive, so no

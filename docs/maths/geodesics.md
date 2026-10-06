@@ -403,7 +403,13 @@ $q_0\cdot q_1 = 0$ ($\theta = \pi$) there are two arcs, the two preimages of GE.
 $[\sin((1-t)\alpha) + \sin(t\alpha)(\cos\alpha + \sin\alpha\,\hat n)]/\sin\alpha = \cos t\alpha + \sin t\alpha\,\hat n$. $\square$
 
 `tf_tree_math::slerp` computes the same function from the two quaternions with a chord-based $\theta^2$ and a normalised-LERP fallback below $10^{-6}$; `helicoid` does not reproduce the fallback
-(`PHASE4.md` §0). The sign of the output quaternion does not matter: the rotation is the same.
+(`PHASE4.md` §0).
+
+**Which of the three spellings ships, and why it is the right-hand one:** `0050` scored six of them over the committed `so3_geodesic` corpus and found the whole
+domination gap in the **denominator** -- $\sin\alpha$ recomputed from $\alpha$ against $\lVert v\rVert$, which are the same number for a unit quaternion and not the same
+floating-point value. Only the recomputed form makes both endpoints exact, since each weight is then one number divided by itself at its own endpoint. The
+grouped middle expression is **bit-identical** to $q_0\mathrm{Exp}(t\mathrm{Log}(q_0^*q_1))$ where both are best ($k_t\,t\,r\,v$ and $\varpi_t v$ are one product
+re-associated), so GE.12's rotation part is not an alternative to it. `NUMERICS.md` §10 carries the normative spelling. The sign of the output quaternion does not matter: the rotation is the same.
 
 **Checked:** as GE.5 (slerp against $R_0\mathrm{Exp}(s\,\mathrm{Log}(R_0^\top R_1))$ by matrices, $4.0\times10^{-111}$); the identity $\sin((1-t)\alpha) + \sin(t\alpha)\cos\alpha = \sin\alpha\cos t\alpha$ exactly in sympy.
 Script not committed. **Permanent:** planned, corpus `so3_geodesic`, with `tf_tree_math`'s `slerp` as oracle (`PHASE4.md` §4).

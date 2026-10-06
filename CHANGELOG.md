@@ -7,6 +7,114 @@ defined by the status tables in `docs/`; they win over this file.
 
 ## [Unreleased]
 
+### Changed
+
+- **`SO3::geodesic` is two arms** (`0051`, superseding `0050` decision 2): the provided body below
+  `log_ratio`'s **second** generated switch, GE.14's blend above it, with `t ≥ 1` taking the blend
+  on both sides.
+  - **Why.** `0050`'s step 3 found the blend **1.56× slower** at `f64` `near-identity`
+    (19.7 → 30.7 ns, `bench-gate` exit 1 on a resolvable row) while 1.10–1.19× faster at `generic`
+    and `near-pi`: below the switch the provided body's `log_ratio` and `exp_coeffs` are on their
+    *series* arms — polynomials, no transcendental — where the blend pays `atan2` and three `sin`
+    whatever the angle.
+  - **`0050` *Further work* 1 was wrong by four decades**, and the measurement is why this is a
+    record and not an amendment. Dispatching on `r`'s *series/exact* switch (`s < 8.977e-2`,
+    `θ ≈ 0.58`) leaves **50 of `geo:generic`'s 60 records** on the provided body, reads `2.5019 u`
+    against oracle #1's `1.834` and takes `envelope` back to **114**. The provided body stays the
+    *faster* arm to `θ ≈ 0.58` but stops being the more *accurate* one almost immediately above
+    identity — two mechanisms with no reason to share a boundary.
+  - **So the threshold is measured.** A new `measure_geodesic::scan` reads the per-stratum max of
+    "provided body where `s < T`, blend elsewhere" over eight candidates. `r`'s **second** switch —
+    `0047`'s short arm, `s < 5.048e-5`, `θ ≈ 1.4e-2` — reads the **best cell of every column**,
+    **1.5721 / 1.7382 / 1.6417** `u`, while keeping the faster arm on every bench row. Every
+    smaller threshold reads identically, so the boundary has five decades of slack.
+    `just envelope` stays at **113**.
+  - **The borrowing is named, not silent.** `0004` is satisfied by borrowing rather than typing, but
+    `r`'s second switch is chosen by the sweep to minimise a corpus-weighted term count, not to
+    place this boundary. So `coeffs::log_ratio_takes_short_arm` is the one definition of the
+    predicate, and `the_shipped_dispatch_threshold_still_dominates` **fails** if a later sweep moves
+    that number into the region the scan says loses.
+  - **Both endpoints stay bit-exact.** `t ≥ 1` takes the blend on both sides because only the blend
+    is exact there; the predicate may read `t` because both arms implement the same function, so a
+    `Dual` takes the selected arm's derivative and both are right — returning the constant `x₁`
+    would zero it, which is the trap and this is not. `t = 0` needs no clause: the provided body is
+    already exact there.
+  - **No law leg moves and no bound is re-recorded**: every one of SO(3)'s seven and
+    `Product<SO3, Rn<3>>`'s seven reads `0050`'s figure to the digit. The second arm's draws below
+    the switch are too few to move a maximum.
+  - **Exactly `t = 1` takes the blend, not `t ≥ 1`** — the one defect this change's own review
+    found, and it was costing more than extrapolation. Below the switch the blend forms
+    `≈ −(t−1) q₀ + t q₁`, two `O(t)` terms that cancel: at `θ(d) = 1e-9` it reads a relative
+    `2.6e-10` at `t = 1e6`, about **1.2e6 u**, where the provided body is exact to its own
+    roundings, with no bound on the amplification as `θ → 0`. `LieGroup::geodesic` documents that
+    `t` outside `[0, 1]` extrapolates, so the argument is reachable, and nothing in the gate saw it:
+    the corpus holds no `t > 1` record and the bench passes `t = 1/3`. Fixing it also returned the
+    `symmetry` leg from 5.919 / 7.670 `u` to `0050`'s 5.000 / 6.013.
+  - **The degenerate arm is the blend's limit `(1 − t) q₀ + t q₁`, not the constant `q₀`.** The
+    constant zeroed `∂γ/∂x₁` under `Dual` — the mirror of the trap the `t` clause avoids — and
+    returned the *left* endpoint at `t = 1` whenever `n²` **underflows** while the quaternions still
+    differ, a component near `1e-170` squaring to zero. Two `select`s replace the inner branch, so
+    the arm loses a branch as well.
+  - **`γ(x₀, x₁, 1) = x₁` holds up to the sign of a zero**, the mirror of the exception `t = 0`
+    already documented and previously unrecorded: the left weight is an exact `+0`, so a `−0.0`
+    component of `q₁` comes back `+0.0`. It is reachable only when `Log`'s flip fires — and the
+    test's "past π" case was at `‖φ‖ = 2.6 < π`, so none of its five cases flipped and the `−q₁`
+    half of the property three documents claim was **untested**. The case is now `3.5` and the test
+    asserts that at least one case flips.
+  - **Latency, measured and not fully won.** Against the pre-`0050` provided body, both binaries
+    built in this tree: `near-identity` **1.1162** `f64` / **1.1251** `f32`, `generic` 0.9139 /
+    0.8889, `near-pi` 0.9797 / 0.9684. So the `f64` regression is cut from 1.56× to **1.12×**
+    (19.7 → 22.0 ns) — a third of what remained came from spelling the predicate `n² < T w²` rather
+    than `n²/w² < T`, which `log_ratio` would otherwise compute twice — and the wins above the switch
+    shrink, because the dispatch is paid on the blend's side too. **At `f32` the single blend was
+    better on every row**, so the two arms are an `f64` improvement and an `f32` cost;
+    `Real::PRECISION` makes "blend alone at binary32" a one-line `const` choice and `0051` *Further
+    work* 1 declines it until an `f32` consumer exists.
+  - A finding about the gate rather than the routine: the `f64` `near-identity` row **failed at a
+    0.0030 A/A floor and passed at a 0.0814 one**, same code, two runs differing only in how many
+    benchmarks shared the machine, point estimate 1.1162 either way. That row needs §9's quiet
+    machine and the pass is not read as a pass.
+
+- **`SO3::geodesic` is overridden with GE.14's blend** (`0050` step 2), with the denominator
+  `sin α` recomputed from `α` and never `‖v‖`.
+  - **`just envelope` 115 → 113**, the figure `0050` predicted. `so3_geodesic` reads
+    **1.6440 / 1.7382 / 1.6417** `u` at `geo:consecutive` / `geo:generic` / `geo:near-pi` against
+    oracle #1's 2.187 / 1.834 / 1.642 — **dominated on all three** where it won two — and matches
+    the measurement to every digit. The `host-std` twin reads the same, so the override costs D16
+    nothing. The one geodesic failure left is `se3_geodesic/geo:generic`, which `SEn3`'s own path
+    reads and `SO3::geodesic` does not reach (`0050` decision 6).
+  - **`γ(x₀, x₁, 1)` is now `x₁` bit for bit**, up to `Log`'s sign, including past `π` where the
+    flip makes it `−q₁`. A new test pins it; the law leg says the same from the other side, falling
+    from 7.160 `u` to **1.118**, `gerr`'s floor for two bitwise equal quaternions. No group claimed
+    the right endpoint before.
+  - Reported with the cost: the `twin` leg rose 1.118 → **7.233** `u`, which is the same fact —
+    `SO3::geodesic` is an override now, so the leg compares two genuinely different expressions
+    instead of a call with itself, which is what D6 asks of a §14 row. Per precision, `f64` / `f32`:
+    `symmetry` improved 8.521 / 8.951 → 5.000 / 6.013, `velocity` degraded 5.803 / 6.505 →
+    7.024 / 7.107, `right` degraded 8.285 / 9.663 → 10.979 / 9.289, `left` 8.637 / 9.122 →
+    9.276 / 8.140. All are identity legs; `0006` makes the corpus the bar. SO(3)'s and `Product<SO3, Rn<3>>`'s bounds are
+    re-recorded at twice the new worst, and `0045` item 5's three left-invariance bounds with them
+    (6.585 / 5.812 / 3.800, the largest moving from `‖t_G‖ = 1` to `0`).
+  - **`benches/groups.rs` gains the geodesic rows `PHASE4.md` §0.0 owed** — six per precision,
+    `so3`/`se3`/`se23` at the three strata, each built from `base` to `x` so the labelled `θ(d)` is
+    the row's own. They did not exist, which is why the first bench-gate run could say only that
+    nothing *else* regressed. With them, and a baseline built in this tree from the pre-override
+    `so3.rs`: `so3/geodesic` is **1.10–1.19× faster** at `generic` and `near-pi` on both precisions
+    and **2.05× faster** at `f32` `near-identity`, and **1.56× slower** at `f64` `near-identity`
+    (19.7 → 30.7 ns). All twelve `se3`/`se23` rows sit at 0.99–1.01, the control that says the rows
+    measure what they claim and that the SE(3) path carrying `tf_tree`'s 300 ns gate is untouched.
+    **`cargo xtask bench-gate` exits 1** on that one row — at least 1.5525 in all 6 pairs against a
+    0.0044 floor, so resolvable and not noise. `0050` *Further work* 1 records what the two-arm
+    would be and that it needs no sweep, since route B is bit-identical to route A there and rides
+    switches that already exist.
+  - `product_tests::so3_r3::the_geodesic_is_slerp_and_lerp_to_the_bit` still passes, which is
+    `0050` *Further work* 3 answered: `Product` delegates per factor, so the assertion is about
+    delegation and both sides moved together.
+  - `NUMERICS.md` §10 carries the formula with the denominator's spelling marked **NORMATIVE**, and
+    GE.14 says which of its three spellings ships. The measurement gained the shipped route as a
+    seventh column and two tests: that it reproduces the committed rows, and that it **is** route E
+    bit for bit on every corpus record.
+
 ### Added
 
 - **`0050`: the geodesic's denominator is the whole domination gap.** A measurement
