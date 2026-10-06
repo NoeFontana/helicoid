@@ -103,6 +103,12 @@
       "records": 416,
       "sha256": "98b7631fd8b42014293e0eb26232ddf5eefec696111b9f19ba9c26c3a8f6d902"
     },
+    "se3_geodesic.jsonl": {
+      "kind": "corpus",
+      "rechecked": 3,
+      "records": 180,
+      "sha256": "9540e36ebf453906a4d89a7f74b8452338ad41e466e95521868763a899085535"
+    },
     "sen3_ad_n1.jsonl": {
       "kind": "corpus",
       "rechecked": 54,
@@ -259,6 +265,12 @@
       "records": 2594,
       "sha256": "089405df4ac313a89707a588bcd3efa44410679444cbc3bf4d11d3eced2353e5"
     },
+    "so3_geodesic.jsonl": {
+      "kind": "corpus",
+      "rechecked": 3,
+      "records": 180,
+      "sha256": "1bf15ca67765b40b69a9523937904e771c085e551872d81af1dbd423369e28ab"
+    },
     "so3_jl.jsonl": {
       "kind": "corpus",
       "rechecked": 36,
@@ -290,7 +302,7 @@
       "sha256": "577f40aa3db75180b8168b459e383bc53182a24856995d267c000b498d8ac5c1"
     }
   },
-  "generator": "sha256:0af236b09e4cfc9333cac26a5695cd623f7a4a2e6d53dddf8176cb51997867f4",
+  "generator": "sha256:bcea73d3d738a4a2666f0521fd5a931b7c8d372523d401a52079a9737f5b9c76",
   "mpmath": "1.4.1",
   "python": "3.12",
   "recheck": {

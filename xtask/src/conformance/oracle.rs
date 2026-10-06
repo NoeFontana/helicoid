@@ -71,9 +71,11 @@ const RUNNERS: &[Runner] = &[
             "so3_log",
             "so3_act",
             "so3_from_matrix",
+            "so3_geodesic",
             "sen3_exp_n1",
             "sen3_log_n1",
             "sen3_ad_n1",
+            "se3_geodesic",
         ],
     },
     Runner {

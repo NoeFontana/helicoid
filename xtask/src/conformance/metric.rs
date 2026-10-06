@@ -117,6 +117,27 @@ const SEN3_EXP: &[FieldRule] = &[
         SignRule::Fixed,
     ),
 ];
+/// The geodesic's pose (`PHASE4.md` §4). Its quaternion is `Align`, as `so3_exp`'s and
+/// `sen3_exp`'s are: the output is a **pose**, and `−q` is the same rotation, where `sen3_log`'s
+/// tangent is `Fixed` because `−τ` is a different logarithm.
+///
+/// The translation's floor is `‖x₀‖`, the scale of the problem rather than of the answer: §11
+/// names "the ρ-scale" for a translation and this id has no input tangent to read it from. It
+/// binds only where the answer cancels against the poses — between two nearby poses the answer is
+/// their own size either way — which is the reading `0014` (draft) question 1 leaves open and the
+/// one `sen3_exp`'s `Scale` already takes.
+const SO3_GEODESIC: &[FieldRule] = &[field("q", Floor::Unit, SignRule::Align)];
+const SE3_GEODESIC: &[FieldRule] = &[
+    field("q", Floor::Unit, SignRule::Align),
+    field(
+        "x",
+        Floor::Scale {
+            input: "x0",
+            skip: 0,
+        },
+        SignRule::Fixed,
+    ),
+];
 const SO2_EXP: &[FieldRule] = &[field("z", Floor::Unit, SignRule::Fixed)];
 const SO2_LOG: &[FieldRule] = &[field("theta", Floor::Tiny, SignRule::Fixed)];
 const SE2_EXP: &[FieldRule] = &[
@@ -151,6 +172,8 @@ const TABLE: &[(&str, Rule)] = &[
     ("so3_jl", Forward(JAC)),
     ("so3_jr_inv", Forward(JAC)),
     ("so3_jl_inv", Forward(JAC)),
+    ("so3_geodesic", Forward(SO3_GEODESIC)),
+    ("se3_geodesic", Forward(SE3_GEODESIC)),
     ("sen3_exp", Forward(SEN3_EXP)),
     ("sen3_log", Forward(TANGENT)),
     ("sen3_ad", Forward(AD)),
@@ -685,9 +708,14 @@ mod tests {
     enum Want {
         Tiny,
         Unit,
-        /// The 2-norm of the translation entries of the input `tau`.
+        /// The 2-norm of the id's scale input: the translation entries of `tau`, or the whole of
+        /// `x0` for the geodesic. [`SCALE_X0`] and [`tau_of`] both make that norm 5, so one
+        /// expectation covers either reading.
         Scale,
     }
+
+    /// An `x0` of norm 5, the geodesic's scale input (`Floor::Scale { input: "x0", skip: 0 }`).
+    const SCALE_X0: [f64; 3] = [3.0, 4.0, 0.0];
 
     /// Every scored field of every forward id: `(id, field, floor, quaternion sign alignment)`.
     fn wanted() -> Vec<(String, &'static str, Want, bool)> {
@@ -733,6 +761,8 @@ mod tests {
         add(&["so2_exp", "se2_exp"], "z", Want::Unit, false);
         add(&["so2_log"], "theta", Want::Tiny, false);
         add(&["se2_exp"], "t", Want::Scale, false);
+        add(&["so3_geodesic", "se3_geodesic"], "q", Want::Unit, true);
+        add(&["se3_geodesic"], "x", Want::Scale, false);
         rows
     }
 
@@ -778,7 +808,8 @@ mod tests {
         let unit = 1e-20 * (1u64 << 53) as f64;
         for (id, field, want, _) in wanted() {
             let tau = tau_of(&id);
-            let f = finite(probe(&id, field, "1e-20", 0.0, &[("tau", &tau)])?)?;
+            let inputs: [(&str, &[f64]); 2] = [("tau", &tau), ("x0", &SCALE_X0)];
+            let f = finite(probe(&id, field, "1e-20", 0.0, &inputs)?)?;
             match want {
                 Want::Tiny => assert_eq!(f, 9_007_199_254_740_992.0, "{id} {field}"),
                 Want::Unit => near(f, unit),
@@ -794,7 +825,11 @@ mod tests {
         let two_over_u = 2.0 * (1u64 << 53) as f64;
         for (id, field, want, aligned) in wanted() {
             let tau = tau_of(&id);
-            let inputs: [(&str, &[f64]); 2] = [("tau", &tau), ("q", &[0.5, 0.5, 0.5, 0.5])];
+            let inputs: [(&str, &[f64]); 3] = [
+                ("tau", &tau),
+                ("q", &[0.5, 0.5, 0.5, 0.5]),
+                ("x0", &SCALE_X0),
+            ];
             let f = finite(probe(&id, field, "1e0", -1.0, &inputs)?)?;
             match (aligned, want) {
                 (true, _) => assert_eq!(f, 0.0, "{id} {field}"),

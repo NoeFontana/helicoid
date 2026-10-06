@@ -9,6 +9,45 @@ defined by the status tables in `docs/`; they win over this file.
 
 ### Added
 
+- **The geodesic instrument: corpus ids `so3_geodesic` and `se3_geodesic`, 180 records each**
+  (`PHASE4.md` §4, [`0045`](docs/decisions/0045-two-phase-4-checks-cannot-be-taken-as-written.md)
+  plan steps 2 and 3). D7 puts the instrument before the routine, and Phase 4 had none: these are
+  the first corpus ids of the geodesic, and the first in the repository whose reference is **not**
+  `mp.expm`/`mp.logm` of the matrix.
+  - **`mp.logm` is the cross-check, never the reference.** It returns a complex, non-principal
+    logarithm of a rotation from θ = 3.03, which is exactly the `geo:near-pi` stratum — so a
+    corpus generated from it would be wrong by `O(1)` on the one stratum that is hardest, and the
+    hunt would have gone looking in `helicoid`. The reference is the geometric `Log` (the
+    `so3_log` quaternion `atan2` route, with `sen3_log_n1`'s `V` solve for the translation block)
+    and `sen3_exp_n1`'s matrix exponential of `t·d`. Measured over the whole corpus, the two agree
+    to **8.2e-113** below θ = 3 (6.8e-121 at `geo:consecutive`), so the matrix route is held to the
+    same 100 digits as every other cross-check here, with thirteen to spare.
+  - **Every record is checked by identities as well**, each costing one further evaluation of the
+    reference at a different argument: the two endpoints, the symmetry
+    `γ(X₀,X₁,t) = γ(X₁,X₀,1−t)`, and `Log(X(t)⁻¹X(t+⅓)) = ⅓d` — constant body velocity without a
+    difference quotient. `geo:near-pi` is above the `mp.logm` limit at every record, so there it is
+    the whole of the check.
+  - **Strata** (`PHASE1.md` §4.4): `geo:consecutive`, `geo:generic`, `geo:near-pi`, 6 pose pairs
+    each crossed with 10 parameters (§4's six, including both endpoints, and four uniform), with
+    `‖x₀‖` cycling 1, 10², 10⁴ in every one of them. `X₁ = X₀·Exp(d)` is **formed and rounded,
+    never drawn**, so a stratum's relative motion is the `d` it names. `geo:near-pi` stops strictly
+    below π at `π − 10⁻ᵏ`, `k ∈ {1,2,3,6,9,12}`: at π the two preimages give geodesics `O(1)`
+    apart, so that stratum measures conditioning and not agreement.
+  - **What the strata found before any routine exists.** At `‖x₀‖ = 10⁴` with `θ(d) = 10⁻⁹` the
+    stored `x₁ − x₀` keeps about **three digits** — the relative motion is below the ulp of the
+    poses it is between. That is `tf_tree`'s kilohertz edge exactly, and the reason `PHASE4.md` §4
+    asks this stratum for that scale; the records are the geodesic between the two poses they
+    hold, so it is the regime and not a defect, and `PHASE1.md` §4.4 now says so with the bound.
+  - **Verified by 13 generator tests**: four hand-computed interpolations (a quarter turn halved,
+    a pure translation lerped, a screw about `z` halved in both parts, a quarter turn at unit
+    offset sweeping the arc), GE.4(a)'s left invariance and the matrix route as properties no
+    cross-check uses, the stated margins and band — and **198 mutants** of the cross-checks, of
+    which the only survivors are the 36 that negate the *whole* quaternion, which is the same
+    rotation and what the metric's `SignRule::Align` forgives for this id too.
+  - The `tf_tree_math` oracle answers both (`slerp` and `ScLerp`), hand-computed against the same
+    anchors the generator uses, so `PHASE4.md` §5.1's parity rows are measurable the moment
+    `LieGroup::geodesic` lands. The corpus is 37 MB of the 50 MB budget, from 34.
+
 - **The `tf_tree_math` oracle answers three more corpus ids** — `so3_act` (`Quat::rotate`),
   `sen3_ad_n1` (`Iso3::adjoint` on the six basis twists) and `so3_from_matrix`
   (`quat_from_rot3`) — which the pin has always exported and `PHASE1.md` §7 did not list. It

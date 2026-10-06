@@ -70,12 +70,12 @@ class Stratum:
             return [unit_vector_s2(rng) for _ in range(n)]
 
 
-def _log_uniform(name: str, bounds: Callable[[], tuple]) -> Stratum:
+def _log_uniform(name: str, bounds: Callable[[], tuple], count: int = N_RANDOM) -> Stratum:
     def draw(rng: SplitMix64) -> list[float]:
         lo, hi = bounds()
-        return [log_uniform(rng, lo, hi) for _ in range(N_RANDOM)]
+        return [log_uniform(rng, lo, hi) for _ in range(count)]
 
-    return Stratum(name, N_RANDOM, draw)
+    return Stratum(name, count, draw)
 
 
 def _decade(exp: int) -> Callable[[], tuple]:
@@ -187,3 +187,32 @@ SEN3_QUAT_STRATA = (*SEN3_STRATA, *Q_STRATA)
 # SE2_SAMPLES records. The `so2_*` ids see `SCALAR_THETA_STRATA`, each theta in both signs.
 SE2_SAMPLES = 8
 SE2_STRATA = SEN3_STRATA
+
+
+# The geodesic ids (`so3_geodesic`, `se3_geodesic`) see three strata of their own, PHASE4.md
+# section 4's, adopted by 0045 item 3. A stratum's `theta` is the **relative** rotation theta(d),
+# not a pose's; GEO_SAMPLES pose pairs, each crossed with every `t` of `gen.geodesic`. The pose
+# translation scale cycles over `gen.geodesic.GEO_POSE_EXP` within every stratum, so each reaches
+# the 1e4 that section 4 asks `geo:consecutive` for.
+#
+# `geo:consecutive` is tf_tree's kilohertz edge: the relative translation is at theta's own scale,
+# so the whole of `d` is small (section 4 states the band on ||d||; ||d|| is then theta*sqrt(2),
+# which is this band up to that factor, and the band on theta is what the draw holds exactly).
+# `geo:generic` is the rotation range the other two leave, below pi - 0.1 as `theta:1e0` is.
+# `geo:near-pi` stops strictly below pi and its margin is GEO_NEAR_PI_K: at pi the two preimages
+# give geodesics O(1) apart, so the stratum measures conditioning and not agreement (0045 item 3).
+GEO_SAMPLES = 6
+GEO_NEAR_PI_K = (1, 2, 3, 6, 9, 12)
+GEO_STRATA = (
+    _log_uniform(
+        "geo:consecutive", lambda: (mpf(10) ** -9, mpf(10) ** -3), count=GEO_SAMPLES
+    ),
+    _log_uniform(
+        "geo:generic", lambda: (mpf(10) ** -3, mp.pi - mpf(1) / 10), count=GEO_SAMPLES
+    ),
+    Stratum(
+        "geo:near-pi",
+        len(GEO_NEAR_PI_K),
+        lambda rng: [to_f64(mp.pi - mpf(10) ** -k) for k in GEO_NEAR_PI_K],
+    ),
+)
