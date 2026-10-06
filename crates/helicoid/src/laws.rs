@@ -93,6 +93,26 @@ pub(crate) fn e<S: Real>(a: &[f64], b: &[f64]) -> f64 {
     diff.sum::<f64>().sqrt() / den(b) / unit::<S>()
 }
 
+/// `‖a - b‖ / max(scale, 1)` in units of `u`: [`e`] against a *stated* scale instead of the
+/// reference's own norm.
+///
+/// `e` divides by `max(‖b‖, 1)`, which is the right question for a routine whose answer is the
+/// size of its inputs and the wrong one for a routine whose answer can cancel to nothing. Both
+/// spellings of a relative transform carry an absolute error of order `u max‖x‖`, so scoring their
+/// difference against the *difference* reports the cancellation and not the routine: on one set of
+/// draws `6.80 u` at `‖x‖ = 1` becomes `106.32 u` at `10^3` through [`e`] and stays `7.94 u`
+/// through this. A bound is a property of the routine only if its denominator is one
+/// (`0048` decision 4).
+pub(crate) fn e_at<S: Real>(a: &[f64], b: &[f64], scale: f64) -> f64 {
+    let diff = a.iter().zip(b).map(|(x, y)| (x - y) * (x - y));
+    let den = if scale.is_nan() {
+        f64::NAN
+    } else {
+        scale.max(1.0)
+    };
+    diff.sum::<f64>().sqrt() / den / unit::<S>()
+}
+
 fn nan<S: Real>() -> S {
     S::zero() / S::zero()
 }
@@ -278,12 +298,12 @@ const VELOCITY_STEP_RECIP: f64 = 3.0;
 /// follows from `Log(h⁻¹ Δ h) = Ad_{h⁻¹} d` and `h Exp(Ad_{h⁻¹} ξ) = Exp(ξ) h`, with no
 /// commutativity used. `Product<SO3, R3>`'s famous failure is against the **SE(3) reading** of
 /// `(R, t)`, a different composition from `Product`'s own `Mul`, which
-/// `product_tests::the_so3_r3_product_is_slerp_and_lerp_and_fails_se3_right_invariance` asserts
-/// on the group §1.3 names (`0045` item 4).
+/// `product_tests::so3_r3::the_se3_reading_fails_right_invariance_by_ge5bs_closed_form` asserts
+/// on the group §1.3 names, against GE.5(b)'s closed form rather than a threshold (`0045` item 4).
 ///
 /// `h` is drawn at the fixture's own scale here; `0045` item 5 asks for the left-invariance bound
-/// at `‖t_G‖ ∈ {0, 1, 1e4}`, which that same test measures, since the scales are an `SEn3`
-/// quantity and this law is generic.
+/// at `‖t_G‖ ∈ {0, 1, 1e4}`, which `product_tests::so3_r3::left_invariance_at_three_translation_scales`
+/// measures, since the scales are an `SEn3` quantity and this law is generic.
 ///
 /// # Domain
 ///
@@ -721,12 +741,6 @@ impl Rng {
     pub(crate) fn unif(&mut self) -> f64 {
         (self.next() >> 11) as f64 / 2_f64.powi(52) - 1.0
     }
-    /// `N` draws into a caller-owned array, the stream [`unif`](Self::unif) gives in order.
-    ///
-    /// The loop is explicit rather than `array::from_fn` because the order of the draws *is* the
-    /// stream: a helper whose visiting order is unspecified would put the reproducibility of every
-    /// recorded figure at the mercy of its implementation. No allocation, so a `10^6`-case
-    /// measurement does not pay one per draw-set per iteration.
     /// `N` draws of [`sample`]'s distribution -- `m 2^e`, `|m| < 1`, `-6 <= e <= 0` -- which is
     /// **not** [`arr`](Self::arr)'s uniform `[-1, 1)`.
     ///
@@ -743,6 +757,13 @@ impl Rng {
         out
     }
 
+    /// `N` draws into a caller-owned array, the stream [`unif`](Self::unif) gives in order:
+    /// uniform `[-1, 1)`, which is **not** [`shaped`](Self::shaped)'s `m 2^e`.
+    ///
+    /// The loop is explicit rather than `array::from_fn` because the order of the draws *is* the
+    /// stream: a helper whose visiting order is unspecified would put the reproducibility of every
+    /// recorded figure at the mercy of its implementation. No allocation, so a `10^6`-case
+    /// measurement does not pay one per draw-set per iteration.
     pub(crate) fn arr<const N: usize>(&mut self) -> [f64; N] {
         let mut out = [0.0; N];
         for x in &mut out {

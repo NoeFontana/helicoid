@@ -204,8 +204,17 @@ mod group {
     use helicoid_linalg::{Mat3, Point, StridedMut};
 
     // Measured maxima over the six runs, in `u`: axioms 6.085, exp_log 4.171, adjoint 8.279,
-    // jl_ad_jr 4.490, plus_minus 7.561, rows 0 (exact), ad 7.855, sides 1.118, tangent_order 0 at
-    // `f64` and `Dual` / 2.694 at `f32`, jac_order 3.882, sandwich 3.644.
+    // jl_ad_jr 4.490, rows 0 (exact), ad 7.855, sides 1.118, tangent_order 0 at `f64` and `Dual`
+    // / 2.694 at `f32`, jac_order 3.882, sandwich 3.644.
+    //
+    // `plus_minus` is 21, from `measure_plus_minus`: 7.110 / 7.898 / 7.110 / 10.346 / 7.419 over
+    // `se3` at `f64`/`f32`/`Dual` and `se23` at `f64`/`f32`. The bound was 16, recorded from
+    // 7.561 on the *proptest* stream, and the convention is twice the worst of a 10^6-draw sample
+    // of the distribution the bar draws -- so 16 was never twice a worst, it was twice the
+    // luckier of two samplers: at `0048`'s parent commit this same measurement reads 9.666, which
+    // already wants 20. `0048` then moved the figure by 1.07x (9.666 -> 10.346, `se23` `f64`,
+    // against `se3` improving at every scalar), so the two causes are separated and neither is
+    // hidden behind the other.
     //
     // `rows` is `0`: an exactness claim, and it keeps no headroom. Every §2.3 row is reproduced
     // bit for bit, which is what taking `Ad_Exp(τ)⁻¹` as `Ad_Exp(−τ)` buys — through `Ad` of the
@@ -216,7 +225,7 @@ mod group {
         exp_log: 9.0,
         adjoint: 17.0,
         jl_ad_jr: 9.0,
-        plus_minus: 16.0,
+        plus_minus: 21.0,
         rows: 0.0,
         ad: 16.0,
         sides: 3.0,
@@ -225,8 +234,10 @@ mod group {
         sandwich: 8.0,
         // `PHASE3.md` §8's second check, measured 6.946 at `N = 1` and 5.274 at `N = 2` over 10 000 draws each.
         dual_rows: 14.0,
-        // `PHASE4.md` §1 and §3's seven legs, in `GEODESIC_LEGS`'s order, each twice the worst of 10^6 draws of `laws::Rng::shaped` -- `laws::sample`'s own distribution, which is what the proptest draws -- rounded up: the worst of `N = 1` and `N = 2`: `t=1` 6.591, symmetry 13.352, velocity 8.353, left 9.775, right 9.383, `t=0` and `twin` 1.118, the quaternion floor as for SO(3).
-        geodesic: [3.0, 14.0, 27.0, 17.0, 20.0, 19.0, 3.0],
+        // `PHASE4.md` §1 and §3's seven legs, in `GEODESIC_LEGS`'s order, each twice the worst of 10^6 draws of `laws::Rng::shaped` -- `laws::sample`'s own distribution, which is what the proptest draws -- rounded up: the worst of `N = 1` and `N = 2`: `t=1` 6.578, symmetry 16.111, velocity 7.768, left 10.731, right 9.360, `t=0` and `twin` 1.118, the quaternion floor as for SO(3).
+        //
+        // Re-recorded after `0048` made `rminus`/`lminus` the relative spellings, which these legs read through `geodesic`. Four moved down and two up: symmetry 13.352 -> 16.111 and left 9.775 -> 10.731, both at `f32`, against velocity 8.353 -> 7.768 and every leg of `N = 1` at `f64` and `Dual` improving. These two compare a call with its own swap or conjugation, not with a reference, so they measure how well two roundings line up; `0048`'s table has the accuracy against the 110-digit corpus, which improved 1.19-1.63x on all three `se3_geodesic` strata.
+        geodesic: [3.0, 14.0, 33.0, 16.0, 22.0, 19.0, 3.0],
     };
     // `tangent_order` is one rounding at `f32` where it is exact at `f64`, as for SO(3); every
     // other law agrees within 25% across the precisions, so one set serves them.
@@ -308,74 +319,268 @@ mod group {
         }
     }
 
-    /// `mul_inv` against the composition it is *not* bit-identical to, `a * b.inverse()`
-    /// (`NUMERICS.md` §14, `0044` item 4): one rotation of a vector against two.
+    /// Both relative-transform spellings against the compositions they are *not* bit-identical
+    /// to, `a * b.inverse()` and `b.inverse() * a` (`NUMERICS.md` §14, `0048` decision 4): one
+    /// rotation per column against two.
     ///
-    /// The second half is the load-bearing one. If the two agreed to the bit the routine would be
-    /// a spelling and `0044`'s whole case for it would be wrong, so a sweep asserts they **differ
-    /// somewhere** — `R_a(R_bᵗ t_b)` rounds twice where `R(q_a q_b*) t_b` rounds once.
-    #[test]
-    fn mul_inv_matches_reference_and_is_not_the_composition_to_the_bit() {
-        let mut rng = crate::laws::Rng(0x6D75_6C5F_696E_7600);
-        let (mut worst, mut differed) = (0.0_f64, 0usize);
-        for _ in 0..20_000 {
-            let (a, b) = (rng.arr::<6>(), rng.arr::<6>());
-            let x = SE3::<f64>::exp(&SEn3Tangent::read_dense(&a));
-            let y = SE3::<f64>::exp(&SEn3Tangent::read_dense(&b));
-            let got = x.mul_inv(&y);
-            let want = x * y.inverse();
-            let flat = |g: &SE3<f64>| {
-                let (r, cols) = g.parts();
-                let q = r.quat();
-                [q.w, q.x, q.y, q.z, cols[0].0[0], cols[0].0[1], cols[0].0[2]]
+    /// Scored on the columns against the **input** scale, `max(‖x_a‖, ‖x_b‖, 1)`, and at three
+    /// translation scales per draw — `1`, `10³`, `10⁶`, each applied to both elements. That is
+    /// the only denominator in which the figure is a property of the routine: both forms carry an
+    /// absolute error of order `u max‖x‖`, so `laws::e`'s `max(‖want‖, 1)` divides by the
+    /// *difference* and reports the cancellation of two nearby frames instead of the rounding.
+    /// On one set of draws it reads 6.80 u at scale `1` and 106.32 u at `10³`, where against the
+    /// input scale the same draws stay 6.80 u and 7.94 u — flat, which is the claim.
+    ///
+    /// The quaternion half is not scored because it is bit-identical by construction — both
+    /// spellings reach it through the one Hamilton product of a conjugate — and
+    /// `the_relative_spellings_share_the_quaternion_and_part_on_the_columns` asserts exactly that,
+    /// so a figure folding the two together would be reporting a zero.
+    fn rel_vs_reference<S: Sample, const N: usize, const D: usize>(
+        v: &[f64],
+        inv_mul: bool,
+    ) -> f64 {
+        let half = |o: usize| -> SEn3<S, N> {
+            SEn3::exp(&law_tangent::<S, SEn3<S, N>, D>(&array::from_fn(|i| {
+                v[o + i]
+            })))
+        };
+        let (a, b) = (half(0), half(D));
+        let cols = |g: &SEn3<S, N>| g.parts().1.map(|c| c.0.map(|s| s.value_f64()));
+        let mut out = 0.0;
+        for e in [1.0, 1e3, 1e6] {
+            let k = S::lit(e);
+            let lift = |g: &SEn3<S, N>| {
+                let (r, c) = g.parts();
+                SEn3::from_parts(r, c.map(|v| v.scale(k)))
             };
-            let (gv, wv) = (flat(&got), flat(&want));
-            worst = crate::laws::worst(worst, crate::laws::e::<f64>(&gv, &wv));
-            if gv.map(f64::to_bits) != wv.map(f64::to_bits) {
-                differed += 1;
+            let (x, y) = (lift(&a), lift(&b));
+            let (got, want) = if inv_mul {
+                (x.inv_mul(&y), y.inverse() * x)
+            } else {
+                (x.mul_inv(&y), x * y.inverse())
+            };
+            let (gc, wc, xc, yc) = (cols(&got), cols(&want), cols(&x), cols(&y));
+            // Per column: each is an independent translation, so each carries its own scale, and
+            // folding `N` of them into one vector would score the smallest against the largest.
+            for i in 0..N {
+                let scale =
+                    crate::laws::worst(crate::laws::norm(&xc[i]), crate::laws::norm(&yc[i]));
+                out = crate::laws::worst(out, crate::laws::e_at::<S>(&gc[i], &wc[i], scale));
             }
         }
-        // Twice the worst of 20 000 draws, rounded up: measured 7.052 `u`, which is the two
-        // programs' difference and not either one's error — the corpus has no `mul_inv` id, by
-        // `0044` item 5, and the figure is a no-regress tie between the twins.
-        assert!(worst <= 15.0, "mul_inv vs a * b.inverse(): {worst} u");
+        out
+    }
+
+    proptest::proptest! {
+        /// `18` is twice the worst of 10^6 `laws::shaped` draws at three scales each, rounded
+        /// up (`rel_twin_measure`): `mul_inv` 8.119/8.119/8.415 u at `N = 1` for
+        /// `f64`/`Dual`/`f32` and 8.893/8.994 at `N = 2`; `inv_mul` 7.802/7.802/7.512 and
+        /// 8.088/7.951. One bound serves both rows and both widths: the spread is 18% and a
+        /// tighter one per row would be recording the sampler, not the routines.
+        #[test]
+        fn sen3_mul_inv_matches_reference_n1(v in crate::laws::sample::<12>()) {
+            crate::laws::within(rel_vs_reference::<f64, 1, 6>(&v, false), 18.0)?;
+            crate::laws::within(rel_vs_reference::<f32, 1, 6>(&v, false), 18.0)?;
+            crate::laws::within(rel_vs_reference::<Dual<f64, 6>, 1, 6>(&v, false), 18.0)?;
+        }
+        #[test]
+        fn sen3_inv_mul_matches_reference_n1(v in crate::laws::sample::<12>()) {
+            crate::laws::within(rel_vs_reference::<f64, 1, 6>(&v, true), 18.0)?;
+            crate::laws::within(rel_vs_reference::<f32, 1, 6>(&v, true), 18.0)?;
+            crate::laws::within(rel_vs_reference::<Dual<f64, 6>, 1, 6>(&v, true), 18.0)?;
+        }
+        /// `N = 2`: the column loop, which `N = 1` cannot distinguish from a single `act`.
+        #[test]
+        fn sen3_mul_inv_matches_reference_n2(v in crate::laws::sample::<18>()) {
+            crate::laws::within(rel_vs_reference::<f64, 2, 9>(&v, false), 18.0)?;
+            crate::laws::within(rel_vs_reference::<f32, 2, 9>(&v, false), 18.0)?;
+        }
+        #[test]
+        fn sen3_inv_mul_matches_reference_n2(v in crate::laws::sample::<18>()) {
+            crate::laws::within(rel_vs_reference::<f64, 2, 9>(&v, true), 18.0)?;
+            crate::laws::within(rel_vs_reference::<f32, 2, 9>(&v, true), 18.0)?;
+        }
+    }
+
+    /// `plus_minus`'s figure, which `0048` moved by making `rminus`/`lminus` the relative
+    /// spellings. Its own `Rng` stream, so every other recorded figure stays reproducible.
+    /// `cargo nextest run -p helicoid -- measure_plus_minus --ignored`, release.
+    #[test]
+    #[allow(clippy::print_stdout)]
+    #[ignore = "measurement: prints the figure `Bounds::plus_minus` is recorded from"]
+    fn measure_plus_minus() {
+        fn run<S: Sample, const N: usize, const D: usize>(name: &str) {
+            let mut rng = crate::laws::Rng(0x706C_7573_5F6D_696E);
+            let mut w = 0.0;
+            for _ in 0..1_000_000 {
+                let (a, b, c) = (rng.shaped::<D>(), rng.shaped::<D>(), rng.shaped::<D>());
+                // `(g(a), g(b), t(c))`, the order the generated proptest passes, so the figure
+                // is of the same law on the same arguments and only the stream differs.
+                let at = |v: &[f64; D]| law_tangent::<S, SEn3<S, N>, D>(v);
+                let (x, y) = (SEn3::<S, N>::exp(&at(&a)), SEn3::<S, N>::exp(&at(&b)));
+                w = crate::laws::worst(
+                    w,
+                    crate::laws::plus_minus::<S, SEn3<S, N>, D>(&x, &y, &at(&c)),
+                );
+            }
+            std::println!("{name} plus_minus {w:.3}");
+        }
+        run::<f64, 1, 6>("se3 f64");
+        run::<f32, 1, 6>("se3 f32");
+        run::<Dual<f64, 6>, 1, 6>("se3 dual");
+        run::<f64, 2, 9>("se23 f64");
+        run::<f32, 2, 9>("se23 f32");
+    }
+
+    /// The figures the twin bound and `mul_inv`'s rustdoc quote, and the two denominators side by
+    /// side (`0048` decision 4). `cargo nextest run -p helicoid -- rel_twin_measure --ignored
+    /// --no-capture`, release.
+    #[test]
+    #[allow(clippy::print_stdout)]
+    #[ignore = "a measurement, not a law; its result is the bound above"]
+    fn rel_twin_measure() {
+        const DRAWS: usize = 1_000_000;
+        fn run<S: Sample, const N: usize, const D: usize>(name: &str, inv_mul: bool) {
+            let mut rng = crate::laws::Rng(0x7265_6C5F_7477_696E);
+            let mut worst = 0.0;
+            for _ in 0..DRAWS {
+                let v: [f64; 18] = rng.shaped();
+                worst = crate::laws::worst(worst, rel_vs_reference::<S, N, D>(&v, inv_mul));
+            }
+            std::println!("{name}: {worst} u of the input scale");
+        }
+        run::<f64, 1, 6>("mul_inv n1 f64", false);
+        run::<f32, 1, 6>("mul_inv n1 f32", false);
+        run::<Dual<f64, 6>, 1, 6>("mul_inv n1 dual", false);
+        run::<f64, 2, 9>("mul_inv n2 f64", false);
+        run::<f32, 2, 9>("mul_inv n2 f32", false);
+        run::<f64, 1, 6>("inv_mul n1 f64", true);
+        run::<f32, 1, 6>("inv_mul n1 f32", true);
+        run::<Dual<f64, 6>, 1, 6>("inv_mul n1 dual", true);
+        run::<f64, 2, 9>("inv_mul n2 f64", true);
+        run::<f32, 2, 9>("inv_mul n2 f32", true);
+        // The two denominators on the same draws: `laws::e` divides by the result, `e_at` by the
+        // inputs. The first is what a naive twin bound would have recorded.
+        let mut rng = crate::laws::Rng(0x7265_6C5F_7477_696E);
+        for e in [1.0_f64, 1e3, 1e6] {
+            let (mut res, mut inp) = (0.0, 0.0);
+            for _ in 0..DRAWS {
+                let v: [f64; 12] = rng.shaped();
+                let half = |o: usize| -> SE3<f64> {
+                    let g = SE3::exp(&law_tangent::<f64, SE3<f64>, 6>(&array::from_fn(|i| {
+                        v[o + i]
+                    })));
+                    let (r, c) = g.parts();
+                    SE3::from_parts(r, c.map(|u| u.scale(e)))
+                };
+                let (x, y) = (half(0), half(6));
+                let (got, want) = (x.mul_inv(&y), x * y.inverse());
+                let c = |g: &SE3<f64>| g.parts().1[0].0;
+                let scale =
+                    crate::laws::worst(crate::laws::norm(&c(&x)), crate::laws::norm(&c(&y)));
+                res = crate::laws::worst(res, crate::laws::e::<f64>(&c(&got), &c(&want)));
+                inp = crate::laws::worst(inp, crate::laws::e_at::<f64>(&c(&got), &c(&want), scale));
+            }
+            std::println!("scale {e:e}: result-relative {res} u, input-relative {inp} u");
+        }
+    }
+
+    /// What the two spellings share with the compositions they replace and where they part: the
+    /// quaternion to the bit, the columns not (`0048` decision 4).
+    ///
+    /// Both halves are load-bearing and neither is a restatement of a body. The quaternion claim
+    /// compares two *different* expressions — `q_a q_b*` against the `q` that `inverse` then `Mul`
+    /// produce — and it is what lets the twin proptest score the columns alone. The column claim
+    /// is `0048`'s case for the routines existing: if they agreed to the bit they would be
+    /// spellings, so a sweep requires a disagreement and prints how often, since the *rate* is a
+    /// distribution statistic and not an invariant — one pair is the assertion.
+    #[test]
+    fn the_relative_spellings_share_the_quaternion_and_part_on_the_columns() {
+        let mut rng = crate::laws::Rng(0x6D75_6C5F_696E_7600);
+        let (mut mul, mut inv) = (0usize, 0usize);
+        const DRAWS: usize = 20_000;
+        for _ in 0..DRAWS {
+            let (a, b) = (rng.shaped::<9>(), rng.shaped::<9>());
+            let x = SE23::<f64>::exp(&SEn3Tangent::read_dense(&a));
+            let y = SE23::<f64>::exp(&SEn3Tangent::read_dense(&b));
+            let quat = |g: &SE23<f64>| {
+                let q = g.parts().0.quat();
+                [q.w, q.x, q.y, q.z].map(f64::to_bits)
+            };
+            let cols = |g: &SE23<f64>| g.parts().1.map(|c| c.0.map(f64::to_bits));
+            for (got, want, n) in [
+                (x.mul_inv(&y), x * y.inverse(), &mut mul),
+                (x.inv_mul(&y), y.inverse() * x, &mut inv),
+            ] {
+                assert_eq!(quat(&got), quat(&want), "the quaternion halves parted");
+                if cols(&got) != cols(&want) {
+                    *n += 1;
+                }
+            }
+        }
         assert!(
-            differed > 10_000,
-            "only {differed} of 20 000 draws differ: `mul_inv` would be a spelling, not a routine"
+            mul > 0 && inv > 0,
+            "no column differed in {DRAWS} draws ({mul} / {inv}): these would be spellings, \
+             not routines"
         );
     }
 
-    /// `renormalize` is `SO3::renormalize` on the rotation and nothing on the columns
+    /// `renormalize` repairs the drift a chain of compositions accumulates, on the rotation only
     /// (`0044` item 2).
+    ///
+    /// The drift is *composed*, not scaled on: `Mul` never renormalizes (`0027`), so a chain is
+    /// where `η = ‖q‖² − 1` actually comes from and the only case that shows the method is for
+    /// the domain it claims. The step itself is `Quat::renormalize`'s and
+    /// `quat_tests::renormalize_converges_quadratically` is where its `−¾η² + ¼η³` is checked
+    /// across scalars; here the claim is the delegation, pinned on an exactly representable `η`
+    /// rather than against a second call of the same body, which could not fail.
     #[test]
-    fn renormalize_is_the_rotations_newton_step_and_leaves_the_columns_alone() {
-        let x = SE23::<f64>::exp(&SEn3Tangent::read_dense(&[
-            0.3, -0.7, 1.1, 0.5, -2.0, 0.25, -1.0, 4.0, 0.125,
-        ]));
-        let (r, cols) = x.parts();
-        // Off the unit sphere by `2^-30`, inside `Quat::renormalize`'s domain.
-        let eta = 1.0 + f64::powi(2.0, -30);
-        let q = r.quat();
-        let scaled = crate::Quat {
-            w: q.w * eta,
-            x: q.x * eta,
-            y: q.y * eta,
-            z: q.z * eta,
-        };
-        let mut drifted = SE23::from_parts(crate::SO3::from_quat_unchecked(scaled), cols);
-        drifted.renormalize();
-        let mut alone = crate::SO3::from_quat_unchecked(scaled);
-        alone.renormalize();
-        let (r2, cols2) = drifted.parts();
-        let (a, b) = (r2.quat(), alone.quat());
-        assert_eq!(
-            [a.w, a.x, a.y, a.z].map(f64::to_bits),
-            [b.w, b.x, b.y, b.z].map(f64::to_bits)
-        );
-        for i in 0..2 {
-            assert_eq!(cols2[i].0.map(f64::to_bits), cols[i].0.map(f64::to_bits));
+    fn renormalize_repairs_a_composed_drift_and_leaves_the_columns_alone() {
+        let seed: [f64; 9] = [0.3, -0.7, 1.1, 0.5, -2.0, 0.25, -1.0, 4.0, 0.125];
+        let step = SE23::<f64>::exp(&SEn3Tangent::read_dense(&seed));
+        let mut x = step;
+        for _ in 0..200 {
+            x = x * step;
         }
-        assert!((r2.quat().norm() - 1.0).abs() < 1e-18);
+        let eta = |g: &SE23<f64>| g.parts().0.quat().norm_sq() - 1.0;
+        let drifted = eta(&x);
+        // The composed drift is real and inside the one-step domain, `|η| <= 2^-26.29` (§3.6).
+        assert!(
+            drifted != 0.0 && drifted.abs() <= f64::powf(2.0, -26.29),
+            "200 compositions drifted by {drifted}, outside the one-step domain"
+        );
+        let (_, before) = x.parts();
+        let mut repaired = x;
+        repaired.renormalize();
+        let (_, after) = repaired.parts();
+        // `η' = −¾η² + ¼η³` to rounding, so one step lands at `u` from a drift this size.
+        let predicted = -0.75 * drifted * drifted + 0.25 * f64::powi(drifted, 3);
+        let off = (eta(&repaired) - predicted).abs() / crate::laws::unit::<f64>();
+        assert!(off <= 4.0, "{off} u off the closed form");
+        assert!(eta(&repaired).abs() <= 4.0 * crate::laws::unit::<f64>());
+        for (a, b) in after.iter().zip(&before) {
+            assert_eq!(a.0.map(f64::to_bits), b.0.map(f64::to_bits));
+        }
+        // The delegation, on the golden of `quat_tests::newton_step_hand_case`: `η = 0.5625`,
+        // `k = 0.71875`, both exact in binary, so `1.25` must come back `0.8984375`.
+        // The struct literal, not `from_wxyz_unchecked`: `η = 0.5625` is far outside that
+        // constructor's `2^-40` debug assert, which is the whole point of the case.
+        let far = crate::Quat {
+            w: 1.25_f64,
+            x: 0.0,
+            y: 0.0,
+            z: 0.0,
+        };
+        let mut hand = SE3::from_rt(
+            crate::SO3::from_quat_unchecked(far),
+            Vector([1.0, 2.0, 3.0]),
+        );
+        hand.renormalize();
+        let q = hand.parts().0.quat();
+        assert_eq!(
+            [q.w, q.x, q.y, q.z].map(f64::to_bits),
+            [0.898_437_5_f64, 0.0, 0.0, 0.0].map(f64::to_bits)
+        );
     }
 
     /// The fused `rminus_jacobians` against the two inversions it replaces, **on the bits**.
@@ -675,8 +880,8 @@ mod group {
             [r.quat().w, r.quat().x].map(f64::to_bits),
             [r2.quat().w, r2.quat().x].map(f64::to_bits)
         );
-        for i in 0..2 {
-            assert_eq!(cols[i].0.map(f64::to_bits), cols2[i].0.map(f64::to_bits));
+        for (a, b) in cols.iter().zip(&cols2) {
+            assert_eq!(a.0.map(f64::to_bits), b.0.map(f64::to_bits));
         }
         assert_eq!(
             x.velocity().0.map(f64::to_bits),

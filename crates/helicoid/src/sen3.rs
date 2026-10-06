@@ -264,22 +264,74 @@ pub type SE3<S> = SEn3<S, 1>;
 pub type SE23<S> = SEn3<S, 2>;
 
 impl<S: Real, const N: usize> SEn3<S, N> {
-    /// One Newton step on the rotation's quaternion, in place, leaving the columns alone
-    /// (`0044` item 2): [`SO3::renormalize`]'s step, which is [`Quat::renormalize`]'s.
-    ///
-    /// Before this, an `SEn3` could not be renormalized from outside at all — `q` is private —
-    /// although `Mul`'s own rustdoc names the step as the caller's (`0027`). There is no
-    /// `normalized(self) -> Self`: `API.md` R3 keeps one spelling per operation and R2 makes
-    /// `&mut self` the shape for an in-place one.
+    /// [`Quat::renormalize`] on the rotation's quaternion, in place, leaving the columns alone:
+    /// the step `Mul`'s rustdoc names as the caller's, in one call rather than a
+    /// `parts`/`from_parts` round trip around a private field (`0044` item 2).
     ///
     /// # Domain
     ///
-    /// [`Quat::renormalize`]'s. One step is a *normalization* only for `|‖q‖² − 1|` at most
-    /// `2^-26.29` (`f64`) or `2^-11.79` (`f32`) — the drift a chain of compositions accumulates,
-    /// not an arbitrary quaternion's. Asserted nowhere, for that method's reason.
+    /// None, as [`Quat::renormalize`]'s is none: the step is defined for every input and only its
+    /// *accuracy* has a domain — one step is a normalization for `|‖q‖² − 1|` at most `2^-26.29`
+    /// (`f64`) or `2^-11.79` (`f32`), the drift a chain of compositions accumulates.
     #[inline]
     pub fn renormalize(&mut self) {
         self.q.renormalize();
+    }
+
+    /// `self · other⁻¹`, without forming `other⁻¹` (`0048`).
+    ///
+    /// `(q_a q_b*, x_{a,i} − R(q_a q_b*) x_{b,i})`: **one** rotation per column, where
+    /// `*self * other.inverse()` does two — `inverse` forms `−R_bᵗ x_{b,i}` and the product then
+    /// rotates it by `R_a` — because `R_a R_bᵗ` is `R(q_a q_b*)`. It is [`lminus`]'s first half,
+    /// which is why that method's body is this one (`0048` decision 3).
+    ///
+    /// The two are equal in exact arithmetic and **not bit-identical**, so this is its own routine
+    /// with its own `NUMERICS.md` §14 twin, whose reference *is* the composition it differs from
+    /// (`sen3_tests::group::sen3_mul_inv_matches_reference_n1`).
+    ///
+    /// The agreement is `O(u)` **against the input scale**, not against the result: both forms
+    /// carry an absolute error of order `u·max‖x‖`, so where the two frames nearly coincide and
+    /// the difference cancels, the *relative* gap grows as that cancellation. Measured worst
+    /// `8.9 u` of `max(‖x_a‖, ‖x_b‖, 1)`, `9.0 u` at `f32`, flat in the scale; divided by the
+    /// *result* instead, the same draws read `106 u` once the columns leave the `O(1)` range,
+    /// which is a property of the question and not of this routine (`0048` decision 4).
+    ///
+    /// [`lminus`]: LieGroup::lminus
+    #[inline]
+    pub fn mul_inv(&self, other: &Self) -> Self {
+        let q = self.q * other.q.conjugate();
+        let r = SO3::from_quat_unchecked(q);
+        Self {
+            q,
+            x: array::from_fn(|i| self.x[i] - r.act(other.x[i])),
+        }
+    }
+
+    /// `other⁻¹ · self`, without forming `other⁻¹` (`0048`).
+    ///
+    /// `(q_b* q_a, R(q_b*)(x_{a,i} − x_{b,i}))`: **one** rotation per column, where
+    /// `other.inverse() * *self` rotates `x_{b,i}` and `x_{a,i}` separately and subtracts after,
+    /// so it does two and subtracts two rotated vectors instead of rotating one difference. This
+    /// is the direction a relative transform `T_w_a⁻¹ · T_w_b` takes, and it is [`rminus`]'s
+    /// first half — the **default** side (`0002`) — which is why that method's body is this one.
+    ///
+    /// Its own `NUMERICS.md` §14 twin, for [`mul_inv`](Self::mul_inv)'s reasons and with its
+    /// scale-relative accuracy (`sen3_tests::group::sen3_inv_mul_matches_reference_n1`): measured
+    /// worst `8.1 u` of `max(‖x_a‖, ‖x_b‖, 1)`, `8.0 u` at `f32`. Subtracting *before* the rotation is also the better-conditioned order — the
+    /// cancellation happens in the inputs, where it is exact for nearby frames, rather than
+    /// between two separately rounded rotations.
+    ///
+    /// [`rminus`]: LieGroup::rminus
+    #[inline]
+    pub fn inv_mul(&self, other: &Self) -> Self {
+        // One conjugate, read twice: `SO3::inverse` *is* `Quat::conjugate`, so taking it through
+        // `other.rotation().inverse()` as well would negate the same three components again.
+        let qi = other.q.conjugate();
+        let rinv = SO3::from_quat_unchecked(qi);
+        Self {
+            q: qi * self.q,
+            x: array::from_fn(|i| rinv.act(self.x[i] - other.x[i])),
+        }
     }
 
     /// The rotation part `R`.
@@ -309,24 +361,6 @@ impl<S: Real, const N: usize> SEn3<S, N> {
 }
 
 impl<S: Real> SEn3<S, 1> {
-    /// `self · other⁻¹`, without forming `other⁻¹` (`0044` item 3).
-    ///
-    /// `(q_a q_b*, t_a − R(q_a q_b*) t_b)`: **one** rotation of a vector, where
-    /// `*self * other.inverse()` does two — `inverse` forms `−R_bᵗ t_b` and the product then
-    /// rotates it by `R_a` — because `R_a R_bᵗ` is `R(q_a q_b*)`. The two are equal in exact
-    /// arithmetic and **not bit-identical**, so this is its own routine with its own
-    /// `NUMERICS.md` §14 twin, whose reference *is* the composition it differs from
-    /// (`mul_inv_matches_reference`).
-    #[inline]
-    pub fn mul_inv(&self, other: &Self) -> Self {
-        let q = self.q * other.q.conjugate();
-        let r = SO3::from_quat_unchecked(q);
-        Self {
-            q,
-            x: [self.x[0] - r.act(other.x[0])],
-        }
-    }
-
     /// The translation `t`.
     #[inline]
     pub fn translation(&self) -> Vec3<S> {
@@ -644,6 +678,23 @@ impl<S: Real, const N: usize> LieGroup<S> for SEn3<S, N> {
                 (v - c1.scale(half)) + phi.cross(c1).scale(c)
             }),
         }
+    }
+
+    /// `Log(other⁻¹ · self)` through [`inv_mul`](Self::inv_mul) (`0048` decision 3).
+    ///
+    /// The provided body is `(base.inverse() * *self).log()`, which rotates two columns per `i`
+    /// where `inv_mul` rotates one: `3N` `act`s become `N`, and the subtraction moves ahead of
+    /// the rotation, where it is exact for nearby frames. Same map, fewer roundings.
+    #[inline]
+    fn rminus(&self, base: &Self) -> SEn3Tangent<S, N> {
+        self.inv_mul(base).log()
+    }
+
+    /// `Log(self · other⁻¹)` through [`mul_inv`](Self::mul_inv), for
+    /// [`rminus`](Self::rminus)'s reasons.
+    #[inline]
+    fn lminus(&self, base: &Self) -> SEn3Tangent<S, N> {
+        self.mul_inv(base).log()
     }
 
     /// `Ad_X = R + ε [x_i]_× R` (`NUMERICS.md` §5.2).

@@ -66,6 +66,7 @@ type Check = fn(&[File]) -> Vec<Violation>;
 /// Independent checks; add a line here and nothing else.
 const CHECKS: &[Check] = &[
     citations::check,
+    citations::check_symbols,
     drafts::check,
     exceptions::check,
     generated::check_registry,
@@ -177,6 +178,9 @@ mod tests {
             File::new("docs/decisions/0013-x.md", "**Status:** draft\n"),
             File::new("docs/A.md", &line_cite("foo", 3)),
             File::new("crates/a/src/lib.rs", "// settled by 0013\n"),
+            // A citation to a test that module does not define (`0048`).
+            File::new("crates/a/src/q_tests.rs", "fn kept() {}\n"),
+            File::new("crates/a/src/b.rs", "/// see `q_tests::gone`\nfn b() {}\n"),
             File::new("docs/G.md", "<!-- @generated -->\n"),
             // An exception citing a record this fixture tree does not have (`0046` item 3).
             File::new(
@@ -187,14 +191,20 @@ mod tests {
         ];
         files.extend(generated::stubs());
         let out: Vec<String> = check_all(&files).iter().map(ToString::to_string).collect();
-        for tag in ["[citations]", "[drafts]", "[exceptions]", "[generated]"] {
+        for tag in [
+            "[citations]",
+            "[drafts]",
+            "[exceptions]",
+            "[generated]",
+            "[symbols]",
+        ] {
             assert_eq!(
                 out.iter().filter(|l| l.contains(tag)).count(),
                 1,
                 "{tag}: {out:?}"
             );
         }
-        assert_eq!(out.len(), 4, "{out:?}");
+        assert_eq!(out.len(), 5, "{out:?}");
     }
 
     /// One violation of each manifest check, so one dropped from `MANIFEST_CHECKS` fails here.
