@@ -35,11 +35,14 @@
 //! at `f64`; closing it needs an `@f32` geodesic stratum (`0016`), which `0051` *Further work* 2
 //! owes. `0006` reads the bars per precision and this module reads one.
 //!
+//! [`se3`] is the same question for `SE3::geodesic` over `se3_geodesic` (`0050` *Further work* 2),
+//! asked of `PHASE4.md` §1.2's screw twin (`0054`).
+//!
 //! [`0049`]: ../../../docs/decisions/0049-the-boundary-is-what-removes-a-way-to-be-wrong.md
 
 use std::collections::BTreeMap;
 
-use helicoid::{LieGroup, Quat, SO3};
+use helicoid::{LieGroup, Quat, SEn3, SE3, SO3};
 use helicoid_linalg::Precision;
 
 use super::corpus::{parse_line, Record};
@@ -363,6 +366,146 @@ fn scan() -> Result<BTreeMap<String, Vec<f64>>, String> {
     Ok(out)
 }
 
+/// Which spelling of `SE3::geodesic` is the most accurate, per stratum, over `se3_geodesic`
+/// (`0054`), by the metric the conformance runner uses.
+///
+/// - [`se3::route_a`], the **provided body**, `X₀ Exp(t Log(X₀⁻¹X₁))`, which shipped until `0054`.
+/// - [`se3::route_b`], GE.12 **verbatim**: `tf_tree_math::dualquat::screw_pow`'s exact arm, one
+///   `atan2` and one `sin_cos`, `ϖ_t = sin(tα)/‖v‖`, the rotation `q₀ q_rᵗ`.
+/// - [`se3::route_c`], `route_b`'s translation under the shipped rotation, `SO3::geodesic`'s:
+///   between `b` and `c` only the rotation moves, so the pair prices it.
+/// - [`se3::route_s`], what **ships**: the control, which has to reproduce the subject's rows.
+pub(super) mod se3 {
+    use super::*;
+
+    /// The corpus this half reads, relative to `xtask`'s manifest.
+    pub(super) const CORPUS: &str = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../conformance/corpus/se3_geodesic.jsonl"
+    );
+
+    /// One spelling: `(X₀, X₁, t)` to `(q, x)`, `w` first.
+    pub(super) type Route = fn(&SE3<f64>, &SE3<f64>, f64) -> ([f64; 4], [f64; 3]);
+
+    /// The spellings, in the order the table prints them; [`route_s`] last, as above.
+    pub(super) const ROUTES: [Route; 4] = [route_a, route_b, route_c, route_s];
+
+    /// `X` as the subject reads it, `from_quat_unchecked` for `lift`'s reason.
+    pub(super) fn pose(rec: &Record, qk: &str, xk: &str) -> Option<SE3<f64>> {
+        let q = quat_of(rec, qk)?;
+        let x = *rec.input(xk)?.first_chunk::<3>()?;
+        Some(SEn3::from_parts(lift(q), [helicoid_linalg::Vector(x)]))
+    }
+
+    fn split(x: &SE3<f64>) -> ([f64; 4], [f64; 3]) {
+        (wxyz(&x.rotation().quat()), x.translation().0)
+    }
+
+    /// The provided body, through `reference::geodesic`, for [`route_a`]'s reason in the SO(3) half.
+    pub(super) fn route_a(x0: &SE3<f64>, x1: &SE3<f64>, t: f64) -> ([f64; 4], [f64; 3]) {
+        split(&helicoid::reference::geodesic(x0, x1, t))
+    }
+
+    /// What ships.
+    pub(super) fn route_s(x0: &SE3<f64>, x1: &SE3<f64>, t: f64) -> ([f64; 4], [f64; 3]) {
+        split(&SE3::geodesic(x0, x1, t))
+    }
+
+    /// GE.12 as `screw_pow`'s exact arm writes it, with the rotation `q₀ q_rᵗ`.
+    pub(super) fn route_b(x0: &SE3<f64>, x1: &SE3<f64>, t: f64) -> ([f64; 4], [f64; 3]) {
+        let (qrt, xt) = power(x0, x1, t);
+        let q0 = wxyz(&x0.rotation().quat());
+        (mul(q0, qrt), xt)
+    }
+
+    /// [`route_b`]'s translation, the shipped rotation.
+    pub(super) fn route_c(x0: &SE3<f64>, x1: &SE3<f64>, t: f64) -> ([f64; 4], [f64; 3]) {
+        let (_, xt) = power(x0, x1, t);
+        let q = SO3::geodesic(&x0.rotation(), &x1.rotation(), t).quat();
+        (wxyz(&q), xt)
+    }
+
+    /// GE.12 verbatim: `(q_rᵗ, x₀ + R₀ x_Δᵗ)`, `Δ` through `inv_mul` as every route forms it.
+    ///
+    /// The `0/0` at `‖v‖ = 0` is `screw_pow`'s degenerate arm, the provided body; no corpus
+    /// record reaches it, so it is there for the arithmetic's sake and not measured.
+    fn power(x0: &SE3<f64>, x1: &SE3<f64>, t: f64) -> ([f64; 4], [f64; 3]) {
+        let delta = x1.inv_mul(x0);
+        let dq = wxyz(&delta.rotation().quat());
+        let flip = 1.0_f64.copysign(dq[0]);
+        let [w, x, y, z] = dq.map(|c| flip * c);
+        let n2 = (x * x + y * y) + z * z;
+        if n2 == 0.0 {
+            let (q, xt) = route_a(x0, x1, t);
+            let q0 = wxyz(&x0.rotation().quat());
+            return (mul([q0[0], -q0[1], -q0[2], -q0[3]], q), xt);
+        }
+        let sh = libm::sqrt(n2);
+        let alpha = libm::atan2(sh, w);
+        let (s, c) = libm::sincos(t * alpha);
+        let varpi = s / sh;
+        let [px, py, pz] = delta.translation().0;
+        // `q_d = ½ (0, x_Δ) ⊗ (w, v)`.
+        let qd = mul([0.0, px, py, pz], [w, x, y, z]).map(|e| 0.5 * e);
+        let kappa = qd[0] / n2;
+        let m = [
+            qd[1] + x * (kappa * w),
+            qd[2] + y * (kappa * w),
+            qd[3] + z * (kappa * w),
+        ];
+        let qrt = [c, varpi * x, varpi * y, varpi * z];
+        let k2 = (t * kappa) * c;
+        let qdt = [
+            (t * varpi) * qd[0],
+            m[0] * varpi - x * k2,
+            m[1] * varpi - y * k2,
+            m[2] * varpi - z * k2,
+        ];
+        let tv = mul(qdt, [qrt[0], -qrt[1], -qrt[2], -qrt[3]]);
+        let xt = helicoid_linalg::Vector([2.0 * tv[1], 2.0 * tv[2], 2.0 * tv[3]]);
+        let out = x0.translation() + x0.rotation().act(xt);
+        (qrt, out.0)
+    }
+
+    /// Every route's [`Worst`] per stratum, in [`ROUTES`]' order.
+    pub(super) fn measure() -> Result<Table, String> {
+        let text = std::fs::read_to_string(CORPUS).map_err(|e| format!("{CORPUS}: {e}"))?;
+        let rule = metric::rule("se3_geodesic").ok_or("no metric rule for `se3_geodesic`")?;
+        let mut out = Table::new();
+        for line in text.lines().filter(|l| !l.trim().is_empty()) {
+            let rec = parse_line(line)?;
+            let (Some(x0), Some(x1)) = (pose(&rec, "q0", "x0"), pose(&rec, "q1", "x1")) else {
+                return Err(format!("record {} holds no `X0`/`X1`", rec.id));
+            };
+            let &[t] = rec
+                .input("t")
+                .and_then(|v| v.first_chunk::<1>())
+                .ok_or_else(|| format!("record {} holds no `t`", rec.id))?;
+            let row = out
+                .entry(rec.stratum.clone())
+                .or_insert_with(|| vec![(0.0, 0); ROUTES.len()]);
+            for (slot, route) in row.iter_mut().zip(ROUTES) {
+                let (q, x) = route(&x0, &x1, t);
+                let got =
+                    Output::from([("q".to_string(), q.to_vec()), ("x".to_string(), x.to_vec())]);
+                match rule.score(&rec, &got, Precision::F64)? {
+                    Score::Finite(u) if u > slot.0 => *slot = (u, rec.id),
+                    Score::Finite(_) => {}
+                    other => return Err(format!("record {} scored {other:?}", rec.id)),
+                }
+            }
+        }
+        Ok(out)
+    }
+
+    /// The subject's rows (`0054`) and `tf_tree_math`'s `ScLerp`, at full precision.
+    pub(super) const COMMITTED: [(&str, f64, f64); 3] = [
+        ("geo:consecutive", 1.572, 2.3363543564610385),
+        ("geo:generic", 1.738, 2.501902372122162),
+        ("geo:near-pi", 3.112, 3.2527931951103226),
+    ];
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -622,6 +765,56 @@ mod tests {
         }
         println!("{:>10}", "oracle");
         for (stratum, _, oracle) in COMMITTED {
+            let row = got
+                .get(stratum)
+                .ok_or_else(|| format!("no `{stratum}` in the corpus"))?;
+            print!("{stratum:<16}");
+            for &(u, id) in row {
+                print!("{u:>13.3} u (#{id:>3})");
+            }
+            println!("{oracle:>10.3}");
+        }
+        Ok(())
+    }
+
+    /// [`se3::route_s`] reproduces the subject's rows and dominates `tf_tree_math`'s `ScLerp` on
+    /// every stratum: the SE(3) half's control, for the SO(3) control's reasons (`0054`).
+    #[test]
+    fn the_shipped_se3_route_reproduces_its_rows_and_dominates() -> Result<(), String> {
+        let got = se3::measure()?;
+        let last = se3::ROUTES.len() - 1;
+        for (stratum, shipped, oracle) in se3::COMMITTED {
+            let (u, id) = *got
+                .get(stratum)
+                .and_then(|r| r.get(last))
+                .ok_or_else(|| format!("no `{stratum}` in the corpus"))?;
+            assert!(
+                (u - shipped).abs() < 5e-4,
+                "{stratum}: the shipped route reads {u} u, `0054` says {shipped}"
+            );
+            assert!(
+                u <= oracle,
+                "{stratum}: the shipped geodesic reads {u} u at record #{id}, over `ScLerp`'s {oracle}"
+            );
+        }
+        Ok(())
+    }
+
+    /// `cargo test -p xtask -- --ignored --nocapture measure_the_se3_geodesic_spellings`.
+    #[test]
+    #[ignore = "a measurement, printed for a record to cite"]
+    #[allow(clippy::print_stdout)]
+    fn measure_the_se3_geodesic_spellings() -> Result<(), String> {
+        const NAMES: [&str; se3::ROUTES.len()] =
+            ["A provided", "B GE.12", "C GE.12+SO3", "S shipped"];
+        let got = se3::measure()?;
+        println!("se3_geodesic, binary64, max u per stratum (worst record id)");
+        print!("{:<16}", "stratum");
+        for n in NAMES {
+            print!("{n:>21}");
+        }
+        println!("{:>10}", "oracle");
+        for (stratum, _, oracle) in se3::COMMITTED {
             let row = got
                 .get(stratum)
                 .ok_or_else(|| format!("no `{stratum}` in the corpus"))?;

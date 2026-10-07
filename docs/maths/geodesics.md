@@ -27,6 +27,7 @@ translation is $\mathbf t$.
 | GE.11–GE.12 | $\hat q^{\,t} = \exp(t\Lambda)$ is the dual quaternion of $\mathrm{Exp}(td)$; the sign rule; the grouped one-`atan2`, one-`sin_cos` evaluation | P4 §1.2 | `SE3::geodesic` (fast twin) |
 | GE.13 | rounding (`f64`, given $\hat q_\Delta$): no cancellation in the value at small angle or near $\pi$; the $0/0$ arm and its per-type guard; the derivative through `Dual` (the translation loses $\approx10^2\alpha^{-1}u$); the endpoints; the branch at $\pi$ | §4, §12; P4 §1.2 | `coeffs`, `S::branch` |
 | GE.14 | SO(3): the same formula without the dual part is slerp | P4 §1.3, §5.1 | `SO3::geodesic` |
+| GE.15 | the power from the catalogue: $\varpi_t = k\,t\,r$, $\cos t\alpha = c$; the $\varkappa$ terms are $O(\alpha^2)$, so $\varkappa = 0$ at $\lVert q_{\mathrm v}\rVert = 0$ is the limit in value and first derivative | §4, §10; P4 §1.2 | `SE3::geodesic` (fast twin), `so3::geodesic_parts` |
 
 ## 1. The curve
 
@@ -346,7 +347,8 @@ Script not committed. **Permanent:** planned, `se3_geodesic_matches_reference`, 
   `f32` is unmeasured. In `f64` the exact arm is still accurate below $10^{-290}$: translation error $\le 1.7u$ at $\lVert q_{\mathrm v}\rVert \in \{10^{-144}, 2\times10^{-145}, 10^{-146}, 10^{-150}, 10^{-153}, 10^{-155}, 10^{-160}\}$
   ($\lVert q_{\mathrm v}\rVert^2$ from $10^{-288}$ to $10^{-320}$, subnormal at the end), so $10^{-290}$ is a margin, not an accuracy switch. *Safe argument* (`0003`): where the guard fires the exact arm
   receives a safe value (for example $\lVert q_{\mathrm v}\rVert^2$ selected to $1$) and its result is discarded by `S::select`; otherwise a masked lane carries the $0/0$, and under `Dual`
-  `sqrt`'s derivative is $\pm\infty$ at $0$ (`NUMERICS.md` §12). The guard's mask comes from `S::branch`'s comparison, never from an `if` on the scalar.
+  `sqrt`'s derivative is $\pm\infty$ at $0$ (`NUMERICS.md` §12). The guard's mask comes from `S::branch`'s comparison, never from an `if` on the scalar. *GE.15(b) removes this second arm:* the terms $\varkappa$
+  multiplies are $O(\alpha^2)$, so $\varkappa = 0$ is the limit at $\lVert q_{\mathrm v}\rVert^2 = 0$ in value and first derivative at every precision, and no range constant of the scalar type is needed.
 - (c) *Through `Dual`.* The loss is in the translation of the pose, not only in $\varpi_t$. The slerp weight alone has value error $\le 2.2u$ and derivative error $(3.4$ to $6.1)\,\alpha^{-2}u$ relative to its own derivative, which is $O(\alpha)$ (the law of CO.14,
   $p' = 2$); it costs the rotation nothing, since $\varpi_t$ multiplies $q_{\mathrm v}$. But the translation of $X_0\hat q^{\,t}$, differentiated in a tangent direction of $q$ through the exact arm, errs by $9\times10^3u$, $1.3\times10^6u$, $8.5\times10^7u$ at $\alpha = 10^{-2}, 10^{-4}, 10^{-6}$
   (about $(50$ to $150)\,\alpha^{-1}u$), and the rotation by $\le 3u$ at every $\alpha$. Exact derivatives for $\varpi_t$ and $\cos t\alpha$ do not change this ($7.3\times10^3u$, $1.5\times10^6u$, $8.5\times10^7u$), nor do exact ones
@@ -413,3 +415,27 @@ re-associated), so GE.12's rotation part is not an alternative to it. `NUMERICS.
 
 **Checked:** as GE.5 (slerp against $R_0\mathrm{Exp}(s\,\mathrm{Log}(R_0^\top R_1))$ by matrices, $4.0\times10^{-111}$); the identity $\sin((1-t)\alpha) + \sin(t\alpha)\cos\alpha = \sin\alpha\cos t\alpha$ exactly in sympy.
 Script not committed. **Permanent:** planned, corpus `so3_geodesic`, with `tf_tree_math`'s `slerp` as oracle (`PHASE4.md` §4).
+
+## 10. The power from the catalogue
+
+**Proposition GE.15.** For $\hat q_\Delta$ ($w \ge 0$) let $r = 2\alpha/\lVert q_{\mathrm v}\rVert$ (`NUMERICS.md` §4's $r$, `log_ratio`), $\varphi_t = t\,r\,q_{\mathrm v}$, and
+$(k, c)$ §4's $k = \sin(\theta/2)/\theta$ and $\cos(\theta/2)$ at $\theta^2 = \lVert\varphi_t\rVert^2$ (`exp_coeffs`).
+
+- (a) $\varpi_t = k\,t\,r$ and $\cos t\alpha = c$, so $q_{\mathrm r}^t = (c, k\varphi_t) = \mathrm{Exp}(\varphi_t)$, the provided body's relative rotation (GE.14), and GE.12 needs no
+  coefficient outside §4. Below $r$'s and $k$'s second switches both are polynomials: the power evaluates no transcendental there, which is what
+  `tf_tree_math`'s series arm (GE.13(a)) buys with two series outside §4.
+- (b) The terms of $q_{\mathrm d}^t$ that $\varkappa$ multiplies are $\varkappa(\varpi_t w - t\cos t\alpha)\,q_{\mathrm v} = -\tfrac h2(\varpi_t\cos\alpha - t\cos t\alpha)\,\hat n
+  = \tfrac{h\,t(1-t^2)}6\,\alpha^2\,\hat n + O(\alpha^4)$, with zero gradient in $q_{\mathrm v}$ at $q_{\mathrm v} = 0$. So $\varkappa = 0$ where $\lVert q_{\mathrm v}\rVert^2 = 0$ is the limit
+  $q_{\mathrm d}^t = t\,q_{\mathrm d}$ in value **and** first derivative, at every precision. Where $\lVert q_{\mathrm v}\rVert^2$ underflows while $q_{\mathrm v} \ne 0$
+  (`f64`: $\lVert q_{\mathrm v}\rVert \lesssim 2\times10^{-162}$; `f32`: $\lesssim 4\times10^{-23}$) the dropped term is $O(\lvert h\rvert\alpha^2)$, far below $u\lvert h\rvert$.
+
+*Proof.* (a) $r\lVert q_{\mathrm v}\rVert = 2\alpha$ (SO.5), so $\lVert\varphi_t\rVert = 2t\alpha$, $k = \sin(t\alpha)/(2t\alpha)$, $k\,t\,r = \sin(t\alpha)/\lVert q_{\mathrm v}\rVert$ and $c = \cos t\alpha$.
+(b) $q_{\mathrm d,w} = -\tfrac h2\sin\alpha$ and $\lVert q_{\mathrm v}\rVert = \sin\alpha$ (GE.10(b)), so $\varkappa\,q_{\mathrm v} = -\tfrac h2\hat n$; and
+$\varpi_t\cos\alpha - t\cos t\alpha = [\sin t\alpha\cos\alpha - t\sin\alpha\cos t\alpha]/\sin\alpha = -\tfrac{t(1-t^2)}3\alpha^2 + O(\alpha^4)$, even in $\alpha$. $\square$
+
+**Checked:** mpmath 1.4.1, 110 digits. (a) $\alpha \in \{10^{-30}, 10^{-10}, 10^{-3}, 10^{-1}, 0.3, 1, 1.5, 1.5707\}$, $t \in \{0.125, 0.5, 0.7314, 1, 1.5, -0.5, 3\}$:
+worst relative residual $2.2\times10^{-110}$. (b) $\mathbf t = (0.7, -1.3, 2.1)$, $\hat n = (1, 2, 2)/3$, $\alpha \in \{10^{-2}, 10^{-5}, 10^{-10}, 10^{-30}\}$, $t \in \{0.25, 0.5, 1.5\}$: the dropped
+term against its closed form $\le 5.1\times10^{-116}$, and against $h\,t(1-t^2)\alpha^2/6$ a ratio of $1 \pm 1.6\times10^{-5}$ at $\alpha = 10^{-2}$ and $1$ to twelve digits from $10^{-5}$;
+its one-sided gradient in $q_{\mathrm v}$ at $0$, step $10^{-40}$: $6.6\times10^{-41}$, i.e. $O(\text{step})$ (a central difference reads exactly $0$ and proves nothing, the term
+being even). Script not committed. **Permanent:** `sen3_tests::group::the_screw_twin_s_guard_keeps_value_and_derivative` (`f64` at
+$\lVert q_{\mathrm v}\rVert \in \{0, 10^{-150}, 10^{-160}, 10^{-170}\}$, `f32` at $\{0, 10^{-15}, 10^{-20}, 10^{-25}\}$, `Dual`), `the_screw_twin_s_guard_differentiates_like_the_reference`.

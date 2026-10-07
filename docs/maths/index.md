@@ -97,7 +97,7 @@ $\begin{bmatrix}R & [t]_\times R\\ 0 & R\end{bmatrix}$ in Solà et al.
 | [`sim3.md`](./sim3.md) | §9 (the group law and $\mathrm{Ad}$ checked; `Exp`, `Log`, the Jacobians, their coefficients and the joint limit derived and **proposed**), §1, §2.3 (every row holds for Sim(3): SM.2(d)), §2.4 (Sim(3) action rows: proposed), §4 ($a, b, d$), §12 (the `Sim3` row: proposed); `PHASE5.md` §3; `0005` | `Sim3::{exp, log, adjoint, ad, jr, jl, jr_inv, jl_inv, act, act_jacobians}`, a coefficient group for $v_1, v_2$ (and $w_j$, $\partial_zv_j$), `coeffs` (one-variable functions of $\sigma$), `xtask thresholds`, `Real::{exp, exp_m1}` (needed, absent from `PHASE2.md` §2) |
 
 Not derived yet, so `NUMERICS.md` alone states them: every section outside the Map rows, notably
-§9 (Sim(3), owed: `sim3.md` derives it and proposes the formulas, SM.1–SM.13, none adopted); §7 is placed by `gamma-gaussian.md` (GG.1–GG.6), §8 by `charts.md` (CH.8–CH.11), §10 by `geodesics.md` (GE.1–GE.14); §11 is placed by `error-analysis.md`
+§9 (Sim(3), owed: `sim3.md` derives it and proposes the formulas, SM.1–SM.13, none adopted); §7 is placed by `gamma-gaussian.md` (GG.1–GG.6), §8 by `charts.md` (CH.8–CH.11), §10 by `geodesics.md` (GE.1–GE.15); §11 is placed by `error-analysis.md`
 (EA.3–EA.13) and LG.16 (the conditioning of the exact $J$ and $\mathrm{Ad}$); `PHASE5.md` §5's `Gaussian` by GG.7–GG.14 and §15 by GG.11–GG.12 (the mask and the rounding of $d^2$; §15's own bounds are Higham's); `PHASE6.md` §1's ambient Jacobians by AJ.1–AJ.9 (§12 has no row for them: below). The switch points and
 series lengths of §4 are generated (0004), not derived: `coefficients.md` derives the magnitudes to check
 them against (CO.10).
@@ -282,6 +282,9 @@ below, are collected for decision, with a recommendation each, in the draft reco
   (GE.13(a)). No series repairs the derivative through `Dual`: the pose's translation derivative loses $\approx10^2\alpha^{-1}u$ in the assembly of $\varkappa$, $\bar m$ and
   $\varpi_t$, with or without exact derivatives for them (GE.13(c)), so `jacobians_match_dual_geodesic` needs a per-stratum tolerance (CO.14(ii)) at small angle. Nor does any
   document say whether `geodesic` is bit-exact at $t \in \{0,1\}$, which `tf_tree_math`'s `ScLerp` is by early return and the grouped formulas are not at $t = 1$ (GE.13(f)).
+  *Answered by [`0054`](../decisions/0054-the-screw-twin-is-the-oracles-translation-under-the-shipped-rotation.md):* the guard is $\varkappa = 0$, no constant (GE.15(b)); the
+  small-angle arm is §4's $r$ and $k$ on their short arms, no new series (GE.15(a)); $t = 0$ is exact, $t = 1$ exact in the rotation and to rounding in the
+  translation, and a consumer that needs both endpoints exact keeps its own early return.
 - `NUMERICS.md` §10 lists the right-sided Jacobians only, while `PHASE4.md` §2 takes a side: the left forms are GE.7(d). Its $J_0$ is a
   difference of two $O(1)$ matrices that vanishes like $1 - t$ (relative error $\approx u/(1-t)$, measured $10^{12}u$ at $1 - t = 10^{-12}$);
   the equal form $(1-t)J_l((1-t)d)J_l^{-1}(d)$ has none (GE.7(a)), nor has $J_0^L$'s $(1-t)\mathrm{Ad}_{X_1}J_r((1-t)d)J_r^{-1}(d)\mathrm{Ad}_{X_1}^{-1}$ (GE.7(d)). Which to ship is a §10 edit.
@@ -292,6 +295,8 @@ below, are collected for decision, with a recommendation each, in the draft reco
   pick geodesics $O(1)$ apart (GE.13(d)): it needs a margin, or one shared flip predicate. Its "1e-14" cannot be an absolute bound at
   $\lVert t_0\rVert \sim 10^4$, where the spacing of `f64` is $1.8\times10^{-12}$; `NUMERICS.md` §11's translation floor is the scale to use
   (the exact arm errs by $\le 5.4u$ on that scale given $\hat q_\Delta$, GE.13(a); forming $\Delta$ is not in that figure).
+  *Answered by `0054`:* the twins share the flip, since both read the sign of one $q_0^*q_1$, so no band is excluded; the bound is on the translation
+  floor, per regime, with extrapolation a row of its own (`sen3_tests::group::se3_geodesic_matches_reference`).
 - `PHASE5.md` §1.3 (and `0012`, Context) say the three SE(3) charts "agree to first order at $\delta = 0$ and differ at second order". `Screw` and `Decoupled` do (equal
   $\mathrm D\,\mathrm{ret}(0)$; the gap $R(J_l(\varphi) - I)\rho$, of norm $\ell(\theta)\lVert\rho_\perp\rVert \le \frac\theta2\lVert\rho\rVert$, CH.5(c), CH.7). `WorldTranslation` does not, unless $R = I$: its $\rho$ is the
   world-frame translation, $\mathrm D\Phi^{\mathrm{Dec}\to\mathrm{WT}}(0) = \mathrm{diag}(I, R)$, so for the same $\delta$ the retracted translations differ at first order ($1.13\lVert\delta\rVert$ at $\theta(R) = 1.2$,

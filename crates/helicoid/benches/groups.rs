@@ -211,8 +211,7 @@ fn sen3<S: Fixture, const N: usize>(
         b.iter(|| black_box(&x).rminus_jacobians(black_box(&base)));
     });
     // `base` to `x`, as in `so3`: the relative motion is `ta`, so the row's `θ(d)` is its label's.
-    // SE_N(3) does not override `geodesic`, so this row is the provided body and the baseline
-    // `PHASE4.md` §1.2's twin will be measured against.
+    // SE(3)'s row is `0054`'s screw twin; SE₂(3)'s is still the provided body.
     g.bench_function(format!("{tag}/geodesic/{name}"), |b| {
         b.iter(|| {
             <helicoid::SEn3<S, N> as LieGroup<S>>::geodesic(
@@ -241,6 +240,25 @@ fn se3_action<S: Fixture>(g: &mut BenchmarkGroup<'_, WallTime>, name: &str, thet
     });
 }
 
+/// SE(3)'s geodesic at `θ = 1e-3`, the relative motion of `tf_tree`'s `lookup/depth3/sclerp`
+/// fixture (`0054`): both of the twin's coefficients on their short arms, which no §9 stratum
+/// reaches -- `near-identity` is four decades lower and `generic` on the exact arms.
+fn se3_consecutive<S: Fixture>(g: &mut BenchmarkGroup<'_, WallTime>) {
+    let ta = SEn3Tangent {
+        phi: phi::<S>(1e-3, false),
+        rho: rho::<S, 1>(false),
+    };
+    let x = SE3::<S>::exp(&SEn3Tangent {
+        phi: phi::<S>(1.0, true),
+        rho: rho::<S, 1>(true),
+    });
+    let base = x * SE3::<S>::exp(&ta.neg());
+    let t = S::of(1.0 / 3.0);
+    g.bench_function("se3/geodesic/consecutive-1e-3", |b| {
+        b.iter(|| SE3::<S>::geodesic(black_box(&base), black_box(&x), black_box(t)));
+    });
+}
+
 fn groups(c: &mut Criterion) {
     let mut g = c.benchmark_group("groups/f64");
     for &(name, theta) in THETA {
@@ -249,6 +267,7 @@ fn groups(c: &mut Criterion) {
         se3_action::<f64>(&mut g, name, theta);
         sen3::<f64, 2>(&mut g, "se23", name, theta);
     }
+    se3_consecutive::<f64>(&mut g);
     g.finish();
 
     let mut g = c.benchmark_group("groups/f32");
@@ -258,6 +277,7 @@ fn groups(c: &mut Criterion) {
         se3_action::<f32>(&mut g, name, theta);
         sen3::<f32, 2>(&mut g, "se23", name, theta);
     }
+    se3_consecutive::<f32>(&mut g);
     g.finish();
 }
 

@@ -234,10 +234,10 @@ mod group {
         sandwich: 8.0,
         // `PHASE3.md` §8's second check, measured 6.946 at `N = 1` and 5.274 at `N = 2` over 10 000 draws each.
         dual_rows: 14.0,
-        // `PHASE4.md` §1 and §3's seven legs, in `GEODESIC_LEGS`'s order, each twice the worst of 10^6 draws of `laws::Rng::shaped` -- `laws::sample`'s own distribution, which is what the proptest draws -- rounded up: the worst of `N = 1` and `N = 2`: `t=1` 6.578, symmetry 16.111, velocity 7.768, left 10.731, right 9.360, `t=0` and `twin` 1.118, the quaternion floor as for SO(3).
+        // `PHASE4.md` §1 and §3's seven legs, in `GEODESIC_LEGS`'s order, each twice the worst of 10^6 draws of `laws::Rng::shaped` -- `laws::sample`'s own distribution, which is what the proptest draws -- rounded up: the worst of `N = 1` and `N = 2`: `t=0` 1.118, `t=1` 6.578, symmetry 14.694, velocity 7.502, left 10.731, right 8.316, `twin` 8.587.
         //
-        // Re-recorded after `0048` made `rminus`/`lminus` the relative spellings, which these legs read through `geodesic`. Four moved down and two up: symmetry 13.352 -> 16.111 and left 9.775 -> 10.731, both at `f32`, against velocity 8.353 -> 7.768 and every leg of `N = 1` at `f64` and `Dual` improving. These two compare a call with its own swap or conjugation, not with a reference, so they measure how well two roundings line up; `0048`'s table has the accuracy against the 110-digit corpus, which improved 1.19-1.63x on all three `se3_geodesic` strata.
-        geodesic: [3.0, 14.0, 33.0, 16.0, 22.0, 19.0, 3.0],
+        // Re-recorded for `0054`, whose screw twin makes `N = 1`'s `twin` leg compare two genuinely different expressions (1.118 -> 8.587, `f32`; 8.051 at `f64`, against SO(3)'s 7.213 for the same reason). Its other legs moved within their own spread: symmetry 16.111 -> 14.008 and right 9.360 -> 8.223 at `N = 1`. Accuracy against the 110-digit corpus is `0054`'s table, not these.
+        geodesic: [3.0, 14.0, 30.0, 16.0, 22.0, 17.0, 18.0],
     };
     // `tangent_order` is one rounding at `f32` where it is exact at `f64`, as for SO(3); every
     // other law agrees within 25% across the precisions, so one set serves them.
@@ -863,6 +863,256 @@ mod group {
                 cw[i].0.map(f64::to_bits),
                 "t = 0 moved column {i} of {at:?}"
             );
+        }
+    }
+
+    /// The screw twin's draws (`0054`): `(X₀, X₁ = X₀ Exp(d), t)` with the relative angle from one
+    /// of three regimes -- `0`: log-uniform `1e-9 ..= 1e-3`, the `geo:consecutive` range; `1`:
+    /// uniform `1e-3 ..= 3`; `2`: `π − 10^-k`, `k` uniform in `1 ..= 6` -- `‖x₀‖` log-uniform to
+    /// `1e4`, and `t` cycling through the corpus's endpoints and extrapolations before a uniform
+    /// draw. Returns the pose pair, `t`, and the translation scale an error is read against.
+    fn screw_draw<S: Sample>(
+        rng: &mut crate::laws::Rng,
+        regime: u64,
+        i: usize,
+    ) -> (SE3<S>, SE3<S>, S) {
+        let mut u01 = || 0.5 * (rng.unif() + 1.0);
+        let dir = |u: &mut dyn FnMut() -> f64| {
+            let a = [u() - 0.5, u() - 0.5, u() - 0.5];
+            let n = crate::laws::norm(&a).max(1e-3);
+            a.map(|c| c / n)
+        };
+        let (a0, a, r0, r) = (dir(&mut u01), dir(&mut u01), dir(&mut u01), dir(&mut u01));
+        let theta = match regime {
+            0 => 10_f64.powf(-9.0 + 6.0 * u01()),
+            1 => 1e-3 + (3.0 - 1e-3) * u01(),
+            _ => core::f64::consts::PI - 10_f64.powf(-1.0 - 5.0 * u01()),
+        };
+        let (big, step, phi0) = (
+            10_f64.powf(4.0 * u01()),
+            10_f64.powf(2.0 * u01() - 1.0),
+            3.0 * u01(),
+        );
+        const TS: [f64; 9] = [0.0, 1e-9, 0.25, 0.5, 1.0 - 1e-9, 1.0, -0.5, 1.5, 3.0];
+        let t = TS.get(i % 12).copied().unwrap_or_else(u01);
+        let c = |v: f64| S::constant(v);
+        let x0 = SE3::<S>::exp(&Twist {
+            phi: Vector(a0.map(|v| c(phi0 * v))),
+            rho: [Vector(r0.map(|v| c(big * v)))],
+        });
+        let d = Twist {
+            phi: Vector(a.map(|v| c(theta * v))),
+            rho: [Vector(r.map(|v| c(step * v)))],
+        };
+        (x0, x0.rplus(&d), c(t))
+    }
+
+    /// The worst of `SE3::geodesic` against `reference::geodesic` over `n` draws per regime, in
+    /// `u` of `S`: the quaternion sign-aligned, the translation against `max(‖x₀‖, ‖x₁‖, 1)`
+    /// (`NUMERICS.md` §11's translation floor), since a fixed absolute bound cannot hold at
+    /// `‖x₀‖ = 1e4` (`docs/maths/index.md`).
+    fn screw_vs_reference<S: Sample>(seed: u64, n: usize) -> [[f64; 2]; 3] {
+        let mut rng = crate::laws::Rng(seed);
+        let f = |v: S| v.value_f64();
+        array::from_fn(|regime| {
+            let mut worst = [0.0; 2];
+            for i in 0..n {
+                let (x0, x1, t) = screw_draw::<S>(&mut rng, regime as u64, i);
+                let (got, want) = (SE3::geodesic(&x0, &x1, t), reference::geodesic(&x0, &x1, t));
+                let q = |g: &SE3<S>| {
+                    let q = g.rotation().quat();
+                    [f(q.w), f(q.x), f(q.y), f(q.z)]
+                };
+                let (qg, mut qw) = (q(&got), q(&want));
+                if qg.iter().zip(&qw).map(|(a, b)| a * b).sum::<f64>() < 0.0 {
+                    qw = qw.map(|v| -v);
+                }
+                let x = |g: &SE3<S>| g.translation().0.map(f);
+                let scale = crate::laws::norm(&x(&x0)).max(crate::laws::norm(&x(&x1)));
+                let e = crate::laws::worst(
+                    crate::laws::e_at::<S>(&qg, &qw, 1.0),
+                    crate::laws::e_at::<S>(&x(&got), &x(&want), scale),
+                );
+                let k = usize::from(!(0.0..=1.0).contains(&t.value_f64()));
+                worst[k] = crate::laws::worst(worst[k], e);
+            }
+            worst
+        })
+    }
+
+    /// `PHASE4.md` §1.2's `se3_geodesic_matches_reference`, `10⁵` pairs per precision (`0054`).
+    ///
+    /// The two twins share `Log`'s flip -- both read the sign of the one `q₀* q₁` -- so no band
+    /// near `π` is excluded (`docs/maths/geodesics.md` GE.13(d)(i)). The bounds are twice the
+    /// worst of `10⁶` draws per regime, rounded up (`measure_se3_geodesic_vs_reference`).
+    #[test]
+    fn se3_geodesic_matches_reference() {
+        let seed = 0x0073_6372_6577;
+        let (f64s, f32s) = (
+            screw_vs_reference::<f64>(seed, 33_334),
+            screw_vs_reference::<f32>(seed, 33_334),
+        );
+        for (name, got, bound) in [("f64", f64s, SCREW_TWIN_F64), ("f32", f32s, SCREW_TWIN_F32)] {
+            for (regime, (g, b)) in got.iter().zip(bound).enumerate() {
+                for (part, (g, b)) in ["t in [0, 1]", "t outside"].iter().zip(g.iter().zip(b)) {
+                    assert!(
+                        *g <= b,
+                        "{name}, regime {regime}, {part}: {g} u exceeds {b} u"
+                    );
+                }
+            }
+        }
+    }
+
+    /// Twice the worst of `10⁶` draws per regime, rounded up -- consecutive, generic, near `π`,
+    /// each as `[t in [0, 1], t outside]`: extrapolation is its own row because both twins' errors
+    /// grow with `|t|` (GE.13(a): `12.6 u` at `s = 3` for the twin's arithmetic alone).
+    /// Measured `[[13.399, 28.771], [14.771, 31.461], [12.808, 30.311]]` at `f64` and
+    /// `[[7.610, 27.800], [11.659, 30.622], [13.244, 36.007]]` at `f32`.
+    const SCREW_TWIN_F64: [[f64; 2]; 3] = [[27.0, 58.0], [30.0, 63.0], [26.0, 61.0]];
+    const SCREW_TWIN_F32: [[f64; 2]; 3] = [[16.0, 56.0], [24.0, 62.0], [27.0, 73.0]];
+
+    /// `cargo nextest run -p helicoid --release --run-ignored only -- measure_se3_geodesic_vs_reference`.
+    #[test]
+    #[allow(clippy::print_stdout)]
+    #[ignore = "measurement: prints the figures `SCREW_TWIN_*` are recorded from"]
+    fn measure_se3_geodesic_vs_reference() {
+        std::println!(
+            "f64 {:?}",
+            screw_vs_reference::<f64>(0x6d65_6173_7572, 1_000_000)
+        );
+        std::println!(
+            "f32 {:?}",
+            screw_vs_reference::<f32>(0x6d65_6173_7572, 1_000_000)
+        );
+    }
+
+    /// The twin's guard (`0054`): `ϰ` is taken as zero where `‖v‖²` is, which is exact `0`
+    /// (equal rotations), `0` by **underflow** while the rotations still differ (`n = 1e-170`
+    /// at `f64`, `1e-25` at `f32`), and the subnormal range just above it. In every case the
+    /// value is the reference's to a few `u` and the first derivative, through `Dual`, is too:
+    /// the dropped terms are `O(α²)` (GE.15).
+    #[test]
+    fn the_screw_twin_s_guard_keeps_value_and_derivative() {
+        fn check<S: Sample>(n: f64, bound: f64) {
+            let c = |v: f64| S::constant(v);
+            let x0 =
+                SE3::<S>::from_parts(crate::SO3::identity(), [Vector([c(2.0), c(-3.0), c(0.5)])]);
+            // `q₁ = (1, n, 0, 0)` exactly, so `q₀* q₁` carries `n` without a rounding.
+            let q1 = crate::Quat {
+                w: c(1.0),
+                x: c(n),
+                y: c(0.0),
+                z: c(0.0),
+            };
+            let x1 = SE3::<S>::from_parts(
+                crate::SO3::from_quat_unchecked(q1),
+                [Vector([
+                    S::sample(1.5, 0),
+                    S::sample(-2.0, 1),
+                    S::sample(4.0, 2),
+                ])],
+            );
+            for t in [0.25, 0.5, 1.0 - 1e-6, 1.0, 1.5, -0.5] {
+                let t = c(t);
+                let (got, want) = (SE3::geodesic(&x0, &x1, t), reference::geodesic(&x0, &x1, t));
+                let (xg, xw) = (got.translation().0, want.translation().0);
+                for (a, b) in xg.iter().zip(&xw) {
+                    let (a, b) = (a.value_f64(), b.value_f64());
+                    assert!(a.is_finite(), "n = {n:e}, t = {}: {a}", t.value_f64());
+                    assert!(
+                        (a - b).abs() <= bound * crate::laws::unit::<S>() * 5.0,
+                        "n = {n:e}, t = {}: {a} against {b}",
+                        t.value_f64()
+                    );
+                }
+                let (qg, qw) = (got.rotation().quat(), want.rotation().quat());
+                for (a, b) in [(qg.w, qw.w), (qg.x, qw.x)] {
+                    assert!(
+                        (a.value_f64() - b.value_f64()).abs() <= bound * crate::laws::unit::<S>()
+                    );
+                }
+            }
+        }
+        for n in [0.0, 1e-150, 1e-160, 1e-170] {
+            check::<f64>(n, 4.0);
+            check::<Dual<f64, 3>>(n, 4.0);
+        }
+        for n in [0.0, 1e-15, 1e-20, 1e-25] {
+            check::<f32>(n, 4.0);
+        }
+    }
+
+    /// `Dual` lanes of the guard: at `n = 0` the twin's derivative in `x₁`'s translation is the
+    /// reference's -- `t I` rotated, nothing lost to the selected-away `ϰ`.
+    #[test]
+    fn the_screw_twin_s_guard_differentiates_like_the_reference() {
+        type D = Dual<f64, 3>;
+        let x0 = SE3::<D>::from_parts(
+            crate::SO3::identity(),
+            [Vector([
+                D::constant(2.0),
+                D::constant(-3.0),
+                D::constant(0.5),
+            ])],
+        );
+        let x1 = SE3::<D>::from_parts(
+            crate::SO3::identity(),
+            [Vector([
+                D::variable(1.5, 0),
+                D::variable(-2.0, 1),
+                D::variable(4.0, 2),
+            ])],
+        );
+        for t in [0.25, 0.5, 1.5] {
+            let t = D::constant(t);
+            let (got, want) = (SE3::geodesic(&x0, &x1, t), reference::geodesic(&x0, &x1, t));
+            for (a, b) in got.translation().0.iter().zip(&want.translation().0) {
+                for (da, db) in a.d.iter().zip(&b.d) {
+                    assert!(
+                        (da - db).abs() <= 4.0 * f64::EPSILON,
+                        "{:?} against {:?}",
+                        a.d,
+                        b.d
+                    );
+                }
+            }
+        }
+    }
+
+    /// A pure screw about `z` through the origin: angle `θ`, displacement `h` along the axis. Its
+    /// geodesic turns by `tθ` and advances `t h` -- the pitch is kept, which is the property the
+    /// translation-first `LerpSlerp` lacks and the reason `ScLerp` is `tf_tree`'s default (D5).
+    #[test]
+    fn the_screw_twin_keeps_an_axial_pitch() {
+        for theta in [1e-6, 0.1, 1.0, 3.0] {
+            let x1 = SE3::<f64>::from_parts(
+                crate::SO3::exp(&crate::SO3Tangent {
+                    phi: Vector([0.0, 0.0, theta]),
+                }),
+                [Vector([0.0, 0.0, 2.5])],
+            );
+            for t in [0.25, 0.5, 0.75, 1.5] {
+                let got = SE3::geodesic(&SE3::identity(), &x1, t);
+                let want_q = crate::SO3::exp(&crate::SO3Tangent {
+                    phi: Vector([0.0, 0.0, t * theta]),
+                })
+                .quat();
+                let q = got.rotation().quat();
+                let [x, y, z] = got.translation().0;
+                assert!(
+                    x.abs() <= 1e-15 && y.abs() <= 1e-15,
+                    "θ = {theta}, t = {t}: ({x}, {y}) off the axis"
+                );
+                assert!(
+                    (z - 2.5 * t).abs() <= 8.0 * f64::EPSILON,
+                    "θ = {theta}, t = {t}: advanced {z}"
+                );
+                assert!(
+                    (q.w - want_q.w).abs() <= 2.0 * f64::EPSILON
+                        && (q.z - want_q.z).abs() <= 2.0 * f64::EPSILON
+                );
+            }
         }
     }
 
