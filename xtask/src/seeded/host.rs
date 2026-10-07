@@ -124,6 +124,11 @@ impl Real for Host {
     fn sin_cos(self) -> (Self, Self) {
         (Host(self.0.sin()), Host(self.0.cos()))
     }
+    /// `std`'s `sin`, which is what this subject exists to contrast with `libm`'s (D16): the same
+    /// call `sin_cos` makes, so the two agree here for the same reason they do there.
+    fn sin(self) -> Self {
+        Host(self.0.sin())
+    }
     fn atan2(self, x: Self) -> Self {
         Host(self.0.atan2(x.0))
     }

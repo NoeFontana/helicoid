@@ -114,6 +114,15 @@ pub trait Real:
     fn cbrt(self) -> Self;
     /// `(sin self, cos self)`.
     fn sin_cos(self) -> (Self, Self);
+    /// `sin self`, for a caller that discards the cosine.
+    ///
+    /// **Bit-identical to [`sin_cos`](Self::sin_cos)`.0`**, and that is a requirement on the impl
+    /// and not an observation: `float_tests::sin_is_sin_cos_dot_zero_to_the_bit` enforces it at both
+    /// precisions, because every accuracy figure recorded against a routine that swaps one for the
+    /// other depends on it (`0052`). It is cheaper for the same reason it is not a convenience:
+    /// `libm`'s `sincos` evaluates both kernels after one argument reduction where `sin` evaluates
+    /// the one its octant needs -- measured 3.84 ns against 5.17 ns at binary64.
+    fn sin(self) -> Self;
     /// The angle of the point `(x, self)`, i.e. `atan2(y = self, x)`.
     fn atan2(self, x: Self) -> Self;
     /// Absolute value.

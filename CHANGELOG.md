@@ -9,6 +9,31 @@ defined by the status tables in `docs/`; they win over this file.
 
 ### Changed
 
+- **`Real` gains `sin`, and no measured figure moves** (`0052`). `Real` had `sin_cos` and no `sin`,
+  so six **shipped** sites wrote `sin_cos().0` and paid for a cosine nobody reads: `exact_a_b` twice
+  (`SO3::jr`'s exact arm), `d_from` once (`q_coeffs`'s), `SO3::geodesic`'s blend three times.
+  - **Measured**, 20M calls over `(0, π/2]`, three alternating passes, `libm` 0.2.16: `sin`
+    **3.84 ns** against `sincos(..).0` **5.17 ns** — 1.33 ns, **26 %**. Both reduce with
+    `rem_pio2`; `sin` then evaluates the one kernel its octant needs where `sincos` evaluates both
+    and permutes. `0022` (ready, unimplemented) decided this shape for the other half at a measured
+    4.4 ns from `cos`.
+  - **Bit-identity with `sin_cos().0` is NORMATIVE and tested**, because the whole value of the
+    change is that nothing needs re-measuring. The two are *not* the same expression and `libm` is a
+    caret dependency: their small-argument cuts differ (`2^-26` against `2^-27√2`, agreeing only
+    because the correction is under half an ulp — and `tα` at `geo:consecutive` reaches that band),
+    and at binary32 their octant arms are **exact negations**, agreeing only because `k_cosf` reads
+    its argument solely through `x*x`. So binary32 is checked **exhaustively over all 2^32
+    patterns** — 0 disagreements — and binary64 over 1.2M arguments including that band.
+  - **Verified end to end: all 24 files under `conformance/results/` are byte-identical** to the
+    pre-change run bar the git revision column. `0047`'s standard; this change has cost and no
+    numerics.
+  - `Dual::sin` routes through `sin_cos` — a dual's derivative needs the cosine, so nothing is saved
+    and the value is identical by construction rather than by a test.
+  - `coeffs::tests`'s transcendental tally gains a `sin` column and re-pins the rows: `jr`
+    `(1, 2, 0)` → **`(1, 0, 2, 0)`**, no `sin_cos` at all, and `q` → `(1, 1, 1, 0)`. Folding the
+    columns would hide exactly what this changes.
+  - `0022`'s `Real::{acos, cos}` stay owed: `eig3` and `cubic` each still discard a sine.
+
 - **`SO3::geodesic` is two arms** (`0051`, superseding `0050` decision 2): the provided body below
   `log_ratio`'s **second** generated switch, GE.14's blend above it, with `t ≥ 1` taking the blend
   on both sides.

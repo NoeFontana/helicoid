@@ -77,6 +77,7 @@ pub trait Real:
     fn sqrt(self) -> Self;
     fn cbrt(self) -> Self;
     fn sin_cos(self) -> (Self, Self);
+    fn sin(self) -> Self;
     fn atan2(self, x: Self) -> Self;
     fn abs(self) -> Self;
     fn copysign(self, sign: Self) -> Self;
@@ -90,7 +91,13 @@ pub trait Blend<S: Real>: Sized {
 ```
 
 - **`f64`/`f32` impls** route every transcendental through `libm` (`sqrt`, `cbrt`, `sincos`,
-  `atan2`, `fabs`, `copysign`), never `std` (D16). `Mask = bool`. **`impl Mask for bool` is the
+  `sin`, `atan2`, `fabs`, `copysign`), never `std` (D16). **`sin` is bit-identical to
+  `sin_cos().0`** and that is a requirement on the impl, not an observation: [`0052`](./decisions/0052-real-owes-sin-and-the-corpus-does-not-move.md) adds it for
+  the callers that discard the cosine, every recorded figure of a routine re-spelled from one to the
+  other depends on the identity, and `libm` is a caret dependency whose two functions are *not* the
+  same expression — `sin` and `sincos` cut their small-argument fast path at different thresholds,
+  and at binary32 their octant arms are exact negations of each other.
+  `sin_tests` enforces it, exhaustively over all `2^32` binary32 patterns. `Mask = bool`. **`impl Mask for bool` is the
   only place in the workspace where a float comparison's result reaches an `if`.**
 - **`Blend`** is implemented for `S`, tuples up to arity 8, `[T; N]` where `T: Blend<S>`, `Vector`,
   `Matrix`, `Point`, and (in `helicoid`) every value type.
@@ -116,7 +123,9 @@ impl<S: Real, const N: usize> Real for Dual<S, N> { type Mask = S::Mask; /* … 
 - `PRECISION = S::PRECISION`; comparisons and masks act on the value part only.
 - Rules: `a / b` → $(a_d - q\,b_d)/b_v$ with $q = a_v/b_v$ (the quotient rule with no $b_v^2$ to
   overflow); `sqrt` → $d/(2\sqrt v)$; `cbrt` → $d/(3c^2)$, $c = \mathrm{cbrt}(v)$; `sin_cos` →
-  $(d\cos v, -d\sin v)$; `atan2(y, x)` → $(x_v y_d - y_v x_d)/(x_v^2 + y_v^2)$; `abs` →
+  $(d\cos v, -d\sin v)$ and `sin` → $d\cos v$, taken *through* `sin_cos` because a dual's
+  derivative needs the cosine, so the cheaper call saves nothing here and the value is identical by
+  construction ([`0052`](./decisions/0052-real-owes-sin-and-the-corpus-does-not-move.md)); `atan2(y, x)` → $(x_v y_d - y_v x_d)/(x_v^2 + y_v^2)$; `abs` →
   $\mathrm{sgn}(v)\,d$ with $\mathrm{sgn}(\pm 0) = +1$;
   `copysign(x, s)` → $\mathrm{sgn}(x_v)\,\mathrm{sgn}(s_v)\,x_d$, with $\mathrm{sgn}(\pm 0) = +1$
   for $x_v$ and $\mathrm{sgn}(s_v) = -1$ iff the **sign bit** of $s_v$ is set, so

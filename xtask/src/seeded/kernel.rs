@@ -408,6 +408,9 @@ pub(super) mod tests {
             let (s, c) = libm::sincos(self.0);
             (note(s), note(c))
         }
+        fn sin(self) -> Self {
+            note(libm::sin(self.0))
+        }
         fn atan2(self, x: Self) -> Self {
             note(libm::atan2(self.0, x.0))
         }
