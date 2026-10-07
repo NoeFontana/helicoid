@@ -2,6 +2,7 @@
 //! set (or parsed `cargo metadata`) to violations; only [`load_tree`] and `metadata::load` touch
 //! the disk, so every check tests on fixtures.
 
+mod acos;
 mod citations;
 mod closure;
 mod comments;
@@ -65,6 +66,7 @@ type Check = fn(&[File]) -> Vec<Violation>;
 
 /// Independent checks; add a line here and nothing else.
 const CHECKS: &[Check] = &[
+    acos::check,
     citations::check,
     citations::check_symbols,
     drafts::check,
@@ -73,6 +75,14 @@ const CHECKS: &[Check] = &[
     fused::check,
     kernel::check,
 ];
+
+/// Whether `path` is a test file, by the repository's own `*_tests.rs` / `tests.rs` convention.
+///
+/// One definition for the three checks that exempt tests (5, 7 and 8): each had its own copy, which
+/// is two too many for a predicate that encodes a naming convention.
+fn is_test(path: &str) -> bool {
+    path.ends_with("_tests.rs") || path.ends_with("/tests.rs")
+}
 
 /// Checks over the parsed `cargo metadata` of the workspace.
 type ManifestCheck = fn(&Metadata) -> Vec<Violation>;
@@ -182,6 +192,8 @@ mod tests {
             File::new("crates/a/src/q_tests.rs", "fn kept() {}\n"),
             File::new("crates/a/src/b.rs", "/// see `q_tests::gone`\nfn b() {}\n"),
             File::new("docs/G.md", "<!-- @generated -->\n"),
+            // `acos` in the group crate, which D5 forbids and `0053` makes a check.
+            File::new("crates/helicoid/src/g.rs", "let a = x.acos();\n"),
             // An exception citing a record this fixture tree does not have (`0046` item 3).
             File::new(
                 crate::envelope::exceptions::PATH,
@@ -192,6 +204,7 @@ mod tests {
         files.extend(generated::stubs());
         let out: Vec<String> = check_all(&files).iter().map(ToString::to_string).collect();
         for tag in [
+            "[acos]",
             "[citations]",
             "[drafts]",
             "[exceptions]",
@@ -204,7 +217,7 @@ mod tests {
                 "{tag}: {out:?}"
             );
         }
-        assert_eq!(out.len(), 5, "{out:?}");
+        assert_eq!(out.len(), 6, "{out:?}");
     }
 
     /// One violation of each manifest check, so one dropped from `MANIFEST_CHECKS` fails here.

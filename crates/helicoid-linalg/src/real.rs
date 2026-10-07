@@ -114,12 +114,34 @@ pub trait Real:
     fn cbrt(self) -> Self;
     /// `(sin self, cos self)`.
     fn sin_cos(self) -> (Self, Self);
+    /// `cos self`, for a caller that discards the sine.
+    ///
+    /// **Bit-identical to [`sin_cos`](Self::sin_cos)`.1`**, a requirement on the impl for the same
+    /// reason [`sin`](Self::sin) is bit-identical to `.0` (`0052`), and here it holds *by
+    /// construction* in `libm`: `cos` and `sincos` share `rem_pio2`, the same kernels, the same
+    /// octant table and -- unlike `sin` -- the same small-argument cut, so there is no band where
+    /// one returns a constant and the other a Horner. `sin_tests::cos_agrees_at_binary64` and
+    /// `cos_agrees_on_all_of_binary32` enforce it anyway: by-construction is an argument about
+    /// `libm` 0.2.16's source, `libm` is a caret dependency, and `solve_cubic`'s committed golden
+    /// bits now rest on the claim. Measured 7.7 ns against 9.6 (`0022`).
+    fn cos(self) -> Self;
+    /// `acos self`.
+    ///
+    /// # Domain
+    ///
+    /// `[-1, 1]`, unasserted: outside it `libm` returns NaN, which is what a value function owes
+    /// its caller, and an assert here would turn an unselected lane into a panic (`0003` item 3).
+    /// Measured `0.852 u` over a grid of `[-1, 1]` and `0.489` as `x -> 1-`, the double-root region
+    /// where the slope is infinite -- both better than the `atan2(sqrt((1 - x)(1 + x)), x)`
+    /// spelling it replaces, at 1.659 and 1.148, for 2.63x less time (`0022`).
+    fn acos(self) -> Self;
     /// `sin self`, for a caller that discards the cosine.
     ///
     /// **Bit-identical to [`sin_cos`](Self::sin_cos)`.0`**, and that is a requirement on the impl
-    /// and not an observation: `float_tests::sin_is_sin_cos_dot_zero_to_the_bit` enforces it at both
-    /// precisions, because every accuracy figure recorded against a routine that swaps one for the
-    /// other depends on it (`0052`). It is cheaper for the same reason it is not a convenience:
+    /// and not an observation: `sin_tests::a_wide_sweep_agrees_at_binary64` and its siblings
+    /// -- `the_band_where_the_cuts_differ` and the eight `binary32_agrees_exhaustively_*` shards --
+    /// enforce it at both precisions, because every accuracy figure recorded against a routine that
+    /// swaps one for the other depends on it (`0052`). It is cheaper for the same reason it is not a convenience:
     /// `libm`'s `sincos` evaluates both kernels after one argument reduction where `sin` evaluates
     /// the one its octant needs -- measured 3.84 ns against 5.17 ns at binary64.
     fn sin(self) -> Self;

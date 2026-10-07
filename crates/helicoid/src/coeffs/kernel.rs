@@ -186,8 +186,6 @@ pub(crate) fn jr_coeffs<S: Real>(z: S) -> (S, S) {
 /// `sin_cos` because each discards its cosine, which changes no bit and drops a kernel (`0052`).
 fn exact_a_b<S: Real>(z: S) -> [S; 2] {
     let th = z.sqrt();
-    // Both cosines are discarded, so both calls are `sin` and not `sin_cos`: same arguments, same
-    // bits, one kernel each instead of two (`0052`).
     let k = half_angle_sin(th) / th;
     [S::lit(2.0) * k * k, b_from(th, th.sin())]
 }
@@ -290,7 +288,8 @@ pub(crate) fn log_ratio<S: Real>(n2: S, w: S) -> S {
     )
 }
 
-/// `sin(θ/2)` and `cos(θ/2)` from one `sin_cos`.
+/// `sin(θ/2)` alone, through [`Real::sin`]: `half_angle`'s first half at the same argument and the
+/// cheaper call, for the callers that discard the cosine (`0052`).
 fn half_angle_sin<S: Real>(th: S) -> S {
     (S::lit(0.5) * th).sin()
 }

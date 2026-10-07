@@ -22,7 +22,10 @@
 //!
 //! So binary32 is checked **exhaustively**, over all `2^32` bit patterns, which settles item 3 for
 //! good rather than sampling around it. Binary64 is checked over the band of item 2 and a wide
-//! seeded sweep; exhaustive is not available there, and item 1 makes the rest structural.
+//! seeded sweep; exhaustive is not available there, and item 1 makes the rest structural. The
+//! committed binary64 evidence is **520 018** arguments -- 120 006 in item 2's band and 400 012 in
+//! the wide sweep -- and a larger figure quoted elsewhere is a scratch harness's, not this
+//! module's.
 //!
 //! [`0052`]: ../../../docs/decisions/0052-real-owes-sin-and-the-corpus-does-not-move.md
 
@@ -51,8 +54,10 @@ fn agree<S: Real>(x: S) -> bool {
 /// Item 2: the band where `sin` returns `x` and `sin_cos` does not, `[2^-27 sqrt 2, 2^-26)`.
 ///
 /// Walked at every `f64` representable in it would be `2^52` values, so it is walked by bits from
-/// each end and across the middle instead — the rounding argument in this module's header is
-/// uniform over the band, so a defect would not hide in one corner of it.
+/// each end and across the middle instead. The rounding argument of the header is **not** uniform
+/// over the band — the margin runs from 4.24x at the bottom to 1.5x at the top, so the tight
+/// corner is the top — which is why the `hi - 1 - i` sweep below is load-bearing and not
+/// redundant with the strided one (`0053`).
 #[test]
 fn the_band_where_the_cuts_differ() {
     let (lo, hi) = (0x3e46_a09e_0000_0000u64, 0x3e50_0000_0000_0000u64);
@@ -138,9 +143,11 @@ fn shard(k: u32) -> (u64, Option<u32>) {
 /// a loop inside one test does not, which is the trap the second draft fell into after the comment
 /// had already been written to claim otherwise.
 ///
-/// All `#[ignore]`d; [`binary32_agrees_on_a_dense_sample`] is what `just test` runs. Rerun these
-/// whenever `libm` moves:
-/// `cargo nextest run --release -p helicoid-linalg -E 'test(exhaustively)' --run-ignored all`.
+/// All `#[ignore]`d; [`binary32_agrees_on_a_dense_sample`] is what `just test` runs. **`just
+/// exhaustive`** runs these and the `cos` shards, and `0053` records why it is a recipe and not a
+/// gate: four minutes of CPU per shard set is the wrong trade on every `just test`, and the dense
+/// samples would catch a structural change even though they could miss a rare one. The condition
+/// for running it is stated there — after `cargo update` touches `libm`.
 macro_rules! exhaustive_shard {
     ($($name:ident = $k:expr;)+) => {$(
         #[test]
@@ -183,6 +190,95 @@ fn binary32_agrees_on_a_dense_sample() {
         bad += u64::from(!agree(x) || !agree(-x));
     }
     assert_eq!(bad, 0, "`sinf` and `sincosf().0` part");
+}
+
+/// `Real::cos` is `sin_cos().1` to the bit at binary64, over the same arguments as `sin`.
+///
+/// By-construction is an argument about one release of `libm`'s source -- `cos` and `sincos` share
+/// `rem_pio2`, the kernels, the octant table and, unlike `sin`, the small-argument cut -- and
+/// `libm` is a caret dependency. `solve_cubic`'s committed golden bits and `eig3`'s fixture ratio
+/// now rest on the claim (`0022`, `0053`), so it is a test.
+#[test]
+fn cos_agrees_at_binary64() {
+    // `Real::cos` and `Real::sin_cos`, spelled as paths and not as methods: on a concrete `f64`,
+    // `x.sin_cos()` resolves to **`std`**'s inherent method, which is the platform's and not
+    // `libm`'s. The first draft of this test wrote it that way and failed at `x = 16.4` -- against
+    // glibc, not against `sin_cos`. `no_std` keeps that out of the library, and lint check 5 keeps
+    // it out of non-test code, but test files are exempt from both.
+    let same = |x: f64| {
+        let (a, b) = (Real::cos(x), Real::sin_cos(x).1);
+        (a.is_nan() && b.is_nan()) || a.to_bits() == b.to_bits()
+    };
+    let mut st = 0x636f_735f_6639_3634u64;
+    for _ in 0..200_000 {
+        let r = splitmix(&mut st);
+        let e = ((r >> 52) % 120) as i32 - 60;
+        let m = 1.0 + ((r & 0x000f_ffff_ffff_ffff) as f64) / 4_503_599_627_370_496.0;
+        let x = m * libm::pow(2.0, f64::from(e));
+        assert!(same(x) && same(-x), "parted at {x:e}");
+    }
+    for x in [
+        0.0,
+        -0.0,
+        f64::from_bits(0x3e46_a09e_0000_0000),
+        core::f64::consts::FRAC_PI_4,
+        core::f64::consts::FRAC_PI_2,
+        core::f64::consts::PI,
+        f64::MIN_POSITIVE,
+        f64::MAX,
+        f64::INFINITY,
+        f64::NEG_INFINITY,
+        f64::NAN,
+    ] {
+        assert!(same(x), "parted at the named point {x:e}");
+    }
+}
+
+/// `Real::cos` is `sin_cos().1` to the bit over **all** `2^32` binary32 patterns, in eight shards.
+///
+/// `cosf`'s `(pi/4, 3pi/4]` arm is `k_sinf(C1_PIO2 - x)` where `sincosf`'s is `k_sinf(S1PIO2 - x)`:
+/// the same expression only because two constants defined in separate files from separate literals
+/// happen to be the same double. That is a coincidence a `libm` release can end, and no amount of
+/// sampling would find it, so this is exhaustive for item 3's reason.
+fn cos_shard(k: u32) -> (u64, Option<u32>) {
+    let (lo, hi) = (k << 29, u64::from(k << 29) + (1u64 << 29));
+    let (mut bad, mut first) = (0u64, None);
+    for b in u64::from(lo)..hi {
+        let x = f32::from_bits(b as u32);
+        let (a, c) = (libm::cosf(x), libm::sincosf(x).1);
+        let parts = if a.is_nan() || c.is_nan() {
+            a.is_nan() != c.is_nan()
+        } else {
+            a.to_bits() != c.to_bits()
+        };
+        if parts {
+            bad += 1;
+            first = first.or(Some(b as u32));
+        }
+    }
+    (bad, first)
+}
+
+macro_rules! cos_exhaustive_shard {
+    ($($name:ident = $k:expr;)+) => {$(
+        #[test]
+        #[ignore = "exhaustive over 2^29 of 2^32; `cos_agrees_at_binary64` is what `just test` runs"]
+        fn $name() {
+            let (bad, first) = cos_shard($k);
+            assert_eq!(bad, 0, "{bad} arguments part, first at {first:?}");
+        }
+    )+};
+}
+
+cos_exhaustive_shard! {
+    cos_agrees_on_all_of_binary32_0 = 0;
+    cos_agrees_on_all_of_binary32_1 = 1;
+    cos_agrees_on_all_of_binary32_2 = 2;
+    cos_agrees_on_all_of_binary32_3 = 3;
+    cos_agrees_on_all_of_binary32_4 = 4;
+    cos_agrees_on_all_of_binary32_5 = 5;
+    cos_agrees_on_all_of_binary32_6 = 6;
+    cos_agrees_on_all_of_binary32_7 = 7;
 }
 
 /// `Dual`'s `sin` is its `sin_cos().0` by construction, and the derivative still rides the cosine.

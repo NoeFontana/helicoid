@@ -7,7 +7,7 @@
 //! omnisac's `None` becomes a frame that is always orthonormal and eigenvalues that are not finite
 //! where they have no answer. What else differs from omnisac is `0023` (draft).
 
-use crate::cubic::{acos, pi};
+use crate::cubic::pi;
 use crate::matrix::Mat3;
 use crate::real::{is_finite, Blend, Mask, Real};
 use crate::vector::{Vec3, Vector};
@@ -166,11 +166,11 @@ pub fn eig3<S: Real>(a: &Mat3<S>) -> (Vec3<S>, Mat3<S>) {
     let r = S::select(r.lt(-one), -one, r);
     let r = S::select(one.lt(r), one, r);
 
-    let theta = acos(r);
+    let theta = r.acos();
     let two_pi = two * pi::<S>();
     let lambda = |k: usize| {
         let phi = (theta + two_pi * S::lit(k as f64)) / three;
-        q + two * p * phi.sin_cos().1
+        q + two * p * phi.cos()
     };
     let order = |x: S, y: S| {
         let swap = y.lt(x);

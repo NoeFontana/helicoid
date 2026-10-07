@@ -9,6 +9,41 @@ defined by the status tables in `docs/`; they win over this file.
 
 ### Changed
 
+- **`Real` gains `acos` and `cos`; `0022` lands and `0053` corrects two of its three reasons.**
+  `cubic.rs`'s private `atan2(sqrt((1 - x)(1 + x)), x)` is deleted and `solve_cubic` and `eig3` stop
+  discarding a sine.
+  - **Confirmed independently.** Against mpmath, `libm::acos` beats the private spelling everywhere:
+    **0.852 `u` against 1.659** on a grid of `[-1, 1]`, **0.489 against 1.148** as `x → 1⁻` — the
+    double-root region where the slope is infinite and `eig3` cares most — and 0.520 against 0.855
+    near 0. Cost: **2.63×** against `0022`'s stated 2.61×, and `libm::cos` 7.7 ns against
+    `sin_cos().1`'s 9.6.
+  - **`cos` changes no value**, which `0022` assumed and did not establish: identical to
+    `sin_cos().1` **by construction** — same `rem_pio2`, kernels, octant table and, unlike `sin`,
+    the same small-argument cut — and measured, 0 disagreements over all 2^32 binary32.
+  - **But a more accurate `acos` is not a more accurate root.** The root is
+    `2 r cos(θ/3 − 2πk/3)` and the rounding downstream of `θ` is not monotone in `θ`'s error. Of the
+    three `GOLDEN` rows that move (not the twenty `0022` predicted), two roots get closer to mpmath's
+    truth and one gets **further, 0.522 → 7.478 `u`**; `eig3`'s worst fixture `value / bound` moves
+    **0.150 → 0.206** on `ev` and `res`, `ang` unchanged. Every recorded bound still holds by a
+    factor of five. `0022`'s "more accurate, by a little, everywhere measured" is true of the
+    function and false of both routines.
+  - **"Restores bit-identity with omnisac" is withdrawn as unverifiable here**: omnisac is no
+    dependency, nothing committed records its per-row output, and `bits_are_omnisacs` *passed*
+    before the change. Regenerating three rows makes that test a pin on this port's own bits.
+  - **Neither routine has a corpus id** — 40 ids, none `cubic_*`, `eig3_*` or `real_*` — verified by
+    a before/after `just conformance` moving **zero** of 1565 numeric rows. So `0006`'s bars never
+    reached them and the accuracy case rests on two modules' fitted bounds. `just envelope` 113.
+  - **D5 becomes lint check 8.** "No `acos` of a trace anywhere in the workspace" held only by
+    absence; `Real::acos` opens the hole, so `crates/helicoid` may not name `acos` in code, with
+    `helicoid-linalg` exempt because `cubic` and `eig3` are the sanctioned callers. The third copy
+    of `is_test` is hoisted into one definition on the way.
+  - **`dual_value_is_plain_value`'s probe gains `sin`, `cos` and `acos`** (26 → 29 expressions):
+    it is a hand-written list and `0052` added `Real::sin` without extending it, so `PHASE2.md`
+    §0.0's "over every `Real` method" was already false.
+  - `Dual::acos`'s derivative feeds `sqrt` a safe argument: `(1 − v)(1 + v)` is negative outside the
+    domain, where `Real::sqrt` carries a `debug_assert!`, so a `select` substitutes `0` and gives
+    ∓inf — the convention `Real::atan2`'s rule already sets.
+
 - **`Real` gains `sin`, and no measured figure moves** (`0052`). `Real` had `sin_cos` and no `sin`,
   so six **shipped** sites wrote `sin_cos().0` and paid for a cosine nobody reads: `exact_a_b` twice
   (`SO3::jr`'s exact arm), `d_from` once (`q_coeffs`'s), `SO3::geodesic`'s blend three times.
@@ -23,7 +58,7 @@ defined by the status tables in `docs/`; they win over this file.
     because the correction is under half an ulp — and `tα` at `geo:consecutive` reaches that band),
     and at binary32 their octant arms are **exact negations**, agreeing only because `k_cosf` reads
     its argument solely through `x*x`. So binary32 is checked **exhaustively over all 2^32
-    patterns** — 0 disagreements — and binary64 over 1.2M arguments including that band.
+    patterns** — 0 disagreements — and binary64 over **520 018** arguments including that band.
   - **Verified end to end: all 24 files under `conformance/results/` are byte-identical** to the
     pre-change run bar the git revision column. `0047`'s standard; this change has cost and no
     numerics.

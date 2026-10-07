@@ -129,6 +129,13 @@ impl Real for Host {
     fn sin(self) -> Self {
         Host(self.0.sin())
     }
+    /// `std`'s, as this subject's whole purpose is to contrast `std` with `libm` (D16).
+    fn cos(self) -> Self {
+        Host(self.0.cos())
+    }
+    fn acos(self) -> Self {
+        Host(self.0.acos())
+    }
     fn atan2(self, x: Self) -> Self {
         Host(self.0.atan2(x.0))
     }

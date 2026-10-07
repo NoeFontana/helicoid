@@ -41,13 +41,20 @@
 //!
 //! `GOLDEN` is 36 polynomials with random binary64 coefficients and the bits of their roots. They
 //! were computed by omnisac d3be7b7 `poly::solve_cubic` on `libm` 0.2.16 with this port's tolerances
-//! (`2^-46`, `2^-40`, `2^-46`), drawn from 4e4 random rows: the bits agree outside the trigonometric
-//! arm, and inside it the `acos` form differs by up to 5 `u` of the largest root on those rows, and
-//! by 11 `u` at the most observed over 5e6 random polynomials (a sample maximum, not a bound).
-//! The differential of omnisac's own `poly::solve_cubic` against this port (1e6 polynomials per seed,
-//! 3 seeds, 20 families of random, planted, strip, subnormal, huge and non-finite coefficients, on
-//! `libm` and std math) is not committed: 95.2% bit-identical, the rest the leading-strip and
-//! band-strip tolerance changes and the `acos` ulps.
+//! (`2^-46`, `2^-40`, `2^-46`), drawn from 4e4 random rows. The differential of omnisac's own
+//! `poly::solve_cubic` against this port (1e6 polynomials per seed, 3 seeds, 20 families of random,
+//! planted, strip, subnormal, huge and non-finite coefficients, on `libm` and std math) is not
+//! committed: 95.2% bit-identical, the rest the leading-strip and band-strip tolerance changes and
+//! the `acos` ulps.
+//!
+//! **Three rows were regenerated when `0022` replaced the `atan2(sqrt((1 - x)(1 + x)), x)` spelling
+//! of `acos` with `Real::acos`** (`0053`): three of the twenty three-real-root rows moved, by at
+//! most 8 `u` of the root, and the other thirty-three did not. Whether the new values are omnisac's
+//! is **not knowable from this repository** — omnisac is not a dependency and nothing here records
+//! its per-row output — so what [`bits_are_omnisacs`] now pins is this port's own bits on rows that
+//! were omnisac's when they were drawn. `0022` predicted the move would be *toward* omnisac and
+//! that claim is neither confirmed nor refuted here; against **mpmath**, which is checkable, two of
+//! the three moved roots got closer to the true root and one got further, 0.52 `u` to 7.48.
 //!
 //! The proptests run 512 cases (`cfg`); 10^6 from a fixed seed is
 //!
@@ -55,7 +62,7 @@
 //! PROPTEST_CASES=1000000 PROPTEST_RNG_SEED=1 cargo nextest run --release -p helicoid-linalg cubic_tests
 //! ```
 
-use crate::cubic::{acos, pi};
+use crate::cubic::pi;
 use crate::linalg_tests::{cfg, unit, Lane, D};
 use crate::tests::L2;
 use crate::{solve_cubic, Dual, Mask, Precision, Real};
@@ -671,7 +678,7 @@ proptest! {
 #[rustfmt::skip]
 const GOLDEN: &[([u64; 4], [u64; 3], u8)] = &[
     // three real roots (mask bit `k` is slot `k`)
-    ([0x3FE2_69C3_B502_F4E2, 0x400A_0594_A6FA_BF9D, 0x4005_D238_7D2F_EAFB, 0xBFEE_3B4D_379C_1B1A], [0x3FD0_B7E1_0C66_3914, 0xBFF6_3931_A76A_8750, 0xC012_19BC_FD0C_0596], 7),
+    ([0x3FE2_69C3_B502_F4E2, 0x400A_0594_A6FA_BF9D, 0x4005_D238_7D2F_EAFB, 0xBFEE_3B4D_379C_1B1A], [0x3FD0_B7E1_0C66_391C, 0xBFF6_3931_A76A_8750, 0xC012_19BC_FD0C_0596], 7),
     ([0x3FF0_0000_0000_0000, 0x3FF9_4DA8_4713_A0C1, 0xC00C_3E58_C8A8_3FE2, 0xC016_A6F5_B317_F577], [0x3FFE_2937_8CA7_4282, 0xBFFB_A6F5_0895_C2A0, 0xBFFB_CFEA_CB25_20A6], 7),
     ([0x3FE5_922F_1FCF_62B4, 0x3FD0_A338_ACFA_1C24, 0xC000_EFB7_4066_D698, 0x3FED_7C8F_E6C2_404A], [0x3FF4_0501_C97A_EDE1, 0x3FE0_4A7C_D6B2_1AAA, 0xC001_2AED_E8F2_76DD], 7),
     ([0x3E55_11EC_4935_A76D, 0xBE74_4499_F41B_C315, 0xBE79_A805_1B37_F37B, 0x3E5D_B12E_CBCC_AF92], [0x4013_3452_984B_0B34, 0x3FCF_5A5F_0950_9F98, 0xBFF3_2C3F_F187_BD16], 7),
@@ -684,9 +691,9 @@ const GOLDEN: &[([u64; 4], [u64; 3], u8)] = &[
     ([0x3FF0_0000_0000_0000, 0x401A_16D9_AAC8_D016, 0x402A_2126_72C7_2AF0, 0x401D_9769_57F9_0C41], [0xBFEE_8BD5_5CF1_EFCA, 0xC006_455E_FA23_5532, 0xC006_455F_0431_CF08], 7),
     ([0x3D93_87E2_C901_3D56, 0x3DA2_0558_9F0C_7E79, 0xBD96_66FF_9D99_FB69, 0xBD83_ABE8_E349_2AD6], [0x3FE7_0915_B6ED_8D7B, 0xBFD3_DAEB_88CD_0AD9, 0xC002_0A3E_E2B3_3BFB], 7),
     ([0x3FF0_0000_0000_0000, 0xBFD6_377B_F745_27A4, 0xBFF0_EC2D_F11B_1C2E, 0xBFD4_4DF6_B21E_FA28], [0x3FF5_358F_C773_A329, 0xBFDF_4F61_86C5_DE41, 0xBFDF_4F61_9FC3_86BD], 7),
-    ([0x3FF0_0000_0000_0000, 0x0000_0000_0000_0000, 0xC004_6769_7B0B_252E, 0xBFEB_1AD6_182D_6390], [0x3FFB_E197_5A04_5A0E, 0xBFD6_519B_9409_1B32, 0xBFF6_4D30_7502_1341], 7),
+    ([0x3FF0_0000_0000_0000, 0x0000_0000_0000_0000, 0xC004_6769_7B0B_252E, 0xBFEB_1AD6_182D_6390], [0x3FFB_E197_5A04_5A0E, 0xBFD6_519B_9409_1B39, 0xBFF6_4D30_7502_1341], 7),
     ([0xBED4_FE70_8CF4_5E8C, 0xBE9A_9A67_F56E_4B88, 0x3EE1_1DC7_6B0F_D0D6, 0xBEC2_CF0D_95A0_780E], [0x3FF0_F6C6_3813_F176, 0x3FD2_DB0B_86D2_7F14, 0xBFF6_F1EF_4C30_29A4], 7),
-    ([0xC060_C0FE_8EFA_015F, 0x408B_8B6D_1833_0C6F, 0xC083_7850_9895_9C10, 0xC08E_C1C0_DEBF_C496], [0x4015_F046_3541_2FD4, 0x3FFD_3405_E9D8_F81C, 0xBFE7_7935_3A33_F68C], 7),
+    ([0xC060_C0FE_8EFA_015F, 0x408B_8B6D_1833_0C6F, 0xC083_7850_9895_9C10, 0xC08E_C1C0_DEBF_C496], [0x4015_F046_3541_2FD4, 0x3FFD_3405_E9D8_F819, 0xBFE7_7935_3A33_F68C], 7),
     ([0x3FF0_0000_0000_0000, 0x0000_0000_0000_0000, 0xC003_E9D1_FC49_42B8, 0x3F9B_BF71_C4FD_A380], [0x3FF9_27E3_F310_7A41, 0x3F86_4BC0_82DC_A4B4, 0xBFF9_547B_7416_338B], 7),
     ([0x3FED_8D3B_EAA6_31B4, 0x4000_0672_86C3_A4F5, 0xC023_296B_9DD3_3B6E, 0xC034_263F_EA2A_47A6], [0x4009_9BDF_DAEE_BA53, 0xC000_75E5_0990_1B7E, 0xC00A_804E_B623_602E], 7),
     ([0x3FE5_6572_0C41_39E0, 0x3FE7_7774_B694_0CD8, 0xBFED_35B2_0482_684E, 0xBFD1_136B_4161_2560], [0x3FEC_E881_D45D_2376, 0xBFD0_2DBB_8CE7_2830, 0xBFFB_F528_B03B_D0A0], 7),
@@ -801,9 +808,14 @@ fn a_repeated_root_can_be_dropped() {
     );
 }
 
-/// `pi` is `atan2(+0, -1)`, correctly rounded at each precision and a constant for `Dual`; `acos`
-/// by `atan2` is within 4 `u` of `libm::acos` and `acosf` (2 ulp, on 4 million random points too)
-/// on a grid, at the ends and near them (`1 - 2^-k`, where `sqrt(1 - x^2)` would lose everything).
+/// `pi` is `atan2(+0, -1)`, correctly rounded at each precision and a constant for `Dual`, and
+/// `Real::acos` is `libm`'s to the bit at both precisions, on a grid, at the ends and near them.
+///
+/// The `acos` half was a comparison of this port's `atan2(sqrt((1 - x)(1 + x)), x)` against
+/// `libm::acos` within 4 `u`. `0022` deleted that spelling, so the comparison would now be
+/// `libm::acos` against itself. What replaces it is the **routing** check `0017` step 1 set for
+/// `cbrt`: `Real::acos` is `libm::acos` and `libm::acosf`, bit for bit, which is the claim D16
+/// rests on and the one a `libm` bump could break. The corners go with it.
 #[test]
 fn pi_and_acos_are_within_their_ulps() {
     assert_eq!(pi::<f64>().to_bits(), PI.to_bits());
@@ -818,17 +830,23 @@ fn pi_and_acos_are_within_their_ulps() {
     let grid = (0..=4096).map(|i| -1.0 + f64::from(i) / 2048.0);
     let ends = (1..53).flat_map(|k| [1.0 - 2f64.powi(-k), 2f64.powi(-k - 1) - 1.0, 2f64.powi(-k)]);
     for x in grid.chain(ends) {
-        let (a, w) = (acos(x), libm::acos(x));
-        assert!(
-            (a - w).abs() <= 4.0 * unit::<f64>() * w.abs(),
+        assert_eq!(
+            Real::acos(x).to_bits(),
+            libm::acos(x).to_bits(),
             "f64 at {x:e}"
         );
-        let (a, w) = (f64::from(acos(x as f32)), f64::from(libm::acosf(x as f32)));
-        assert!(
-            (a - w).abs() <= 4.0 * unit::<f32>() * w.abs(),
+        let x32 = x as f32;
+        assert_eq!(
+            Real::acos(x32).to_bits(),
+            libm::acosf(x32).to_bits(),
             "f32 at {x:e}"
         );
     }
-    assert!(acos(1.0_f64).to_bits() == 0 && acos(-1.0_f64).to_bits() == PI.to_bits());
-    assert!(acos(f64::NAN).is_nan());
+    // The corners the grid does not land on exactly: `acos(1) = +0`, `acos(-1) = pi`, and a NaN or
+    // an out-of-domain argument in is a NaN out -- what `Real::acos`'s `# Domain` states in place
+    // of an assert.
+    assert_eq!(Real::acos(1.0_f64).to_bits(), 0);
+    assert_eq!(Real::acos(-1.0_f64).to_bits(), PI.to_bits());
+    assert!(Real::acos(f64::NAN).is_nan() && Real::acos(2.0_f64).is_nan());
+    assert!(Real::acos(1.0_f32).to_bits() == 0 && Real::acos(-2.0_f32).is_nan());
 }

@@ -504,6 +504,12 @@ impl Real for L2 {
     fn sin(self) -> Self {
         self.map(Real::sin)
     }
+    fn cos(self) -> Self {
+        self.map(Real::cos)
+    }
+    fn acos(self) -> Self {
+        self.map(Real::acos)
+    }
     fn atan2(self, x: Self) -> Self {
         self.zip(x, atan2)
     }

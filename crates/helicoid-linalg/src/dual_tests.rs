@@ -22,18 +22,55 @@ const POINTS: &[f64] = &[
 /// commute operands (`NaN * -NaN`), so those outputs treat every NaN as one value. Sign-bit
 /// operations and selection are deterministic and compared exactly.
 #[rustfmt::skip]
-const OUTPUTS: [(&str, bool); 26] = [
-    ("add", false), ("sub", false), ("mul", false), ("div", false), ("neg", true),
-    ("lit", true), ("lit", true), ("zero", true), ("one", true), ("sin", false), ("cos", false),
-    ("sqrt", false), ("cbrt", false), ("atan2", false), ("abs", true), ("copysign", true), ("lt", true),
-    ("le", true), ("not", true), ("and", true), ("or", true), ("select", true),
-    ("branch", false), ("branch", false), ("chain", false), ("chain", false),
+/// How many expressions [`probe`] returns and [`OUTPUTS`] names.
+///
+/// One constant for both, because the two were `[S; 29]` against `[(&str, bool); 26]` for one
+/// commit and `zip` truncates in silence: three expressions went uncompared and every name from
+/// `sin` on was attached to the wrong one, so `x.sin()` was reported as `lt` and compared *exactly*
+/// where its flag says otherwise. A shared length makes that a compile error (`0053`).
+const PROBES: usize = 29;
+
+const OUTPUTS: [(&str, bool); PROBES] = [
+    ("add", false),
+    ("sub", false),
+    ("mul", false),
+    ("div", false),
+    ("neg", true),
+    ("lit", true),
+    ("lit", true),
+    ("zero", true),
+    ("one", true),
+    ("sin", false),
+    ("cos", false),
+    ("sqrt", false),
+    ("cbrt", false),
+    ("atan2", false),
+    ("abs", true),
+    ("copysign", true),
+    ("sin", false),
+    ("cos", false),
+    ("acos", false),
+    ("lt", true),
+    ("le", true),
+    ("not", true),
+    ("and", true),
+    ("or", true),
+    ("select", true),
+    ("branch", false),
+    ("branch", false),
+    ("chain", false),
+    ("chain", false),
 ];
+
+const _: () = assert!(
+    OUTPUTS.len() == PROBES,
+    "every `probe` expression needs its name and exactness flag"
+);
 
 /// One output per `Real` method and operator, so a mismatch names the method. `sqrt` takes the
 /// `abs` of its argument: its domain is non-negative.
 #[rustfmt::skip]
-fn probe<S: Real>(x: S, y: S, z: S) -> [S; 26] {
+fn probe<S: Real>(x: S, y: S, z: S) -> [S; PROBES] {
     let (s, c) = x.sin_cos();
     let (lt, le) = (x.lt(y), y.le(z));
     let pick = |m: S::Mask| S::select(m, S::one(), S::zero());
@@ -41,6 +78,12 @@ fn probe<S: Real>(x: S, y: S, z: S) -> [S; 26] {
     [
         x + y, x - y, x * y, x / y, -x, S::lit(0.5), S::lit(-3.0), S::zero(), S::one(),
         s, c, x.abs().sqrt(), x.cbrt(), x.atan2(y), x.abs(), x.copysign(y),
+        // `sin`, `cos` and `acos`: this list is written by hand, so a `Real` method added without
+        // extending it is one `dual_value_is_plain_value` silently stops covering -- which is what
+        // happened to `sin` in `0052` and is corrected here along with `0022`'s two. Most `POINTS`
+        // are outside `acos`'s domain, so most of its rows are NaN, which is the comparison this
+        // test is built to make ("up to NaN sign and payload", `PHASE2.md` §3).
+        x.sin(), x.cos(), x.acos(),
         pick(lt), pick(le), pick(lt.not()), pick(lt.and(le)), pick(lt.or(le)),
         S::select(le, x, z), bt, bf,
         (x * y - z).atan2(x + z), (x.abs() + y.abs()).sqrt() * z.copysign(x),
@@ -411,6 +454,83 @@ const CBRT32: [(f32, f32, f32); 13] = [
 // Random inputs against mpmath, `f64` and `f32` alike, reach about 4 ulp on the first derivative
 // and about 10 on the second (the roundings of `c`, `c c`, `3 *` and `/`, and the nesting); the
 // value stays at 0. First order runs at both precisions, second order at `f64`.
+// `(x, acos x, d/dx acos x)` from mpmath at 120 digits, at exact inputs of each precision, each
+// rounded to what its type holds. `0053`: `Dual::acos`'s rule shipped without one of these, which
+// is the standard this module's own header sets ("each derivative rule against an independent
+// derivative"), and `eig3`'s ambient Jacobian reaches it at a double eigenvalue.
+#[rustfmt::skip]
+const ACOS: [(f64, f64, f64); 5] = [
+    // `acos` at `0` and `+-0.5` is `pi/2`, `pi/3` and `2 pi/3` exactly, so those rows would be
+    // named constants spelled badly -- clippy's `approx_constant` says so -- and they test the
+    // value, which `pi_and_acos_are_within_their_ulps` already pins against `libm` to the bit.
+    // What is left is what the *derivative* needs: three generic points and the near-singular one.
+    (0.25,  1.318_116_071_652_818,   -1.032_795_558_988_644_4),
+    (-0.9,  2.690_565_841_793_530_8, -2.294_157_338_705_618),
+    (0.9,   0.451_026_811_796_262_4, -2.294_157_338_705_618),
+    (0.75,  0.722_734_247_813_415_6, -1.511_857_892_036_909_3),
+    // `1 - 2^-20`: the derivative is -724, and the factored denominator earns its spelling here --
+    // `sqrt(1 - x^2)` would lose half its digits.
+    (0.999_999_046_325_683_6, 0.001_381_068_041_762_417_1, -724.077_516_568_578),
+];
+
+#[rustfmt::skip]
+const ACOS32: [(f32, f32, f32); 5] = [
+    // `acos` of the **binary32-rounded** argument, not of the binary64 one rounded afterwards:
+    // `0.9_f32` is `0.899_999_976...`, and `acosf` of that differs from `acos(0.9)` in the last
+    // place. A first draft of this table got it the other way round and failed against
+    // `libm::acosf` by one ulp. Each literal is the shortest decimal that round-trips at binary32,
+    // which is what clippy's `excessive_precision` asks for.
+    (0.25,  1.318_116_1,  -1.032_795_5),
+    (-0.9,  2.690_565_8,  -2.294_157),
+    (0.9,   0.451_026_86, -2.294_157),
+    (0.75,  0.722_734_3,  -1.511_857_9),
+    (0.999_999_05, 0.001_381_068, -724.077_5),
+];
+
+/// `Dual::acos`'s value and derivative against mpmath, and the two degenerate cases its `# Domain`
+/// names: `-+inf` where `d` is nonzero at `v = +-1` and NaN (`0 / 0`) where it is zero.
+#[test]
+fn dual_acos_matches_mpmath_derivative() {
+    for (x, a, want) in ACOS {
+        let r = D1::variable(x, 0).acos();
+        assert_eq!(r.v.to_bits(), libm::acos(x).to_bits());
+        near(r.v, a, 1, format_args!("acos at {x:e}"));
+        near(r.d[0], want, 2, format_args!("acos' at {x:e}"));
+    }
+    for (x, a, want) in ACOS32 {
+        let r = Dual::<f32, 1>::variable(x, 0).acos();
+        assert_eq!(r.v.to_bits(), libm::acosf(x).to_bits());
+        near32(r.v, a, 1, format_args!("f32 acos at {x:e}"));
+        near32(r.d[0], want, 2, format_args!("f32 acos' at {x:e}"));
+    }
+    // `v = 1`: the seeded lane is `-inf` and the untouched ones NaN, which is the pair of cases
+    // `Dual::cbrt` documents and `acos`'s domain did not until `0053`.
+    let at_one = Dual::<f64, 2>::variable(1.0, 0).acos();
+    assert_eq!(at_one.v.to_bits(), 0.0_f64.to_bits());
+    assert!(at_one.d[0] == f64::NEG_INFINITY, "{:?}", at_one.d[0]);
+    assert!(at_one.d[1].is_nan(), "{:?}", at_one.d[1]);
+    // A constant at `v = 1`: every lane is `0 / 0`.
+    let c = Dual::<f64, 2>::constant(1.0).acos();
+    assert!(c.d.iter().all(|d| d.is_nan()), "{:?}", c.d);
+    // Out of domain: the value is NaN and the derivative follows the same two cases, no panic even
+    // in debug -- the `select` that feeds `sqrt` a safe argument (`0053` decision 7).
+    let out = Dual::<f64, 2>::variable(2.0, 0).acos();
+    assert!(out.v.is_nan() && out.d[0] == f64::NEG_INFINITY && out.d[1].is_nan());
+}
+
+/// Nesting gives the second derivative of `acos`: `-x (1 - x^2)^(-3/2)`.
+#[test]
+fn nesting_gives_second_derivatives_of_acos() {
+    type D11 = Dual<Dual<f64, 1>, 1>;
+    for (x, _, _) in ACOS {
+        let inner = Dual::<f64, 1>::variable(x, 0);
+        let r = D11::variable(inner, 0).acos();
+        let s = 1.0 - x * x;
+        let want = -x / (s * libm::sqrt(s));
+        near(r.d[0].d[0], want, 8, format_args!("acos'' at {x:e}"));
+    }
+}
+
 #[test]
 fn dual_cbrt_matches_mpmath_derivative() {
     for (x, c, want) in CBRT {

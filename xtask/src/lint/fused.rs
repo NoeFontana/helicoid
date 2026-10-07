@@ -29,15 +29,11 @@
 
 use std::collections::BTreeMap;
 
-use super::{comments, File, Violation};
+use super::{comments, is_test, File, Violation};
 
 /// How a fused multiply-add can be spelled in a library crate: the `libm` crate's `fma`, `fmaf`
 /// and their wider siblings, and `std`'s inherent `mul_add` should a crate ever gain `std`.
 const FUSED: [&str; 2] = ["libm::fma", "mul_add"];
-
-fn is_test(path: &str) -> bool {
-    path.ends_with("_tests.rs") || path.ends_with("/tests.rs")
-}
 
 pub(crate) fn check(files: &[File]) -> Vec<Violation> {
     let mut out = Vec::new();

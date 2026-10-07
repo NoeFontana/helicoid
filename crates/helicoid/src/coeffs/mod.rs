@@ -32,12 +32,14 @@
 //!   for `exp_coeffs`, where `cos θ/2` switches, so `Exp` is on its series arms to `θ = 2.29`;
 //!   `8.35` for `jr_coeffs` (`a`), `8.98` for `q_coeffs` (`e`), `3.92` for `jr_inv_coeff`.
 //!   Above it the group's exact arms run once, at `select(all, 1, θ²)`, sharing `θ` and each
-//!   `sin_cos` they can, and each member selects by its own mask; a scalar mask runs the Horner of
-//!   the members on their series arm alone. `sqrt` and `sin_cos` calls: `exp_coeffs` one and one
-//!   (`NUMERICS.md` §3.1), `jr_coeffs` one and two, `jr_inv_coeff` one and one, `q_coeffs` one and
-//!   two (`b` and `e` share `sin θ`, `cos θ`). Evaluated for nothing: one `sin_cos` of `jr_coeffs`
-//!   for `θ² ∈ [8.35, 9.65)` and `b`'s and `d`'s Horners beside `q_coeffs`' exact arm for
-//!   `[8.98, 9.65)` — and, across groups, `b` twice in `SEn3::jr` (`0047` *Further work*).
+//!   transcendental they can, and each member selects by its own mask; a scalar mask runs the
+//!   Horner of the members on their series arm alone. `(sqrt, sin_cos, sin)` calls, as
+//!   `coeffs::tests`'s counting scalar pins them: `exp_coeffs` `(1, 1, 0)` (`NUMERICS.md` §3.1),
+//!   `jr_coeffs` **`(1, 0, 2)`** — no `sin_cos` at all, since both of its sines discard their
+//!   cosine (`0052`) — `jr_inv_coeff` `(1, 1, 0)`, `q_coeffs` **`(1, 1, 1)`** (`b` and `e` share
+//!   `sin θ` and `cos θ`; `d`'s half-angle sine is the `sin`). Evaluated for nothing: one `sin` of
+//!   `jr_coeffs` for `θ² ∈ [8.35, 9.65)` and `b`'s and `d`'s Horners beside `q_coeffs`' exact arm
+//!   for `[8.98, 9.65)` — and, across groups, `b` twice in `SEn3::jr` (`0047` *Further work*).
 //! - `r` (`log_ratio`) takes its series iff `w > 0` and `s = n²/w² < switch`, `s` formed by a division
 //!   (0014 (draft) question 29, 0015 (draft) NU.6): the reading the sweep measures. Where `s`
 //!   overflows (a unit `q` with `w` below about `1e-154` at `f64`, `5e-20` at `f32`) the mask is false
