@@ -115,9 +115,9 @@ per point; its reference twin is the per-point `act`.
 
 Shepperd's method: select the largest of $\{\mathrm{tr}R, R_{00}, R_{11}, R_{22}\}$ through nested
 `branch`es and extract from that pivot (e.g. trace pivot: $w = \tfrac12\sqrt{1 + \mathrm{tr}R}$,
-$x = (R_{21} - R_{12})/(4w)$, …), then normalize. **Closed form, never iterative**: locus-tag's
-`quat_from_so3` regression (nalgebra's Müller iteration looping forever on degenerate input) is a
-Phase 3 test. Projecting an arbitrary $3\times3$ onto SO(3) is `svd3` first
+$x = (R_{21} - R_{12})/(4w)$, …), then normalize. **Closed form, never iterative**:
+avoids iterative convergence failures (such as Müller iteration hangs on degenerate input).
+Projecting an arbitrary $3\times3$ onto SO(3) is `svd3` first
 ($U\,\mathrm{diag}(1, 1, \det UV^\top)\,V^\top$), then this.
 
 ### 3.5 Jacobians and adjoints

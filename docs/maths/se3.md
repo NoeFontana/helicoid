@@ -431,7 +431,7 @@ $(\Pi\Sigma\Pi^\top)^{-1} = \Pi\Sigma^{-1}\Pi^\top$; $g^\top\tau = (\Pi g)^\top\
 rule. (e) is the definition. $\square$
 
 *What it does not do.* $\Pi$ acts on tangent coordinates only; $\theta$, the coefficients and the group
-element are unchanged. It converts an order, never a retraction: locus-tag's decoupled
+element are unchanged. It converts an order, never a retraction: decoupled
 $(R\,\mathrm{Exp}\,\omega,\ Rv + t)$ is a different map from $\mathrm{Exp}$, not $\Pi$ of it (`0012`). Using a
 translation-first $M$ where a rotation-first one is expected is a large error, not a rounding:
 $\mathrm{Ad}_{\mathrm{tf}} - \mathrm{Ad}$ has the block $[t]_\times R$ in both off-diagonal positions (zero iff

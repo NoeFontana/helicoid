@@ -212,7 +212,7 @@ $(J_C^\top J_C + \lambda\Lambda)\delta_C = -J_C^\top r$ accepted as $X^+ = \math
   $\ell(\theta)^2 = 1 - 2\frac{\sin\theta}\theta + \frac{2(1 - \cos\theta)}{\theta^2}$, so $\ell(\theta) = \frac\theta2\big(1 - \frac{\theta^2}{36} + O(\theta^4)\big) \le \frac\theta2$; to first order the gap is $\frac12R(\varphi\times\rho)$.
 - (d) So changing the chart changes neither the critical points nor the minimum, nor the step of `Screw` and `Decoupled`. It changes the *trial point*, by at most $\frac\theta2\lVert\rho\rVert$ in the translation ($4.9986$ cm for
   a step of $0.1$ rad and $1$ m, $0.5$ mm for $0.01$ rad and $0.1$ m; the rotation is identical), hence its cost, the gain ratio, the accept or reject and the update of $\lambda$, hence every later iterate. Between `Decoupled` and
-  `WorldTranslation` there is no such gap (CH.4(b) is linear). By (a) the Gauss–Newton matrix $J^\top J$ at the base (weights absorbed in $r$) is the same for `Screw` and `Decoupled`. `0012`'s Context reports a `JᵀWJ` conditioning improvement for locus-tag, without saying against which
+  `WorldTranslation` there is no such gap (CH.4(b) is linear). By (a) the Gauss–Newton matrix $J^\top J$ at the base (weights absorbed in $r$) is the same for `Screw` and `Decoupled`. `0012`'s Context reports a `JᵀWJ` conditioning improvement for decoupled retractions, without saying against which
   chart; this page does not reproduce it.
 
 *Proof.* (a) $\mathrm{ret}'_X = \mathrm{ret}_X \circ \Phi^{-1}$ near $0$. (b) Substitute (a) in the normal equations; an orthogonal $D$ leaves $\lambda I$ alone, since $D^{-\top}(J^\top J + \lambda I)D^{-1}$ needs $D^\top D = I$.

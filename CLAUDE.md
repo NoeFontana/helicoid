@@ -1,8 +1,8 @@
 # CLAUDE.md — agent guidance for helicoid
 
 For AI agents. Humans: `CONTRIBUTING.md` (owed by [`PHASE1.md`](./docs/PHASE1.md) §3). `helicoid`
-is the one Lie-group layer under `tf_tree`, omnisac, locus-tag, locus-calib, locus_fusion and
-fuse-geometry, built along the seven-phase roadmap in [`docs/PROJECT.md`](./docs/PROJECT.md) §4.
+is the one Lie-group layer under `tf_tree` and downstream perception libraries,
+built along the seven-phase roadmap in [`docs/PROJECT.md`](./docs/PROJECT.md) §4.
 
 **The documents in [`docs/`](./docs/) are the contract.** Read `docs/PROJECT.md`; then
 `docs/NUMERICS.md` if you touch a formula; then the spec for the phase you touch — **before**
@@ -27,8 +27,8 @@ lowest MSRV among consumers (D17).
 | [`PHASE2.md`](./docs/PHASE2.md) | `helicoid-linalg`: `Real`, `Mask`, `Dual`, fixed-size types, strided views, `eig3`/`svd3`/`solve_cubic`. |
 | [`PHASE3.md`](./docs/PHASE3.md) | `helicoid`: coefficient kernel, SO(2), SO(3), SE(2), SE_N(3), Rⁿ, products, sides, Jacobians. |
 | [`PHASE4.md`](./docs/PHASE4.md) | Geodesics and their Jacobians; what `helicoid` owes the `tf_tree` migration. |
-| [`PHASE5.md`](./docs/PHASE5.md) | Charts, S², Sim(3), Γ functions, `Gaussian`; the omnisac / locus-tag / locus_fusion migrations. |
-| [`PHASE6.md`](./docs/PHASE6.md) | Ambient Jacobians, `mint`, cross-target bit identity, locus-calib, the 1.0 criteria. |
+| [`PHASE5.md`](./docs/PHASE5.md) | Charts, S², Sim(3), Γ functions, `Gaussian`; consumer migrations. |
+| [`PHASE6.md`](./docs/PHASE6.md) | Ambient Jacobians, `mint`, cross-target bit identity, calibration integration, the 1.0 criteria. |
 | [`PHASE7.md`](./docs/PHASE7.md) | `helicoid-spline`. **GATED ([`0011`](./docs/decisions/0011-continuous-time-waits-for-a-consumer.md)), not scheduled**; §3 is questions, not answers. |
 | [`decisions/`](./docs/decisions/) | A record's own `**Status:**` line says whether it is authoritative: `grep -m1 -H '^\*\*Status:' docs/decisions/0*.md`. [`README.md`](./docs/decisions/README.md) indexes them. [`0013`](./docs/decisions/0013-simd-lanes-owe-a-measurement.md) is a **draft** and authorises nothing. |
 
@@ -63,8 +63,8 @@ lowest MSRV among consumers (D17).
   oracle runners are unrestricted and are **never** a normal dependency of a library crate.
 - **Values, not storage** (D2): no `Pod`, `Zeroable`, `serde`. Layout is not a semver contract;
   consumers own their storage formats (tf_tree's arena records stay tf_tree's).
-- **Scope** ([`0009`](./docs/decisions/0009-what-helicoid-does-not-own.md)): no camera/IMU/LiDAR
-  model (that is `locus-*`), no solver, no preintegration, no spline
+- **Scope** ([`0009`](./docs/decisions/0009-what-helicoid-does-not-own.md)): no sensor
+  models, no solver, no preintegration, no spline
   ([`0011`](./docs/decisions/0011-continuous-time-waits-for-a-consumer.md)), no SIMD `Real` impl
   ([`0013`](./docs/decisions/0013-simd-lanes-owe-a-measurement.md)).
 - **A retraction is a chart** ([`0012`](./docs/decisions/0012-a-retraction-is-a-chart.md)): a

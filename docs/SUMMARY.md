@@ -29,7 +29,7 @@
 - [Phase 3: core groups](PHASE3.md)
 - [Phase 4: geodesics and the tf_tree migration](PHASE4.md)
 - [Phase 5: extended geometry and the retraction migrations](PHASE5.md)
-- [Phase 6: interop, determinism, locus-calib, 1.0](PHASE6.md)
+- [Phase 6: interop, determinism, calibration, 1.0](PHASE6.md)
 - [Phase 7: continuous time (gated)](PHASE7.md)
 
 # Decisions

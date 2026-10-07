@@ -23,7 +23,7 @@ Normative specifications for whoever is changing `helicoid`, not tutorials.
 5. [`PHASE3.md`](./PHASE3.md): the groups.
 6. [`PHASE4.md`](./PHASE4.md): geodesics; the `tf_tree` migration.
 7. [`PHASE5.md`](./PHASE5.md): charts, S², Sim(3), Γ, `Gaussian`; the retraction migrations.
-8. [`PHASE6.md`](./PHASE6.md): interop, determinism, locus-calib, 1.0.
+8. [`PHASE6.md`](./PHASE6.md): interop, determinism, calibration, 1.0.
 
 Cross-cutting:
 

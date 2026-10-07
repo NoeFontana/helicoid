@@ -1,10 +1,8 @@
 //! Real roots of a cubic (`docs/PHASE2.md` §6, decision `0017`).
 //!
-//! omnisac's depressed-cubic solver, generic over `S: Real`: Cardano for one real root, Viète's
-//! trigonometric form for three, explicit formulas for a repeated root, split by the discriminant
-//! inside a relative band. Every branch is a `Real::branch` whose arm evaluates at a safe
-//! argument and every decision is a mask, so all lanes stay finite and a `Dual` root differentiates
-//! the code that ran. The roots come with a validity mask where omnisac returned an `ArrayVec`.
+//! Depressed-cubic solver generic over `S: Real`: Cardano for one real root, Viète's
+//! trigonometric form for three, and explicit repeated-root formulas. Branches evaluate
+//! at safe arguments using `Real::branch` and mask decisions. Valid roots report via mask.
 
 use crate::real::{is_finite, Mask, Precision, Real};
 use crate::vector::{Vec3, Vector};
@@ -92,15 +90,13 @@ pub(crate) fn pi<S: Real>() -> S {
 /// # Tolerances
 ///
 /// Three thresholds are powers of two, exact at both precisions, a fixed multiple of the unit
-/// roundoff `u` (`2^-53`, `2^-24`); they are not coefficients of `NUMERICS.md` §4 and are not
-/// generated (`0017`). They replace omnisac's `f64` literals, kept at the same multiple of `u` up
-/// to the power of two:
+/// roundoff `u` (`2^-53`, `2^-24`) (`0017`):
 ///
-/// | threshold | multiple | `f64` | `f32` | omnisac |
-/// |---|---|---|---|---|
-/// | the leading coefficient must exceed `max(scale, 1) tol` (`scale` = the largest `\|coefficient\|`), else no root | `2^7 u` | `2^-46` | `2^-17` | `1e-14`, `90 u` |
-/// | the band of `disc`, relative to the larger of its two summands | `2^13 u` | `2^-40` | `2^-11` | `1e-12`, `9007 u` |
-/// | the triple-root test, relative to `max(\|p\|, \|q\|, 1)` | `2^7 u` | `2^-46` | `2^-17` | `1e-14`, `90 u` |
+/// | threshold | multiple | `f64` | `f32` |
+/// |---|---|---|---|
+/// | leading coefficient floor: `max(scale, 1) tol` | `2^7 u` | `2^-46` | `2^-17` |
+/// | relative discriminant band | `2^13 u` | `2^-40` | `2^-11` |
+/// | relative triple-root test | `2^7 u` | `2^-46` | `2^-17` |
 ///
 /// Changing one is a changelog line naming this function.
 ///

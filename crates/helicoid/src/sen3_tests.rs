@@ -123,7 +123,7 @@ fn the_dense_order_is_phi_then_rho() {
     );
 }
 
-/// Barfoot's `[ρ; φ]`, Solà's, Sophus's and manif's `[υ; ω]` and locus-tag's `[v, ω]` against the
+/// Barfoot's `[ρ; φ]` and Solà's, Sophus's, and manif's `[υ; ω]` against
 /// rotation-first `[ω; v]`, by hand.
 #[test]
 fn twist_translation_first_by_hand() {

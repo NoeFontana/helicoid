@@ -17,14 +17,14 @@ and three retractions:
 | Where | Representation | Tangent order | Retraction |
 |---|---|---|---|
 | `tf_tree_math` (published) | Hamilton, `w` first, `Iso3 { q, t }` | `[ω, v]` | `T̂ · exp(ξ^)` (SE(3) exponential) |
-| locus-tag `Pose::retract` | nalgebra `Rotation3` + `Vector3` | `[v, ω]` (`delta[0..3]` is translation) | `(R·Exp(ω), R·v + t)` — decoupled, not SE(3) Exp |
-| omnisac refinement (PnP, E, rigid) | private | private | private |
-| locus_fusion | Sophus (Eigen) | `[υ; ω]` | Sophus right-⊕ |
-| locus-calib (planned) | — | — | would be a fifth copy |
+| Decoupled pose retractions | nalgebra `Rotation3` + `Vector3` | `[v, ω]` (`delta[0..3]` is translation) | `(R·Exp(ω), R·v + t)` — decoupled, not SE(3) Exp |
+| Vision refinement (PnP, E, rigid) | private | private | private |
+| Estimators | Sophus (Eigen) | `[υ; ω]` | Sophus right-⊕ |
+| Calibration (planned) | — | — | would be a fifth copy |
 
 `helicoid` replaces all of them, and is the only place a small-angle series is allowed to exist.
 
-**Non-goals.** No sensor models (`locus-camera`, `locus-imu`, `locus-lidar`), no solver, no IMU
+**Non-goals.** No sensor models, no solver, no IMU
 preintegration, no storage formats, no splines until a consumer opens the gate
 ([`0009`](./decisions/0009-what-helicoid-does-not-own.md),
 [`0011`](./decisions/0011-continuous-time-waits-for-a-consumer.md)). `helicoid` computes;
@@ -42,7 +42,7 @@ consumers store, estimate and decide.
 | No SE₂(3), S², Sim(3), Γ functions in the stack | VIO and calibration re-derive them | Phases 3 and 5 |
 | One retraction baked into each LM | Changing it silently changes iterates, RunRecords and bench tails | Charts are named types ([`0012`](./decisions/0012-a-retraction-is-a-chart.md)) |
 | Branchy numeric code | Cannot run on SIMD lanes; unsafe under reverse-mode AD | `Real` has no `PartialOrd`; masks and `branch` ([`0003`](./decisions/0003-the-scalar-that-cannot-say-less-than.md)) |
-| Platform `libm` differences | Native and wasm32 outputs differ by an ulp; Fuse's log-rebuildable stores cannot be bit-proven | `libm` crate on every target (D16) |
+| Platform `libm` differences | Native and wasm32 outputs differ by an ulp; log-rebuildable stores cannot be bit-proven | `libm` crate on every target (D16) |
 | "State of the art" asserted | No evidence which strata a library is worse on | Domination bar over an oracle envelope, per stratum, on the max (D8) |
 
 ## 3. Architecture in one page
@@ -70,10 +70,10 @@ are `no_std`, no `alloc`, `forbid(unsafe_code)`, and depend on `libm` alone (plu
 6. `reference` — composite routines keep an obvious, slow twin, proptested against the fast one.
 7. `xtask thresholds` — the sweep that generates every switch point and series length.
 
-**Consumers** sit above: `tf_tree` (composition, geodesics, `Ad`), omnisac and locus-tag
-(retractions, charts, `from_matrix`), locus-calib (charts, ambient Jacobians, `Gaussian`),
-locus_fusion (SE₂(3), Γ, both sides), fuse-geometry (wasm32, determinism). The solver crate and the
-`locus-*` sensor-model crates depend on `helicoid`; `helicoid` depends on none of them.
+**Consumers** sit above: `tf_tree` (composition, geodesics, `Ad`), vision/pose pipelines
+(retractions, charts, `from_matrix`), calibration tools (charts, ambient Jacobians, `Gaussian`),
+fusion estimators (SE₂(3), Γ, both sides). The solver crate and sensor-model
+crates depend on `helicoid`; `helicoid` depends on none of them.
 
 **The load-bearing consequence:** the corpus specifies *correct*, the envelope specifies *state of
 the art*, and determinism (D16) makes the no-regress bar exact — equal-or-better, bit for bit, on
@@ -86,7 +86,7 @@ each stratum's max.
   envelope, the bench gate; all validated against planted defects. **No group code.**
   `docs/PHASE1.md`.
 - **Phase 2 — `helicoid-linalg`.** The scalar model (`Real`, `Mask`, `Blend`), `Dual`, fixed-size
-  types, strided views, `eig3`/`svd3`/`solve_cubic` migrated from omnisac. `docs/PHASE2.md`.
+  types, strided views, `eig3`/`svd3`/`solve_cubic`. `docs/PHASE2.md`.
 - **Phase 3 — core groups.** The coefficient kernel and its generated thresholds; SO(2), SO(3),
   SE(2), SE_N(3), Rⁿ, products; sides; every Jacobian; reference twins; the first envelope.
   `docs/PHASE3.md`.
@@ -94,9 +94,9 @@ each stratum's max.
   fast twin, invariance tests; the parity table, envelope and bench evidence a `tf_tree` record
   needs. `docs/PHASE4.md`.
 - **Phase 5 — extended geometry and the retraction migrations.** Charts, S², Sim(3), Γ₁/Γ₂,
-  `Gaussian`; omnisac, locus-tag and locus_fusion onto `helicoid`. `docs/PHASE5.md`.
-- **Phase 6 — interop, determinism, locus-calib, 1.0.** Ambient (Ceres-style) Jacobians, `mint`,
-  the cross-target bit-identity gate, locus-calib's first commit, the 1.0 criteria.
+  `Gaussian`; consumer migrations onto `helicoid`. `docs/PHASE5.md`.
+- **Phase 6 — interop, determinism, calibration, 1.0.** Ambient (Ceres-style) Jacobians, `mint`,
+  the cross-target bit-identity gate, calibration tooling support, the 1.0 criteria.
   `docs/PHASE6.md`.
 - **Phase 7 — continuous time, gated.** `helicoid-spline`. `docs/PHASE7.md` is a **requirements
   artifact, not an implementation authorization**
@@ -106,10 +106,9 @@ Status per phase: the §0.0 table heading each spec is authoritative.
 
 ## 5. Decision log
 
-- **D1 — One Lie layer for the stack.** `helicoid` replaces `tf_tree_math`'s SE(3), omnisac's and
-  locus-tag's retractions, and locus_fusion's Sophus usage where it is Rust; locus-calib uses it
-  from its first commit. *Do not* add a second implementation of `Exp`, `Log` or a Jacobian anywhere
-  in the stack; a consumer needing a variant gets a chart here (D12), not a local fork.
+- **D1 — One Lie layer for the stack.** `helicoid` replaces disparate SE(3) implementations and
+  ad-hoc retractions across the stack. *Do not* add a second implementation of `Exp`, `Log` or a
+  Jacobian anywhere in the stack; a consumer needing a variant gets a chart here (D12), not a local fork.
 - **D2 — Values, not storage.** Every type is a `Copy` value. `#[repr(C)]` makes layout predictable
   but **layout is not a semver contract**: consumers own their storage formats (`tf_tree`'s arena
   records stay `tf_tree`'s, its D4). *Do not* add `Pod`, `Zeroable` or `serde` to a `helicoid`
@@ -174,13 +173,13 @@ scheduled; adding a row is not a decision, removing one is.
 
 | Entry | Source | Gate |
 |---|---|---|
-| `helicoid-spline` | [`PHASE7.md`](./PHASE7.md), [`0011`](./decisions/0011-continuous-time-waits-for-a-consumer.md) | A consumer record: locus-calib camera–IMU, locus_fusion continuous time, or `tf_tree` Phase 6 |
+| `helicoid-spline` | [`PHASE7.md`](./PHASE7.md), [`0011`](./decisions/0011-continuous-time-waits-for-a-consumer.md) | A consumer record: calibration camera–IMU, continuous-time estimation, or `tf_tree` Phase 6 |
 | SIMD `Real` impl | [`0013`](./decisions/0013-simd-lanes-owe-a-measurement.md) (draft) | A consumer gate win that pays for its dependency cost; `tf_tree` 0016's evidence is the bar to beat |
 | Closed-form Γ directional Jacobians | [`PHASE5.md`](./PHASE5.md) §4 | A bench showing the `Dual` path is a consumer bottleneck |
 | `Matrix::block` / `set_block` (`helicoid-linalg`) | [`PHASE2.md`](./PHASE2.md) §4 | A consumer outside `helicoid` (both `Gaussian` and the ambient Jacobians are in `helicoid`, so `pub(crate)` reaches them). The `sandwich` path is no longer evidence for it, and the private `block`/`put` of `dualmat.rs` this row used to cite are deleted: `SEn3Jac::sandwich` builds its two results with `from_cols`/`from_rows` and reaches no entry through `Matrix::get`/`set` |
 | A specialized `Matrix::mul` for `3 x 3` (`helicoid-linalg`) | [`PHASE2.md`](./PHASE2.md) §4, and the §11 measurement in [`PHASE3.md`](./PHASE3.md) §0.0 | A measurement that separates code generation from arithmetic. Writing out the entries of a *hat* product took `helicoid`'s Jacobians to 0.14–0.62 of their time, where the multiplications saved account for about 1.5x of it: the generic product appears to run a chained `3 x 3` at about 1 flop/ns against 3.2 written out. The structured helpers cover `helicoid`'s own hat products; whether the generic one is worth specializing is a `helicoid-linalg` bench nobody has run |
-| `helicoid-py` | no record | locus-calib's Python tooling asks for batched NumPy access |
-| The small dense LM (omnisac's LM core) | [`0009`](./decisions/0009-what-helicoid-does-not-own.md) | Not here: solver tier. Listed so the request has somewhere to be refused |
+| `helicoid-py` | no record | Calibration Python tooling asks for batched NumPy access |
+| Small dense LM solver | [`0009`](./decisions/0009-what-helicoid-does-not-own.md) | Not here: solver tier. Listed so the request has somewhere to be refused |
 
 ## 6. Design smells — stop if you catch yourself doing these
 

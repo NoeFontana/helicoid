@@ -1,11 +1,9 @@
 //! Eigendecomposition of a symmetric 3x3 matrix (`docs/PHASE2.md` §6, decision `0017`).
 //!
-//! omnisac's `eig3::eigendecomp_sym3_signed` (d3be7b7), generic over `S: Real`: Smith's closed form
-//! for the eigenvalues and cross products of the rows of `A - lambda I` for the eigenvectors. Every
-//! decision is a mask and every `sqrt` and division sees a safe argument, so all lanes stay finite
-//! and a `Dual` result differentiates the code that ran. The signature has no failure channel:
-//! omnisac's `None` becomes a frame that is always orthonormal and eigenvalues that are not finite
-//! where they have no answer. What else differs from omnisac is `0023` (draft).
+//! Symmetric 3x3 eigendecomposition generic over `S: Real`: Smith's closed form
+//! for eigenvalues and cross products of rows of `A - lambda I` for eigenvectors.
+//! Every decision is a mask; square roots and divisions use safe arguments. The frame
+//! is always orthonormal.
 
 use crate::cubic::pi;
 use crate::matrix::Mat3;
@@ -106,7 +104,7 @@ fn null_vec<S: Real>(m: [S; 6], lambda: S) -> Vec3<S> {
 /// included, no column is reliable.** The eigenvalues are right (the pair to `sqrt(u) |A|`), but
 /// `v2` is rounding noise or the fallback `e_z`, and `v1` and `v0` are built from it: the vector of
 /// the isolated `l0` has a residual of the order of `|A|` however wide its gap (`0.8 |A|` for
-/// `diag(5, 1, 5)`). omnisac's vectors are as wrong there, or `None` where a cross product vanishes.
+/// `diag(5, 1, 5)`).
 ///
 /// A `Dual` result differentiates the arm taken: the derivative is `NaN` where `acos` sees
 /// `r = +-1` (a double eigenvalue), and for a multiple of the identity the arms are constants.
