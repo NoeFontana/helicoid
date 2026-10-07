@@ -42,7 +42,7 @@ the definition at the input as stored, at 120 digits, rechecked at 150 (`PHASE1.
 | Id | `in` | `out` | Reference | Cross-check |
 |---|---|---|---|---|
 | `solve_cubic` | `a`, `b`, `c`, `d` | `re[3]`, `im[3]`: all three roots, ordered by `(re, im)` | The planted roots where the coefficients are exact (below). Otherwise `mp.polyroots(…, extraprec=300)` of the stored coefficients | `p(z) = 0` to 100 digits. A planted root is checked exactly in rationals |
-| `eig3` | `A` (3×3, symmetric, column-major) | `lambda[3]` ascending, `V` (3×3, columns the eigenvectors) | `mp.eigsy` of the stored `A` | `‖AV − VΛ‖` and `‖VᵀV − I‖` below `10^-100 ‖A‖` |
+| `eig3` | `A` (3×3, symmetric, column-major) | `lambda[3]` ascending, `V` (3×3, columns the eigenvectors) | `mp.eigsy` of the stored `A` | `‖AV − VΛ‖` below `10^-100 ‖A‖`, `‖VᵀV − I‖` below `10^-100` |
 | `chol_n3`, `chol_n6` | `A` (n×n, symmetric) | `valid[1]` (1 or 0); `L` (n×n, lower) | `valid` decided exactly, by an `LDLᵀ` of the stored `A` in rationals. `L` is `mp.cholesky(A, tol=0)` of the stored `A` (its default absolute tolerance refuses `chol:diag-scale`'s pivots), or zeros when `valid = 0` | `‖LLᵀ − A‖ < 10^-100 ‖A‖` |
 | `chol_solve_n3`, `chol_solve_n6` | `A` (n×n), `b[n]` | `x[n]` | `mp.lu_solve` of the equilibrated system `D A D`, `D = diag(A)^-1/2` (`mp.lu_solve` of `A` itself calls `chol:diag-scale` singular) | `‖Ax − b‖ < 10^-100 ‖A‖‖x‖` |
 | `quat_renormalize` | `q[4]` | `q[4]` | `q/‖q‖`, the exact projection (see below) | `‖q'‖ = 1` and `q' ∥ q` |
@@ -147,8 +147,10 @@ units of `u` of the stratum's precision.
 
    with `|r̂ − z| = √((r̂ − Re z)² + (Im z)²)`.
    - A spurious real double root that stands for a complex pair costs that pair's `|Im z|`.
-   - A real root no valid slot answers counts as a distance `‖Z‖₂`, so it scores exactly `1/u`:
-     finite, so no-regress sees it and the run does not fail.
+   - Every distance is capped at `‖Z‖₂`, a total loss, and with no valid slot at all each real
+     root is at the cap: the worst answer scores exactly `1/u`, finite, so no-regress sees it, the
+     run does not fail, and "no root" never reads better than "a root far off". The scale is
+     `max(‖Z‖₂, smallest normal)`.
    - The slots need no ordering: the rustdoc says they are "not sorted".
 4. **Mask agreement**, for `chol`'s `valid`. A reported mask that differs from the reference scores
    `1/u`. Where the reference `valid` is 0, `L` is not scored.
@@ -166,7 +168,7 @@ The runner has the shape of `runners/sophus_rs`:
 | `eig3` | `SymmetricEigen::new`, with the eigenpairs sorted ascending |
 | `chol_n*` | `Cholesky::new`, where `None` gives `valid = 0` |
 | `chol_solve_n*` | `Cholesky::solve` |
-| `solve_cubic` | The companion matrix's real Schur form: each 1×1 block is a valid slot and each 2×2 block a complex pair, which is not. This is `numpy.roots`' route |
+| `solve_cubic` | The companion matrix's real Schur form: each 1×1 block is a valid slot and each 2×2 block a complex pair, which is not. This is `numpy.roots`' route without LAPACK's balancing |
 | `quat_renormalize` | `UnitQuaternion::renormalize_fast`: the same Newton step, so this is the one row that compares like with like |
 
 It answers binary64 only, until the envelope's binary32 half exists. **Domination is scored as for
@@ -238,9 +240,10 @@ than no-regress, which only checks one direction.
 
 ## Consequences
 
-- `PHASE2.md` §0.0's corpus-id row and its `Dual` row, and `PHASE3.md` §0.0's `renormalize` row,
-  become `Done`, `svd3` excepted.
-- The corpus grows by an estimated 6–7 MB, to about 44 MB of `PHASE1.md` §4.4's 50 MB.
+- `PHASE2.md` §0.0's corpus-id, `Dual` and `chol` rows and `PHASE3.md` §0.0's `renormalize` row
+  record their corpus ids and stay `Partial` for their other owed items; the corpus-id row's `svd3`
+  is what `coverage` still owes.
+- The corpus grows by 4.9 MB, to 42.8 MB of `PHASE1.md` §4.4's 50 MB.
 - Any change to the arithmetic of these routines now re-records rows. That is the intent: it was
   invisible before.
 - The envelope gains paired strata for these routines, and with them new domination failures where
@@ -306,12 +309,13 @@ What the instrument now sees, each a documented limit made a number:
   0.98): nalgebra sums `‖q‖²` as `(x² + z²) + (y² + w²)`.
 - **`real_*` is at most 3.65 `u`** at either precision, value and derivative together.
 
-The self-test half fires each planted defect at `1.1e7`–`1.1e16 u` against clean maxima of 0–37.
+The self-test half fires each planted defect at `1.1e7`–`9.0e15 u` against clean maxima of 0–37.
 The envelope gains 69 paired strata, 40 of them domination failures, and 29 that `helicoid` wins.
 
 ## Further work
 
-1. `svd3`, its id, its strata (`0015` PH.2) and its oracle (`SVD`).
+1. `svd3`, its id, its strata (`0015` PH.2) and its oracle (`SVD`). Its two 3×3 outputs need a
+   `shape` per matrix: the corpus reader rejects two arrays of one shape as ambiguous.
 2. Kopp's hybrid for `eig3` (`0023` open question 2), informed by decision 4's domination failures.
 3. An independent derivative oracle for `real_*`, such as `num-dual`.
 4. Bench rows for `eig3` and `solve_cubic` (`0053` *Further work* 2).

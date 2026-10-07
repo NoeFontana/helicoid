@@ -18,8 +18,8 @@ from .strata import Draw, drawn_strata, log_uniform_at
 
 N_RANDOM = 64
 # A planted root or leading coefficient is m 2^(e-6), 1 <= m <= 63, e in [-4, 4]: six significant
-# bits, so d = -a r1 r2 r3 has at most 24 and every coefficient is exact at binary32 (0056 states
-# at most eight; four eight-bit factors need 32). The roots of one cubic share e.
+# bits, so d = -a r1 r2 r3 has at most 24 and every coefficient is exact at binary32. The roots of
+# one cubic share e.
 PLANTED_MAX = 63
 SCALE_EXPS = range(-4, 5)
 NEAR_DOUBLE_K = (2, 4, 6, 8)

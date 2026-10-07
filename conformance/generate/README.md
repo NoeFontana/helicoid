@@ -261,8 +261,7 @@ record's decision 1 fixes their fields and references, decision 2 their strata. 
   triangle and mirrors it.
 - **Planted cubics.** A root or `a` is m·2^(e−6), 1 ≤ m ≤ 63 (six bits), e ∈ [−4, 4], the three roots
   sharing e: d = −a r₁r₂r₃ then has at most 24 bits, so every coefficient is exact at binary32 and
-  the `@f32` records are the binary64 ones (0056 says at most eight bits; four eight-bit factors are
-  32). `one-real` plants r, p as roots and q = m·2^(2e−8), p² < 4q. `near-double` draws |r|, |s|
+  the `@f32` records are the binary64 ones. `one-real` plants r, p as roots and q = m·2^(2e−8), p² < 4q. `near-double` draws |r|, |s|
   log-uniform in [2⁻⁴, 2⁴] (|s − r| ≥ max/4) and a planted `a`; at binary64 27 of the 64
   `1e-8` records round to a complex pair, at binary32 about half of `1e-4`…`1e-8`.
 - **Cubic roots.** Real versus complex is the exact discriminant's sign. Zero: the rational roots in
@@ -291,8 +290,7 @@ record's decision 1 fixes their fields and references, decision 2 their strata. 
   the signs), L lower with a positive diagonal and ‖LLᵀ − A‖ ≤ 1e-100 ‖A‖; `chol_solve`
   ‖Ax − b‖ ≤ 1e-100 ‖A‖‖x‖; `quat_renormalize` ‖q'‖ = 1, every 2×2 minor of [q, q'], q'·q > 0.
   `real_*`: each derivative against `mp.diff` at h = 10⁻⁷⁰|x| to 60 digits, the precision raised
-  until the difference's rounding is 60 digits under it (0056's 10⁻⁴⁰|x| leaves a truncation of
-  1e-37 at `sin(1e22)` and 1e-49 at `acos(1 − 2⁻⁵²)`); and identities to 100 digits: v² = x,
+  until the difference's rounding is 60 digits under it; and identities to 100 digits: v² = x,
   2vd = 1; v³ = x, 3v²d = 1; sin² + cos² = 1, the Maclaurin series for |x| ≤ 1; the half-angle
   `atan2` form of `acos`, d²(1 − x²) = 1; `atan` by quadrant, y d_y + x d_x = 0,
   x d_y − y d_x = 1; vd = n, d d_n = 1, d d_d = −v.

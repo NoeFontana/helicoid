@@ -418,12 +418,13 @@ fn halves(
     so3: Vec<selftest_so3::Case>,
     se3: Vec<selftest_se3::Case>,
     envelope: Seeded,
+    linalg: &[selftest_linalg::Defect],
 ) -> Result<Report, String> {
     let coefficients = check(dir, coefficients, Precision::F64, WINDOW)?;
     let so3 = selftest_so3::check(dir, so3, selftest_so3::BAR)?;
     let se3 = selftest_se3::check(dir, se3, selftest_se3::BAR)?;
     let envelope = selftest_envelope::check(dir, envelope)?;
-    let linalg = selftest_linalg::check(dir, &selftest_linalg::Defect::ALL)?;
+    let linalg = selftest_linalg::check(dir, linalg)?;
     let f32 = check(dir, cases_f32(), Precision::F32, WINDOW)?;
     let f32_title = "f32 (the coefficients' @f32 strata, u = 2^-24):";
     let text = format!(
@@ -443,7 +444,8 @@ fn halves(
 pub(crate) fn run(dir: &Path) -> Result<(), String> {
     let cases = (cases(), selftest_so3::cases(), selftest_se3::cases());
     let planted = selftest_envelope::planted();
-    let report = halves(dir, cases.0, cases.1, cases.2, planted)?;
+    let linalg = selftest_linalg::Defect::ALL;
+    let report = halves(dir, cases.0, cases.1, cases.2, planted, &linalg)?;
     print!("{}", report.text);
     match report.failures.as_slice() {
         [] => Ok(()),
@@ -498,7 +500,7 @@ mod tests {
         let dir = corpus_dir()?;
         let (so3, se3) = (selftest_so3::cases(), selftest_se3::defect_not_planted());
         let planted = selftest_envelope::planted();
-        let report = halves(&dir, cases(), so3, se3, planted)?;
+        let report = halves(&dir, cases(), so3, se3, planted, &[])?;
         let want = "seeded:correct: `every stratum of sen3_jr, sen3_jl fails` is not detected";
         assert_eq!(report.failures.len(), 1, "{:?}", report.failures);
         assert!(
@@ -514,7 +516,7 @@ mod tests {
         let dir = corpus_dir()?;
         let (so3, se3) = (selftest_so3::cases(), selftest_se3::cases());
         // The correct kernel planted as the defect: nothing for the envelope to detect.
-        let report = halves(&dir, cases(), so3, se3, Seeded::generated())?;
+        let report = halves(&dir, cases(), so3, se3, Seeded::generated(), &[])?;
         let want = "seeded:correct: `envelope fails against seeded:correct` is not detected";
         assert_eq!(report.failures.len(), 1, "{:?}", report.failures);
         assert!(

@@ -377,8 +377,9 @@ $X(t) = X_0\,\mathrm{Exp}(t\,d)$ with $d = X_1 \ominus_R X_0$ and $\Delta = X_0^
   column, which is not unique, weighs 0 ([`0056`](./decisions/0056-the-routines-d7-does-not-reach.md)).
 - **Roots** (`solve_cubic`): the Hausdorff distance between the valid slots $\hat R$ and the three
   reference roots $Z$, complex ones included, over $\|Z\|_2\,u$: each real root to its nearest
-  valid slot, each valid slot to its nearest root, $\lvert\hat r - z\rvert$ in $\mathbb C$. A real
-  root no slot answers is a distance $\|Z\|_2$, a score of $1/u$ (`0056`).
+  valid slot, each valid slot to its nearest root, $\lvert\hat r - z\rvert$ in $\mathbb C$, over
+  $\max(\|Z\|_2, \text{smallest normal})\,u$. Each distance is capped at $\|Z\|_2$, a total loss,
+  and with no valid slot each real root is at the cap: the worst answer scores $1/u$ (`0056`).
 - **Masks** (`chol`): a reported mask that differs from the reference scores $1/u$; where the
   reference reports failure, the values beside the mask are not scored (`0056`).
 - **Per stratum:** max and p99; never a mean. Non-finite outputs are counted separately and any

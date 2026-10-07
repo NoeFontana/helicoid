@@ -98,7 +98,9 @@ fn null_vec<S: Real>(m: [S; 6], lambda: S) -> Vec3<S> {
 /// adjacent eigenvalues and `c = 1 + min(|A| / gap, u^(-1/2))`, the recorded bounds (`eig3_tests`,
 /// a fit to the measured errors) are `(4 c + 24) u |A|` for the eigenvalue error and the residual
 /// `|A v - l v|`, and `(4 c + 24) u |A| / gap_k` for the angle of `v_k`, `gap_k` its own gap. The
-/// bars of `docs/PHASE2.md` §6 name no constant, so none is claimed met; Kopp's hybrid is owed.
+/// bars of `docs/PHASE2.md` §6 are the committed per-stratum maxima of the corpus id `eig3`
+/// (`0056` decision 5), which nalgebra's iterative `SymmetricEigen` beats at every narrow gap;
+/// Kopp's hybrid is owed.
 ///
 /// **Where the two largest eigenvalues are within about `2 sqrt(u) |A|` of each other, equal ones
 /// included, no column is reliable.** The eigenvalues are right (the pair to `sqrt(u) |A|`), but

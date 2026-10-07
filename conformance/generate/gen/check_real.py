@@ -1,7 +1,7 @@
 """Generation-time cross-checks of the `real_*` ids (docs/decisions/0056).
 
 - Every derivative against `mp.diff` at a relative step h = 10^-70 |x|, per argument, to 60
-  digits. 0056 states 10^-40 |x|: the central difference's truncation, h^2 f'''/6, is then 1e-37
+  digits. At 10^-40 |x| the central difference's truncation, h^2 f'''/6, would be 1e-37
   of `sin`'s derivative at x = 1e22 and 1e-49 of `acos`'s at 1 - 2^-52, where the singularity is
   2.2e-16 away; at 10^-70 both are below 1e-89. The precision is raised until the difference's
   rounding, 10^-p |f| / h, is 60 digits under |f'| (`cos` at 1e-300 needs p ~ 760).

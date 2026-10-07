@@ -110,10 +110,15 @@ impl Subject for Perfect {
             return out;
         }
         // A root-finder's answer is slots and their mask: every real root in a valid slot, the
-        // complex ones' slots clear (`0056` decision 3).
-        let (re, im) = (out.get("re").cloned(), out.get("im").cloned());
-        let (re, im) = (re.unwrap_or_default(), im.unwrap_or_default());
-        let real = |i: usize| im.get(i).is_some_and(|&b| b == 0.0);
+        // complex ones' slots clear (`0056` decision 3). Real is read off the reference, before
+        // rounding moves an exact zero.
+        let re = out.get("re").cloned().unwrap_or_default();
+        let im = record
+            .reference
+            .get("im")
+            .map(|t| t.data.as_slice())
+            .unwrap_or_default();
+        let real = |i: usize| im.get(i).is_some_and(|d| d.mant == 0);
         Output::from([
             (
                 "roots".to_string(),

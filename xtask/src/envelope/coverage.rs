@@ -12,7 +12,7 @@
 use super::bars::{Bar, Failure};
 
 /// `(phase, text of the §0.0 row that owns them, where named, ids)`: what later phases add to the
-/// corpus. A trailing `*` is a prefix. The row text must match exactly one row of its phase's table
+/// corpus. The row text must match exactly one row of its phase's table
 /// (a test reads the docs), so a renamed row fails a test, not coverage silently.
 const OWED: &[(u8, &str, &str, &[&str])] = &[
     (2, "corpus ids (§6)", "PHASE2.md §6", &["svd3"]),
@@ -97,10 +97,7 @@ pub(super) struct Coverage {
 /// `ids` are the function files of the corpus; `landed(phase, row)` is whether that row of the
 /// phase's §0.0 says `Done`, or why it cannot be told.
 pub(super) fn check(ids: &[String], landed: &dyn Fn(u8, &str) -> Result<bool, String>) -> Coverage {
-    let has = |pattern: &str| match pattern.strip_suffix('*') {
-        Some(prefix) => ids.iter().any(|i| i.starts_with(prefix)),
-        None => ids.iter().any(|i| i == pattern),
-    };
+    let has = |id: &str| ids.iter().any(|i| i == id);
     let fail = |text: String| Failure::new(Bar::Coverage, text);
     let mut c = Coverage {
         failures: Vec::new(),

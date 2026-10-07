@@ -595,8 +595,9 @@ fn eigen(rec: &Record, out: &Output, precision: Precision) -> Result<Score, Stri
 
 /// `NUMERICS.md` §11's root-set distance (`0056` decision 3): the Hausdorff distance between the
 /// valid slots and the three reference roots `re + i·im`, each real root to its nearest valid slot
-/// and each valid slot to its nearest root, over `max(‖Z‖₂, smallest normal) · u`. A real root no
-/// valid slot answers counts `‖Z‖₂`, so it reads `1/u`: finite, a score and not a failed run.
+/// and each valid slot to its nearest root, over `max(‖Z‖₂, smallest normal) · u`. Every distance
+/// is capped at `‖Z‖₂`, a total loss, and with no valid slot at all each real root is at the cap:
+/// the worst answer reads `1/u` and no-regress orders "no root" below "a root far off".
 fn roots(rec: &Record, out: &Output, precision: Precision) -> Result<Score, String> {
     let bits = unit_bits(precision);
     let (re, im) = (reference(rec, "re", 3)?, reference(rec, "im", 3)?);
@@ -642,6 +643,7 @@ fn roots(rec: &Record, out: &Output, precision: Precision) -> Result<Score, Stri
     for r in &rh {
         far = far.max(z.iter().map(|zi| dist(r, zi)).min().unwrap_or_default());
     }
+    let far = far.min(norm.clone());
     let floor = square(&ex.dyadic(&tiny));
     Ok(finite_or_nonfinite(ratio_u(&far, &norm.max(floor), bits)))
 }
@@ -1286,6 +1288,11 @@ mod tests {
         // No valid slot at all: every real root is unanswered, ‖Z‖ / (‖Z‖ u).
         assert_eq!(
             cubic(re, im, [2.0, 2.0, 2.0], [0.0; 3])?,
+            Score::Finite(1.0 / U)
+        );
+        // A slot farther than ‖Z‖ from every root is a total loss too, never worse than none.
+        assert_eq!(
+            cubic(re, im, [1.0, 2.0, -9.0], [1.0; 3])?,
             Score::Finite(1.0 / U)
         );
         // A slot off by one ulp of 2: 2^-51 / (3 u) = 4/3.

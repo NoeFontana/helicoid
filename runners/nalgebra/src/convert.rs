@@ -11,7 +11,8 @@
 //!   that is zero, negative or NaN) is `valid = 0` with `L` zero.
 //! - `chol_solve_n3`, `chol_solve_n6`: `Cholesky::new(A)` then `solve(b)`; `None` answers NaN, a
 //!   non-finite row for the harness to record (`docs/PHASE1.md` §7), not an error.
-//! - `solve_cubic`: the real Schur form of the monic companion matrix, `numpy.roots`' route.
+//! - `solve_cubic`: the real Schur form of the monic companion matrix, `numpy.roots`' route without
+//!   its balancing.
 //! - `quat_renormalize`: `Unit::renormalize_fast`, the Newton step `q (3 − ‖q‖²)/2`.
 //!
 //! The corpus's matrices are exactly symmetric, so the triangle read changes nothing; the corpus
@@ -176,7 +177,8 @@ fn chol_solve<const N: usize>(input: &Fields) -> Result<Fields, String> {
     Ok(fields([("x", x.as_slice().to_vec())]))
 }
 
-/// The roots of `a x³ + b x² + c x + d` as `numpy.roots` finds them: the eigenvalues of the monic
+/// The roots of `a x³ + b x² + c x + d` by `numpy.roots`' route, without LAPACK's balancing and
+/// exceptional shifts: the eigenvalues of the monic
 /// companion matrix
 ///
 /// ```text

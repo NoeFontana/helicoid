@@ -3,7 +3,7 @@ projection, not the Newton step it is scored against.
 
 A Haar-random unit quaternion scaled to |q|^2 - 1 = +-2^-k (the sign alternating), rounded once to
 the stratum's precision. Every stored q is inside docs/NUMERICS.md section 3.6's band,
-| |q|^2 - 1 | <= 2^-26.29 (binary64) or 2^-11.79 (binary32), decided in rationals: a draw that
+| |q|^2 - 1 | <= 2^-26.29 (binary64) or 2^-11.79 (binary32), the exact eta compared with the bound at 120 digits: a draw that
 rounding takes outside it (only `renorm:eta-edge` can) is drawn again.
 """
 

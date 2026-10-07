@@ -380,7 +380,7 @@
       "sha256": "f7f22bdc49094aa00ef24833f208cc6b32150892abe8bee71dc60b2429048655"
     }
   },
-  "generator": "sha256:da01c00984ed0999b0fb5ede46dc12384d808f0f472cf4a86b2ce85b3a7a9eaa",
+  "generator": "sha256:d87b3ea4a72537b9a664873ce9a62599e1328d0df18c77a9f369ff995c162b37",
   "mpmath": "1.4.1",
   "python": "3.12",
   "recheck": {

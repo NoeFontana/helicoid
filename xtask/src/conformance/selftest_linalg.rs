@@ -15,8 +15,8 @@ use super::selftest::Report;
 use super::subject::{Output, Registered, Subject};
 use crate::shipped::Helicoid;
 
-/// How far above the clean maximum a planted one must read. Every defect below is gross, 2^24 u
-/// or more where the clean program reads a few `u`: the bar is that a metric sees it, not how well.
+/// How far above the clean maximum a planted one must read. Every defect below is gross, `1e7 u` or
+/// more where the clean program reads at most 37: the bar is that a metric sees it, not how well.
 const FACTOR: f64 = 1024.0;
 
 /// A defect, planted into the shipped answer of one id.

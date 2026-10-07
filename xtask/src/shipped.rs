@@ -408,8 +408,10 @@ impl Geodesic {
 enum Linalg {
     SolveCubic,
     Eig3,
-    Chol(usize),
-    CholSolve(usize),
+    Chol3,
+    Chol6,
+    CholSolve3,
+    CholSolve6,
     Renormalize,
     Sqrt,
     Cbrt,
@@ -423,10 +425,10 @@ impl Linalg {
     const ALL: [(&'static str, Linalg); 13] = [
         ("solve_cubic", Linalg::SolveCubic),
         ("eig3", Linalg::Eig3),
-        ("chol_n3", Linalg::Chol(3)),
-        ("chol_n6", Linalg::Chol(6)),
-        ("chol_solve_n3", Linalg::CholSolve(3)),
-        ("chol_solve_n6", Linalg::CholSolve(6)),
+        ("chol_n3", Linalg::Chol3),
+        ("chol_n6", Linalg::Chol6),
+        ("chol_solve_n3", Linalg::CholSolve3),
+        ("chol_solve_n6", Linalg::CholSolve6),
         ("quat_renormalize", Linalg::Renormalize),
         ("real_sqrt", Linalg::Sqrt),
         ("real_cbrt", Linalg::Cbrt),
@@ -471,16 +473,10 @@ impl Linalg {
                     ("V".to_string(), cols_out(&v)),
                 ])
             }
-            Linalg::Chol(n) => match n {
-                3 => chol_answer::<S, 3>(record),
-                6 => chol_answer::<S, 6>(record),
-                _ => Output::new(),
-            },
-            Linalg::CholSolve(n) => match n {
-                3 => chol_solve_answer::<S, 3>(record),
-                6 => chol_solve_answer::<S, 6>(record),
-                _ => Output::new(),
-            },
+            Linalg::Chol3 => chol_answer::<S, 3>(record),
+            Linalg::Chol6 => chol_answer::<S, 6>(record),
+            Linalg::CholSolve3 => chol_solve_answer::<S, 3>(record),
+            Linalg::CholSolve6 => chol_solve_answer::<S, 6>(record),
             Linalg::Renormalize => {
                 let Some(&[w, x, y, z]) = scalars::<S>(record, "q").as_deref() else {
                     return Output::new();
