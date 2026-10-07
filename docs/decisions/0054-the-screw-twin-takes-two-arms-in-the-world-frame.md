@@ -4,6 +4,9 @@
 **Owner:** @NoeFontana
 **Implementation:** this record and the twin land together (#105)
 
+> **Further work 4 and 5 taken by [`0055`](./0055-the-branch-is-inlined-and-the-sign-is-a-bit.md)** (2026-10-07): `Real::branch` is `#[inline]` and
+> `abs`/`copysign` are `core`'s; coefficient kernels 0.55×, `groups` 0.915×, bit-identical.
+
 ## Context
 
 `PHASE4.md` §1.2 owes `SE3::geodesic`'s dual-quaternion fast twin, a port of
