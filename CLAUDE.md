@@ -97,7 +97,7 @@ Single test: `cargo nextest run -p helicoid -- so3_exp_log_roundtrip`. The gener
 | `just thresholds` / `thresholds-check` | run the sweep, regenerate `coeffs/generated.rs`; check for drift |
 | `just oracle-tf-tree-math` | the `tf_tree_math` runner (workspace-excluded): its fmt, clippy, doc, deny, tests, then its rows over the corpus (`conformance --oracle`) |
 | `just oracle-sophus-rs` | the same for the sophus-rs runner (`runners/sophus_rs`, audited with its own `deny.toml`) |
-| `just oracle-nalgebra` | the same for the nalgebra runner (`runners/nalgebra`, its own `deny.toml`): `eig3`, `chol_*`, `solve_cubic`, `quat_renormalize` (`0056`, draft) |
+| `just oracle-nalgebra` | the same for the nalgebra runner (`runners/nalgebra`, its own `deny.toml`): `eig3`, `chol_*`, `solve_cubic`, `quat_renormalize` (`0056`) |
 | `just oracles` | **owed** (`PHASE1.md` §0.0): container-only Sophus, manif, GTSAM runners plus the excluded-crate runners. The three that exist are the `oracle-*` recipes above |
 | `just envelope` | merge results, apply the domination and no-regress bars, then coverage; each domination failure says whether it is the program's, D16's or neither (`0037`, draft, via `conformance-twin`); `--check` also fails on a baseline or `docs/evidence/ENVELOPE.md` that `--bless` would change; `--bless` (for `helicoid`) writes both, and nothing while a bar or coverage fails |
 | `just determinism` | **owed** (`PHASE1.md` §0.0): compare output digests across x86_64, aarch64, wasm32 |

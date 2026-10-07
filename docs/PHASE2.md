@@ -13,10 +13,10 @@ signatures in code blocks are normative.
 | Area | Status |
 |---|---|
 | `Mask`, `Real`, `Blend`, `Precision`; `f64`/`f32` impls (§2) | Partial: traits and scalar impls implemented, including `cbrt` and `sqrt` bit identity with `libm` `arch` (`0017`, `0018`). |
-| `Dual<S, N>` (§3) | Partial: dual numbers generic over `Real` with automatic differentiation. Corpus ids `real_*` pending generator. |
-| `Vector`, `Matrix`, `Point`, `hat`/`vee`, `Mat3::inverse_adj`, `chol` (§4) | Partial: fixed-size types, operations, and `chol_solve` implemented (`0019`). `Mat2` adjugate pending. |
+| `Dual<S, N>` (§3) | Partial: dual numbers generic over `Real` with automatic differentiation; corpus ids `real_sqrt`, `real_cbrt`, `real_sin_cos`, `real_acos`, `real_atan2`, `real_div` at both precisions, ≤ 3.65 `u` ([`0056`](./decisions/0056-the-routines-d7-does-not-reach.md)). |
+| `Vector`, `Matrix`, `Point`, `hat`/`vee`, `Mat3::inverse_adj`, `chol` (§4) | Partial: fixed-size types, operations, and `chol_solve` implemented (`0019`); corpus ids `chol_n{3,6}`, `chol_solve_n{3,6}` (`0056`). `Mat2` adjugate pending. |
 | `Strided`, `StridedMut` (§5) | Done: column-major, row-major, strided slice views. |
-| `eig3`, `svd3`, `solve_cubic` + corpus ids (§6) | Partial: `solve_cubic` and `eig3` implemented with `libm` transcendentals (`0017`, `0022`, `0053`). `svd3` and corpus ids pending. |
+| `eig3`, `svd3`, `solve_cubic` + corpus ids (§6) | Partial: `solve_cubic` and `eig3` implemented with `libm` transcendentals (`0017`, `0022`, `0053`). Corpus ids `solve_cubic` and `eig3` at both precisions, `eig3` against nalgebra (`0056`). `svd3` and its id pending. |
 | `mint` feature (§7) | Done: optional feature conversions for fixed-size types. |
 | Downstream perception migration (§9) | Not started |
 

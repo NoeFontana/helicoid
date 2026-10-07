@@ -15,13 +15,7 @@ use super::bars::{Bar, Failure};
 /// corpus. A trailing `*` is a prefix. The row text must match exactly one row of its phase's table
 /// (a test reads the docs), so a renamed row fails a test, not coverage silently.
 const OWED: &[(u8, &str, &str, &[&str])] = &[
-    (2, "`Dual<S, N>`", "PHASE2.md §3, §8", &["real_*"]),
-    (
-        2,
-        "corpus ids (§6)",
-        "PHASE2.md §6",
-        &["eig3", "svd3", "solve_cubic"],
-    ),
+    (2, "corpus ids (§6)", "PHASE2.md §6", &["svd3"]),
     (
         5,
         "S² and its chart",
@@ -65,6 +59,26 @@ fn required() -> Vec<String> {
     }
     ids.extend(["so2_exp".to_string(), "so2_log".to_string()]);
     ids.extend(group("se2", &["exp", "log", "ad"], ""));
+    // `0056`'s, the routines D7 did not reach: `PHASE2.md` §6's two that exist, `chol` and
+    // `chol_solve` at the widths a consumer factors, `renormalize`, and `Dual` as `real_*`.
+    ids.extend(
+        [
+            "solve_cubic",
+            "eig3",
+            "chol_n3",
+            "chol_n6",
+            "chol_solve_n3",
+            "chol_solve_n6",
+            "quat_renormalize",
+            "real_sqrt",
+            "real_cbrt",
+            "real_sin_cos",
+            "real_acos",
+            "real_atan2",
+            "real_div",
+        ]
+        .map(String::from),
+    );
     ids
 }
 
@@ -206,7 +220,7 @@ mod tests {
             .collect();
         let c = check(&have, &rows(&[]));
         assert!(c.failures.is_empty(), "{:?}", messages(&c));
-        assert_eq!((c.required, c.excused), (48, 14));
+        assert_eq!((c.required, c.excused), (61, 11));
         Ok(())
     }
 
@@ -251,11 +265,11 @@ mod tests {
         );
         // One row Done: its ids fail, and no other group's.
         let c = check(&required(), &rows(&["corpus ids (§6)"]));
-        assert_eq!(c.failures.len(), 3);
+        assert_eq!(c.failures.len(), 1);
         assert!(messages(&c)[0].starts_with(
-            "phase 2's row `corpus ids (§6)` is Done and `eig3` (PHASE2.md §6) has no corpus file"
+            "phase 2's row `corpus ids (§6)` is Done and `svd3` (PHASE2.md §6) has no corpus file"
         ));
-        assert_eq!(c.excused, 11);
+        assert_eq!(c.excused, 10);
     }
 
     #[test]
@@ -264,7 +278,7 @@ mod tests {
             let only = |p: u8, r: &str| -> Result<bool, String> { Ok(p == phase && r == row) };
             let c = check(&required(), &only);
             assert_eq!(c.failures.len(), ids.len(), "{row}");
-            assert_eq!(c.excused, 14 - ids.len(), "{row}");
+            assert_eq!(c.excused, 11 - ids.len(), "{row}");
         }
     }
 
@@ -277,7 +291,7 @@ mod tests {
     }
 
     #[test]
-    fn an_owed_id_that_has_a_file_fails_and_a_prefix_matches_any_id_under_it() {
+    fn an_owed_id_that_has_a_file_fails() {
         let mut have = required();
         have.push("s2_retract".into());
         let c = check(&have, &rows(&[]));
@@ -285,7 +299,7 @@ mod tests {
         assert!(c.failures[0]
             .text
             .contains("`s2_retract` has a corpus file and is listed as owed"));
-        have.push("real_sqrt".into());
+        have.push("s2_local".into());
         assert_eq!(check(&have, &rows(&[])).failures.len(), 2);
     }
 

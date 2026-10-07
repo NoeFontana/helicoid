@@ -1,8 +1,8 @@
 # 0056: the routines D7 does not reach
 
-**Status:** draft
+**Status:** ready
 **Owner:** @NoeFontana
-**Implementation:** this record, then the stacked PRs of its *Implementation plan*
+**Implementation:** the four stacked PRs of its *Implementation plan*
 
 ## Context
 
@@ -43,8 +43,8 @@ the definition at the input as stored, at 120 digits, rechecked at 150 (`PHASE1.
 |---|---|---|---|---|
 | `solve_cubic` | `a`, `b`, `c`, `d` | `re[3]`, `im[3]`: all three roots, ordered by `(re, im)` | The planted roots where the coefficients are exact (below). Otherwise `mp.polyroots(…, extraprec=300)` of the stored coefficients | `p(z) = 0` to 100 digits. A planted root is checked exactly in rationals |
 | `eig3` | `A` (3×3, symmetric, column-major) | `lambda[3]` ascending, `V` (3×3, columns the eigenvectors) | `mp.eigsy` of the stored `A` | `‖AV − VΛ‖` and `‖VᵀV − I‖` below `10^-100 ‖A‖` |
-| `chol_n3`, `chol_n6` | `A` (n×n, symmetric) | `valid[1]` (1 or 0); `L` (n×n, lower) | `valid` decided exactly, by an `LDLᵀ` of the stored `A` in rationals. `L` is `mp.cholesky` of the stored `A`, or zeros when `valid = 0` | `‖LLᵀ − A‖ < 10^-100 ‖A‖` |
-| `chol_solve_n3`, `chol_solve_n6` | `A` (n×n), `b[n]` | `x[n]` | `mp.lu_solve` of the stored `A`, `b` | `‖Ax − b‖ < 10^-100 ‖A‖‖x‖` |
+| `chol_n3`, `chol_n6` | `A` (n×n, symmetric) | `valid[1]` (1 or 0); `L` (n×n, lower) | `valid` decided exactly, by an `LDLᵀ` of the stored `A` in rationals. `L` is `mp.cholesky(A, tol=0)` of the stored `A` (its default absolute tolerance refuses `chol:diag-scale`'s pivots), or zeros when `valid = 0` | `‖LLᵀ − A‖ < 10^-100 ‖A‖` |
+| `chol_solve_n3`, `chol_solve_n6` | `A` (n×n), `b[n]` | `x[n]` | `mp.lu_solve` of the equilibrated system `D A D`, `D = diag(A)^-1/2` (`mp.lu_solve` of `A` itself calls `chol:diag-scale` singular) | `‖Ax − b‖ < 10^-100 ‖A‖‖x‖` |
 | `quat_renormalize` | `q[4]` | `q[4]` | `q/‖q‖`, the exact projection (see below) | `‖q'‖ = 1` and `q' ∥ q` |
 | `real_sqrt`, `real_cbrt`, `real_acos` | `x` | `value`, `d` | `value` is the function. `d` is its derivative, by calculus | `d` against `mp.diff` with a relative step |
 | `real_sin_cos` | `x` | `sin`, `cos`, `d_sin`, `d_cos` | the same | the same |
@@ -58,8 +58,9 @@ the definition at the input as stored, at 120 digits, rechecked at 150 (`PHASE1.
   `−1/√(1 − x²)`, `(cos, −sin)`, `(x, −y)/(x² + y²)`, `(1/d, −n/d²)`. These are textbook
   derivatives, not closed forms of `NUMERICS.md`. They are evaluated at 120 digits, so §4.3's
   "never evaluates a closed form from `NUMERICS.md`" is untouched. `mp.diff` at a relative step
-  `h = 10^-40 |x|` is the generation-time cross-check, to 60 digits: the coefficients' absolute
-  step underflows at `x = 1e-300`.
+  `h = 10^-70 |x|`, its working precision raised until the difference's rounding is 60 digits below
+  `|f'|`, is the generation-time cross-check, to 60 digits: the coefficients' absolute step
+  underflows at `x = 1e-300`, and a step of `10^-40 |x|` truncates at `1e-37` (`sin` at `1e22`).
 - **No id for `sin`, `cos`, or for `SO3`/`SEn3::renormalize`.** Each is bit-identical to an id
   that has strata:
   - `Real::sin` and `Real::cos` to `sin_cos` (`0052`, `0022`; `sin_tests`);
@@ -82,7 +83,7 @@ record.
 
 | Id | Stratum | Draw, binary64 (binary32 where it differs) |
 |---|---|---|
-| `solve_cubic` | `cubic:distinct` | Three distinct planted roots of at most 8 significant bits each, of scale `2^e`, `e ∈ [−4, 4]`; `a` of the same kind. The coefficients are then exact at both precisions |
+| `solve_cubic` | `cubic:distinct` | Three distinct planted roots of 6 significant bits sharing one scale `2^e`, `e ∈ [−4, 4]`; `a` of the same kind. The coefficients are then exact at both precisions (8 bits would put `d` at 32) |
 | | `cubic:double` | The same, with two roots equal |
 | | `cubic:triple` | The same, with all three roots equal |
 | | `cubic:one-real` | `a (x − r)(x² + p x + q)` with `p² < 4q`, all of `r`, `p`, `q` planted |
@@ -91,7 +92,7 @@ record.
 | | `cubic:coeff-scale-up`, `cubic:coeff-scale-down` | `cubic:distinct`'s cubics with every coefficient times `10^±100` (`10^±20`) |
 | `eig3` | `eig:random` | `A = Q Λ Qᵀ`, `Q` from a Haar-random quaternion, `λ` uniform in `[−1, 1]` |
 | | `eig:gap-1e-k/bottom`, `eig:gap-1e-k/top`, k = 0…12 (0…6) | The two smallest (or largest) eigenvalues at relative gap `10^-k` of `‖Λ‖`. 32 records each |
-| | `eig:triple` | `Λ = c I`, `c` uniform in `[−1, 1]` |
+| | `eig:triple` | `A = c I` stored directly, `c` uniform in `[−1, 1]`: `Q (cI) Qᵀ` at 120 digits rounds to `cI` plus off-diagonal residue |
 | | `eig:rank1` | `Λ = (0, 0, c)` |
 | | `eig:scale-up`, `eig:scale-down` | `eig:random` times `10^±70` (`10^±8`): inside the rustdoc's range for the vectors (`‖A‖⁴` normal: `1e-75 < m < 1e75`, `1e-9 < m < 1e9`), the narrower of its two |
 | `chol_n*`, `chol_solve_n*` | `chol:spd` | `A = Q D Qᵀ`, `Q` a product of `n` Householder reflections from uniform directions, `D` log-uniform in `[1, 10]`. 32 records |
@@ -253,22 +254,60 @@ than no-regress, which only checks one direction.
 Stacked PRs, each verified by `just lint` and `just test`, plus:
 
 1. This record and the specification edits of decision 7, except `PHASE1.md` §4.3–§4.4, which
-   `coverage` parses and which therefore land with step 3 — verified by `just lint`.
+   `coverage` parses and which therefore land with step 4 — verified by `just lint`.
 2. The generator: ids, strata and cross-checks; `just corpus` — verified by `just corpus-check` and
    the generator's unit tests.
-3. xtask: the subject at both precisions with its `HostStd` mirror, metrics 2–4, coverage, the
-   self-test half — verified by `cargo xtask conformance --self-test` and the sanity tests.
-4. `runners/nalgebra` and `just oracle-nalgebra` — verified by that recipe.
-5. Measurement: the committed rows, this record's tables, and `ready` — verified by
+3. `runners/nalgebra` and `just oracle-nalgebra` — verified by that recipe.
+4. xtask: the subject at both precisions with its `HostStd` mirror, metrics 2–4, coverage, the
+   self-test half, and the committed rows of decision 5, with *Measured* below — verified by
+   `cargo xtask conformance --self-test`, the sanity tests and
    `the_unverified_routines_reproduce_their_committed_rows` on both CI architectures.
 
 ## Open questions
 
-None the Decision depends on. The measurement of step 5 fills *Measured* below before `ready`.
+None.
 
 ## Measured
 
-To be filled in by step 5.
+**Protocol.** `cargo xtask conformance --subject helicoid --fn <id> --precision f64|f32` over the
+committed corpus (`just corpus`, 2 min 37 s on 8 cores, +4.9 MB to 42.8 MB); `just oracle-nalgebra`
+for the oracle's rows. Every figure is a per-stratum maximum in `u` of the stratum's precision, and
+every one of them is a committed row of decision 5 (107 binary64, 91 binary32), reproduced bit for
+bit in the dev and release profiles.
+
+| Id | binary64 strata, max `u` | binary32 strata, max `u` | Dominates nalgebra on |
+|---|---|---|---|
+| `solve_cubic` | 0 … 9.0e15 | 42.5 … 1.7e7 | 8 of 11 |
+| `eig3` | 2.26 … 1.4e16 | 2.38 … 2.1e7 | 4 of 31 |
+| `chol_n3`, `chol_n6` | 0 … 2.6e6 | 0 … 1.0e3 | 9 of 12 |
+| `chol_solve_n3`, `chol_solve_n6` | 1.88 … 3.1e11 | 1.93 … 5.1e5 | 6 of 10 |
+| `quat_renormalize` | 1.23 … 2.05 | 0.98 … 1.75 | 2 of 5 |
+| `real_sqrt`, `real_cbrt`, `real_acos`, `real_sin_cos`, `real_atan2`, `real_div` | ≤ 3.47 | ≤ 3.65 | (no oracle) |
+
+What the instrument now sees, each a documented limit made a number:
+
+- **`eig3` is the closed form `0023` describes.** At a pair gap of `10^-8` and below, at the top of
+  the spectrum, and at `eig:rank1`, a column reads `1e15`–`1.4e16 u` on the gap-weighted scale: the
+  rustdoc's "near a double eigenvalue no column is reliable", which a column weighted by an `O(1)`
+  gap makes a total loss. At the bottom the same gaps read `5e7`–`1e8`, about `√u`. nalgebra's
+  `SymmetricEigen` reads 5–13 on every one of these strata. This is the measurement `0023` open
+  question 2 was waiting for.
+- **`solve_cubic`'s `cubic:one-real-p-small` reads `1.8e10 u`** against nalgebra's 3.0: the
+  rustdoc's "`x³ + p x − 1` off by up to `4e-6` at `p` near `1e-5`".
+- **`solve_cubic`'s `cubic:coeff-scale-down` reads exactly `1/u`, no root at all**, against
+  nalgebra's `9.3e4`. Every coefficient times `10^-100` is the same cubic, and the leading
+  coefficient's floor `max(scale, 1) tol` is absolute below scale 1, so the whole stratum is "not a
+  cubic". It is the rustdoc's domain, stated, and `0031`'s L2 scaling question, now measured.
+- **`cubic:double` reads `1.5e8 u`, `cubic:near-double-1e-8` `9.1e7`**: `√u` of the scale, as
+  documented; `cubic:triple`, planted exactly, reads 0.
+- **`chol_solve` follows `κ(A)`**: `3.1e11 u` at `chol:cond-1e-12`, a few `u` at `chol:spd` and
+  `chol:diag-scale`. Its losses to nalgebra, and `chol`'s, are within a factor of 2.6.
+- **`quat_renormalize` loses three strata to `renormalize_fast` by at most 0.6 `u`** (1.56 against
+  0.98): nalgebra sums `‖q‖²` as `(x² + z²) + (y² + w²)`.
+- **`real_*` is at most 3.65 `u`** at either precision, value and derivative together.
+
+The self-test half fires each planted defect at `1.1e7`–`1.1e16 u` against clean maxima of 0–37.
+The envelope gains 69 paired strata, 40 of them domination failures, and 29 that `helicoid` wins.
 
 ## Further work
 
@@ -277,3 +316,6 @@ To be filled in by step 5.
 3. An independent derivative oracle for `real_*`, such as `num-dual`.
 4. Bench rows for `eig3` and `solve_cubic` (`0053` *Further work* 2).
 5. The oracle's binary32 rows, once the envelope's binary32 half exists.
+6. `solve_cubic` at scaled coefficients: a relative floor would answer `cubic:coeff-scale-down`
+   (`0031` L2), and `one-real-p-small`'s cancellation is `0031`'s other arm; both are now rows that
+   a change must re-record.

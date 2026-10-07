@@ -51,7 +51,7 @@ use helicoid_linalg::Precision;
 use super::metric::{COEFF_D_BRANCH, COEFF_VALUE};
 use super::report::Row;
 use super::subject::Registered;
-use super::{corpus, evaluate_by, selftest_envelope, selftest_se3, selftest_so3};
+use super::{corpus, evaluate_by, selftest_envelope, selftest_linalg, selftest_se3, selftest_so3};
 use crate::seeded::{Coeff, Defect, Seeded};
 use crate::thresholds::{Ranker, Ranking};
 
@@ -410,8 +410,8 @@ fn check(
     Ok(Report { text, failures })
 }
 
-/// The halves over `dir` (the coefficients, SO(3), SE_N(3) and the envelope's at binary64, then
-/// the coefficients at `f32`): their reports joined, and every failure among them.
+/// The halves over `dir` (the coefficients, SO(3), SE_N(3), the envelope's and `0056`'s at
+/// binary64, then the coefficients at `f32`): their reports joined, and every failure among them.
 fn halves(
     dir: &Path,
     coefficients: Vec<Case>,
@@ -423,16 +423,18 @@ fn halves(
     let so3 = selftest_so3::check(dir, so3, selftest_so3::BAR)?;
     let se3 = selftest_se3::check(dir, se3, selftest_se3::BAR)?;
     let envelope = selftest_envelope::check(dir, envelope)?;
+    let linalg = selftest_linalg::check(dir, &selftest_linalg::Defect::ALL)?;
     let f32 = check(dir, cases_f32(), Precision::F32, WINDOW)?;
-    let f32_title = "f32 (the @f32 strata, u = 2^-24; the vector ids have none):";
+    let f32_title = "f32 (the coefficients' @f32 strata, u = 2^-24):";
     let text = format!(
-        "{}\n{}\n{}\n{}\n{f32_title}\n{}",
-        coefficients.text, so3.text, se3.text, envelope.text, f32.text
+        "{}\n{}\n{}\n{}\n{}\n{f32_title}\n{}",
+        coefficients.text, so3.text, se3.text, envelope.text, linalg.text, f32.text
     );
     let mut failures = coefficients.failures;
     failures.extend(so3.failures);
     failures.extend(se3.failures);
     failures.extend(envelope.failures);
+    failures.extend(linalg.failures);
     failures.extend(f32.failures.into_iter().map(|f| format!("f32: {f}")));
     Ok(Report { text, failures })
 }

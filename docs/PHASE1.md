@@ -167,6 +167,12 @@ side of `docs/maths/coefficients.md` CO.12.
 | `se2_ad` | $X$ | images of the basis under $\sigma \mapsto (X\sigma^\wedge X^{-1})^\vee$ |
 | `se2_jr`, `se2_jl` | $\tau$ | $\sum (\mp\,\mathrm{ad}_\tau)^n/(n+1)!$, as dense $3\times3$ matrices |
 | `se2_jr_inv`, `se2_jl_inv` | $\tau$ | `mp.inverse` of the above |
+| `solve_cubic` | $(a, b, c, d)$ | the three roots of the stored coefficients as `re`, `im`, ordered by $(\mathrm{Re}, \mathrm{Im})$: planted where the coefficients are exact, else `mp.polyroots` with `extraprec=300` ([`0056`](./decisions/0056-the-routines-d7-does-not-reach.md)) |
+| `eig3` | $A$, symmetric | `mp.eigsy`: `lambda` ascending, `V` its eigenvectors as columns |
+| `chol_n{3,6}` | $A$, symmetric | `valid` decided exactly by an $LDL^\top$ in rationals; `L` = `mp.cholesky`, zeros where `valid` is 0 |
+| `chol_solve_n{3,6}` | $(A, b)$ | `mp.lu_solve` |
+| `quat_renormalize` | $q$ | $q/\lVert q\rVert$, the projection `NUMERICS.md` §3.6 claims inside its band |
+| `real_sqrt`, `real_cbrt`, `real_acos`, `real_sin_cos`, `real_atan2`, `real_div` | $x$; $(y, x)$; $(n, d)$ | the value and its calculus derivative(s), what `Dual` carries; `mp.diff` at a relative step is the cross-check |
 
 A `coeff_k`…`coeff_e`, `coeff_cos_half` or `coeff_r` record's outputs are `value` and `d_branch`:
 the derivative with respect to the branch variable of `NUMERICS.md` §4 (θ² for `cos_half`), by
@@ -178,9 +184,8 @@ binary32 in an `@f32` stratum (§4.4).
 `"num/den"` terms in the branch variable, and no `stratum`, `in` or `out`. Its manifest `kind` is `series`; the conformance
 harness, the envelope and the oracle runners read `kind: "corpus"` files only.
 
-Series are summed until the term's norm is below $10^{-110}$ relative. Phase 2 adds `eig3`
-(`mp.eigsy`), `svd3` (`mp.svd_r`), `solve_cubic` (`mp.polyroots`); Phases 4–5 add their ids by the
-spec that needs them.
+Series are summed until the term's norm is below $10^{-110}$ relative. Phase 2's `svd3`
+(`mp.svd_r`) is owed; Phases 4–5 add their ids by the spec that needs them.
 
 ### 4.4 Strata (v1)
 
@@ -229,6 +234,11 @@ spec that needs them.
   recomputed at those inputs. `theta:subnormal@f32` is its own decade $[10^{-40}, 10^{-39})$
   (rounding $[10^{-310}, 10^{-309})$ gives 64 zeros); `theta:pi-1e-8`…`theta:pi-1e-12` round to one
   binary32, kept five times.
+- The `cubic:*`, `eig:*`, `chol:*`, `renorm:*`, `x:*`, `yx:*` and `nd:*` strata of `0056`'s ids
+  ([`0056`](./decisions/0056-the-routines-d7-does-not-reach.md) decision 2, which lists each):
+  planted roots, spectra and conditioning, the drift band of `NUMERICS.md` §3.6, and `Dual`'s
+  singular neighbourhoods, each with its `@f32` counterpart after every binary64 stratum, drawn
+  from its own stream wherever binary32's range differs.
 
 Corpus v1 stays under 50 MB uncompressed; a family that would exceed it reduces its sample count
 by an edit to this list, never silently.

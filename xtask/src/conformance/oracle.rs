@@ -101,7 +101,7 @@ const RUNNERS: &[Runner] = &[
     Runner {
         name: "nalgebra",
         dir: "runners/nalgebra",
-        // nalgebra is Rust `std`, so the host's library (`0056`, draft, decision 4).
+        // nalgebra is Rust `std`, so the host's library (`0056` decision 4).
         backend: Backend::HostStd,
         answers: &[
             "eig3",

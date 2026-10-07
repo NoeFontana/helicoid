@@ -5,7 +5,7 @@
 use helicoid_linalg::Precision;
 
 use super::corpus::Record;
-use super::metric::{self, Rule};
+use super::metric;
 use super::report::Row;
 use super::subject::{Output, Registered, Subject};
 use super::testkit::{record, Fixed, Perfect};
@@ -59,10 +59,9 @@ fn every_family_has_a_rule_and_the_corpus_has_exactly_the_fields_it_scores() -> 
         let text = std::fs::read_to_string(dir.join(format!("{}.jsonl", e.fn_id)))
             .map_err(|e| e.to_string())?;
         let first = corpus::parse_line(text.lines().next().unwrap_or_default())?;
-        if let Rule::Forward(fields) = rule {
-            let mut scored: Vec<&str> = fields.iter().map(|f| f.field).collect();
-            scored.sort_unstable();
-            let corpus: Vec<&str> = first.reference.keys().map(String::as_str).collect();
+        if let Some(scored) = rule.reference_fields() {
+            let mut corpus: Vec<&str> = first.reference.keys().map(String::as_str).collect();
+            corpus.sort_unstable();
             assert_eq!(scored, corpus, "{}", e.fn_id);
         }
     }
@@ -108,18 +107,23 @@ fn the_neighbouring_ulp_scores_above_one_half_and_at_most_three_on_every_scalar_
     Ok(())
 }
 
-/// The ids with `@f32` strata: the scalar coefficient ids (`docs/decisions/0016`), each of one
-/// number per output field, which the `f32` sanity bounds below need.
+/// The scalar ids with `@f32` strata, each of one number per output field, which the `f32` sanity
+/// bounds below need: the coefficient ids (`docs/decisions/0016`) and `0056`'s `real_*`. `0056`'s
+/// vector ids have `@f32` strata too and are not scalar.
 fn f32_ids() -> Result<Vec<String>, String> {
     let dir = corpus_dir()?;
     let mut ids = Vec::new();
     for e in corpus::manifest(&dir)? {
-        if corpus::mentions_f32(&dir, &e)? {
-            assert!(scalar_output(&e.fn_id)?, "{}", e.fn_id);
+        if corpus::mentions_f32(&dir, &e)? && scalar_output(&e.fn_id)? {
             ids.push(e.fn_id);
         }
     }
-    assert_eq!(ids.len(), 8, "{ids:?}");
+    let count = |p: &str| ids.iter().filter(|i| i.starts_with(p)).count();
+    assert_eq!(
+        (ids.len(), count("coeff_"), count("real_")),
+        (14, 8, 6),
+        "{ids:?}"
+    );
     Ok(ids)
 }
 
@@ -133,8 +137,12 @@ fn a_perfectly_rounded_f32_subject_scores_at_most_one_on_every_f32_stratum() -> 
         |id| ids.iter().any(|i| i == id),
         Precision::F32,
     )?;
-    // 28 `theta:*@f32` strata in each of 8 ids, and `q:w0@f32` in `coeff_r`.
-    assert_eq!(rows.len(), 8 * 28 + 1);
+    // 28 `theta:*@f32` strata in each of 8 coefficient ids, and `q:w0@f32` in `coeff_r`.
+    let coeff = rows
+        .iter()
+        .filter(|r| r.fn_id.starts_with("coeff_"))
+        .count();
+    assert_eq!(coeff, 8 * 28 + 1);
     for r in &rows {
         assert!(
             r.stratum.ends_with("@f32") && r.precision == Precision::F32,
@@ -162,7 +170,11 @@ fn the_neighbouring_f32_ulp_scores_above_one_half_and_at_most_three_on_every_f32
         |id| ids.iter().any(|i| i == id),
         Precision::F32,
     )?;
-    assert_eq!(rows.len(), 8 * 28 + 1);
+    let coeff = rows
+        .iter()
+        .filter(|r| r.fn_id.starts_with("coeff_"))
+        .count();
+    assert_eq!(coeff, 8 * 28 + 1);
     for r in &rows {
         assert!(
             r.max_u > 0.5 && r.max_u <= 3.0,

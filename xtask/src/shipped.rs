@@ -8,7 +8,8 @@
 //! `k` and `cos θ/2` from `exp_coeffs`, `a` and `b` from `jr_coeffs`, `c` from `jr_inv_coeff`, `d`
 //! and `e` from `q_coeffs`, `r` from `log_ratio`. `b` also lives in `q_coeffs`; the two agree to
 //! the bit at both precisions (`b_is_the_same_in_both_groups_that_hold_it` and its `_at_f32` twin,
-//! sweep tests), so one is scored. No other id is supported: `helicoid` has no group code yet.
+//! sweep tests), so one is scored. The group ids, the geodesics and `0056`'s routines follow, each
+//! family an enum; `0056`'s are answered at both precisions.
 //!
 //! What these tests do not cover: the boundary (`s = switch`, `w = 0`) and the safe-argument
 //! pattern. A scalar mask makes `S::branch` lazy, so the exact arm never sees an unsafe argument
@@ -18,9 +19,12 @@
 
 use helicoid::__sweep as k;
 use helicoid::{Jac, LieGroup, Quat, SEn3, SEn3Jac, SEn3Tangent, Tangent, SO3};
-use helicoid_linalg::{Dual, Mat3, Matrix, Precision, Real, StridedMut, Vec3, Vector};
+use helicoid_linalg::{
+    chol, chol_solve, eig3, solve_cubic, Dual, Mat3, Matrix, Precision, Real, StridedMut, Vec3,
+    Vector,
+};
 
-use crate::conformance::corpus::Record;
+use crate::conformance::corpus::{exact_f32, Record};
 use crate::conformance::subject::{Output, Registered, Subject};
 use crate::seeded::{input, Coeff, Host, Input, Swept};
 
@@ -397,6 +401,194 @@ impl Geodesic {
     }
 }
 
+/// An id of `0056` this subject answers: the routines D7 did not reach, at both precisions.
+///
+/// An enum with an exhaustive `answer`, for the reason the [`So3`] note gives.
+#[derive(Clone, Copy)]
+enum Linalg {
+    SolveCubic,
+    Eig3,
+    Chol(usize),
+    CholSolve(usize),
+    Renormalize,
+    Sqrt,
+    Cbrt,
+    Acos,
+    SinCos,
+    Atan2,
+    Div,
+}
+
+impl Linalg {
+    const ALL: [(&'static str, Linalg); 13] = [
+        ("solve_cubic", Linalg::SolveCubic),
+        ("eig3", Linalg::Eig3),
+        ("chol_n3", Linalg::Chol(3)),
+        ("chol_n6", Linalg::Chol(6)),
+        ("chol_solve_n3", Linalg::CholSolve(3)),
+        ("chol_solve_n6", Linalg::CholSolve(6)),
+        ("quat_renormalize", Linalg::Renormalize),
+        ("real_sqrt", Linalg::Sqrt),
+        ("real_cbrt", Linalg::Cbrt),
+        ("real_acos", Linalg::Acos),
+        ("real_sin_cos", Linalg::SinCos),
+        ("real_atan2", Linalg::Atan2),
+        ("real_div", Linalg::Div),
+    ];
+
+    fn of_fn(fn_id: &str) -> Option<Self> {
+        Self::ALL
+            .iter()
+            .find(|(name, _)| *name == fn_id)
+            .map(|&(_, id)| id)
+    }
+
+    /// The shipped answer at `S`; nothing when the record holds no usable input (an `@f32` record
+    /// whose input is not exactly a binary32 included).
+    fn answer<S: Real<Mask = bool> + Into<f64>>(self, record: &Record) -> Output {
+        let one = |key: &str| scalars::<S>(record, key).and_then(|v| v.first().copied());
+        let flat = |v: &[S]| v.iter().map(|&x| x.into()).collect::<Vec<f64>>();
+        let bit = |b: bool| if b { 1.0 } else { 0.0 };
+        match self {
+            Linalg::SolveCubic => {
+                let (Some(a), Some(b), Some(c), Some(d)) = (one("a"), one("b"), one("c"), one("d"))
+                else {
+                    return Output::new();
+                };
+                let (r, ok) = solve_cubic(a, b, c, d);
+                Output::from([
+                    ("roots".to_string(), flat(&r.0)),
+                    ("valid".to_string(), ok.map(bit).to_vec()),
+                ])
+            }
+            Linalg::Eig3 => {
+                let Some(a) = matrix::<S, 3>(record, "A") else {
+                    return Output::new();
+                };
+                let (lambda, v) = eig3(&a);
+                Output::from([
+                    ("lambda".to_string(), flat(&lambda.0)),
+                    ("V".to_string(), cols_out(&v)),
+                ])
+            }
+            Linalg::Chol(n) => match n {
+                3 => chol_answer::<S, 3>(record),
+                6 => chol_answer::<S, 6>(record),
+                _ => Output::new(),
+            },
+            Linalg::CholSolve(n) => match n {
+                3 => chol_solve_answer::<S, 3>(record),
+                6 => chol_solve_answer::<S, 6>(record),
+                _ => Output::new(),
+            },
+            Linalg::Renormalize => {
+                let Some(&[w, x, y, z]) = scalars::<S>(record, "q").as_deref() else {
+                    return Output::new();
+                };
+                // Not through `Quat::from_wxyz_unchecked`: its assert is the very drift the strata hold.
+                let mut q = Quat { w, x, y, z };
+                q.renormalize();
+                quat_out(&q)
+            }
+            Linalg::Sqrt | Linalg::Cbrt | Linalg::Acos => {
+                let Some(x) = one("x") else {
+                    return Output::new();
+                };
+                let x = Dual::<S, 1>::variable(x, 0);
+                let r = match self {
+                    Linalg::Sqrt => x.sqrt(),
+                    Linalg::Cbrt => x.cbrt(),
+                    _ => x.acos(),
+                };
+                Output::from([
+                    ("value".to_string(), vec![r.v.into()]),
+                    ("d".to_string(), vec![r.d[0].into()]),
+                ])
+            }
+            Linalg::SinCos => {
+                let Some(x) = one("x") else {
+                    return Output::new();
+                };
+                let (sin, cos) = Dual::<S, 1>::variable(x, 0).sin_cos();
+                Output::from([
+                    ("sin".to_string(), vec![sin.v.into()]),
+                    ("cos".to_string(), vec![cos.v.into()]),
+                    ("d_sin".to_string(), vec![sin.d[0].into()]),
+                    ("d_cos".to_string(), vec![cos.d[0].into()]),
+                ])
+            }
+            Linalg::Atan2 | Linalg::Div => {
+                let (a, b, names) = match self {
+                    Linalg::Atan2 => (one("y"), one("x"), ["d_y", "d_x"]),
+                    _ => (one("n"), one("d"), ["d_n", "d_d"]),
+                };
+                let (Some(a), Some(b)) = (a, b) else {
+                    return Output::new();
+                };
+                let (a, b) = (Dual::<S, 2>::variable(a, 0), Dual::<S, 2>::variable(b, 1));
+                let r = match self {
+                    Linalg::Atan2 => a.atan2(b),
+                    _ => a / b,
+                };
+                Output::from([
+                    ("value".to_string(), vec![r.v.into()]),
+                    (names[0].to_string(), vec![r.d[0].into()]),
+                    (names[1].to_string(), vec![r.d[1].into()]),
+                ])
+            }
+        }
+    }
+}
+
+/// The values a record holds under `key` at `S`: binary64 as stored, or at `f32` each exactly a
+/// binary32 (`0016`), else nothing.
+fn scalars<S: Real>(record: &Record, key: &str) -> Option<Vec<S>> {
+    record
+        .input(key)?
+        .iter()
+        .map(|&x| match S::PRECISION {
+            Precision::F64 => Some(S::lit(x)),
+            Precision::F32 => exact_f32(x).map(|x| S::lit(f64::from(x))),
+        })
+        .collect()
+}
+
+/// The `N x N` matrix a record holds under `key`, column-major (`PHASE1.md` §4.3).
+fn matrix<S: Real, const N: usize>(record: &Record, key: &str) -> Option<Matrix<S, N, N>> {
+    let m = scalars::<S>(record, key).filter(|m| m.len() == N * N)?;
+    Some(Matrix::from_cols(core::array::from_fn(|c| {
+        Vector(core::array::from_fn(|r| m[c * N + r]))
+    })))
+}
+
+/// A square matrix column-major, as the corpus holds one.
+fn cols_out<S: Real + Into<f64>, const N: usize>(m: &Matrix<S, N, N>) -> Vec<f64> {
+    (0..N).flat_map(|c| m.col(c).0).map(Into::into).collect()
+}
+
+fn chol_answer<S: Real<Mask = bool> + Into<f64>, const N: usize>(record: &Record) -> Output {
+    let Some(a) = matrix::<S, N>(record, "A") else {
+        return Output::new();
+    };
+    let (l, ok) = chol(&a);
+    Output::from([
+        ("L".to_string(), cols_out(&l)),
+        ("valid".to_string(), vec![if ok { 1.0 } else { 0.0 }]),
+    ])
+}
+
+/// `chol` then `chol_solve`, the composition a consumer runs (`NUMERICS.md` §14).
+fn chol_solve_answer<S: Real<Mask = bool> + Into<f64>, const N: usize>(record: &Record) -> Output {
+    let (Some(a), Some(b)) = (
+        matrix::<S, N>(record, "A"),
+        scalars::<S>(record, "b").filter(|b| b.len() == N),
+    ) else {
+        return Output::new();
+    };
+    let x = chol_solve(&chol(&a).0, Vector(core::array::from_fn(|i| b[i])));
+    Output::from([("x".to_string(), x.0.map(Into::into).to_vec())])
+}
+
 pub(crate) struct Helicoid;
 
 impl Subject for Helicoid {
@@ -409,9 +601,16 @@ impl Subject for Helicoid {
             || So3::of_fn(fn_id).is_some()
             || Sen3::of_fn(fn_id).is_some()
             || Geodesic::of_fn(fn_id).is_some()
+            || Linalg::of_fn(fn_id).is_some()
     }
 
     fn eval(&self, fn_id: &str, record: &Record, precision: Precision) -> Output {
+        if let Some(id) = Linalg::of_fn(fn_id) {
+            return match precision {
+                Precision::F64 => id.answer::<f64>(record),
+                Precision::F32 => id.answer::<f32>(record),
+            };
+        }
         if let Some(id) = So3::of_fn(fn_id) {
             // A plain `f32` run skips every `so3_*` id; asking for one by name at `f32` is the
             // harness's error, not this subject's (`So3::answer` says why).
@@ -475,6 +674,9 @@ impl Subject for HostStd {
         // `f32` libm on every target (LLVM may widen), so an `f32` twin would change two things.
         if precision != Precision::F64 {
             return Output::new();
+        }
+        if let Some(id) = Linalg::of_fn(fn_id) {
+            return id.answer::<Host>(record);
         }
         if let Some(id) = So3::of_fn(fn_id) {
             return id.answer::<Host>(record);

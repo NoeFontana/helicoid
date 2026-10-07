@@ -102,8 +102,10 @@ struct Line {
     out: Object,
 }
 
-/// Splits `shape` off `object` and reads every other entry with `elem`. A `shape` sits beside
-/// exactly one array, the matrix's flat data.
+/// Splits `shape` off `object` and reads every other entry with `elem`. A `shape` belongs to the one
+/// array of its `rows · cols` values, the matrix's flat data; other arrays beside it are vectors
+/// (`0056`: `eig3`'s `lambda` beside `V`, `chol`'s `valid` beside `L`, `chol_solve`'s `b` beside
+/// `A`), and two arrays of the matrix's length make the shape ambiguous, which is an error.
 fn fields<T>(
     mut object: BTreeMap<String, Value>,
     elem: impl Fn(&str) -> Result<T, String>,
@@ -125,20 +127,18 @@ fn fields<T>(
             v => elem(text(v)?).map(|x| vec![x]),
         }
         .map_err(|e| format!("`{key}`: {e}"))?;
-        let shape = shape.filter(|_| value.is_array());
+        let shape = shape.filter(|&(r, c)| value.is_array() && data.len() == r * c);
         out.insert(key, Tensor { shape, data });
     }
     if let Some((r, c)) = shape {
-        let mut arrays = out.iter().filter(|(_, t)| t.shape.is_some());
-        match (arrays.next(), arrays.next()) {
-            (Some((_, t)), None) if t.data.len() == r * c => {}
-            (Some((k, t)), None) => {
+        match out.values().filter(|t| t.shape.is_some()).count() {
+            1 => {}
+            0 => return Err(format!("no array holds the {r}x{c} values of `shape`")),
+            _ => {
                 return Err(format!(
-                    "`{k}` has {} values for shape {r}x{c}",
-                    t.data.len()
+                    "several arrays hold {r}x{c} values: `shape` is ambiguous"
                 ))
             }
-            _ => return Err("`shape` needs exactly one array beside it".into()),
         }
     }
     Ok(out)
@@ -270,6 +270,12 @@ mod tests {
         assert_eq!(m.reference["J"].data[5].exp10, -311 - 1);
         assert_eq!(m.reference["s"].shape, None);
         assert_eq!(m.reference["s"].data.len(), 1);
+        // A vector beside the matrix keeps no shape (`eig3`'s `lambda` beside `V`).
+        let v = parse_line(&MATRIX.replace(r#""s":"1e0""#, r#""s":["1e0","2e0","3e0"]"#))?;
+        assert_eq!(
+            (v.reference["s"].shape, v.reference["J"].shape),
+            (None, Some((3, 2)))
+        );
         Ok(())
     }
 
@@ -284,10 +290,16 @@ mod tests {
             &VECTOR.replace("9.99999999999999999999999251527e-1", "x"),
             "bad decimal",
         );
-        bad(&MATRIX.replace("[3,2]", "[3,3]"), "6 values for shape 3x3");
         bad(
-            &MATRIX.replace(r#""s":"1e0""#, r#""s":["1e0"]"#),
-            "exactly one array",
+            &MATRIX.replace("[3,2]", "[3,3]"),
+            "no array holds the 3x3 values",
+        );
+        bad(
+            &MATRIX.replace(
+                r#""s":"1e0""#,
+                r#""s":["1e0","1e0","1e0","1e0","1e0","1e0"]"#,
+            ),
+            "`shape` is ambiguous",
         );
         bad(&MATRIX.replace("[3,2],\"s\"", "[3],\"s\""), "bad `shape`");
         bad(&VECTOR.replace("\"id\":3,", ""), "missing field");

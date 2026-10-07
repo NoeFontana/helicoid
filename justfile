@@ -116,7 +116,7 @@ oracle-sophus-rs:
     cargo nextest run --manifest-path runners/sophus_rs/Cargo.toml --locked
     cargo xtask conformance --oracle sophus_rs
 
-# The nalgebra oracle (`docs/decisions/0056`, draft, decision 4): as `oracle-sophus-rs`, for
+# The nalgebra oracle (`docs/decisions/0056` decision 4): as `oracle-sophus-rs`, for
 # `runners/nalgebra` (`subject_version` is the pinned `nalgebra`), audited with the runner's own
 # `deny.toml`, which cargo-deny finds beside the manifest: the root's bans `nalgebra`. It answers
 # `eig3`, `chol_*`, `chol_solve_*`, `solve_cubic` and `quat_renormalize`, in binary64.

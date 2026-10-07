@@ -1,4 +1,4 @@
-//! The nalgebra oracle (`docs/PHASE1.md` §7, `docs/decisions/0056`, draft, decision 4): reads
+//! The nalgebra oracle (`docs/PHASE1.md` §7, `docs/decisions/0056` decision 4): reads
 //! corpus JSONL and writes one answer file per function id it supports. It never reads a reference
 //! and never scores; `cargo xtask conformance --oracle nalgebra` does, with the harness's exact
 //! metric.

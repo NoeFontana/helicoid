@@ -1,5 +1,5 @@
 //! The corpus's arrays to nalgebra's types and back, and the function ids this runner answers
-//! (`docs/decisions/0056`, draft, decision 4).
+//! (`docs/decisions/0056` decision 4).
 //!
 //! A corpus matrix is column-major with a sibling `shape`, as nalgebra stores one, so a matrix
 //! crosses unpermuted. A quaternion does not: helicoid's is `[w, x, y, z]` (`docs/decisions/0002`)

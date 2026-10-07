@@ -47,7 +47,7 @@ updates:
       - dependency-name: "sophus_autodiff"
 
   # The nalgebra pin (`=0.35.0`, `PIN` in src/main.rs, Cargo.lock) moves by hand: a test compares
-  # the three, and a new version's arithmetic moves the oracle's rows (`0056`, draft, decision 4).
+  # the three, and a new version's arithmetic moves the oracle's rows (`0056` decision 4).
   - package-ecosystem: "cargo"
     directory: "/runners/nalgebra"
     schedule:
