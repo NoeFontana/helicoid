@@ -1,4 +1,4 @@
-//! Tests of `eig3`: omnisac's cases, the strata of `docs/PHASE2.md` §6 against mpmath and planted
+//! Tests of `eig3`: reference cases, the strata of `docs/PHASE2.md` §6 against mpmath and planted
 //! spectra, the value path of `Dual` and its derivative, two lanes, and the limits, pinned.
 //!
 //! **Metrics**, in `f64` from the `S` output, `u` the unit roundoff, `|A|` the largest `|l*|`:
@@ -12,7 +12,7 @@
 //! **not the bars of PHASE2 §6**, which name no constant `K` (`0023` (draft)): worst value / bound
 //! 0.52 over 10^6 planted cases per seed (seeds 1 to 4) and **0.206** over the fixture, about ten
 //! times above the measurements on the clustered strata below. The fixture figure was 0.15 until
-//! `0022` routed `acos` through `libm` (`0053`): `ev` and `res` moved 0.150 -> 0.206 on one omnisac
+//! `0022` routed `acos` through `libm` (`0053`): `ev` and `res` moved 0.150 -> 0.206 on one reference
 //! row, `ang` did not move, and both stay a factor of five inside the bound. It is reproducible —
 //! `EIG3_REPORT=1` prints each new largest ratio — which the clustered table below is not. They are asserted where the top gap is at
 //! least `4 sqrt(u) |A|`; below it (a tie of the top pair, `# Domain`) only the frame and `ev` are,
@@ -44,7 +44,7 @@
 //! first, so both precisions solve the matrix mpmath solved), the eigenvalues and unit
 //! eigenvectors of `mp.eigsy` at 120 digits rounded to binary64, the largest entry of each vector
 //! positive. Strata: `gap-1e-k:bottom` and `:top` as above in a random rotation, `triple`, `rank1`,
-//! `near-triple` (`1, 1 + g, 1 + 2g`), `random`, `scatter`, `omnisac` (its test matrices). The
+//! `near-triple` (`1, 1 + g, 1 + 2g`), `random`, `scatter`, `reference` (test matrices). The
 //! generator is not committed. The planted proptest is run at 10^6 cases with
 //!
 //! ```text
@@ -274,16 +274,16 @@ const MP: &[Row] = &[
     ("scatter", [1.4292470386203124, 1.1971570668310942, 0.6743954879425861, 1.1301996279551805, -0.8926975505539516, -0.5193325019551377], [0.0007993268883068502, 0.3903032207779254, 2.9096970457277607], [[0.6879000639364128, -0.3819447160437147, 0.6171804727327052], [-0.20311630996436544, 0.7150576578067042, 0.6689068026552355], [0.6968050420761456, 0.5855004525175677, -0.41430900719026664]]),
     ("scatter", [0.5462138056755066, 1.337536334991455, 0.0669744685292244, -0.780906617641449, -0.04160049557685852, -0.056718289852142334], [0.0013841834005217536, 0.1316405554100991, 1.8176998703855651], [[0.5973539320302068, 0.37911920122671, 0.7067085050777813], [-0.6080446677065765, -0.36048462150723415, 0.7073418690635986], [-0.5229244323625069, 0.8522437849101673, -0.015184502637310445]]),
     ("scatter", [0.5611656308174133, 1.1229159832000732, 0.7837381362915039, 0.5648179054260254, 0.4388663172721863, 0.869084894657135], [0.06584600854179062, 0.243155742344148, 2.158817999423052], [[0.09785654742159156, -0.6627082463316936, 0.7424566494891788], [0.9074869554290473, -0.24682377659908392, -0.33991976852116706], [0.40852358787815923, 0.7070330993308142, 0.5772457662017271]]),
-    ("omnisac", [3.0, 5.0, 1.0, 0.0, 0.0, 0.0], [1.0, 3.0, 5.0], [[0.0, 0.0, 1.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]]),
-    ("omnisac", [2.0, -3.0, 5.0, 0.0, 0.0, 0.0], [-3.0, 2.0, 5.0], [[0.0, 1.0, 0.0], [1.0, 0.0, 0.0], [0.0, 0.0, 1.0]]),
-    ("omnisac", [-1.0, -2.0, -3.0, 0.0, 0.0, 0.0], [-3.0, -2.0, -1.0], [[0.0, 0.0, 1.0], [0.0, 1.0, 0.0], [1.0, 0.0, 0.0]]),
-    ("omnisac", [7.0, 3.0, 2.0, 1.0, 0.5, 0.25], [1.9246167317984855, 2.7833428994210716, 7.292040368780443], [[-0.06346697218804354, -0.16961326053207448, 0.983464938517363], [-0.2449028972852712, 0.9579660321979765, 0.14941101718462863], [0.9674680947414038, 0.2313707479491392, 0.10233798244490598]]),
-    ("omnisac", [2.0, -3.0, 5.0, 0.4000000059604645, -0.20000000298023224, 0.699999988079071], [-3.094745658377889, 2.0250651549723324, 5.069680503405556], [[-0.08139629574215652, 0.992801332441042, -0.08786442592282168], [0.9952216295715787, 0.08573082135051117, 0.0467347226744549], [-0.053930984344316056, 0.08364054384004425, 0.9950355312016727]]),
-    ("omnisac", [9.0, 0.0, 0.0, 0.0, 0.0, 0.0], [0.0, 0.0, 9.0], [[0.0, 1.0, 0.0], [0.0, 0.0, 1.0], [1.0, 0.0, 0.0]]),
-    ("omnisac", [100.0, 1.0, 1.0, 0.0, 0.0, 0.0], [1.0, 1.0, 100.0], [[0.0, 1.0, 0.0], [0.0, 0.0, 1.0], [1.0, 0.0, 0.0]]),
-    ("omnisac", [5.0, 5.0, 0.10000000149011612, 0.0, 0.0, 0.0], [0.10000000149011612, 5.0, 5.0], [[0.0, 0.0, 1.0], [0.0, 1.0, 0.0], [1.0, 0.0, 0.0]]),
-    ("omnisac", [1.0, 100.0, 100.0, 0.0, 0.0, 0.0], [1.0, 100.0, 100.0], [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]),
-    ("omnisac", [2.0, -3.0, 0.0, 0.0, 0.0, 0.0], [-3.0, 0.0, 2.0], [[0.0, 1.0, 0.0], [0.0, 0.0, 1.0], [1.0, 0.0, 0.0]]),
+    ("reference", [3.0, 5.0, 1.0, 0.0, 0.0, 0.0], [1.0, 3.0, 5.0], [[0.0, 0.0, 1.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]]),
+    ("reference", [2.0, -3.0, 5.0, 0.0, 0.0, 0.0], [-3.0, 2.0, 5.0], [[0.0, 1.0, 0.0], [1.0, 0.0, 0.0], [0.0, 0.0, 1.0]]),
+    ("reference", [-1.0, -2.0, -3.0, 0.0, 0.0, 0.0], [-3.0, -2.0, -1.0], [[0.0, 0.0, 1.0], [0.0, 1.0, 0.0], [1.0, 0.0, 0.0]]),
+    ("reference", [7.0, 3.0, 2.0, 1.0, 0.5, 0.25], [1.9246167317984855, 2.7833428994210716, 7.292040368780443], [[-0.06346697218804354, -0.16961326053207448, 0.983464938517363], [-0.2449028972852712, 0.9579660321979765, 0.14941101718462863], [0.9674680947414038, 0.2313707479491392, 0.10233798244490598]]),
+    ("reference", [2.0, -3.0, 5.0, 0.4000000059604645, -0.20000000298023224, 0.699999988079071], [-3.094745658377889, 2.0250651549723324, 5.069680503405556], [[-0.08139629574215652, 0.992801332441042, -0.08786442592282168], [0.9952216295715787, 0.08573082135051117, 0.0467347226744549], [-0.053930984344316056, 0.08364054384004425, 0.9950355312016727]]),
+    ("reference", [9.0, 0.0, 0.0, 0.0, 0.0, 0.0], [0.0, 0.0, 9.0], [[0.0, 1.0, 0.0], [0.0, 0.0, 1.0], [1.0, 0.0, 0.0]]),
+    ("reference", [100.0, 1.0, 1.0, 0.0, 0.0, 0.0], [1.0, 1.0, 100.0], [[0.0, 1.0, 0.0], [0.0, 0.0, 1.0], [1.0, 0.0, 0.0]]),
+    ("reference", [5.0, 5.0, 0.10000000149011612, 0.0, 0.0, 0.0], [0.10000000149011612, 5.0, 5.0], [[0.0, 0.0, 1.0], [0.0, 1.0, 0.0], [1.0, 0.0, 0.0]]),
+    ("reference", [1.0, 100.0, 100.0, 0.0, 0.0, 0.0], [1.0, 100.0, 100.0], [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]),
+    ("reference", [2.0, -3.0, 0.0, 0.0, 0.0, 0.0], [-3.0, 0.0, 2.0], [[0.0, 1.0, 0.0], [0.0, 0.0, 1.0], [1.0, 0.0, 0.0]]),
 ];
 
 /// Whether every entry of `a` is a number of `S`.
@@ -437,12 +437,10 @@ fn diag(d: V3) -> M {
     array::from_fn(|i| array::from_fn(|j| if i == j { d[i] } else { 0.0 }))
 }
 
-/// omnisac's cases (`eig3::tests`): the axes of a diagonal matrix, the eigen equation and the unit
-/// length on its `7, 3, 2, 1, .5, .25` matrix, an indefinite diagonal, a rank-2 matrix and a
-/// negative definite one. Its rejections are now answers: a multiple of the identity (also zero
-/// and a negative trace) is the identity and near isotropy is a decomposition; non-finite entries
-/// are `a_non_finite_entry_has_no_eigenvalues`.
-fn omnisac_cases<S: Lane>() {
+/// Reference cases: the axes of a diagonal matrix, eigen equation and unit
+/// length on test matrices, an indefinite diagonal, a rank-2 matrix and a
+/// negative definite one. Multiples of identity produce orthonormal frames.
+fn reference_cases<S: Lane>() {
     let u = unit::<S>();
     let near = |x: f64, y: f64| (x - y).abs() <= 64.0 * u * y.abs().max(1.0);
     for (d, want, axes) in [
@@ -496,10 +494,10 @@ fn a_non_finite_entry_has_no_eigenvalues() {
 }
 
 #[test]
-fn omnisac_cases_hold_at_every_scalar() {
-    omnisac_cases::<f64>();
-    omnisac_cases::<f32>();
-    omnisac_cases::<D>();
+fn reference_cases_hold_at_every_scalar() {
+    reference_cases::<f64>();
+    reference_cases::<f32>();
+    reference_cases::<D>();
 }
 
 /// Only the lower triangle is read: a matrix with `NaN` above the diagonal gives the bits of its
@@ -756,8 +754,8 @@ fn diagonal_residual<S: Lane>(d: V3) -> f64 {
 /// eigenvalues included) the frame is orthonormal (`check` asserts it on every row) but neither the
 /// vector of the isolated smallest eigenvalue nor the second is an eigenvector, however wide the
 /// gap of the first: over 100 rotations the worst residual of each exceeds `0.01 |A|`, ten times
-/// the largest the recorded bounds allow (`f32`, `1e-3 |A|`). So it does on the axis-aligned ties,
-/// omnisac's `5, 5, 0.1` among them (it returned `None`). On a rank-1 matrix (a double eigenvalue
+/// the largest the recorded bounds allow (`f32`, `1e-3 |A|`). So it does on axis-aligned ties,
+/// `5, 5, 0.1` among them. On a rank-1 matrix (a double eigenvalue
 /// 0) the eigenvalues are off by a fraction of `sqrt(u) |A|`.
 #[test]
 fn the_limits_of_the_closed_form_are_pinned() {

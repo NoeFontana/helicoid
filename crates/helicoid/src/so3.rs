@@ -132,14 +132,10 @@ impl<S: Real> SO3<S> {
     }
 
     /// The rotation of a `3 x 3` matrix by Shepperd's method (`NUMERICS.md` §3.4): the largest of
-    /// `{tr R, R00, R11, R22}` through nested `branch`es, then normalize. **Closed form, never
-    /// iterative** — locus-tag's `quat_from_so3` regression is an iteration that does not
-    /// terminate on degenerate input.
+    /// `{tr R, R00, R11, R22}` through nested `branch`es, then normalize. Closed form avoids
+    /// iterative convergence failures on degenerate input.
     ///
-    /// Each arm takes its own square root at a *safe* argument (`0003` item 3): the four
-    /// candidates sum to `4`, so the selected one is at least `1`, and an unselected arm is handed
-    /// `1` instead of a possibly negative value. So no lane ever evaluates `sqrt` of a negative
-    /// number or divides by zero, whatever the input matrix.
+    /// Each arm takes `sqrt` at a safe argument (`0003` item 3): the selected candidate is at least `1`.
     ///
     /// # Domain
     ///

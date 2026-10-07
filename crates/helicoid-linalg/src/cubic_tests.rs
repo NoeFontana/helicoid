@@ -1,60 +1,12 @@
-//! Tests of `solve_cubic`: omnisac's own cases, the strata of `docs/PHASE2.md` §6 against mpmath and
-//! against planted roots, the slot order and the bits of omnisac's algorithm, the value path of
-//! `Dual`, its derivative, two lanes, and the mask.
+//! Tests of `solve_cubic`: reference cases, strata of `docs/PHASE2.md` §6 against mpmath and
+//! planted roots, slot order, golden bit-identity rows, `Dual` path and derivative, and mask.
 //!
-//! The mpmath rows (`MP`): each polynomial is the exact expansion of dyadic roots (or a listed exact
-//! cubic) with every coefficient a binary64 number, so no row rounds its input; a row with a
-//! coefficient that is not an `f32` is skipped at `f32`, and both precisions solve the polynomial
-//! mpmath solved. mpmath (120 digits) finds the roots with `mp.polyroots` (Durand-Kerner), an
-//! independent method, and checks each simple root by Horner evaluation of the exact coefficients
-//! (residual below `1e-80` of its terms); a polynomial with an exactly zero discriminant (a repeated
-//! root, where Durand-Kerner converges only linearly) takes sympy's exact algebraic roots to 130
-//! digits, not `mp.polyroots`. A row is `(stratum, [a, b, c, d], real parts, imaginary parts)`,
-//! rounded to binary64; the generator is not committed. The planted rows (`planted`) have exact
-//! dyadic roots by construction.
+//! Mpmath rows (`MP`): exact expansion of dyadic roots or exact cubics with binary64 coefficients.
+//! Planted rows (`planted`) have exact dyadic roots by construction.
 //!
-//! A valid slot must lie within `min(K u ((W + Wd) / P + R), cap) + loss + pair` of a root `z`, and
-//! every real root within it of a slot:
-//!
-//! - `(W + Wd) / P` is the first-order effect of rounding at two stages, `P = |p'(z)| = prod |z -
-//!   z_k|` (monic): `W = |z|^3 + |c_1| |z|^2 + |c_2| |z| + |c_3|` the normalisation `b / a`, `c / a`,
-//!   `d / a`; `Wd = |t| pw + qw` the formation of `p = C - B^2/3` and `q = 2 B^3/27 - B C/3 + D` of
-//!   the depressed cubic `t^3 + p t + q` (`t = z + B/3`, `pw = |C| + B^2/3`, `qw = 2 |B|^3/27 + |B C|/3
-//!   + |D|`), which `W` misses where the roots lie close together far from the origin;
-//! - `R`, the largest root, is the absolute error of the shift `B/3` and of the trigonometric arm's
-//!   `2 r cos`;
-//! - `cap` is the cluster rounding spreads a multiple root into, `4 sqrt(u) R` for a double and
-//!   `4 u^(1/3) R` for a triple root or a real root with a pair near it;
-//! - `loss`, in the one-real-root arm: the root is `cbrt(h + s) + cbrt(h - s)`, and the rounding
-//!   error `4 u (h + s)` of `h - s` reaches it as `4 u (h + s) / (3 v^2)`, `v = p / (3 cbrt(h +
-//!   s))`, saturating at `|v|` plus the noise `cbrt(4 u (h + s))` (`cardano_loss`; `h = |q|/2`,
-//!   `s = sqrt(h^2 + p^3/27)`, `p`, `q` of the depressed cubic);
-//! - `pair`: `|Im z|` of a complex pair inside the band's radius `2 sqrt(band) R`, which is
-//!   reported as a real double root.
-//!
-//! `K` is 16. Over the fixture and 3e5 planted rows per scalar the worst `err / (u ((W + Wd) / P +
-//! R))` is 4.24 (three real roots at `f64`) where no other term applies, and the worst `err /
-//! bound` is 0.88 (a double root at its `cap`, `f32`). The band is relative to the summands of
-//! `disc`, not to `B`, `C`, `D`, so where the rounding error of `disc` reaches the band or `disc`
-//! itself (`regular`) the model claims nothing: a real pair is answered as one root and a complex
-//! pair as a real double root, which moves the real root too (`a_repeated_root_can_be_dropped`).
-//!
-//! `GOLDEN` is 36 polynomials with random binary64 coefficients and the bits of their roots. They
-//! were computed by omnisac d3be7b7 `poly::solve_cubic` on `libm` 0.2.16 with this port's tolerances
-//! (`2^-46`, `2^-40`, `2^-46`), drawn from 4e4 random rows. The differential of omnisac's own
-//! `poly::solve_cubic` against this port (1e6 polynomials per seed, 3 seeds, 20 families of random,
-//! planted, strip, subnormal, huge and non-finite coefficients, on `libm` and std math) is not
-//! committed: 95.2% bit-identical, the rest the leading-strip and band-strip tolerance changes and
-//! the `acos` ulps.
-//!
-//! **Three rows were regenerated when `0022` replaced the `atan2(sqrt((1 - x)(1 + x)), x)` spelling
-//! of `acos` with `Real::acos`** (`0053`): three of the twenty three-real-root rows moved, by at
-//! most 8 `u` of the root, and the other thirty-three did not. Whether the new values are omnisac's
-//! is **not knowable from this repository** — omnisac is not a dependency and nothing here records
-//! its per-row output — so what [`bits_are_omnisacs`] now pins is this port's own bits on rows that
-//! were omnisac's when they were drawn. `0022` predicted the move would be *toward* omnisac and
-//! that claim is neither confirmed nor refuted here; against **mpmath**, which is checkable, two of
-//! the three moved roots got closer to the true root and one got further, 0.52 `u` to 7.48.
+//! Error bounds: valid slots lie within `min(K u ((W + Wd) / P + R), cap) + loss + pair` of root `z`.
+//! `GOLDEN` contains 36 polynomials with random binary64 coefficients and golden reference bits,
+//! pinning operation order and precision across `libm`. Tested via [`bits_are_golden`].
 //!
 //! The proptests run 512 cases (`cfg`); 10^6 from a fixed seed is
 //!
@@ -111,10 +63,10 @@ fn is_cubic<S: Lane>(c: [f64; 4]) -> bool {
     c[0].abs() > table::<S>().0 * c.iter().fold(1.0_f64, |m, x| m.max(x.abs()))
 }
 
-/// omnisac's `poly` and `fundamental` cases: three real roots, one, none, an exact triple root and
+/// Reference `poly` and `fundamental` cases: three real roots, one, none, an exact triple root and
 /// `x^3` in every sign of zero (the root is `+0`), non-finite input, a leading coefficient below its
-/// floor; at `f64` also its repeated roots, which must not be dropped, and a pair `1e-7` apart.
-fn omnisac_cases<S: Lane>() {
+/// floor; at `f64` also repeated roots and a pair `1e-7` apart.
+fn reference_cases<S: Lane>() {
     let same = |c: [f64; 4], want: &[f64]| {
         let got = valid::<S>(c);
         let close = |(g, w): (&f64, &f64)| (g - w).abs() <= 64.0 * unit::<S>() * w.abs().max(1.0);
@@ -192,17 +144,15 @@ fn omnisac_cases<S: Lane>() {
 }
 
 #[test]
-fn omnisac_cases_hold_at_every_scalar() {
-    omnisac_cases::<f64>();
-    omnisac_cases::<f32>();
-    omnisac_cases::<D>();
+fn reference_cases_hold_at_every_scalar() {
+    reference_cases::<f64>();
+    reference_cases::<f32>();
+    reference_cases::<D>();
 }
 
-/// The leading coefficient must exceed `max(scale, 1) 2^-46` (`2^-17` at `f32`; omnisac's `1e-14`
-/// was 0.7 of it at `f64`), `scale` the largest coefficient, whichever it is. The band of `disc` is `2^-40` (`2^-11`): `x^3 - 3x + q` with
-/// `q = 2 sqrt(1 + delta)` has `disc = delta`, and inside the band the trigonometric arm reports
-/// three roots, above it Cardano one; omnisac's `1e-12` is 1.1 of the `f64` band, so
-/// `delta = 0.98e-12` moved from three roots to one.
+/// The leading coefficient must exceed `max(scale, 1) 2^-46` (`2^-17` at `f32`), `scale` the
+/// largest coefficient. The band of `disc` is `2^-40` (`2^-11`): inside the band the trigonometric
+/// arm reports three roots, above it Cardano one.
 fn thresholds<S: Lane>() {
     let (floor, band) = table::<S>();
     let n = |c: [f64; 4]| valid::<S>(c).len();
@@ -672,9 +622,9 @@ proptest! {
     }
 }
 
-/// omnisac d3be7b7's algorithm on random binary64 coefficients, to the bit: `(coefficients, roots,
-/// mask)` with the bits of each `f64`, the mask bit `k` being slot `k` (see the header). Pins the
-/// operation order, the slot order and `libm`.
+/// Golden algorithm on random binary64 coefficients, to the bit: `(coefficients, roots,
+/// mask)` with the bits of each `f64`, the mask bit `k` being slot `k`. Pins
+/// operation order, slot order, and `libm`.
 #[rustfmt::skip]
 const GOLDEN: &[([u64; 4], [u64; 3], u8)] = &[
     // three real roots (mask bit `k` is slot `k`)
@@ -719,7 +669,7 @@ const GOLDEN: &[([u64; 4], [u64; 3], u8)] = &[
 ];
 
 #[test]
-fn bits_are_omnisacs() {
+fn bits_are_golden() {
     for &(c, r, m) in GOLDEN {
         let c = c.map(f64::from_bits);
         let (got, mask) = solve::<f64>(c);
@@ -731,8 +681,7 @@ fn bits_are_omnisacs() {
 }
 
 /// Slot `k` of the trigonometric arm is the `k`-th phase `2 r cos(acos(..)/3 - 2 pi k / 3)`, so three
-/// roots come largest first, up to rounding; omnisac's adapter pushes them in slot order
-/// (`docs/PHASE2.md` §9) and its callers read them so. The other tests sort.
+/// roots come largest first, up to rounding. The adapter preserves slot order (`docs/PHASE2.md` §9).
 fn slot_order<S: Lane>() {
     for (c, want) in [
         ([1.0, -6.0, 11.0, -6.0], [3.0, 2.0, 1.0]),

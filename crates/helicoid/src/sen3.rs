@@ -206,13 +206,10 @@ impl<S: Real> SEn3Tangent<S, 1> {
     }
 
     /// The twist of a translation-first array `[v; ω]`, the order of Barfoot (`[ρ; φ]`), Solà,
-    /// Sophus and manif (`[υ; ω]`), and of locus-tag's `delta` (`0002`).
+    /// Sophus, and manif (`[υ; ω]`) ([`0002`](./docs/decisions/0002-one-convention-for-a-stack-that-already-disagrees.md)).
     ///
-    /// It is the permutation `Π = [[0, I₃], [I₃, 0]]` of `docs/maths/se3.md` SE.14(a), `[v; ω]`
-    /// to `[ω; v]`: `a[0..3]` becomes `v` and `a[3..6]` becomes `ω`. Six scalars are copied, so
-    /// the conversion is exact. It converts the order of a tangent and nothing else: a covariance
-    /// or a Jacobian in the other order is `Π M Πᵀ`, the caller's (SE.14(b)), and locus-tag's
-    /// decoupled retraction is a different map from `Exp`, not `Π` of it (`0012`).
+    /// Applies permutation `Π = [[0, I₃], [I₃, 0]]` (`docs/maths/se3.md` SE.14(a)) from `[v; ω]`
+    /// to `[ω; v]`. Covariances or Jacobians in that order transform as `Π M Πᵀ` (SE.14(b)).
     ///
     /// ```
     /// use helicoid::Twist;
