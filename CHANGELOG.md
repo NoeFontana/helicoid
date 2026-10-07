@@ -58,7 +58,7 @@ defined by the status tables in `docs/`; they win over this file.
     because the correction is under half an ulp — and `tα` at `geo:consecutive` reaches that band),
     and at binary32 their octant arms are **exact negations**, agreeing only because `k_cosf` reads
     its argument solely through `x*x`. So binary32 is checked **exhaustively over all 2^32
-    patterns** — 0 disagreements — and binary64 over 1.2M arguments including that band.
+    patterns** — 0 disagreements — and binary64 over **520 018** arguments including that band.
   - **Verified end to end: all 24 files under `conformance/results/` are byte-identical** to the
     pre-change run bar the git revision column. `0047`'s standard; this change has cost and no
     numerics.

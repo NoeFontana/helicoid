@@ -156,6 +156,49 @@ owes and *Further work* 1 names.
 
 None.
 
+## Review
+
+A `/code-review` of #102 found fifteen defects, fourteen real, and the worst was in this record's own
+work. They are listed because three of them were **false statements of reasoning in prose that
+licensed a normative claim**, which is the failure mode this record exists to correct one level up.
+
+1. **`probe` returned `[S; 29]` while `OUTPUTS` stayed `[.., 26]`**, and `zip` truncates in silence:
+   three expressions went uncompared and every name from `sin` onward was attached to the wrong one,
+   so `x.sin()` was reported as `lt` and compared *exactly* where its own flag says otherwise. Fixed
+   by one `const PROBES` shared by both plus a `const` assertion, so the next mismatch is a compile
+   error. This was decision 6's own fix going wrong in the same shape it was fixing.
+2. **"The general path agrees by construction" is false at binary32.** `sinf`'s `n & 3 == 2` arm is
+   `k_sinf(-y)` where `sincosf`'s is `-k_sinf(y)`: a negated *argument* against a negated *result*,
+   agreeing only because every term of `k_sinf` carries `x` in an odd power. A fourth load-bearing
+   property, now named.
+3. **The band's rounding margin was overstated 2x.** "Half an ulp is at least `2^-53` relative" is
+   wrong: in `[2^-27 sqrt 2, 2^-26)` it is `2^-80/x`, between `2^-54` and `2^-53.5`, so the margin
+   is **1.5x at the top and 4.24x at the bottom** — and the claim that it is "uniform over the band"
+   is the opposite of true, which made the top-of-band sweep look redundant when it is the tight
+   corner.
+4. **`Real::cos`'s bit-identity was words only**, where `sin`'s got a module. It now has
+   `cos_agrees_at_binary64` and eight exhaustive binary32 shards. Writing it found a second defect:
+   `x.sin_cos()` on a concrete `f64` resolves to **`std`**'s inherent method, so the first draft
+   compared `libm::cos` against *glibc* and failed at `x = 16.4`. Check 5 keeps that out of
+   non-test code and `no_std` out of the library; test files are exempt from both.
+5. **`Dual::acos`'s derivative had no independent test**, against `dual_tests`'s own stated standard.
+   It now has an mpmath fixture at both precisions, nesting for the second derivative, and the
+   degenerate cases. Writing *that* found a third defect: the binary32 rows were `acos` of the
+   binary64 argument rounded afterwards, where `acosf` takes the binary32 argument — one ulp out.
+6. **`cos` and `acos` were tallied into `Counts::sin` and `Counts::atan2`**, folding the columns
+   decision 5's instrument exists to separate. Each has its own column, pinned at zero for the
+   kernel, which makes D5 checkable from the counts as well as from check 8.
+7. Smaller: `half_angle_sin` had inherited `half_angle`'s doc and claimed to return both halves;
+   `coeffs/mod.rs`'s cost accounting still read "`jr_coeffs` one and two" where it is now
+   `(1, 0, 2)`; `Real::sin`'s rustdoc cited `float_tests::sin_is_sin_cos_dot_zero_to_the_bit`, which
+   exists nowhere — the `[symbols]` check skips unknown modules by design, so it passed; the
+   binary64 evidence is **520 018** arguments and `0052` and the changelog said 1.2 M, which was a
+   scratch harness's figure; and `exact_a_b` stated one rationale twice.
+8. **The exhaustive guards were a gate nothing ran.** `just exhaustive` runs all sixteen shards —
+   16 passed in 110 s — and the recipe states the condition: after `cargo update` touches `libm`.
+   It is deliberately not in `just test`, because four minutes of CPU on every run is the wrong
+   trade when the dense samples would catch a structural change.
+
 ## Further work
 
 1. **`solve_cubic` and `eig3` have no corpus id**, so `0006`'s bars do not reach them and this

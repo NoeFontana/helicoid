@@ -205,3 +205,15 @@ publish-check:
         echo "What would be packaged:"
         cargo package -p helicoid --list
     fi
+
+# The exhaustive guards: every binary32 bit pattern, for the claims that license re-spelling a
+# `sin_cos` as a `sin` or a `cos` (`0052`, `0053`). Minutes, so **not** in `just test` — two shard
+# sets of eight, run concurrently, about four minutes of CPU each.
+#
+# Run it after `cargo update` touches `libm`: it is a caret dependency, the two functions of each
+# pair are *not* the same expression, and `solve_cubic`'s committed golden bits rest on the identity.
+# `just test` runs the dense samples, which would catch a structural change but not a rare one.
+exhaustive:
+    cargo nextest run --release -p helicoid-linalg \
+        -E 'test(binary32_agrees_exhaustively) + test(cos_agrees_on_all_of_binary32)' \
+        --run-ignored all

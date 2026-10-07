@@ -92,7 +92,7 @@ places could part, read from 0.2.16:
    with a term linear in `x` would part them and nothing promises one will not appear.
 
 So: **exhaustive over all `2^32` binary32 bit patterns, 0 disagreements** (3m47s), which settles
-item 3 for good rather than sampling around it; and 0 disagreements over 1.2 M binary64 arguments —
+item 3 for good rather than sampling around it; and 0 disagreements over **520 018** binary64 arguments —
 the `(0, π/2]` range, 200 000 points inside item 2's band, and 800 000 seeded draws across sixty
 decades, both signs, past every reduction threshold.
 

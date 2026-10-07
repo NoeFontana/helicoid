@@ -254,10 +254,15 @@ impl<S: Real, const N: usize> Real for Dual<S, N> {
     /// # Domain
     ///
     /// The value's is `[-1, 1]`; the derivative is singular at `v = +-1`, where the product is `0`
-    /// and the quotient `-+inf` -- the true behaviour of `acos` there, and the same singularity the
-    /// `atan2` spelling this replaces had through its own `sqrt` (`0022`).
+    /// and the quotient `-+inf` **where `d` is not zero, and NaN (`0 / 0`) where it is, untouched
+    /// components included** -- the distinction [`Dual::cbrt`](Real::cbrt)'s domain draws and this
+    /// one omitted for a commit. So a constant at `v = 1` has all-NaN derivatives and a seeded one
+    /// has `-+inf` in its own lane and NaN in the rest. That is the true behaviour of `acos` there,
+    /// and the same singularity the `atan2` spelling this replaces had through its own `sqrt`
+    /// (`0022`), which `eig3`'s ambient Jacobian reaches at a double eigenvalue.
     ///
-    /// Outside `[-1, 1]` the value is NaN, as [`Real::acos`] states, and the derivative is `-+inf`:
+    /// Outside `[-1, 1]` the value is NaN, as [`Real::acos`] states, and the derivative is the same
+    /// pair of cases:
     /// the product is negative there, and [`Real::sqrt`] carries a `debug_assert!` against a
     /// negative argument, so a `select` feeds it `0` instead (`0003` item 3's safe argument). Not a
     /// clamp for the caller's benefit -- it is the only spelling that neither panics in debug nor
