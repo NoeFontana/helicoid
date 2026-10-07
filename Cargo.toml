@@ -2,7 +2,7 @@
 resolver = "2"
 members = ["crates/helicoid-linalg", "crates/helicoid", "xtask"]
 # The oracle runners' dependency graphs never enter `Cargo.lock` (`docs/PHASE1.md` §0).
-exclude = ["runners/tf_tree_math", "runners/sophus_rs"]
+exclude = ["runners/tf_tree_math", "runners/sophus_rs", "runners/nalgebra"]
 
 [workspace.package]
 # 0.0.x: every release may break every other (`SUPPORT.md`).

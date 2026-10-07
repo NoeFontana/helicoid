@@ -98,6 +98,21 @@ const RUNNERS: &[Runner] = &[
             "sen3_jr_inv_n1",
         ],
     },
+    Runner {
+        name: "nalgebra",
+        dir: "runners/nalgebra",
+        // nalgebra is Rust `std`, so the host's library (`0056`, draft, decision 4).
+        backend: Backend::HostStd,
+        answers: &[
+            "eig3",
+            "chol_n3",
+            "chol_n6",
+            "chol_solve_n3",
+            "chol_solve_n6",
+            "solve_cubic",
+            "quat_renormalize",
+        ],
+    },
 ];
 
 pub(super) fn names() -> Vec<&'static str> {
@@ -329,9 +344,13 @@ fn execute(
     Ok(Registered {
         version: version.clone(),
         version_f32: version,
-        // `tf_tree_math` is binary64 only (`tf_tree` D6), so a run at `f32` is an error on every id
-        // it answers rather than another kernel's answer under its name (`0016` item 2).
-        no_f32: Some("tf_tree_math has no f32 kernel".to_string()),
+        // Every runner answers in binary64 (`tf_tree_math` has nothing else, `tf_tree` D6), so a
+        // run at `f32` is an error on every id it answers rather than another kernel's answer under
+        // its name (`0016` item 2).
+        no_f32: Some(format!(
+            "the `{}` runner answers binary64 only",
+            runner.name
+        )),
         subject: Box::new(subject),
         planted: false,
     })
@@ -487,8 +506,9 @@ mod tests {
                 .err()
                 .unwrap_or_default()
         };
-        assert!(go("nope", None)
-            .contains("no oracle runner `nope`; have [\"tf_tree_math\", \"sophus_rs\"]"));
+        assert!(go("nope", None).contains(
+            "no oracle runner `nope`; have [\"tf_tree_math\", \"sophus_rs\", \"nalgebra\"]"
+        ));
         assert!(go("tf_tree_math", Some("nope")).contains("no corpus file for `--fn nope`"));
         assert!(!scratch.0.exists());
         Ok(())
@@ -563,12 +583,13 @@ mod tests {
 
     /// Each registered runner's backend, and an unregistered name answering `None`.
     ///
-    /// `tf_tree_math` declares `libm.workspace = true`; sophus-rs is Rust `std`. The domination
+    /// `tf_tree_math` declares `libm.workspace = true`; sophus-rs and nalgebra are Rust `std`. The domination
     /// split reads this, so a wrong entry would silently mislabel a failure (`0036`, draft).
     #[test]
     fn every_runner_declares_where_its_transcendentals_come_from() {
         assert_eq!(backend("tf_tree_math"), Some(Backend::LibmCrate));
         assert_eq!(backend("sophus_rs"), Some(Backend::HostStd));
+        assert_eq!(backend("nalgebra"), Some(Backend::HostStd));
         assert_eq!(backend("not_a_runner"), None);
         assert_eq!(names().len(), RUNNERS.len());
     }

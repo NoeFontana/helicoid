@@ -116,6 +116,19 @@ oracle-sophus-rs:
     cargo nextest run --manifest-path runners/sophus_rs/Cargo.toml --locked
     cargo xtask conformance --oracle sophus_rs
 
+# The nalgebra oracle (`docs/decisions/0056`, draft, decision 4): as `oracle-sophus-rs`, for
+# `runners/nalgebra` (`subject_version` is the pinned `nalgebra`), audited with the runner's own
+# `deny.toml`, which cargo-deny finds beside the manifest: the root's bans `nalgebra`. It answers
+# `eig3`, `chol_*`, `chol_solve_*`, `solve_cubic` and `quat_renormalize`, in binary64.
+# Rows in conformance/results/nalgebra.csv.
+oracle-nalgebra:
+    cargo fmt --manifest-path runners/nalgebra/Cargo.toml -- --check
+    cargo clippy --manifest-path runners/nalgebra/Cargo.toml --locked --all-targets -- -D warnings
+    RUSTDOCFLAGS='-D warnings' cargo doc --manifest-path runners/nalgebra/Cargo.toml --locked --no-deps --document-private-items
+    cargo deny --manifest-path runners/nalgebra/Cargo.toml check advisories licenses sources
+    cargo nextest run --manifest-path runners/nalgebra/Cargo.toml --locked
+    cargo xtask conformance --oracle nalgebra
+
 # The one-variable twins (`0037`, draft): a candidate's program at a scalar whose transcendentals
 # are the host's `std` instead of the `libm` crate, into conformance/results/*-host-std.csv. Both
 # are planted subjects, so a plain `conformance` run skips them; `envelope` reads the rows of the
@@ -130,7 +143,7 @@ conformance-twin:
 # The bars of `docs/PHASE1.md` §8 over conformance/results: domination over the best oracle and exact
 # no-regress against conformance/baseline, per (fn, stratum, precision) on the max, then coverage of
 # the corpus. It first reruns the in-process subjects, so the candidate's rows are current; the
-# oracles' rows are what `oracle-tf-tree-math`, `oracle-sophus-rs` last wrote. `--check` also fails on
+# oracles' rows are what `oracle-tf-tree-math`, `oracle-sophus-rs`, `oracle-nalgebra` last wrote. `--check` also fails on
 # a baseline or docs/evidence/ENVELOPE.md (its oracle columns aside) that `--bless` would write
 # differently (an improved max is blessed in its own PR); `--bless` writes both, and nothing while
 # domination, coverage or a dropped stratum fails (`--dry-run`: says what it would write). While the

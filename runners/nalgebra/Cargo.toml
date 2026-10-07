@@ -1,0 +1,41 @@
+[package]
+name = "nalgebra_runner"
+description = "Oracle runner: the corpus through nalgebra, file protocol of docs/PHASE1.md section 7."
+version = "0.0.0"
+edition = "2021"
+rust-version = "1.87"
+license = "MIT OR Apache-2.0"
+publish = false
+
+[dependencies]
+# The oracle (`docs/decisions/0056`, draft, decision 4): `SymmetricEigen`, `Cholesky`, `Schur` and
+# `Unit::renormalize_fast`, exact. `PIN` in `src/main.rs` names it (a test compares it with this
+# line and with `Cargo.lock`): the `subject_version` of every result row. `std` without `macros`,
+# so no proc-macro enters the graph.
+nalgebra = { version = "=0.35.0", default-features = false, features = ["std"] }
+serde_json = "1"
+
+# Its own workspace and lockfile: nothing here enters the root `Cargo.lock` (`docs/PHASE1.md` §0).
+[workspace]
+
+# The root's lints, which a workspace-excluded crate does not inherit.
+[workspace.lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+todo = "deny"
+unimplemented = "deny"
+dbg_macro = "deny"
+float_cmp = "deny"
+print_stdout = "warn"
+print_stderr = "warn"
+redundant_clone = "warn"
+needless_pass_by_value = "warn"
+
+[workspace.lints.rust]
+missing_docs = "warn"
+unreachable_pub = "warn"
+unused_must_use = "deny"
+
+[lints]
+workspace = true
