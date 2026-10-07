@@ -64,17 +64,6 @@ pub(crate) fn pi<S: Real>() -> S {
     }
 }
 
-/// `acos x` for `x` in `[-1, 1]` or NaN: `atan2(sqrt((1 - x)(1 + x)), x)`, as `Real` has no `acos`
-/// yet. `0022` decides it gains one, and this form goes with it: it costs 2.61x `libm::acos` and is
-/// marginally less accurate everywhere measured. Each factor is exact near the end of the interval
-/// where it is small, so the
-/// sine keeps full relative accuracy at a double root; the product is `>= 0` there, so `sqrt` sees
-/// a valid argument.
-#[inline]
-pub(crate) fn acos<S: Real>(x: S) -> S {
-    ((S::one() - x) * (S::one() + x)).sqrt().atan2(x)
-}
-
 /// The real roots of `a x^3 + b x^2 + c x + d`, and which slots of the result are roots.
 ///
 /// Returns `(roots, valid)`: slot `k` is reported as a root iff `valid[k]` is set (`# Domain` says
@@ -233,10 +222,12 @@ pub fn solve_cubic<S: Real>(a: S, b: S, c: S, d: S) -> (Vec3<S>, [S::Mask; 3]) {
                     // `theta / three`, `2 pi / 3` and `2 r` are loop invariants. Hoisting them is
                     // bit-identical: `2 pi k / 3` for `k = 0, 1` is unchanged, and for `k = 2` the
                     // two spellings differ only by a factor of two, which rounding commutes with.
-                    let third = acos(arg) / three;
+                    let third = arg.acos() / three;
                     let step = two * pi::<S>() / three;
                     let two_r = two * r;
-                    core::array::from_fn(|k| two_r * (third - step * S::lit(k as f64)).sin_cos().1)
+                    // `Real::cos` and not `sin_cos().1`: the sine is discarded, and the two are
+                    // bit-identical (`0052`, `0022`), so this drops three kernels and no bit.
+                    core::array::from_fn(|k| two_r * (third - step * S::lit(k as f64)).cos())
                 },
                 || {
                     S::branch(

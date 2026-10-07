@@ -657,6 +657,12 @@ impl Real for Counted {
     fn sin(self) -> Self {
         Self(self.0.sin())
     }
+    fn cos(self) -> Self {
+        Self(self.0.cos())
+    }
+    fn acos(self) -> Self {
+        Self(self.0.acos())
+    }
     fn atan2(self, x: Self) -> Self {
         Self(self.0.atan2(x.0))
     }

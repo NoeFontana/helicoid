@@ -240,6 +240,39 @@ impl<S: Real, const N: usize> Real for Dual<S, N> {
         self.sin_cos().0
     }
 
+    /// Through [`sin_cos`](Real::sin_cos), for [`sin`](Real::sin)'s reason mirrored: `d/dx cos` is
+    /// `-sin`, so the sine is needed anyway (`0022`, `0052`).
+    #[inline]
+    fn cos(self) -> Self {
+        self.sin_cos().1
+    }
+
+    /// `-d / sqrt((1 - v)(1 + v))`, the factored denominator and not `sqrt(1 - v^2)`: each factor
+    /// is exact near the end of the interval where it is small, so the derivative keeps its
+    /// relative accuracy at a double root. The value is [`Real::acos`]'s.
+    ///
+    /// # Domain
+    ///
+    /// The value's is `[-1, 1]`; the derivative is singular at `v = +-1`, where the product is `0`
+    /// and the quotient `-+inf` -- the true behaviour of `acos` there, and the same singularity the
+    /// `atan2` spelling this replaces had through its own `sqrt` (`0022`).
+    ///
+    /// Outside `[-1, 1]` the value is NaN, as [`Real::acos`] states, and the derivative is `-+inf`:
+    /// the product is negative there, and [`Real::sqrt`] carries a `debug_assert!` against a
+    /// negative argument, so a `select` feeds it `0` instead (`0003` item 3's safe argument). Not a
+    /// clamp for the caller's benefit -- it is the only spelling that neither panics in debug nor
+    /// reaches `libm::sqrt` directly, which check 5 forbids here -- and `-+inf` for a degenerate
+    /// derivative is the convention [`Real::atan2`]'s rule already sets.
+    #[inline]
+    fn acos(self) -> Self {
+        let prod = (S::one() - self.v) * (S::one() + self.v);
+        let den = S::select(prod.lt(S::zero()), S::zero(), prod).sqrt();
+        Self {
+            v: self.v.acos(),
+            d: self.d.map(|d| -(d / den)),
+        }
+    }
+
     /// `self` is `y`. The value is `S::atan2` and has no restricted domain.
     ///
     /// # Domain

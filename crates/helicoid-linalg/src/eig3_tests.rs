@@ -10,8 +10,11 @@
 //! `gap_k` the distance of `l_k*` to the nearest other eigenvalue (at least `u |A|`, where the bound
 //! is vacuous), `gap` the smaller adjacent gap, `c = 1 + min(|A| / gap, u^(-1/2))`. They are a fit,
 //! **not the bars of PHASE2 §6**, which name no constant `K` (`0023` (draft)): worst value / bound
-//! 0.52 over 10^6 planted cases per seed (seeds 1 to 4) and 0.15 over the fixture, about ten times
-//! above the measurements on the clustered strata below. They are asserted where the top gap is at
+//! 0.52 over 10^6 planted cases per seed (seeds 1 to 4) and **0.206** over the fixture, about ten
+//! times above the measurements on the clustered strata below. The fixture figure was 0.15 until
+//! `0022` routed `acos` through `libm` (`0053`): `ev` and `res` moved 0.150 -> 0.206 on one omnisac
+//! row, `ang` did not move, and both stay a factor of five inside the bound. It is reproducible —
+//! `EIG3_REPORT=1` prints each new largest ratio — which the clustered table below is not. They are asserted where the top gap is at
 //! least `4 sqrt(u) |A|`; below it (a tie of the top pair, `# Domain`) only the frame and `ev` are,
 //! and the vectors are pinned as wrong in `the_limits_of_the_closed_form_are_pinned`.
 //!

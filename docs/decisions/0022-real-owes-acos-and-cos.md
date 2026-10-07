@@ -2,7 +2,27 @@
 
 **Status:** ready
 **Owner:** @NoeFontana
-**Implementation:** `pi` as a literal has landed; `Real::acos` and `Real::cos` are step 1 below.
+**Implementation:** `pi` as a literal has landed; steps 1 and 2 landed with [`0053`](./0053-acos-is-better-the-roots-are-not-necessarily.md).
+
+> **Amended 2026-10-07 by [`0053`](./0053-acos-is-better-the-roots-are-not-necessarily.md), the signed edit the index's rules allow.** Both steps are
+> implemented as written and the *Decision* stands, on reason 1 and the function-level half of
+> reason 2. Two of the three reasons do not survive re-measurement:
+>
+> - **Reason 2 is narrowed.** `libm::acos` is better than the `atan2` form everywhere measured —
+>   independently reproduced, 0.852 `u` against 1.659 on the grid and 0.489 against 1.148 as
+>   `x -> 1-` — but a more accurate `acos` is **not** a more accurate root. On the three `GOLDEN`
+>   rows that move, scored against `mpmath`, two roots get closer to the truth and one gets further,
+>   0.522 `u` to 7.478; `eig3`'s worst `value / bound` over its fixture moves 0.150 to 0.206. "More
+>   accurate, by a little, everywhere measured" is true of the function and false of both routines.
+> - **Reason 3 is withdrawn.** "Back toward omnisac" is not verifiable in this repository: omnisac
+>   is not a dependency, nothing committed records its per-row output, and `bits_are_omnisacs`
+>   *passed* before the change, so the port already reproduced all 36 stored triples.
+>
+> Reason 1 is confirmed: 2.63x against this record's stated 2.61x for `acos`, and `libm::cos` at
+> 7.7 ns against `sin_cos().1`'s 9.6. `0053` also records what this record assumed without
+> establishing — that `cos` is bit-identical to `sin_cos().1`, which holds by construction and
+> exhaustively over all `2^32` binary32 — and what neither record anticipated: **no corpus id
+> reaches `solve_cubic` or `eig3`**, so `0006`'s bars were never the judge here.
 
 > **Retitled and rescoped.** This record was *"`solve_cubic`'s `acos` and the limits it inherits"*
 > and carried two open questions. The first is answered here, against the measurements its first

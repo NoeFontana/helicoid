@@ -33,7 +33,7 @@ const OUTPUTS: [(&str, bool); 26] = [
 /// One output per `Real` method and operator, so a mismatch names the method. `sqrt` takes the
 /// `abs` of its argument: its domain is non-negative.
 #[rustfmt::skip]
-fn probe<S: Real>(x: S, y: S, z: S) -> [S; 26] {
+fn probe<S: Real>(x: S, y: S, z: S) -> [S; 29] {
     let (s, c) = x.sin_cos();
     let (lt, le) = (x.lt(y), y.le(z));
     let pick = |m: S::Mask| S::select(m, S::one(), S::zero());
@@ -41,6 +41,12 @@ fn probe<S: Real>(x: S, y: S, z: S) -> [S; 26] {
     [
         x + y, x - y, x * y, x / y, -x, S::lit(0.5), S::lit(-3.0), S::zero(), S::one(),
         s, c, x.abs().sqrt(), x.cbrt(), x.atan2(y), x.abs(), x.copysign(y),
+        // `sin`, `cos` and `acos`: this list is written by hand, so a `Real` method added without
+        // extending it is one `dual_value_is_plain_value` silently stops covering -- which is what
+        // happened to `sin` in `0052` and is corrected here along with `0022`'s two. Most `POINTS`
+        // are outside `acos`'s domain, so most of its rows are NaN, which is the comparison this
+        // test is built to make ("up to NaN sign and payload", `PHASE2.md` §3).
+        x.sin(), x.cos(), x.acos(),
         pick(lt), pick(le), pick(lt.not()), pick(lt.and(le)), pick(lt.or(le)),
         S::select(le, x, z), bt, bf,
         (x * y - z).atan2(x + z), (x.abs() + y.abs()).sqrt() * z.copysign(x),

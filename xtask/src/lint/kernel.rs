@@ -18,15 +18,10 @@
 
 use std::collections::BTreeMap;
 
-use super::{comments, File, Violation};
+use super::{comments, is_test, File, Violation};
 
 /// The one module that may call `libm`, and the crate-relative paths that are tests.
 const KERNEL: &str = "crates/helicoid-linalg/src/float.rs";
-
-/// Whether `path` is a test file, by the repository's own `*_tests.rs` / `tests.rs` convention.
-fn is_test(path: &str) -> bool {
-    path.ends_with("_tests.rs") || path.ends_with("/tests.rs")
-}
 
 pub(crate) fn check(files: &[File]) -> Vec<Violation> {
     let mut out = Vec::new();

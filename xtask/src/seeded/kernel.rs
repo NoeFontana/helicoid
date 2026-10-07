@@ -411,6 +411,12 @@ pub(super) mod tests {
         fn sin(self) -> Self {
             note(libm::sin(self.0))
         }
+        fn cos(self) -> Self {
+            note(libm::cos(self.0))
+        }
+        fn acos(self) -> Self {
+            note(libm::acos(self.0))
+        }
         fn atan2(self, x: Self) -> Self {
             note(libm::atan2(self.0, x.0))
         }
