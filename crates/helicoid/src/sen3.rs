@@ -1,11 +1,14 @@
 //! SE_N(3): the group `SEn3`, its tangent `SEn3Tangent` and the twist converters
 //! (`docs/PHASE3.md` §5). The structured Jacobian `SEn3Jac` is `dualmat`'s.
 
+use crate::coeffs::log_ratio;
 use crate::coeffs::{jr_coeffs, jr_inv_coeff, q_coeffs};
 use crate::dualmat::{zero3, SEn3Jac};
 use crate::quat::Quat;
 use crate::side::Side;
-use crate::so3::{geodesic_parts, hat_mul, mul_hat, norm_sq, SO3Tangent, SO3};
+use crate::so3::{
+    geodesic_long, geodesic_rel, geodesic_short, hat_mul, mul_hat, norm_sq, SO3Tangent, SO3,
+};
 use crate::traits::{tie_dof, Jac, LieGroup, Tangent};
 use core::array;
 use core::iter::once;
@@ -612,59 +615,110 @@ fn inverses<S: Real, const N: usize>(tau: &SEn3Tangent<S, N>) -> (SEn3Jac<S, N>,
     (jr, jl)
 }
 
-/// `X₀ · q̂_Δᵗ`, the unit-dual-quaternion power of `Δ = X₀⁻¹X₁` (`docs/maths/geodesics.md`
-/// GE.12), per column: what `tf_tree_math::dualquat::screw_pow` computes, with its two
-/// coefficient arms replaced by the catalogue's (`0054`).
-///
-/// The rotation, `q_rᵗ = (cos tα, ϖ_t v)` and `ϖ_t` are [`geodesic_parts`]'s, so the rotation
-/// returned **is** `SO3::geodesic`'s to the bit, and below `r`'s short switch no transcendental
-/// runs at all (GE.15). Each column then takes GE.12's dual part,
-/// `q_d = ½(0, x_Δ) ⊗ (w, v)`, `ϰ = q_d,w / ‖v‖²`, `m̄ = q_d,v + ϰ w v`,
-/// `q_dᵗ = (t ϖ_t q_d,w, ϖ_t m̄ − t ϰ cos tα v)` and `x_Δᵗ = 2 vec(q_dᵗ (q_rᵗ)*)`, and returns
-/// `x₀ + R₀ x_Δᵗ`.
-///
-/// `ϰ` is `0/0` at `‖v‖² = 0`, and is taken as **zero** there, with `0003`'s safe argument in the
-/// division: its terms are `ϰ (ϖ_t w − t cos tα) v = O(α²)`, so dropping them is the limit
-/// `q_dᵗ = t q_d` in value *and* first derivative (GE.15). No range constant of the scalar type
-/// is needed, where GE.13(b)'s second arm needed one.
+/// `PHASE4.md` §1.2's screw geodesic, in `SO3::geodesic`'s two arms (`0054`) and in the **world
+/// frame**: conjugating `Δ = X₀⁻¹X₁` by `R₀` makes its translation `x₁ − x₀` and its axis
+/// `v_w = vec(q₁ q₀*)` (GE.15), so no column is rotated in or out. The rotation is
+/// [`geodesic_short`]'s or [`geodesic_long`]'s, `SO3::geodesic`'s to the bit, and the hot path is
+/// one branch: the short arm forms rotation and translation together.
 #[inline]
 fn screw_geodesic<S: Real, const N: usize>(x0: &SEn3<S, N>, x1: &SEn3<S, N>, t: S) -> SEn3<S, N> {
-    let p = geodesic_parts::<S, true>(x0.q, x1.q, t);
-    let (w, v) = (p.rel.w, Vector([p.rel.x, p.rel.y, p.rel.z]));
-    let point = p.n2.le(S::zero());
-    let n2 = S::select(point, S::one(), p.n2);
-    let (zero, half, two) = (S::zero(), S::lit(0.5), S::lit(2.0));
-    let power_conj = p.power.conjugate();
-    // `inv_mul`'s columns: subtract, then rotate once (`0048`).
-    let rinv = SO3::from_quat_unchecked(x0.q.conjugate());
-    let r0 = x0.rotation();
+    let rel = geodesic_rel(x0.q, x1.q, t);
+    let m = x1.q * x0.q.conjugate();
+    let v = Vector([rel.flip * m.x, rel.flip * m.y, rel.flip * m.z]);
+    let dx: [Vec3<S>; N] = array::from_fn(|i| x1.x[i] - x0.x[i]);
+    let (q, step) = S::branch(
+        rel.fast,
+        || {
+            let (rot, r) = geodesic_short(x0.q, &rel, t);
+            (rot, screw_short(v, r, t, &dx))
+        },
+        || {
+            let (rot, s1, cos_t, nv) = geodesic_long::<S, true>(x0.q, x1.q, &rel, t);
+            // Exactly `t = 1` below the switch is the one way here with `short` set; its
+            // translation is the short arm's, at `log_ratio`'s safe argument by `short` itself.
+            let step = S::branch(
+                rel.short,
+                || screw_short(v, log_ratio(rel.n2, rel.w), t, &dx),
+                || screw_long(v, &rel, nv, s1, cos_t, t, &dx),
+            );
+            (rot, step)
+        },
+    );
     SEn3 {
-        q: p.rot,
-        x: array::from_fn(|i| {
-            let [dx, dy, dz] = rinv.act(x1.x[i] - x0.x[i]).0;
-            // Both products are `Quat`'s Hamilton product, `screw_pow`'s association: the
-            // dot/cross grouping of the same terms is the same mean error and a worse corpus
-            // maximum (`0054`).
-            let qd = Quat {
-                w: zero,
-                x: dx,
-                y: dy,
-                z: dz,
-            } * p.rel;
-            let (dw, dv) = (half * qd.w, Vector([half * qd.x, half * qd.y, half * qd.z]));
-            let kappa = S::select(point, zero, dw / n2);
-            let m = dv + v.scale(kappa * w);
-            let ev = m.scale(p.varpi) - v.scale((t * kappa) * p.power.w);
-            let [ex, ey, ez] = ev.0;
-            let xt = Quat {
-                w: (t * p.varpi) * dw,
-                x: ex,
-                y: ey,
-                z: ez,
-            } * power_conj;
-            x0.x[i] + r0.act(Vector([two * xt.x, two * xt.y, two * xt.z]))
-        }),
+        q,
+        x: array::from_fn(|i| x0.x[i] + step[i]),
     }
+}
+
+/// The screw twin's translation below `r`'s second switch: the definition,
+/// `J_l(tφ) t J_l⁻¹(φ) (x₁ − x₀)` with `φ = r v_w`, by two cross products each way as `log` and
+/// `exp` write them. Every coefficient is the catalogue's on its series arm: no transcendental,
+/// and through `Dual` the provided body's accuracy.
+#[inline]
+fn screw_short<S: Real, const N: usize>(v: Vec3<S>, r: S, t: S, dx: &[Vec3<S>; N]) -> [Vec3<S>; N] {
+    let half = S::lit(0.5);
+    let phi = v.scale(r);
+    let c = jr_inv_coeff(norm_sq(phi));
+    let phit = phi.scale(t);
+    let (a, b) = jr_coeffs(norm_sq(phit));
+    dx.map(|d| {
+        let c1 = phi.cross(d);
+        let rho = ((d - c1.scale(half)) + phi.cross(c1).scale(c)).scale(t);
+        let c2 = phit.cross(rho);
+        (rho + c2.scale(a)) + phit.cross(c2).scale(b)
+    })
+}
+
+/// The screw twin's translation above `r`'s second switch: GE.12's dual part,
+/// `q_d = ½(0, x₁ − x₀) ⊗ (w, v_w)`, `ϰ = q_d,w/‖v‖²`, `m̄ = q_d,v + ϰ w v_w`,
+/// `q_dᵗ = (t ϖ_t q_d,w, ϖ_t m̄ − t ϰ cos tα v_w)`, `2 vec(q_dᵗ (cos tα, ϖ_t v_w)*)`, with
+/// `ϖ_t = sin(tα)/‖v‖` -- not the blend's `sin(tα)/sin α`, which errs more on every regime
+/// `0054` measured. `ϰ` carries GE.13(c)'s `10² α⁻¹ u` derivative loss, which the switch bounds,
+/// and `‖v‖²` is never `0` where this arm is selected; the `select`s are `0003`'s safe arguments
+/// for a lane that is not.
+#[inline]
+fn screw_long<S: Real, const N: usize>(
+    v: Vec3<S>,
+    rel: &crate::so3::GeodesicRel<S>,
+    nv: S,
+    s1: S,
+    cos_t: S,
+    t: S,
+    dx: &[Vec3<S>; N],
+) -> [Vec3<S>; N] {
+    let (one, half, two) = (S::one(), S::lit(0.5), S::lit(2.0));
+    let point = nv.le(S::zero());
+    let varpi = S::select(point, t, s1 / S::select(point, one, nv));
+    let n2 = S::select(point, one, rel.n2);
+    let (w, [vx, vy, vz]) = (rel.w, v.0);
+    let power_conj = Quat {
+        w: cos_t,
+        x: -(varpi * vx),
+        y: -(varpi * vy),
+        z: -(varpi * vz),
+    };
+    dx.map(|d| {
+        // `½(0, d) ⊗ (w, v)`, the Hamilton product without its zero lanes: the same bits as
+        // `Quat`'s `Mul` but for the sign of an exact zero, and `screw_pow`'s grouping.
+        let [dx, dy, dz] = d.0;
+        let dw = half * (((-(dx * vx)) - dy * vy) - dz * vz);
+        let dv = Vector([
+            (dx * w + dy * vz) - dz * vy,
+            ((-(dx * vz)) + dy * w) + dz * vx,
+            (dx * vy - dy * vx) + dz * w,
+        ])
+        .scale(half);
+        let kappa = dw / n2;
+        let mbar = dv + v.scale(kappa * w);
+        let [ex, ey, ez] = (mbar.scale(varpi) - v.scale((t * kappa) * cos_t)).0;
+        let xt = Quat {
+            w: (t * varpi) * dw,
+            x: ex,
+            y: ey,
+            z: ez,
+        } * power_conj;
+        Vector([two * xt.x, two * xt.y, two * xt.z])
+    })
 }
 
 impl<S: Real, const N: usize> LieGroup<S> for SEn3<S, N> {

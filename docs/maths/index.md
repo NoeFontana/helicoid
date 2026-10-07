@@ -282,9 +282,9 @@ below, are collected for decision, with a recommendation each, in the draft reco
   (GE.13(a)). No series repairs the derivative through `Dual`: the pose's translation derivative loses $\approx10^2\alpha^{-1}u$ in the assembly of $\varkappa$, $\bar m$ and
   $\varpi_t$, with or without exact derivatives for them (GE.13(c)), so `jacobians_match_dual_geodesic` needs a per-stratum tolerance (CO.14(ii)) at small angle. Nor does any
   document say whether `geodesic` is bit-exact at $t \in \{0,1\}$, which `tf_tree_math`'s `ScLerp` is by early return and the grouped formulas are not at $t = 1$ (GE.13(f)).
-  *Answered by [`0054`](../decisions/0054-the-screw-twin-is-the-oracles-translation-under-the-shipped-rotation.md):* the guard is $\varkappa = 0$, no constant (GE.15(b)); the
-  small-angle arm is §4's $r$ and $k$ on their short arms, no new series (GE.15(a)); $t = 0$ is exact, $t = 1$ exact in the rotation and to rounding in the
-  translation, and a consumer that needs both endpoints exact keeps its own early return.
+  *Answered by [`0054`](../decisions/0054-the-screw-twin-takes-two-arms-in-the-world-frame.md):* below $r$'s second switch the twin takes the
+  definition's closed form on §4's $r$, $c$, $a$, $b$ (GE.15(b)), so there is no second series, no guard constant and no $0/0$; $t = 0$ is exact, $t = 1$ exact in
+  the rotation and to rounding in the translation, and a consumer that needs both endpoints exact keeps its own early return.
 - `NUMERICS.md` §10 lists the right-sided Jacobians only, while `PHASE4.md` §2 takes a side: the left forms are GE.7(d). Its $J_0$ is a
   difference of two $O(1)$ matrices that vanishes like $1 - t$ (relative error $\approx u/(1-t)$, measured $10^{12}u$ at $1 - t = 10^{-12}$);
   the equal form $(1-t)J_l((1-t)d)J_l^{-1}(d)$ has none (GE.7(a)), nor has $J_0^L$'s $(1-t)\mathrm{Ad}_{X_1}J_r((1-t)d)J_r^{-1}(d)\mathrm{Ad}_{X_1}^{-1}$ (GE.7(d)). Which to ship is a §10 edit.

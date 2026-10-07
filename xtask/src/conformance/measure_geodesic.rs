@@ -374,7 +374,9 @@ fn scan() -> Result<BTreeMap<String, Vec<f64>>, String> {
 ///   `atan2` and one `sin_cos`, `ϖ_t = sin(tα)/‖v‖`, the rotation `q₀ q_rᵗ`.
 /// - [`se3::route_c`], `route_b`'s translation under the shipped rotation, `SO3::geodesic`'s:
 ///   between `b` and `c` only the rotation moves, so the pair prices it.
-/// - [`se3::route_s`], what **ships**: the control, which has to reproduce the subject's rows.
+/// - [`se3::route_s`], what **ships**: `route_c`'s rotation, the definition's translation below
+///   `r`'s second switch and GE.12's above it, both in the world frame. The control, which has
+///   to reproduce the subject's rows.
 pub(super) mod se3 {
     use super::*;
 
@@ -501,8 +503,8 @@ pub(super) mod se3 {
     /// The subject's rows (`0054`) and `tf_tree_math`'s `ScLerp`, at full precision.
     pub(super) const COMMITTED: [(&str, f64, f64); 3] = [
         ("geo:consecutive", 1.572, 2.3363543564610385),
-        ("geo:generic", 1.738, 2.501902372122162),
-        ("geo:near-pi", 3.112, 3.2527931951103226),
+        ("geo:generic", 2.057, 2.501902372122162),
+        ("geo:near-pi", 2.721, 3.2527931951103226),
     ];
 }
 

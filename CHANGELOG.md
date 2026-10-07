@@ -27,7 +27,7 @@ defined by the status tables in `docs/`; they win over this file.
 
 ### Changed
 
-- **`SE3::geodesic` is the dual-quaternion screw power**: GE.12's power under `SO3::geodesic`'s rotation, its small-angle arm `log_ratio` and `exp_coeffs` on their short arms; `se3_geodesic` dominates `tf_tree_math`'s `ScLerp` on all three strata, 0.70–0.86× the provided body's latency, at parity with `screw_pow` inside `tf_tree`'s lookup bench. `SE₂(3)` keeps the provided body (`PHASE4.md` §1.2, `0054`).
+- **`SE3::geodesic` is the screw twin**: `SO3::geodesic`'s rotation, and the translation in the world frame — the definition's closed form below `r`'s second switch, GE.12's dual-quaternion power above it. `se3_geodesic` dominates `tf_tree_math`'s `ScLerp` on all three strata, 0.59–0.92× the provided body's latency, 4.6–6.1% faster than `screw_pow` inside `tf_tree`'s lookup bench; through `Dual` it differentiates like the provided body below the switch. `SE₂(3)` keeps the provided body (`PHASE4.md` §1.2, `0054`).
 - **`SO3::geodesic` two-arm dispatch**: provided body below `log_ratio` short switch and blend above, preserving near-identity performance without accuracy loss (`0051`, superseding `0050`).
 - **`SO3::geodesic` blend denominator**: denominator recomputed as $\sin(\alpha)$ rather than $\|\mathbf{v}\|$ to ensure endpoint exactness and dominate oracle baselines (`0050`).
 - **Geodesic Jacobian cancellation-free form**: evaluated via $(1-t) J_l((1-t)d) J_l^{-1}(d)$ with `scale(k)`, eliminating $1/(1-t)$ numerical cancellation (`0043`).
