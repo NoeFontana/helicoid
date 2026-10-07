@@ -1,6 +1,30 @@
 {
   "dps": 120,
   "files": {
+    "chol_n3.jsonl": {
+      "kind": "corpus",
+      "rechecked": 12,
+      "records": 384,
+      "sha256": "edd46f69163cd3495b98a2d6ab78ebdb70f4e5e7b45945e0ee19f88f0b31f4da"
+    },
+    "chol_n6.jsonl": {
+      "kind": "corpus",
+      "rechecked": 12,
+      "records": 384,
+      "sha256": "d3d959b0629b2c5b674efaac0bdb156a8620793748a6d54971d7233309b9dee6"
+    },
+    "chol_solve_n3.jsonl": {
+      "kind": "corpus",
+      "rechecked": 10,
+      "records": 320,
+      "sha256": "731fb10111fa7cda58fbfcda99a08827ac2f355fb0068f63861f120c6e7c42d1"
+    },
+    "chol_solve_n6.jsonl": {
+      "kind": "corpus",
+      "rechecked": 10,
+      "records": 320,
+      "sha256": "fc38ce6484e07a65f87a6538b5e2c5d286168c6a633b6a75dee98fb945fdbec9"
+    },
     "coeff_a.jsonl": {
       "kind": "corpus",
       "rechecked": 72,
@@ -60,6 +84,54 @@
       "rechecked": 17424,
       "records": 17424,
       "sha256": "35e8170d84fc1c78a32df86075b8f2b558437dcda6f3240e952c939580407348"
+    },
+    "eig3.jsonl": {
+      "kind": "corpus",
+      "rechecked": 50,
+      "records": 1920,
+      "sha256": "a949fc14983496e95915e17d0942be11fd14a68dbec4d0d391bd621269da0ed8"
+    },
+    "quat_renormalize.jsonl": {
+      "kind": "corpus",
+      "rechecked": 10,
+      "records": 640,
+      "sha256": "ab0de5a5fd964069347b284ceb72343e538788c8d6caef9f1414d472bbc84d18"
+    },
+    "real_acos.jsonl": {
+      "kind": "corpus",
+      "rechecked": 8,
+      "records": 512,
+      "sha256": "bbd8512908872484bf1fa7bea09a9aa40cc7e5ff22cd7025e14b087915ebb76a"
+    },
+    "real_atan2.jsonl": {
+      "kind": "corpus",
+      "rechecked": 14,
+      "records": 896,
+      "sha256": "88de6c30a6d92b7c1e5f154a0eb506b1a785c8129abe31d13d397afb6c763019"
+    },
+    "real_cbrt.jsonl": {
+      "kind": "corpus",
+      "rechecked": 18,
+      "records": 1152,
+      "sha256": "6c4bfd1e71f285a57baef6ea54aa961f154cbf84359dcb76a3b428f0b35c3c4c"
+    },
+    "real_div.jsonl": {
+      "kind": "corpus",
+      "rechecked": 4,
+      "records": 256,
+      "sha256": "81029037f5d179eb6dfa0ab8dd85b856c1aa3b50318131b3d9343e0bc97fa0be"
+    },
+    "real_sin_cos.jsonl": {
+      "kind": "corpus",
+      "rechecked": 10,
+      "records": 640,
+      "sha256": "f9d21f85c91d5b55ca8e63c0b74dde85acbfa562b3388f6b2ffb9f115837cb3c"
+    },
+    "real_sqrt.jsonl": {
+      "kind": "corpus",
+      "rechecked": 18,
+      "records": 1152,
+      "sha256": "235a619fd95f89a29541347ca8857047a61a2d58dd2a30ec190f928764bcc8a6"
     },
     "se2_ad.jsonl": {
       "kind": "corpus",
@@ -300,9 +372,15 @@
       "rechecked": 73,
       "records": 5124,
       "sha256": "577f40aa3db75180b8168b459e383bc53182a24856995d267c000b498d8ac5c1"
+    },
+    "solve_cubic.jsonl": {
+      "kind": "corpus",
+      "rechecked": 22,
+      "records": 1408,
+      "sha256": "f7f22bdc49094aa00ef24833f208cc6b32150892abe8bee71dc60b2429048655"
     }
   },
-  "generator": "sha256:bcea73d3d738a4a2666f0521fd5a931b7c8d372523d401a52079a9737f5b9c76",
+  "generator": "sha256:da01c00984ed0999b0fb5ede46dc12384d808f0f472cf4a86b2ce85b3a7a9eaa",
   "mpmath": "1.4.1",
   "python": "3.12",
   "recheck": {

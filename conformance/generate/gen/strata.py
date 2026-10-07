@@ -216,3 +216,62 @@ GEO_STRATA = (
         lambda rng: [to_f64(mp.pi - mpf(10) ** -k) for k in GEO_NEAR_PI_K],
     ),
 )
+
+
+# The ids of docs/decisions/0056 (`solve_cubic`, `eig3`, `chol_*`, `quat_renormalize`, `real_*`)
+# draw whole records, not thetas: a `Drawn` stratum's `make(draw, count)` builds its inputs from
+# `draw.stream(purpose)` and rounds by `draw.round`: to binary64, or once to binary32 in an `@f32`
+# stratum. An `@f32` stratum whose range is its binary64 namesake's reads that stratum's stream
+# (`stream_of`), so its records are the same draws rounded once to binary32; one whose range 0056
+# gives per precision, or that has no binary64 namesake, reads its own.
+@dataclass(frozen=True)
+class Draw:
+    name: str  # the stratum whose streams are read
+    f32: bool
+    seed: int = SEED
+
+    def stream(self, purpose: str, of: str | None = None) -> SplitMix64:
+        """The stream of `purpose`; `of` names another stratum whose draws this one reuses."""
+        return stream(self.seed, of or self.name, purpose)
+
+    def round(self, x) -> float:
+        return to_f32(x) if self.f32 else to_f64(x)
+
+
+@dataclass(frozen=True)
+class Drawn:
+    name: str
+    count: int
+    make: Callable[[Draw, int], list[dict]]
+    f32: bool = False
+    stream_of: str | None = None  # a range shared with the binary64 namesake: its stream
+
+    def records(self, seed: int = SEED) -> list[dict]:
+        with mp.workdps(DPS):
+            return self.make(Draw(self.stream_of or self.name, self.f32, seed), self.count)
+
+
+def drawn_inputs(stratum: Drawn) -> list[dict]:
+    return stratum.records()
+
+
+def drawn_strata(
+    binary64: list[tuple[str, Callable, int]], binary32: list[tuple[str, Callable, int, bool]]
+) -> tuple[Drawn, ...]:
+    """Every binary64 stratum `(name, make, count)`, then every binary32 one
+    `(name, make, count, shared)`, named `name@f32` and reading `name`'s stream where `shared`."""
+    return (
+        *(Drawn(name, count, make) for name, make, count in binary64),
+        *(
+            Drawn(name + F32_SUFFIX, count, make, True, name if shared else None)
+            for name, make, count, shared in binary32
+        ),
+    )
+
+
+def log_uniform_at(rng: SplitMix64, lo, hi, f32: bool) -> float:
+    """`log_uniform`'s draw, rounded once to binary32 when `f32`. A binary64 value must stay in
+    [lo, hi); a binary32 one may lie half a unit outside, as in `theta:subnormal@f32`."""
+    if not f32:
+        return log_uniform(rng, lo, hi)
+    return to_f32(lo * (hi / lo) ** rng.uniform())
