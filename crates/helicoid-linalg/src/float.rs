@@ -1,4 +1,6 @@
-//! `Mask` for `bool` and `Real` for `f64`/`f32`, every transcendental through `libm` (D16).
+//! `Mask` for `bool` and `Real` for `f64`/`f32`, every transcendental through `libm` (D16). `abs` and
+//! `copysign` are `core`'s: exact sign-bit operations, the same bits as `libm`'s, but inline where
+//! `libm`'s are calls across the crate boundary (`0055`).
 
 use crate::real::{Mask, Precision, Real};
 
@@ -98,11 +100,11 @@ macro_rules! impl_real {
             }
             #[inline]
             fn abs(self) -> Self {
-                libm::$fabs(self)
+                <$t>::abs(self)
             }
             #[inline]
             fn copysign(self, sign: Self) -> Self {
-                libm::$copysign(self, sign)
+                <$t>::copysign(self, sign)
             }
             #[inline]
             fn value_f64(self) -> f64 {

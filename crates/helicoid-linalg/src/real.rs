@@ -97,6 +97,11 @@ pub trait Real:
     /// `t` where `m` is set, else `f`.
     fn select(m: Self::Mask, t: Self, f: Self) -> Self;
     /// Evaluate `t` or `f` under the mask's policy: one arm for `bool`, both and a blend for lanes.
+    ///
+    /// `#[inline]` is load-bearing: every coefficient's arms reach their caller through here, and
+    /// left to LLVM's heuristics a `bool` mask's `branch` was compiled out of line with both
+    /// closures passed by value -- the coefficient kernels ran 1.8x slower for it (`0055`).
+    #[inline]
     fn branch<T: Blend<Self>>(m: Self::Mask, t: impl FnOnce() -> T, f: impl FnOnce() -> T) -> T {
         m.decide(t, f, |m, a, b| T::blend(m, a, b))
     }
