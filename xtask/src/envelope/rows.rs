@@ -126,7 +126,7 @@ pub(super) fn parse_results(name: &str, text: &str) -> Result<Subject, String> {
     let (mut rows, mut seen) = (Vec::new(), BTreeSet::new());
     for (i, line) in lines.enumerate() {
         let at = |e: String| format!("line {}: {e}", i + 2);
-        let r = row(line).map_err(&at)?;
+        let r = row(line).map_err(at)?;
         if r.subject != name {
             return Err(at(format!("subject `{}`, expected `{name}`", r.subject)));
         }
