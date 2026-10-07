@@ -27,7 +27,7 @@ translation is $\mathbf t$.
 | GE.11–GE.12 | $\hat q^{\,t} = \exp(t\Lambda)$ is the dual quaternion of $\mathrm{Exp}(td)$; the sign rule; the grouped one-`atan2`, one-`sin_cos` evaluation | P4 §1.2 | `SE3::geodesic` (fast twin) |
 | GE.13 | rounding (`f64`, given $\hat q_\Delta$): no cancellation in the value at small angle or near $\pi$; the $0/0$ arm and its per-type guard; the derivative through `Dual` (the translation loses $\approx10^2\alpha^{-1}u$); the endpoints; the branch at $\pi$ | §4, §12; P4 §1.2 | `coeffs`, `S::branch` |
 | GE.14 | SO(3): the same formula without the dual part is slerp | P4 §1.3, §5.1 | `SO3::geodesic` |
-| GE.15 | the power from the catalogue: $\varpi_t = k\,t\,r$, $\cos t\alpha = c$; the $\varkappa$ terms are $O(\alpha^2)$, so $\varkappa = 0$ at $\lVert q_{\mathrm v}\rVert = 0$ is the limit in value and first derivative | §4, §10; P4 §1.2 | `SE3::geodesic` (fast twin), `so3::geodesic_parts` |
+| GE.15 | the power in the world frame, on $(q_1q_0^*,\ x_1 - x_0)$; below $r$'s second switch the definition's closed form, above it GE.12, whose $\varkappa$ terms are $O(\alpha^2)$ and lose $\approx10^2\alpha^{-1}u$ in a derivative | §4, §10; P4 §1.2 | `SE3::geodesic` (fast twin), `so3::{geodesic_short, geodesic_long}` |
 
 ## 1. The curve
 
@@ -347,8 +347,8 @@ Script not committed. **Permanent:** planned, `se3_geodesic_matches_reference`, 
   `f32` is unmeasured. In `f64` the exact arm is still accurate below $10^{-290}$: translation error $\le 1.7u$ at $\lVert q_{\mathrm v}\rVert \in \{10^{-144}, 2\times10^{-145}, 10^{-146}, 10^{-150}, 10^{-153}, 10^{-155}, 10^{-160}\}$
   ($\lVert q_{\mathrm v}\rVert^2$ from $10^{-288}$ to $10^{-320}$, subnormal at the end), so $10^{-290}$ is a margin, not an accuracy switch. *Safe argument* (`0003`): where the guard fires the exact arm
   receives a safe value (for example $\lVert q_{\mathrm v}\rVert^2$ selected to $1$) and its result is discarded by `S::select`; otherwise a masked lane carries the $0/0$, and under `Dual`
-  `sqrt`'s derivative is $\pm\infty$ at $0$ (`NUMERICS.md` §12). The guard's mask comes from `S::branch`'s comparison, never from an `if` on the scalar. *GE.15(b) removes this second arm:* the terms $\varkappa$
-  multiplies are $O(\alpha^2)$, so $\varkappa = 0$ is the limit at $\lVert q_{\mathrm v}\rVert^2 = 0$ in value and first derivative at every precision, and no range constant of the scalar type is needed.
+  `sqrt`'s derivative is $\pm\infty$ at $0$ (`NUMERICS.md` §12). The guard's mask comes from `S::branch`'s comparison, never from an `if` on the scalar. *GE.15(b) removes the need:* the shipped twin takes
+  the definition below $r$'s second switch, so GE.12's arm never sees $\lVert q_{\mathrm v}\rVert^2 = 0$ and no range constant of the scalar type is needed.
 - (c) *Through `Dual`.* The loss is in the translation of the pose, not only in $\varpi_t$. The slerp weight alone has value error $\le 2.2u$ and derivative error $(3.4$ to $6.1)\,\alpha^{-2}u$ relative to its own derivative, which is $O(\alpha)$ (the law of CO.14,
   $p' = 2$); it costs the rotation nothing, since $\varpi_t$ multiplies $q_{\mathrm v}$. But the translation of $X_0\hat q^{\,t}$, differentiated in a tangent direction of $q$ through the exact arm, errs by $9\times10^3u$, $1.3\times10^6u$, $8.5\times10^7u$ at $\alpha = 10^{-2}, 10^{-4}, 10^{-6}$
   (about $(50$ to $150)\,\alpha^{-1}u$), and the rotation by $\le 3u$ at every $\alpha$. Exact derivatives for $\varpi_t$ and $\cos t\alpha$ do not change this ($7.3\times10^3u$, $1.5\times10^6u$, $8.5\times10^7u$), nor do exact ones
@@ -416,26 +416,30 @@ re-associated), so GE.12's rotation part is not an alternative to it. `NUMERICS.
 **Checked:** as GE.5 (slerp against $R_0\mathrm{Exp}(s\,\mathrm{Log}(R_0^\top R_1))$ by matrices, $4.0\times10^{-111}$); the identity $\sin((1-t)\alpha) + \sin(t\alpha)\cos\alpha = \sin\alpha\cos t\alpha$ exactly in sympy.
 Script not committed. **Permanent:** planned, corpus `so3_geodesic`, with `tf_tree_math`'s `slerp` as oracle (`PHASE4.md` §4).
 
-## 10. The power from the catalogue
+## 10. The power in the world frame, in two arms
 
-**Proposition GE.15.** For $\hat q_\Delta$ ($w \ge 0$) let $r = 2\alpha/\lVert q_{\mathrm v}\rVert$ (`NUMERICS.md` §4's $r$, `log_ratio`), $\varphi_t = t\,r\,q_{\mathrm v}$, and
-$(k, c)$ §4's $k = \sin(\theta/2)/\theta$ and $\cos(\theta/2)$ at $\theta^2 = \lVert\varphi_t\rVert^2$ (`exp_coeffs`).
+**Proposition GE.15.** Let $q_{\mathrm w} = q_1q_0^*$ (Log's flip applied, as for $q_0^*q_1$: the two have the same scalar part), $v_{\mathrm w}$ its vector part and
+$\delta = x_1 - x_0$.
 
-- (a) $\varpi_t = k\,t\,r$ and $\cos t\alpha = c$, so $q_{\mathrm r}^t = (c, k\varphi_t) = \mathrm{Exp}(\varphi_t)$, the provided body's relative rotation (GE.14), and GE.12 needs no
-  coefficient outside §4. Below $r$'s and $k$'s second switches both are polynomials: the power evaluates no transcendental there, which is what
-  `tf_tree_math`'s series arm (GE.13(a)) buys with two series outside §4.
-- (b) The terms of $q_{\mathrm d}^t$ that $\varkappa$ multiplies are $\varkappa(\varpi_t w - t\cos t\alpha)\,q_{\mathrm v} = -\tfrac h2(\varpi_t\cos\alpha - t\cos t\alpha)\,\hat n
-  = \tfrac{h\,t(1-t^2)}6\,\alpha^2\,\hat n + O(\alpha^4)$, with zero gradient in $q_{\mathrm v}$ at $q_{\mathrm v} = 0$. So $\varkappa = 0$ where $\lVert q_{\mathrm v}\rVert^2 = 0$ is the limit
-  $q_{\mathrm d}^t = t\,q_{\mathrm d}$ in value **and** first derivative, at every precision. Where $\lVert q_{\mathrm v}\rVert^2$ underflows while $q_{\mathrm v} \ne 0$
-  (`f64`: $\lVert q_{\mathrm v}\rVert \lesssim 2\times10^{-162}$; `f32`: $\lesssim 4\times10^{-23}$) the dropped term is $O(\lvert h\rvert\alpha^2)$, far below $u\lvert h\rvert$.
+- (a) *The world frame.* $Y = (R_0, 0)\,\Delta\,(R_0, 0)^{-1} = (q_{\mathrm w}, \delta)$ for a unit $q_0$, so the translation of $X(t)$ is $x_0$ plus that of $Y^t$: GE.12 applied to
+  $(q_{\mathrm w}, \delta)$, with $\alpha$, $\varpi_t$, $\lVert v\rVert$ unchanged (they are invariant) and no rotation of $\delta$ in or out. Equally, $R_0J(\varphi)R_0^\top = J(R_0\varphi)$
+  and $v_{\mathrm w} = R_0\,v$, so $X(t)$'s translation is $x_0 + t\,J_l(t\varphi_{\mathrm w})J_l^{-1}(\varphi_{\mathrm w})\,\delta$, $\varphi_{\mathrm w} = r\,v_{\mathrm w}$.
+- (b) *The two arms.* The terms of $q_{\mathrm d}^t$ that $\varkappa$ multiplies are $\varkappa(\varpi_t w - t\cos t\alpha)\,q_{\mathrm v} = -\tfrac h2(\varpi_t\cos\alpha - t\cos t\alpha)\,\hat n
+  = \tfrac{h\,t(1-t^2)}6\,\alpha^2\,\hat n + O(\alpha^4)$: a cancelling coefficient in all but name, which is why GE.13(c)'s derivative loses $\approx10^2\alpha^{-1}u$ and why the
+  value needs a guard at $\lVert q_{\mathrm v}\rVert = 0$. Below $r$'s second switch the closed form of (a) has neither: its coefficients are §4's $r$, $c$ (`jr_inv_coeff`),
+  $a$, $b$ (`jr_coeffs`) on their series arms, so it is the provided body's arithmetic re-associated, with its derivative. Above the switch $\alpha \ge \alpha_s$ ($\theta \ge 1.4\times10^{-2}$
+  at `f64`, $7.7\times10^{-2}$ at `f32`), so GE.12's loss is bounded there, and $\lVert q_{\mathrm v}\rVert^2 > 0$ wherever that arm is selected.
 
-*Proof.* (a) $r\lVert q_{\mathrm v}\rVert = 2\alpha$ (SO.5), so $\lVert\varphi_t\rVert = 2t\alpha$, $k = \sin(t\alpha)/(2t\alpha)$, $k\,t\,r = \sin(t\alpha)/\lVert q_{\mathrm v}\rVert$ and $c = \cos t\alpha$.
-(b) $q_{\mathrm d,w} = -\tfrac h2\sin\alpha$ and $\lVert q_{\mathrm v}\rVert = \sin\alpha$ (GE.10(b)), so $\varkappa\,q_{\mathrm v} = -\tfrac h2\hat n$; and
-$\varpi_t\cos\alpha - t\cos t\alpha = [\sin t\alpha\cos\alpha - t\sin\alpha\cos t\alpha]/\sin\alpha = -\tfrac{t(1-t^2)}3\alpha^2 + O(\alpha^4)$, even in $\alpha$. $\square$
+*Proof.* (a) $(R_0,0)(R_\Delta, x_\Delta)(R_0^\top, 0) = (R_0R_\Delta R_0^\top, R_0x_\Delta)$, $R_0x_\Delta = x_1 - x_0$ (`inv_mul`'s column), and $q_0q_0^*q_1q_0^* = q_1q_0^*$.
+Conjugation is a group automorphism, so $Y^t = (R_0,0)\Delta^t(R_0,0)^{-1}$ and $X_0\Delta^t$ has translation $x_0 + R_0\,\mathrm{trans}(\Delta^t) = x_0 + \mathrm{trans}(Y^t)$. The scalar part of
+$q_1q_0^*$ and of $q_0^*q_1$ is the 4-dot $q_0\cdot q_1$, the same products summed in the same order. (b) $q_{\mathrm d,w} = -\tfrac h2\sin\alpha$ and $\lVert q_{\mathrm v}\rVert = \sin\alpha$
+(GE.10(b)), so $\varkappa\,q_{\mathrm v} = -\tfrac h2\hat n$; and $\varpi_t\cos\alpha - t\cos t\alpha = [\sin t\alpha\cos\alpha - t\sin\alpha\cos t\alpha]/\sin\alpha = -\tfrac{t(1-t^2)}3\alpha^2 + O(\alpha^4)$. $\square$
 
-**Checked:** mpmath 1.4.1, 110 digits. (a) $\alpha \in \{10^{-30}, 10^{-10}, 10^{-3}, 10^{-1}, 0.3, 1, 1.5, 1.5707\}$, $t \in \{0.125, 0.5, 0.7314, 1, 1.5, -0.5, 3\}$:
-worst relative residual $2.2\times10^{-110}$. (b) $\mathbf t = (0.7, -1.3, 2.1)$, $\hat n = (1, 2, 2)/3$, $\alpha \in \{10^{-2}, 10^{-5}, 10^{-10}, 10^{-30}\}$, $t \in \{0.25, 0.5, 1.5\}$: the dropped
-term against its closed form $\le 5.1\times10^{-116}$, and against $h\,t(1-t^2)\alpha^2/6$ a ratio of $1 \pm 1.6\times10^{-5}$ at $\alpha = 10^{-2}$ and $1$ to twelve digits from $10^{-5}$;
-its one-sided gradient in $q_{\mathrm v}$ at $0$, step $10^{-40}$: $6.6\times10^{-41}$, i.e. $O(\text{step})$ (a central difference reads exactly $0$ and proves nothing, the term
-being even). Script not committed. **Permanent:** `sen3_tests::group::the_screw_twin_s_guard_keeps_value_and_derivative` (`f64` at
-$\lVert q_{\mathrm v}\rVert \in \{0, 10^{-150}, 10^{-160}, 10^{-170}\}$, `f32` at $\{0, 10^{-15}, 10^{-20}, 10^{-25}\}$, `Dual`), `the_screw_twin_s_guard_differentiates_like_the_reference`.
+**Checked:** mpmath 1.4.1, 110 digits. (a) 60 pairs, $\theta$ log-uniform in $[10^{-6}, 3.1]$, $\lVert x_0\rVert \sim 3$, $t \in \{0.25, 0.5, 0.7314, 1.5, -0.5\}$: GE.12 on
+$(q_{\mathrm w}, \delta)$ against $R_0$ times GE.12 on $(q_0^*q_1, R_0^\top\delta)$ $6.7\times10^{-111}$; the closed form against GE.12 $2.0\times10^{-106}$ (the exact $a$, $b$, $c$
+cancelling at $\theta = 10^{-6}$ in the check itself). (b) $\mathbf t = (0.7, -1.3, 2.1)$, $\hat n = (1, 2, 2)/3$, $\alpha \in \{10^{-2}, 10^{-5}, 10^{-10}, 10^{-30}\}$, $t \in \{0.25, 0.5, 1.5\}$:
+the term against its closed form $\le 5.1\times10^{-116}$, and against $h\,t(1-t^2)\alpha^2/6$ a ratio of $1 \pm 1.6\times10^{-5}$ at $\alpha = 10^{-2}$ and $1$ to twelve digits from
+$10^{-5}$. `f64` (`0054`): through `Dual`, GE.12 at every angle read $1.7\times10^{12}u$ at $\theta = 10^{-12}$ and $2.4\times10^3u$ at $10^{-3}$ against the provided body; the two
+arms read $\le 3.4u$ below the switch and $33.5u$ at $\theta = 0.1$. Over $2\times10^4$ draws per regime the world frame halves GE.12's translation error (mean $0.72u$ against
+$1.28u$, maximum $6.5u$ against $15.8u$ at generic angles). Scripts not committed. **Permanent:**
+`sen3_tests::group::the_screw_twin_differentiates_like_the_reference`, `se3_geodesic_matches_reference`, `the_screw_twin_at_zero_and_underflowing_angles`.

@@ -52,6 +52,18 @@ const THETA: &[(&str, f64)] = &[
     ("near-pi", core::f64::consts::PI - 1e-6),
 ];
 
+/// `G::geodesic` behind a call LLVM may not inline, which is how every geodesic row times it.
+///
+/// Inlined into criterion's closure, a routine of a few hundred instructions is timed with
+/// whatever LLVM made of it *there*: an unchanged `screw_pow` read 44.4 and 64.6 ns in two builds
+/// differing only in other bench functions, and the provided body 79.5 and 59.5 (`0054`). A call
+/// pins one compilation of the routine for baseline and candidate alike, so a ratio compares
+/// routines and not two inlining decisions.
+#[inline(never)]
+fn geodesic_of<S: Real, G: LieGroup<S>>(x0: &G, x1: &G, t: S) -> G {
+    G::geodesic(x0, x1, t)
+}
+
 /// How many points `act_many` moves per call: one patch of a frame's worth of landmarks.
 const POINTS: usize = 64;
 
@@ -156,7 +168,7 @@ fn so3<S: Fixture>(g: &mut BenchmarkGroup<'_, WallTime>, name: &str, theta: f64)
     // between two same-`θ` elements about different axes. `t` is non-dyadic for `laws`'s reason:
     // `0.25` would remove a rounding the shipped path has.
     g.bench_function(format!("so3/geodesic/{name}"), |b| {
-        b.iter(|| SO3::<S>::geodesic(black_box(&base), black_box(&x), black_box(t)));
+        b.iter(|| geodesic_of::<S, SO3<S>>(black_box(&base), black_box(&x), black_box(t)));
     });
 }
 
@@ -214,11 +226,7 @@ fn sen3<S: Fixture, const N: usize>(
     // SE(3)'s row is `0054`'s screw twin; SE₂(3)'s is still the provided body.
     g.bench_function(format!("{tag}/geodesic/{name}"), |b| {
         b.iter(|| {
-            <helicoid::SEn3<S, N> as LieGroup<S>>::geodesic(
-                black_box(&base),
-                black_box(&x),
-                black_box(t),
-            )
+            geodesic_of::<S, helicoid::SEn3<S, N>>(black_box(&base), black_box(&x), black_box(t))
         });
     });
 }
@@ -255,7 +263,7 @@ fn se3_consecutive<S: Fixture>(g: &mut BenchmarkGroup<'_, WallTime>) {
     let base = x * SE3::<S>::exp(&ta.neg());
     let t = S::of(1.0 / 3.0);
     g.bench_function("se3/geodesic/consecutive-1e-3", |b| {
-        b.iter(|| SE3::<S>::geodesic(black_box(&base), black_box(&x), black_box(t)));
+        b.iter(|| geodesic_of::<S, SE3<S>>(black_box(&base), black_box(&x), black_box(t)));
     });
 }
 

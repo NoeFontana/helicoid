@@ -234,9 +234,9 @@ mod group {
         sandwich: 8.0,
         // `PHASE3.md` §8's second check, measured 6.946 at `N = 1` and 5.274 at `N = 2` over 10 000 draws each.
         dual_rows: 14.0,
-        // `PHASE4.md` §1 and §3's seven legs, in `GEODESIC_LEGS`'s order, each twice the worst of 10^6 draws of `laws::Rng::shaped` -- `laws::sample`'s own distribution, which is what the proptest draws -- rounded up: the worst of `N = 1` and `N = 2`: `t=0` 1.118, `t=1` 6.578, symmetry 14.694, velocity 7.502, left 10.731, right 8.316, `twin` 8.587.
+        // `PHASE4.md` §1 and §3's seven legs, in `GEODESIC_LEGS`'s order, each twice the worst of 10^6 draws of `laws::Rng::shaped` -- `laws::sample`'s own distribution, which is what the proptest draws -- rounded up: the worst of `N = 1` and `N = 2`: `t=0` 1.118, `t=1` 6.578, symmetry 14.694, velocity 7.509, left 10.731, right 8.316, `twin` 8.579.
         //
-        // Re-recorded for `0054`, whose screw twin makes `N = 1`'s `twin` leg compare two genuinely different expressions (1.118 -> 8.587, `f32`; 8.051 at `f64`, against SO(3)'s 7.213 for the same reason). Its other legs moved within their own spread: symmetry 16.111 -> 14.008 and right 9.360 -> 8.223 at `N = 1`. Accuracy against the 110-digit corpus is `0054`'s table, not these.
+        // Re-recorded for `0054`, whose screw twin makes `N = 1`'s `twin` leg compare two genuinely different expressions (1.118 -> 8.579 at `f32`, 8.051 at `f64`, against SO(3)'s 7.213 for the same reason). The world-frame translation tightened `N = 1`'s own legs -- symmetry 16.111 -> 11.415, right 9.360 -> 8.211 -- so `N = 2`'s figures now bind every leg but `twin` and `velocity`. Accuracy against the 110-digit corpus is `0054`'s table, not these.
         geodesic: [3.0, 14.0, 30.0, 16.0, 22.0, 17.0, 18.0],
     };
     // `tangent_order` is one rounding at `f32` where it is exact at `f64`, as for SO(3); every
@@ -870,7 +870,7 @@ mod group {
     /// of three regimes -- `0`: log-uniform `1e-9 ..= 1e-3`, the `geo:consecutive` range; `1`:
     /// uniform `1e-3 ..= 3`; `2`: `π − 10^-k`, `k` uniform in `1 ..= 6` -- `‖x₀‖` log-uniform to
     /// `1e4`, and `t` cycling through the corpus's endpoints and extrapolations before a uniform
-    /// draw. Returns the pose pair, `t`, and the translation scale an error is read against.
+    /// draw. Returns the pose pair and `t`; the caller reads errors against the pair's scale.
     fn screw_draw<S: Sample>(
         rng: &mut crate::laws::Rng,
         regime: u64,
@@ -966,11 +966,15 @@ mod group {
 
     /// Twice the worst of `10⁶` draws per regime, rounded up -- consecutive, generic, near `π`,
     /// each as `[t in [0, 1], t outside]`: extrapolation is its own row because both twins' errors
-    /// grow with `|t|` (GE.13(a): `12.6 u` at `s = 3` for the twin's arithmetic alone).
-    /// Measured `[[13.399, 28.771], [14.771, 31.461], [12.808, 30.311]]` at `f64` and
-    /// `[[7.610, 27.800], [11.659, 30.622], [13.244, 36.007]]` at `f32`.
-    const SCREW_TWIN_F64: [[f64; 2]; 3] = [[27.0, 58.0], [30.0, 63.0], [26.0, 61.0]];
-    const SCREW_TWIN_F32: [[f64; 2]; 3] = [[16.0, 56.0], [24.0, 62.0], [27.0, 73.0]];
+    /// grow with `|t|`. Measured `[[23.516, 54.860], [24.147, 54.220], [28.194, 54.311]]` at `f64`
+    /// and `[[35.925, 56.855], [21.285, 62.507], [24.221, 86.546]]` at `f32`.
+    ///
+    /// The difference is mostly the **reference's**: it rotates the translation out of `x₀`'s frame
+    /// and back, which the world-frame twin does not. At `t = 1`, where the truth is `x₁` itself,
+    /// the draws that differ by more than `12 u` read `2.6 u` mean (11.1 max) for the twin and
+    /// `12.6 u` (35.9) for the reference (`0054`).
+    const SCREW_TWIN_F64: [[f64; 2]; 3] = [[48.0, 110.0], [49.0, 109.0], [57.0, 109.0]];
+    const SCREW_TWIN_F32: [[f64; 2]; 3] = [[72.0, 114.0], [43.0, 126.0], [49.0, 174.0]];
 
     /// `cargo nextest run -p helicoid --release --run-ignored only -- measure_se3_geodesic_vs_reference`.
     #[test]
@@ -987,13 +991,13 @@ mod group {
         );
     }
 
-    /// The twin's guard (`0054`): `ϰ` is taken as zero where `‖v‖²` is, which is exact `0`
-    /// (equal rotations), `0` by **underflow** while the rotations still differ (`n = 1e-170`
-    /// at `f64`, `1e-25` at `f32`), and the subnormal range just above it. In every case the
-    /// value is the reference's to a few `u` and the first derivative, through `Dual`, is too:
-    /// the dropped terms are `O(α²)` (GE.15).
+    /// The twin where `‖v‖²` is exact `0` (equal rotations), `0` by **underflow** while the
+    /// rotations still differ (`n = 1e-170` at `f64`, `1e-25` at `f32`), and subnormal just above
+    /// it: the short arm, so the value is the reference's to a few `u` and finite, at `f64`, `f32`
+    /// and in `Dual`'s value lanes (`0054`). The derivative lanes are
+    /// `the_screw_twin_differentiates_like_the_reference`'s.
     #[test]
-    fn the_screw_twin_s_guard_keeps_value_and_derivative() {
+    fn the_screw_twin_at_zero_and_underflowing_angles() {
         fn check<S: Sample>(n: f64, bound: f64) {
             let c = |v: f64| S::constant(v);
             let x0 =
@@ -1043,10 +1047,9 @@ mod group {
         }
     }
 
-    /// `Dual` lanes of the guard: at `n = 0` the twin's derivative in `x₁`'s translation is the
-    /// reference's -- `t I` rotated, nothing lost to the selected-away `ϰ`.
+    /// At `‖v‖ = 0` exactly the twin's derivative in `x₁`'s translation is the reference's.
     #[test]
-    fn the_screw_twin_s_guard_differentiates_like_the_reference() {
+    fn the_screw_twin_at_zero_angle_differentiates_like_the_reference() {
         type D = Dual<f64, 3>;
         let x0 = SE3::<D>::from_parts(
             crate::SO3::identity(),
@@ -1074,6 +1077,67 @@ mod group {
                         "{:?} against {:?}",
                         a.d,
                         b.d
+                    );
+                }
+            }
+        }
+    }
+
+    /// The twin's derivative against the reference's, through `Dual` with lanes on the relative
+    /// tangent, per relative angle: the worst lane error relative to the largest reference lane, in
+    /// `u`. `cargo nextest run -p helicoid --run-ignored only --no-capture -- measure_screw_twin_derivative`.
+    fn screw_derivative_error(theta: f64, t: f64) -> f64 {
+        type D = Dual<f64, 6>;
+        let x0 = SE3::<D>::exp(&Twist {
+            phi: Vector([0.3, -0.5, 0.4].map(D::constant)),
+            rho: [Vector([2.0, -3.0, 0.5].map(D::constant))],
+        });
+        let axis = [1.0 / 3.0, 2.0 / 3.0, 2.0 / 3.0];
+        let rho = [0.45, -0.6, 1.2];
+        let d = Twist {
+            phi: Vector(array::from_fn(|i| D::variable(theta * axis[i], i))),
+            rho: [Vector(array::from_fn(|i| D::variable(rho[i], 3 + i)))],
+        };
+        let x1 = x0.rplus(&d);
+        let t = D::constant(t);
+        let (got, want) = (SE3::geodesic(&x0, &x1, t), reference::geodesic(&x0, &x1, t));
+        let lanes = |g: &SE3<D>| {
+            let q = g.rotation().quat();
+            let mut out = std::vec::Vec::new();
+            for c in [q.w, q.x, q.y, q.z].iter().chain(g.translation().0.iter()) {
+                out.extend_from_slice(&c.d);
+            }
+            out
+        };
+        let (lg, lw) = (lanes(&got), lanes(&want));
+        let scale = lw.iter().fold(0.0_f64, |m, v| m.max(v.abs()));
+        lg.iter()
+            .zip(&lw)
+            .fold(0.0_f64, |m, (a, b)| m.max((a - b).abs()))
+            / scale
+            / f64::EPSILON
+            * 2.0
+    }
+
+    /// The twin differentiates like the reference through `Dual`, at every angle (`0054`).
+    ///
+    /// Below `r`'s second switch the translation is the definition's closed form, so the lanes are
+    /// the provided body's: measured at most 3.41 `u` from `θ = 1e-12` to `1e-2`. Above it, GE.12's
+    /// `ϰ` grouping loses `≈ 10² α⁻¹ u` (GE.13(c)), which the switch bounds: 33.53 at `θ = 0.1`,
+    /// 4.69 at `1`. Bounds twice those, rounded up. Before `0054`'s review the short side was GE.12
+    /// too, and read `1.7e12 u` at `θ = 1e-12`.
+    #[test]
+    fn the_screw_twin_differentiates_like_the_reference() {
+        for (thetas, bound) in [
+            (&[1e-12, 1e-9, 1e-6, 1e-3, 1e-2][..], 7.0),
+            (&[0.1, 1.0, 3.0][..], 68.0),
+        ] {
+            for &theta in thetas {
+                for t in [0.25, 1.0 / 3.0, 0.7314, 1.0] {
+                    let e = screw_derivative_error(theta, t);
+                    assert!(
+                        e <= bound,
+                        "θ = {theta:e}, t = {t}: {e} u exceeds {bound} u"
                     );
                 }
             }

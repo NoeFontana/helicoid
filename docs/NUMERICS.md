@@ -303,22 +303,28 @@ $X(t) = X_0\,\mathrm{Exp}(t\,d)$ with $d = X_1 \ominus_R X_0$ and $\Delta = X_0^
   function (GE.14), so this is one routine with two arms and not two routines. At
   $\lVert v\rVert = 0$ the blend's own limit $(1-t)q_0 + t q_1$ is taken, which is exact at both
   endpoints even where $n^2$ underflows on a pair that still differs.
-- **SE(3) ships the dual-quaternion power under SO(3)'s rotation** ([`0054`](./decisions/0054-the-screw-twin-is-the-oracles-translation-under-the-shipped-rotation.md)).
-  The rotation is SO(3)'s routine above, to the bit, with its two arms; each translation column is
-  GE.12's dual part, $x(t) = x_0 + R_0\,x_\Delta^t$ with
-  $$q_{\mathrm d} = \tfrac12(0, x_\Delta)\otimes(w, \mathbf v),\quad
-  \varkappa = q_{\mathrm d,w}/\lVert\mathbf v\rVert^2,\quad
-  \bar m = q_{\mathrm d,\mathbf v} + \varkappa w\,\mathbf v,$$
-  $$q_{\mathrm d}^t = \big(t\varpi_t q_{\mathrm d,w},\ \varpi_t\bar m - t\varkappa\cos(t\alpha)\,\mathbf v\big),\quad
-  (0, x_\Delta^t) = 2\,q_{\mathrm d}^t\otimes(\cos t\alpha, \varpi_t\mathbf v)^*,$$
-  both products Hamilton's. **Below `r`'s second switch** $\varpi_t = k\,t\,r$ and
-  $\cos t\alpha = c$, §4's `log_ratio` and `exp_coeffs` on their short arms (GE.15(a)): no
-  transcendental and no coefficient outside §4. **Above it**, and at exactly $t = 1$,
-  $\varpi_t = \sin(t\alpha)/\lVert\mathbf v\rVert$ — **not** the blend's $\sin(t\alpha)/\sin\alpha$,
-  which errs more in the translation on every regime measured — with $\cos t\alpha$ from the same
-  `sin_cos`. At $\lVert\mathbf v\rVert^2 = 0$, $\varkappa = 0$ (the safe argument in the division):
-  the terms it multiplies are $O(\alpha^2)$ (GE.15(b)), so no range constant of the scalar type
-  is needed. Other $N$ keep the definition until a stratum verifies the power there (`0006`).
+- **SE(3) ships the screw power under SO(3)'s rotation, in two arms and the world frame**
+  ([`0054`](./decisions/0054-the-screw-twin-takes-two-arms-in-the-world-frame.md)).
+  The rotation is SO(3)'s routine above, to the bit, with its two arms. Each translation column
+  is $x_0 + \text{step}$ on $\delta = x_1 - x_0$ and $v_{\mathrm w} = \mathrm{vec}(q_1q_0^*)$ (Log's
+  flip applied), which is the power conjugated by $R_0$ (GE.15(a)), so no column is rotated:
+  - **below `r`'s second switch** (`t = 1` included), the definition
+    $t\,J_l(t\varphi)\,J_l^{-1}(\varphi)\,\delta$ with $\varphi = r\,v_{\mathrm w}$, by two cross
+    products each way as `log` and `exp` write them, $c$, $a$, $b$ on their series arms;
+  - **above it**, GE.12's dual part,
+    $$q_{\mathrm d} = \tfrac12(0, \delta)\otimes(w, v_{\mathrm w}),\quad
+    \varkappa = q_{\mathrm d,w}/\lVert v\rVert^2,\quad
+    \bar m = q_{\mathrm d,v} + \varkappa w\,v_{\mathrm w},$$
+    $$q_{\mathrm d}^t = \big(t\varpi_t q_{\mathrm d,w},\ \varpi_t\bar m - t\varkappa\cos(t\alpha)\,v_{\mathrm w}\big),\quad
+    \text{step} = 2\,\mathrm{vec}\big(q_{\mathrm d}^t\otimes(\cos t\alpha, \varpi_t v_{\mathrm w})^*\big),$$
+    both products Hamilton's, $\varpi_t = \sin(t\alpha)/\lVert v\rVert$ — **not** the blend's
+    $\sin(t\alpha)/\sin\alpha$, which errs more on every regime measured — and $\cos t\alpha$ from
+    the same `sin_cos`.
+
+  The split is the cancellation's: $\varkappa$ multiplies an $O(\alpha^2)$ difference (GE.15(b)),
+  so GE.12 loses $\approx10^2\alpha^{-1}u$ in a derivative and is $0/0$ at $\lVert v\rVert = 0$;
+  the switch bounds the first and keeps the arm from the second. Other $N$ keep the definition
+  until a stratum verifies the twin there (`0006`).
 - **Invariance.** The SE(3) geodesic is left- and right-invariant:
   $X_0 H\,\mathrm{Exp}(t\,\mathrm{Ad}_{H^{-1}} d) = X_0\,\mathrm{Exp}(t\,d)\,H$. For
   `Product<SO3, R3>` **the answer depends on which law $a\cdot H$ uses**: under the product's own
@@ -431,7 +437,7 @@ row spells the composition and the proptest writes it inline
 | `SEn3Jac::sandwich` | dense $J\,\Sigma\,J^\top$; also the twin the `Gaussian` row below asks for | 3 |
 | `ProductJac::sandwich` | dense $J\,\Sigma\,J^\top$ of the block-diagonal $J$ | 3 |
 | `SO3::geodesic` (GE.14's blend, §10) | $q_0\,\mathrm{Exp}(t\,\mathrm{Log}(q_0^{*}q_1))$ — `reference::geodesic`, which is also `LieGroup::geodesic`'s **provided** body, so the `twin` leg of `laws::geodesic` is this row's proptest and reads 7.213 `u` at binary64 and 7.089 at binary32, where it read `gerr`'s 1.118 floor while the two were one expression ([`0050`](./decisions/0050-the-geodesic-s-denominator-is-the-whole-domination-gap.md)) | 4 |
-| `SE3::geodesic` (dual-quaternion power, §10) | $X_0\,\mathrm{Exp}(t\,\mathrm{Log}(X_0^{-1}X_1))$ — `reference::geodesic`; `se3_geodesic_matches_reference` ($10^5$ pairs per precision, three regimes, extrapolation its own row) and the `twin` leg of `laws::geodesic`, 8.051 `u` at binary64 and 8.587 at binary32 ([`0054`](./decisions/0054-the-screw-twin-is-the-oracles-translation-under-the-shipped-rotation.md)) | 4 |
+| `SE3::geodesic` (screw power, §10) | $X_0\,\mathrm{Exp}(t\,\mathrm{Log}(X_0^{-1}X_1))$ — `reference::geodesic`; `se3_geodesic_matches_reference` ($10^5$ pairs per precision, three regimes, extrapolation its own row), `the_screw_twin_differentiates_like_the_reference` and the `twin` leg of `laws::geodesic`, 8.051 `u` at binary64 and 8.579 at binary32 ([`0054`](./decisions/0054-the-screw-twin-takes-two-arms-in-the-world-frame.md)) | 4 |
 | `geodesic_jacobians` | `Dual` through the reference geodesic | 4 |
 | `Gaussian::to_left` / `to_right` | dense $\mathrm{Ad}\,\Sigma\,\mathrm{Ad}^\top$: `reference::sen3jac_sandwich` with $J = \mathrm{Ad}$ | 5 |
 | `gamma_apply_jacobian` | `Dual` through `reference` $\Gamma_m$ series (dense sum) | 5 |

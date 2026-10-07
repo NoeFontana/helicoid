@@ -13,7 +13,7 @@ twin for SE(3), the invariance tests; and everything a `tf_tree` decision record
 | Area | Status |
 |---|---|
 | `LieGroup::geodesic`, reference twin (§1) | **Done** (§1.1, §1.3). `SO3::geodesic` overridden with GE.14's two-arm switch ([`0050`](./decisions/0050-the-geodesic-s-denominator-is-the-whole-domination-gap.md), [`0051`](./decisions/0051-two-arms-on-the-switch-the-sweep-already-chose.md)). `Product` delegates per factor. Verified via `laws::geodesic`. |
-| SE(3) dual-quaternion fast twin (§1.2) | **Done** ([`0054`](./decisions/0054-the-screw-twin-is-the-oracles-translation-under-the-shipped-rotation.md)). `SE3::geodesic` overridden: GE.12's power under `SO3::geodesic`'s rotation, its coefficients §4's (GE.15). `se3_geodesic` 1.572 / 1.738 / 3.112 `u` against `ScLerp`'s 2.336 / 2.502 / 3.253, all three dominated (`envelope` 113 → 112); 0.70–0.86× the provided body by `bench-gate`; at parity with `screw_pow` inside `tf_tree`'s `lookup/depth3/sclerp` (0054's A/B). `N ≥ 2` keeps the provided body. |
+| SE(3) dual-quaternion fast twin (§1.2) | **Done** ([`0054`](./decisions/0054-the-screw-twin-takes-two-arms-in-the-world-frame.md)). `SE3::geodesic` overridden: `SO3::geodesic`'s rotation; the translation in the world frame, the definition's closed form below `r`'s second switch and GE.12's power above it (GE.15). `se3_geodesic` 1.572 / 2.057 / 2.721 `u` against `ScLerp`'s 2.336 / 2.502 / 3.253, all three dominated (`envelope` 113 → 112); 0.59–0.92× the provided body by `bench-gate`; 4.6–6.1% faster than `screw_pow` inside `tf_tree`'s `lookup` (0054's A/B). `N ≥ 2` keeps the provided body. |
 | `geodesic_jacobians`, `geodesic_velocity` (§2) | Partial: `LieGroup::geodesic_velocity` ships (`x₁ ⊖_R x₀`); `laws::geodesic_legs` passes. Owed: `geodesic_jacobians` and dual twin ([`0043`](./decisions/0043-the-geodesic-jacobian-ships-the-cancellation-free-form.md)). |
 | Invariance tests (§3) | Partial: Left/right invariance tested on all groups via `laws::geodesic`. `Product<SO3, Rn<3>>` asserts exact right-invariance under its own law and expected positive failure under SE(3) ([`0045`](./decisions/0045-two-phase-4-checks-cannot-be-taken-as-written.md)). |
 | Corpus id `se3_geodesic`, `so3_geodesic`; strata (§4) | **Done.** 180 records each in `conformance/corpus/{so3,se3}_geodesic.jsonl` across `geo:consecutive`, `geo:generic`, and `geo:near-pi` ([`0045`](./decisions/0045-two-phase-4-checks-cannot-be-taken-as-written.md)). |
@@ -46,9 +46,10 @@ Port `tf_tree_math::dualquat::screw_pow` (one `atan2`, one `sin_cos`), generaliz
 Overrides `SE3::geodesic` only if `bench-gate` shows speedup over reference. Agreement tested via
 `se3_geodesic_matches_reference` ($10^5$ random pairs).
 
-Shipped as `NUMERICS.md` §10 states it ([`0054`](./decisions/0054-the-screw-twin-is-the-oracles-translation-under-the-shipped-rotation.md)): no switch
-of its own and no series outside §4 — the small-angle arm is `log_ratio` and `exp_coeffs` on their
-short arms (GE.15(a)), and the `0/0` at `‖v‖ = 0` is `ϰ = 0`, not a range constant (GE.15(b)).
+Shipped as `NUMERICS.md` §10 states it ([`0054`](./decisions/0054-the-screw-twin-takes-two-arms-in-the-world-frame.md)): no switch
+of its own and no series outside §4. Below `r`'s second switch, where `tf_tree_math`'s series arm
+runs, the translation is the definition's closed form on §4's coefficients (GE.15(b)), so GE.12's
+`0/0` at `‖v‖ = 0` and its `Dual` loss never arise.
 
 ### 1.3 `Product<SO3, R3>`
 
