@@ -67,6 +67,7 @@ grep -m1 -H '^\*\*Status:' docs/decisions/0*.md
 | [`0051`](./0051-two-arms-on-the-switch-the-sweep-already-chose.md) | **ready.** Two-arm geodesic dispatch using `log_ratio` short arm to preserve near-identity performance. |
 | [`0052`](./0052-real-owes-sin-and-the-corpus-does-not-move.md) | **ready.** `Real::sin` added, bit-identical to `sin_cos().0`, avoiding unused cosine calculations. |
 | [`0053`](./0053-acos-is-better-the-roots-are-not-necessarily.md) | **ready.** Implements `Real::acos` and `cos` via `libm`; verified bounds across cubic and eigen solvers. |
+| [`0054`](./0054-the-screw-twin-is-the-oracles-translation-under-the-shipped-rotation.md) | **ready.** `SE3::geodesic`'s dual-quaternion twin under `SO3::geodesic`'s rotation; `se3_geodesic` dominates `ScLerp`, parity inside `tf_tree`'s lookup bench. |
 
 ## Lifecycle
 

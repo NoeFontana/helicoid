@@ -13,6 +13,12 @@
 > this crate. The decision this record takes is unchanged; what changed is its order and three rows
 > of its inventory.
 
+> **Amended 2026-10-07 by [`0054`](./0054-the-screw-twin-is-the-oracles-translation-under-the-shipped-rotation.md).** Context constraint 2's "≈241 ns" is
+> not a bar any check applies: the 25 % rule is `tf_tree`'s `PHASE1.md` §11.3 (not §9), it times
+> `LerpSlerp`, and 192.7 ns is prose in `tf_tree`'s `0013`. What binds Wave 3 is
+> `NS_PER_STEP_ESTIMATE`'s compile-time window, so **the bar is parity** in `tf_tree`'s own
+> `lookup/depth3/sclerp`, measured A/B. `0054` measured it at parity with the §1.2 twin.
+
 ## Context
 
 `PROJECT.md` §4 names Phase 4 "geodesics and the `tf_tree` migration" and D1 says `helicoid`

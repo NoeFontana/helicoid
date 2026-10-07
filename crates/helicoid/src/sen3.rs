@@ -5,7 +5,7 @@ use crate::coeffs::{jr_coeffs, jr_inv_coeff, q_coeffs};
 use crate::dualmat::{zero3, SEn3Jac};
 use crate::quat::Quat;
 use crate::side::Side;
-use crate::so3::{hat_mul, mul_hat, norm_sq, SO3Tangent, SO3};
+use crate::so3::{geodesic_parts, hat_mul, mul_hat, norm_sq, SO3Tangent, SO3};
 use crate::traits::{tie_dof, Jac, LieGroup, Tangent};
 use core::array;
 use core::iter::once;
@@ -612,6 +612,61 @@ fn inverses<S: Real, const N: usize>(tau: &SEn3Tangent<S, N>) -> (SEn3Jac<S, N>,
     (jr, jl)
 }
 
+/// `X₀ · q̂_Δᵗ`, the unit-dual-quaternion power of `Δ = X₀⁻¹X₁` (`docs/maths/geodesics.md`
+/// GE.12), per column: what `tf_tree_math::dualquat::screw_pow` computes, with its two
+/// coefficient arms replaced by the catalogue's (`0054`).
+///
+/// The rotation, `q_rᵗ = (cos tα, ϖ_t v)` and `ϖ_t` are [`geodesic_parts`]'s, so the rotation
+/// returned **is** `SO3::geodesic`'s to the bit, and below `r`'s short switch no transcendental
+/// runs at all (GE.15). Each column then takes GE.12's dual part,
+/// `q_d = ½(0, x_Δ) ⊗ (w, v)`, `ϰ = q_d,w / ‖v‖²`, `m̄ = q_d,v + ϰ w v`,
+/// `q_dᵗ = (t ϖ_t q_d,w, ϖ_t m̄ − t ϰ cos tα v)` and `x_Δᵗ = 2 vec(q_dᵗ (q_rᵗ)*)`, and returns
+/// `x₀ + R₀ x_Δᵗ`.
+///
+/// `ϰ` is `0/0` at `‖v‖² = 0`, and is taken as **zero** there, with `0003`'s safe argument in the
+/// division: its terms are `ϰ (ϖ_t w − t cos tα) v = O(α²)`, so dropping them is the limit
+/// `q_dᵗ = t q_d` in value *and* first derivative (GE.15). No range constant of the scalar type
+/// is needed, where GE.13(b)'s second arm needed one.
+#[inline]
+fn screw_geodesic<S: Real, const N: usize>(x0: &SEn3<S, N>, x1: &SEn3<S, N>, t: S) -> SEn3<S, N> {
+    let p = geodesic_parts::<S, true>(x0.q, x1.q, t);
+    let (w, v) = (p.rel.w, Vector([p.rel.x, p.rel.y, p.rel.z]));
+    let point = p.n2.le(S::zero());
+    let n2 = S::select(point, S::one(), p.n2);
+    let (zero, half, two) = (S::zero(), S::lit(0.5), S::lit(2.0));
+    let power_conj = p.power.conjugate();
+    // `inv_mul`'s columns: subtract, then rotate once (`0048`).
+    let rinv = SO3::from_quat_unchecked(x0.q.conjugate());
+    let r0 = x0.rotation();
+    SEn3 {
+        q: p.rot,
+        x: array::from_fn(|i| {
+            let [dx, dy, dz] = rinv.act(x1.x[i] - x0.x[i]).0;
+            // Both products are `Quat`'s Hamilton product, `screw_pow`'s association: the
+            // dot/cross grouping of the same terms is the same mean error and a worse corpus
+            // maximum (`0054`).
+            let qd = Quat {
+                w: zero,
+                x: dx,
+                y: dy,
+                z: dz,
+            } * p.rel;
+            let (dw, dv) = (half * qd.w, Vector([half * qd.x, half * qd.y, half * qd.z]));
+            let kappa = S::select(point, zero, dw / n2);
+            let m = dv + v.scale(kappa * w);
+            let ev = m.scale(p.varpi) - v.scale((t * kappa) * p.power.w);
+            let [ex, ey, ez] = ev.0;
+            let xt = Quat {
+                w: (t * p.varpi) * dw,
+                x: ex,
+                y: ey,
+                z: ez,
+            } * power_conj;
+            x0.x[i] + r0.act(Vector([two * xt.x, two * xt.y, two * xt.z]))
+        }),
+    }
+}
+
 impl<S: Real, const N: usize> LieGroup<S> for SEn3<S, N> {
     type Tangent = SEn3Tangent<S, N>;
     type Jac = SEn3Jac<S, N>;
@@ -692,6 +747,17 @@ impl<S: Real, const N: usize> LieGroup<S> for SEn3<S, N> {
     #[inline]
     fn lminus(&self, base: &Self) -> SEn3Tangent<S, N> {
         self.mul_inv(base).log()
+    }
+
+    /// SE(3): `PHASE4.md` §1.2's dual-quaternion power, `screw_geodesic` (`0054`). Other `N`
+    /// keep the provided body, since no `se23_geodesic` stratum verifies the twin there (`0006`).
+    #[inline]
+    fn geodesic(x0: &Self, x1: &Self, t: S) -> Self {
+        if N == 1 {
+            screw_geodesic(x0, x1, t)
+        } else {
+            crate::reference::geodesic(x0, x1, t)
+        }
     }
 
     /// `Ad_X = R + ε [x_i]_× R` (`NUMERICS.md` §5.2).
