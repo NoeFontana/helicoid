@@ -283,7 +283,14 @@ impl<S: Real> SO3<S> {
         (left, r)
     }
 
-    /// One Newton step back onto the unit sphere (`NUMERICS.md` §3.6).
+    /// One Newton step back onto the unit sphere (`NUMERICS.md` §3.6): [`Quat::renormalize`] on
+    /// the stored quaternion, bit for bit.
+    ///
+    /// # Domain
+    ///
+    /// None is asserted, as for [`Quat::renormalize`]: the step is a normalization only for
+    /// `|‖q‖² − 1| ≤ 2^-26.29` (`f64`) or `2^-11.79` (`f32`), the drift a composition chain
+    /// accumulates, and is defined everywhere else (`NUMERICS.md` §12).
     #[inline]
     pub fn renormalize(&mut self) {
         self.0.renormalize();

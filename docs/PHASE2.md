@@ -207,10 +207,17 @@ their Jacobian through these (faer `MatMut` and Ceres row-major buffers both map
 
 - `eig3(a: &Mat3<S>) -> (Vec3<S>, Mat3<S>)`: symmetric input; eigenvalues ascending, orthonormal
   eigenvectors as columns with $\det = +1$. Smith's closed form. Bars against `mp.eigsy`: eigenvalue error in $u\|A\|$; eigenvector angular error in
-  $u\|A\|/\mathrm{gap}$. Strata: `eig:gap-1e-k`, `eig:triple`, `eig:rank1`, `eig:random`.
+  $u\|A\|/\mathrm{gap}$ (`NUMERICS.md` §11), each the committed per-stratum maximum and no typed
+  constant. Strata: `eig:gap-1e-k/{bottom,top}` ($k = 0, \dots, 12$; `@f32` $0, \dots, 6$),
+  `eig:triple`, `eig:rank1`, `eig:random`, `eig:scale-{up,down}`
+  ([`0056`](./decisions/0056-the-routines-d7-does-not-reach.md)).
 - `svd3(a: &Mat3<S>) -> (Mat3<S>, Vec3<S>, Mat3<S>)`: McAdams et al., fixed Jacobi sweep count, signed so $\det U = \det V = +1$.
 - `solve_cubic<S: Real>(a: S, b: S, c: S, d: S) -> (Vec3<S>, [S::Mask; 3])`: real roots of
-  `a x³ + b x² + c x + d` with validity mask ([`0017`](./decisions/0017-cbrt-and-mask-valued-roots.md)); power-of-two tolerances; `Real::acos` and `Real::cos` via `libm` ([`0022`](./decisions/0022-real-owes-acos-and-cos.md), [`0053`](./decisions/0053-acos-is-better-the-roots-are-not-necessarily.md)).
+  `a x³ + b x² + c x + d` with validity mask ([`0017`](./decisions/0017-cbrt-and-mask-valued-roots.md)); power-of-two tolerances; `Real::acos` and `Real::cos` via `libm` ([`0022`](./decisions/0022-real-owes-acos-and-cos.md), [`0053`](./decisions/0053-acos-is-better-the-roots-are-not-necessarily.md)). Against
+  `mp.polyroots` of the stored coefficients, by root-set distance (`NUMERICS.md` §11). Strata:
+  `cubic:distinct`, `cubic:double`, `cubic:triple`, `cubic:one-real` (planted, exact),
+  `cubic:near-double-1e-k` ($k = 2, 4, 6, 8$), `cubic:one-real-p-small`,
+  `cubic:coeff-scale-{up,down}` (`0056`).
 - All three branch only through `S::branch`/`S::select`.
 
 ## 7. `mint`
