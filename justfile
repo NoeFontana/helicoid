@@ -105,12 +105,14 @@ oracle-tf-tree-math:
 
 # The sophus-rs oracle (`docs/PHASE1.md` §7): as `oracle-tf-tree-math`, for `runners/sophus_rs`
 # (`subject_version` is the pinned `sophus_lie`), audited with the runner's own `deny.toml`, whose
-# one advisory exception is the crate's, not the workspace's. Rows in conformance/results/sophus_rs.csv.
+# one advisory exception is the crate's, not the workspace's: cargo-deny finds it beside the
+# manifest, so no `--config`, which cargo-deny 0.20 moved out of `check`. Rows in
+# conformance/results/sophus_rs.csv.
 oracle-sophus-rs:
     cargo fmt --manifest-path runners/sophus_rs/Cargo.toml -- --check
     cargo clippy --manifest-path runners/sophus_rs/Cargo.toml --locked --all-targets -- -D warnings
     RUSTDOCFLAGS='-D warnings' cargo doc --manifest-path runners/sophus_rs/Cargo.toml --locked --no-deps --document-private-items
-    cargo deny --manifest-path runners/sophus_rs/Cargo.toml check --config runners/sophus_rs/deny.toml advisories licenses sources
+    cargo deny --manifest-path runners/sophus_rs/Cargo.toml check advisories licenses sources
     cargo nextest run --manifest-path runners/sophus_rs/Cargo.toml --locked
     cargo xtask conformance --oracle sophus_rs
 
