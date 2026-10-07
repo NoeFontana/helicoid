@@ -232,6 +232,14 @@ impl<S: Real, const N: usize> Real for Dual<S, N> {
         )
     }
 
+    /// Through [`sin_cos`](Real::sin_cos), because a dual's derivative needs the cosine: `sin` saves
+    /// nothing here and the value is bit-identical to `sin_cos().0` by construction rather than by
+    /// a test (`0052`).
+    #[inline]
+    fn sin(self) -> Self {
+        self.sin_cos().0
+    }
+
     /// `self` is `y`. The value is `S::atan2` and has no restricted domain.
     ///
     /// # Domain

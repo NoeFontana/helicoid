@@ -760,11 +760,14 @@ struct Counts {
     sqrt: usize,
     cbrt: usize,
     sin_cos: usize,
+    /// `Real::sin` separately from `sin_cos`: it is the cheaper call (`0052`), so a group that
+    /// moved from one to the other has changed its cost and the pinned rows below should say so.
+    sin: usize,
     atan2: usize,
 }
 
 thread_local!(static COUNTS: Cell<Counts> = const {
-    Cell::new(Counts { nonfinite: 0, sqrt: 0, cbrt: 0, sin_cos: 0, atan2: 0 })
+    Cell::new(Counts { nonfinite: 0, sqrt: 0, cbrt: 0, sin_cos: 0, sin: 0, atan2: 0 })
 });
 
 fn tally(f: impl FnOnce(&mut Counts)) {
@@ -898,6 +901,10 @@ impl<const F32: bool, M: Mask + From<bool> + 'static> Real for Lane<F32, M> {
         let (s, c) = libm::sincos(self.0);
         (Self::note(s), Self::note(c))
     }
+    fn sin(self) -> Self {
+        tally(|c| c.sin += 1);
+        Self::note(libm::sin(self.0))
+    }
     fn atan2(self, x: Self) -> Self {
         tally(|c| c.atan2 += 1);
         Self::note(libm::atan2(self.0, x.0))
@@ -986,9 +993,13 @@ fn a_lane_that_evaluates_both_arms_sees_no_non_finite_operation_f32() {
     a_lane_that_evaluates_both_arms_sees_no_non_finite_operation::<true>();
 }
 
-/// Each group's `(sqrt, sin_cos, atan2)` calls, in the order `exp`, `jr`, `jr_inv`, `q`, `log`,
-/// one call each under a scalar mask, at `z` (`n²` for `log`, at `w = 1`).
-fn calls<const F32: bool>(z: f64) -> [(usize, usize, usize); 5] {
+/// Each group's `(sqrt, sin_cos, sin, atan2)` calls, in the order `exp`, `jr`, `jr_inv`, `q`,
+/// `log`, one call each under a scalar mask, at `z` (`n²` for `log`, at `w = 1`).
+///
+/// `sin` is a column of its own because it is the cheaper call, 3.84 ns against 5.17 at binary64
+/// (`0052`): a group that moved a call from one column to the other changed its cost, and folding
+/// them would hide that.
+fn calls<const F32: bool>(z: f64) -> [(usize, usize, usize, usize); 5] {
     let (z, w) = (Narrow::<F32>::new(z), Narrow::<F32>::one());
     [
         counted(|| exp_coeffs(z)).1,
@@ -997,7 +1008,7 @@ fn calls<const F32: bool>(z: f64) -> [(usize, usize, usize); 5] {
         counted(|| q_coeffs(z)).1,
         counted(|| log_ratio(z, w)).1,
     ]
-    .map(|c| (c.sqrt, c.sin_cos, c.atan2))
+    .map(|c| (c.sqrt, c.sin_cos, c.sin, c.atan2))
 }
 
 /// The coefficients of each group of `calls`, as indices of `NAMES`.
@@ -1013,7 +1024,7 @@ fn a_group_below_its_smallest_switch_runs_no_exact_arm<const F32: bool>() {
             .map(|&i| table[i].0)
             .fold(f64::INFINITY, f64::min);
         for z in [0.0, 1e-30, 0.5 * least, least.next_down()] {
-            assert_eq!(calls::<F32>(z)[g], (0, 0, 0), "group {g} at {z:e}");
+            assert_eq!(calls::<F32>(z)[g], (0, 0, 0, 0), "group {g} at {z:e}");
         }
     }
 }
@@ -1033,11 +1044,21 @@ fn a_group_below_its_smallest_switch_runs_no_exact_arm_f32() {
 ///
 /// **Every group now takes one `sqrt`.** `jr` took two until `exact_a_b` shared `θ` between `a`
 /// and `b` — this counting scalar is what measured it, and the row below is the regression test:
-/// `(2, 2, 0)` would say the sharing was lost. Its two `sin_cos` stay, because `sin θ` from
+/// `(2, …)` would say the sharing was lost. Its two sines stay two, because `sin θ` from
 /// `sin(θ/2)` is a rounding change and owes a measurement (`0006`).
+///
+/// **`jr` pays no `sin_cos` at all and `q` pays one** (`0052`): both of `jr`'s sines discard their
+/// cosine and so do `exact_a_b`'s and `d_from`'s, so they are `Real::sin`. `(1, 2, 0, 0)` for `jr`
+/// would say that regressed — a `sin_cos` where a `sin` will do is a cosine kernel nobody reads.
 fn a_group_runs_each_exact_arm_once<const F32: bool>() {
-    // (sqrt, sin_cos, atan2) of `exp`, `jr`, `jr_inv`, `q`, `log`.
-    let above = [(1, 1, 0), (1, 2, 0), (1, 1, 0), (1, 2, 0), (1, 0, 1)];
+    // (sqrt, sin_cos, sin, atan2) of `exp`, `jr`, `jr_inv`, `q`, `log`.
+    let above = [
+        (1, 1, 0, 0),
+        (1, 0, 2, 0),
+        (1, 1, 0, 0),
+        (1, 1, 1, 0),
+        (1, 0, 0, 1),
+    ];
     // **Read from the table, not typed.** `0039` lifted the sweep's grid to span the domain and
     // the switches moved from `z <= 1` to within a few per cent of `π²`, which turned three typed
     // `z` here into series-arm samples testing nothing. The largest switch plus the top of
@@ -1059,7 +1080,8 @@ fn a_group_runs_each_exact_arm_once<const F32: bool>() {
     // **A group pays for the member that is exact, and no more.** Between a group's smallest and
     // largest member switch some members are exact and some are not, and the count there is what
     // says the sharing holds: `exp` takes `cos θ/2`'s one `sqrt` and `sin_cos` while `k` is still
-    // a series, and `jr` and `q` take their second `sin_cos` for one member.
+    // a series, and `jr` and `q` take their second sine for one member — a `sin` now, for the
+    // discarded cosine `0052` names.
     //
     // The `z` is the midpoint of the group's own member switches, **read from the table rather
     // than typed**: `0039` lifted the sweep's grid to span the domain, every switch moved from
@@ -1067,7 +1089,7 @@ fn a_group_runs_each_exact_arm_once<const F32: bool>() {
     // become samples of the series arm, asserting nothing. A group whose members share one switch
     // has no such window and is skipped — which `b` and `d` now do at both precisions.
     let t = table::<F32>();
-    for (g, want) in [(0, (1, 1, 0)), (1, (1, 2, 0)), (3, (1, 2, 0))] {
+    for (g, want) in [(0, (1, 1, 0, 0)), (1, (1, 0, 2, 0)), (3, (1, 1, 1, 0))] {
         let of = |f: fn(f64, f64) -> f64, init| MEMBERS[g].iter().map(|&i| t[i].0).fold(init, f);
         let (lo, hi) = (of(f64::min, f64::INFINITY), of(f64::max, 0.0));
         if lo < hi {

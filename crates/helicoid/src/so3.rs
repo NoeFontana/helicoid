@@ -606,7 +606,7 @@ impl<S: Real> LieGroup<S> for SO3<S> {
             || {
                 let nv = n2.sqrt();
                 let alpha = nv.atan2(w);
-                let (sin_alpha, _) = alpha.sin_cos();
+                let sin_alpha = alpha.sin();
                 // `nv = 0` reaches this arm three ways: a `w <= 0` quaternion, which is not a
                 // rotation; two bitwise equal rotations at `t = 1`; and `n2` **underflowing**
                 // while the two quaternions still differ -- a vector component near `1e-170`
@@ -631,9 +631,9 @@ impl<S: Real> LieGroup<S> for SO3<S> {
                 };
                 // Three `sin`s at three arguments, not one and an angle-addition identity: the
                 // identity is exact in `R` and a different rounding here, and `0050` measured this
-                // spelling (its *Further work* 3 holds the other).
-                let (s0, _) = ((one - t) * alpha).sin_cos();
-                let (s1, _) = (t * alpha).sin_cos();
+                // spelling. `Real::sin` and not `sin_cos().0`: the cosines are discarded, and the
+                // two are bit-identical by `0052`'s test, so this drops three kernels and no bit.
+                let (s0, s1) = (((one - t) * alpha).sin(), (t * alpha).sin());
                 let (a, b) = (
                     S::select(point, one - t, s0 / den),
                     S::select(point, t, s1 / den),

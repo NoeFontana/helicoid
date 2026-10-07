@@ -181,12 +181,15 @@ pub(crate) fn jr_coeffs<S: Real>(z: S) -> (S, S) {
 /// `just no-std` (`thumbv7em-none-eabihf`) and `just wasm` were paying two software roots per
 /// `SO3::jr` call.
 ///
-/// The two `sin_cos` are **not** collapsed: `sin θ = 2 sin(θ/2) cos(θ/2)` is a different rounding
-/// and so owes a measurement (`0006`), where sharing the root owes none.
+/// The two sines are **not** collapsed: `sin θ = 2 sin(θ/2) cos(θ/2)` is a different rounding and
+/// so owes a measurement (`0006`), where sharing the root owes none. Each is a `sin` rather than a
+/// `sin_cos` because each discards its cosine, which changes no bit and drops a kernel (`0052`).
 fn exact_a_b<S: Real>(z: S) -> [S; 2] {
     let th = z.sqrt();
-    let k = half_angle(th).0 / th;
-    [S::lit(2.0) * k * k, b_from(th, th.sin_cos().0)]
+    // Both cosines are discarded, so both calls are `sin` and not `sin_cos`: same arguments, same
+    // bits, one kernel each instead of two (`0052`).
+    let k = half_angle_sin(th) / th;
+    [S::lit(2.0) * k * k, b_from(th, th.sin())]
 }
 
 /// `c` at `θ² = z`: `J⁻¹ = I ± W/2 + cW²` (`NUMERICS.md` §3.5).
@@ -288,6 +291,13 @@ pub(crate) fn log_ratio<S: Real>(n2: S, w: S) -> S {
 }
 
 /// `sin(θ/2)` and `cos(θ/2)` from one `sin_cos`.
+fn half_angle_sin<S: Real>(th: S) -> S {
+    (S::lit(0.5) * th).sin()
+}
+
+/// `(sin(θ/2), cos(θ/2))` from one `sin_cos`; [`half_angle_sin`] is the half of it a caller that
+/// discards the cosine should take instead, which is the same argument through the cheaper call
+/// (`0052`).
 fn half_angle<S: Real>(th: S) -> (S, S) {
     (S::lit(0.5) * th).sin_cos()
 }
@@ -337,7 +347,7 @@ pub(super) fn exact_c<S: Real>(z: S) -> S {
 /// `(θ² - 4 sin²(θ/2))/(2θ⁴)` from `θ`.
 fn d_from<S: Real>(th: S) -> S {
     let t2 = th * th;
-    let s = half_angle(th).0;
+    let s = half_angle_sin(th);
     (t2 - S::lit(4.0) * s * s) / (S::lit(2.0) * t2 * t2)
 }
 
