@@ -149,8 +149,9 @@ fn log_is_a_function_of_the_quaternion_at_w_plus_zero_and_of_the_rotation_elsewh
 fn log_is_scale_invariant_across_the_unchecked_domain() {
     // §3.2: `atan2` and `u/n` are exactly scale-invariant, so a `q` that is unit only within
     // rounding returns the `Log` of its normalization. The scales tested are the ones
-    // `from_wxyz_unchecked` admits — `|‖q‖² − 1| <= 2^-40` (§3.6) — because a quaternion outside
-    // that cannot be built at all in a debug build, which is the domain working as specified.
+    // `from_wxyz_unchecked` admits, `|‖q‖² − 1| <= 2^-40` (§3.6). A carried quaternion beyond
+    // that bound, inside the drift band, is `carried::each_operation_errs_by_its_first_order_term_across_the_drift_band`'s
+    // case (`0058`).
     let (s, c) = 0.5_f64.sin_cos();
     for lambda in [1.0, 1.0 + 2f64.powi(-42), 1.0 - 2f64.powi(-42)] {
         let mut out = [0.0; 3];
@@ -830,4 +831,177 @@ fn renormalize_is_the_quaternions_step_bit_for_bit() {
     let dual =
         |q: Quat<Dual<f64, 1>>| [q.w, q.x, q.y, q.z].map(|c| [c.v.to_bits(), c.d[0].to_bits()]);
     assert_eq!(dual(a), dual(b));
+}
+
+/// `0058`'s carried path: `λq`, `λ² = 1 + η`, built by struct literal and moved into
+/// [`SO3::from_quat_unchecked`], so no assertion sees it. `η` is read back as `‖λq‖² − 1`.
+mod carried {
+    use super::*;
+    use crate::laws::{unit as ulp, Rng};
+
+    pub(super) fn drifted(q: Quat<f64>, eta: f64) -> (SO3<f64>, f64) {
+        let l = (1.0 + eta).sqrt();
+        let d = Quat {
+            w: q.w * l,
+            x: q.x * l,
+            y: q.y * l,
+            z: q.z * l,
+        };
+        (SO3::from_quat_unchecked(d), d.norm_sq() - 1.0)
+    }
+
+    fn norm(v: [f64; 3]) -> f64 {
+        ((v[0] * v[0] + v[1] * v[1]) + v[2] * v[2]).sqrt()
+    }
+
+    fn sub(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
+        [a[0] - b[0], a[1] - b[1], a[2] - b[2]]
+    }
+
+    /// The rotation angle between two quaternions, whatever their norms.
+    pub(super) fn angle(a: Quat<f64>, b: Quat<f64>) -> f64 {
+        let d = a.conjugate() * b;
+        2.0 * norm([d.x, d.y, d.z]).atan2(d.w.abs())
+    }
+
+    /// `|η|` at the five points of the drift band the record measures, `2^-40` to `2^-26.29`.
+    pub(super) const BAND: [f64; 5] = [-40.0, -36.0, -32.0, -28.0, -26.29];
+
+    /// `0058` decision 2's rows for `log`, `act`, `to_matrix`, `Mul` and `inverse`, each against
+    /// its first-order statement, across the band. The protocol: 4 000 draws per point of the band
+    /// from `Rng(0x0058)`, `η` uniform in `±2^e`, rotations `Exp` of a uniform `[-3, 3)^3`, vectors
+    /// uniform `[-1, 1)^3`. The worst errors, in `u`: `log` (relative) 3.959, `act` 12.961,
+    /// `to_matrix` 10.885 (both against the unit `act`, so two roundings of the sandwich), `Mul`'s
+    /// `η` 6.000. `inverse` keeps `η` to the bit. The bounds are twice those, rounded up.
+    #[test]
+    fn each_operation_errs_by_its_first_order_term_across_the_drift_band() {
+        let u = ulp::<f64>();
+        let mut rng = Rng(0x0058);
+        let mut worst = [0.0_f64; 4];
+        for e in BAND {
+            for _ in 0..4000 {
+                let tau = |rng: &mut Rng| tan(rng.arr::<3>().map(|c| 3.0 * c));
+                let (qa, qb) = (SO3::exp(&tau(&mut rng)), SO3::exp(&tau(&mut rng)));
+                let (ea, eb) = (rng.unif() * e.exp2(), rng.unif() * e.exp2());
+                let ((da, ea), (db, eb)) = (drifted(qa.quat(), ea), drifted(qb.quat(), eb));
+
+                // `Log` is scale-invariant (§3.2): the tangent of `q/‖q‖`.
+                let (l, l0) = (da.log().phi.0, qa.log().phi.0);
+                worst[0] = worst[0].max(norm(sub(l, l0)) / norm(l0) / u);
+
+                // §3.3's sandwich at `λq` is `Rv + η(Rv − v)`, §1's matrix `(1 + η)R`.
+                let v = rng.arr::<3>();
+                let r = qa.act(Vector(v)).0;
+                let sandwich = [0, 1, 2].map(|i| r[i] + ea * (r[i] - v[i]));
+                worst[1] = worst[1].max(norm(sub(da.act(Vector(v)).0, sandwich)) / norm(v) / u);
+                let scaled = r.map(|c| (1.0 + ea) * c);
+                let m = (da.to_matrix() * Vector(v)).0;
+                worst[2] = worst[2].max(norm(sub(m, scaled)) / norm(v) / u);
+
+                // Norms multiply: `η_ab = η_a + η_b + η_a η_b`.
+                let eab = (da * db).quat().norm_sq() - 1.0;
+                worst[3] = worst[3].max((eab - (ea + eb + ea * eb)).abs() / u);
+
+                let ei = da.inverse().quat().norm_sq() - 1.0;
+                assert!(same(ei, ea), "inverse moved η: {ei} from {ea}");
+            }
+        }
+        let bound = [8.0, 26.0, 22.0, 12.0];
+        for (w, b) in worst.iter().zip(bound) {
+            assert!(*w <= b, "worst {worst:?} against {bound:?}");
+        }
+    }
+
+    /// `0058` decision 2's `geodesic` row. Below `r`'s second switch the provided body is
+    /// scale-invariant and carries no tilt; the blend tilts toward the longer endpoint by
+    /// `sin((1-t)α) sin(tα)/sin α · |η₁ − η₀|` in rotation angle, `α` the half-angle of
+    /// `q₀*q₁`. The endpoints stay bit-exact. The protocol: 4 000 draws per point of the band from
+    /// `Rng(0x0158)`, `q₀` `Exp` of `[-3, 3)^3`, the relative tangent `[-1.7, 1.7)^3` (the blend)
+    /// or `[-1e-4, 1e-4)^3` (the provided body), `t` in `[0, 1)`. Worst: the blend's error is
+    /// `1.0027` times its first-order term; the provided body's is `5.612 u` against the geodesic
+    /// of the unit endpoints, at every `η`.
+    #[test]
+    fn the_geodesic_tilts_by_the_norm_difference_only_on_the_blend() {
+        let u = ulp::<f64>();
+        let mut rng = Rng(0x0158);
+        let (mut ratio, mut short) = (0.0_f64, 0.0_f64);
+        for e in BAND {
+            for k in 0..4000 {
+                let scale = if k % 2 == 0 { 1.7 } else { 1e-4 };
+                let q0 = SO3::exp(&tan(rng.arr::<3>().map(|c| 3.0 * c)));
+                let phi = rng.arr::<3>().map(|c| scale * c);
+                let q1 = q0 * SO3::exp(&tan(phi));
+                let (e0, e1) = (rng.unif() * e.exp2(), rng.unif() * e.exp2());
+                let ((d0, e0), (d1, e1)) = (drifted(q0.quat(), e0), drifted(q1.quat(), e1));
+                let t = 0.5 * (rng.unif() + 1.0);
+                let got = SO3::geodesic(&d0, &d1, t).quat();
+                let err = angle(got, SO3::geodesic(&q0, &q1, t).quat());
+                if scale > 1.0 {
+                    let a = 0.5 * norm(phi);
+                    let term = ((1.0 - t) * a).sin() * (t * a).sin() / a.sin() * (e1 - e0).abs();
+                    assert!(err <= 1.01 * term + 32.0 * u, "{err} over the term {term}");
+                    if term > 1e3 * u {
+                        ratio = ratio.max(err / term);
+                    }
+                } else {
+                    short = short.max(err / u);
+                }
+                let parts = |q: Quat<f64>| [q.w, q.x, q.y, q.z].map(f64::to_bits);
+                assert_eq!(parts(SO3::geodesic(&d0, &d1, 0.0).quat()), parts(d0.quat()));
+                // `‖φ‖ < π` here, so `q₀*q₁` has `w > 0` and nothing flips.
+                assert_eq!(parts(SO3::geodesic(&d0, &d1, 1.0).quat()), parts(d1.quat()));
+            }
+        }
+        assert!(
+            ratio <= 1.01 && short <= 12.0,
+            "ratio {ratio}, short {short} u"
+        );
+    }
+
+    /// The carried path propagates NaN and never panics, in debug or release: no assertion is on
+    /// it, which is what lets a consumer whose functions are total in NaN take it.
+    #[test]
+    fn the_carried_path_propagates_nan() {
+        let nan = SO3::from_quat_unchecked(Quat {
+            w: f64::NAN,
+            x: 0.0,
+            y: 0.0,
+            z: 0.0,
+        });
+        let one = SO3::exp(&tan([0.3, -0.2, 0.1]));
+        assert!(nan.log().phi.0.iter().all(|c| c.is_nan()));
+        assert!(nan
+            .act(Vector([1.0, 2.0, 3.0]))
+            .0
+            .iter()
+            .any(|c| c.is_nan()));
+        assert!((nan * one).quat().w.is_nan());
+        assert!(SO3::geodesic(&one, &nan, 0.5).quat().w.is_nan());
+        assert!(SO3::geodesic(&nan, &one, 0.5).quat().w.is_nan());
+    }
+
+    /// `0058` decision 3's budget: a chain of one repeated step drifts linearly, and one
+    /// `renormalize` takes it back to rounding. The protocol: `10^4` products of each step below;
+    /// the drift per product, in `u`, is `0.608`, `0.730` and `0.000`. A repeated step is the
+    /// worst case: fresh random steps measured at most `0.024 u` per product over `10^4` to
+    /// `10^6` products.
+    #[test]
+    fn a_repeated_step_drifts_linearly_and_one_step_repairs_it() {
+        let u = ulp::<f64>();
+        let n = 10_000;
+        let mut worst = 0.0_f64;
+        for phi in [[0.3, -0.2, 0.5], [1e-3, 2e-3, -1e-3], [0.01, -0.02, 0.015]] {
+            let step = SO3::exp(&tan(phi));
+            let mut x = step;
+            for _ in 1..n {
+                x = x * step;
+            }
+            let eta = x.quat().norm_sq() - 1.0;
+            worst = worst.max(eta.abs() / u / f64::from(n));
+            x.renormalize();
+            let fixed = (x.quat().norm_sq() - 1.0).abs();
+            assert!(fixed <= 4.0 * u, "renormalize left η = {fixed} from {eta}");
+        }
+        assert!(worst <= 1.5, "{worst} u per product");
+    }
 }

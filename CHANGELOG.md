@@ -7,6 +7,10 @@ defined by the status tables in `docs/`; they win over this file.
 
 ## [Unreleased]
 
+### Changed
+
+- **`SO3::from_quat_unchecked`'s stated domain is the drift band** (`0058`): a struct literal moved into it is the *carried* path, `|‖q‖² − 1| ≤ 2^-26.29`, nothing asserted. `NUMERICS.md` §12 states each SO(3) operation's first-order error there, and §3.6 states the drift budget. No code changes.
+
 ## [0.0.1] - 2026-10-08
 
 First release: `helicoid-linalg` and `helicoid` at `0.0.1` (`0049`).

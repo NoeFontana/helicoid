@@ -71,6 +71,7 @@ grep -m1 -H '^\*\*Status:' docs/decisions/0*.md
 | [`0055`](./0055-the-branch-is-inlined-and-the-sign-is-a-bit.md) | **ready.** `Real::branch` is `#[inline]` and `abs`/`copysign` are `core`'s: coefficient kernels 0.55×, groups 0.915× geomean, bit-identical. |
 | [`0056`](./0056-the-routines-d7-does-not-reach.md) | **ready.** Corpus ids for `solve_cubic`, `eig3`, `chol`/`chol_solve`, `quat_renormalize` and `real_*` at both precisions; root-set, gap-weighted eigenvector and mask metrics; a nalgebra oracle; committed rows reproduced bit for bit. |
 | [`0057`](./0057-eig3-anchors-the-isolated-end.md) | **ready.** `eig3` anchors its frame on the more isolated end of the spectrum (`0023` question 2): top-pair ties and rank-1 go from `1e16 u` to `1e8`, 0.95× latency at `f64`. |
+| [`0058`](./0058-a-drifted-quaternion-is-carried-not-vouched-for.md) | **ready.** Two entry points named: the *vouched* `from_wxyz_unchecked` (`2^-40`, asserted, NaN fails) and the *carried* struct literal into `SO3::from_quat_unchecked` (the drift band `2^-26.29`, nothing asserted). §12 states each operation's first-order error on a carried `q`, and §3.6 states the drift budget. No code change.
 
 ## Lifecycle
 
