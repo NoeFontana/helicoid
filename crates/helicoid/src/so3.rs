@@ -106,8 +106,17 @@ fn apply_rows<S: Real, const D: usize>(m: &Mat3<S>, v: &Vector<S, D>) -> Vector<
 }
 
 impl<S: Real> SO3<S> {
-    /// The rotation of a quaternion the caller guarantees is unit, within `NUMERICS.md` §3.6's
-    /// bound; `Quat::from_wxyz_unchecked` carries the `debug_assert!`.
+    /// The rotation of `q`, moved in and checked by nothing.
+    ///
+    /// # Domain
+    ///
+    /// The drift band, `| ‖q‖² - 1 | <= 2^-26.29` (`f64`) or `2^-11.79` (`f32`), where one
+    /// [`renormalize`](SO3::renormalize) step normalizes. Nothing is asserted, in debug or
+    /// release, and NaN propagates. A caller who *vouches* that `q` is unit builds it with
+    /// [`Quat::from_wxyz_unchecked`], which asserts the tighter `2^-40`. A caller whose chains
+    /// drift by design *carries* it here from a struct literal or [`Quat::from_xyzw`]. Each
+    /// operation's error on a carried `q` is its first-order term in `η = ‖q‖² - 1`, which
+    /// `NUMERICS.md` §12 states (`0058`).
     #[inline]
     pub fn from_quat_unchecked(q: Quat<S>) -> Self {
         Self(q)

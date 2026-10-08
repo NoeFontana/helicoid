@@ -144,6 +144,15 @@ constructor normalizes, as `API.md` R6 reads it, and the step belongs to `renorm
 or $2^{-16}$ (`f32`); every $q$ it admits is inside the step's accuracy domain by 13.7 bits in
 `f64` and 4.2 in `f32`.
 
+**Vouched and carried** ([`0058`](./decisions/0058-a-drifted-quaternion-is-carried-not-vouched-for.md)).
+That bound applies to the caller who *vouches* that $q$ is unit. A consumer whose chains drift by
+design *carries* $q$ instead: it builds a struct literal or uses `from_xyzw`, then moves it into
+`SO3::from_quat_unchecked`. Nothing is asserted, NaN propagates, and the domain is the step's
+band. §12 states each operation's error there. **The budget:** a repeated step drifts up to
+$0.73u$ per product, fresh random steps at most $0.024u$. So about $10^4$ products leave the
+vouched bound and about $10^8$ leave the band. Where in the chain to renormalize is the consumer's
+decision.
+
 ## 4. The coefficient catalogue
 
 **Only `helicoid::coeffs` evaluates these.** Each is a function of a branch variable ($\theta^2$,
@@ -394,6 +403,7 @@ $X(t) = X_0\,\mathrm{Exp}(t\,d)$ with $d = X_1 \ominus_R X_0$ and $\Delta = X_0^
 | `SO3::log` | all unit $q$; at $w = +0$ a function of $q$'s sign (§3.2) | — |
 | `jr_inv`, `jl_inv` (SO(3), SE_N(3)) | $\theta < 2\pi$ | unspecified finite value |
 | `from_wxyz_unchecked` | $\lvert\|q\|^2 - 1\rvert \le 2^{-40}$ (`f64`), $2^{-16}$ (`f32`) | garbage in, garbage out |
+| `SO3::from_quat_unchecked` (carried, §3.6) | $\lvert\eta\rvert \le 2^{-26.29}$ (`f64`), $2^{-11.79}$ (`f32`), $\eta = \|q\|^2 - 1$; nothing asserted, NaN propagates. To first order in $\eta$: `log` returns the `Log` of $q/\|q\|$; `act` returns $Rv + \eta(Rv - v)$; `to_matrix` returns $(1 + \eta)R$; `Mul` gives $\eta_{ab} = \eta_a + \eta_b + \eta_a\eta_b$; `inverse` keeps $\eta$; `geodesic` keeps both endpoints bit-exact and is scale-invariant below `r`'s second switch, while the blend tilts by $\sin((1-t)\alpha)\sin(t\alpha)/\sin\alpha \cdot \lvert\eta_1 - \eta_0\rvert$; SE_N(3)'s columns carry `act`'s term ([`0058`](./decisions/0058-a-drifted-quaternion-is-carried-not-vouched-for.md)) | garbage in, garbage out |
 | `from_wxyz_normalized` | $\|q\|^2$ normal (components within $\approx 10^{\pm154}$ `f64`, $10^{\pm19}$ `f32`); `debug_assert!` on the result (§3.6, [`0027`](./decisions/0027-a-normalizing-constructor-normalizes.md)) | NaN at $q = 0$; zero above the overflow |
 | `renormalize` | none; a normalization only for $\lvert\|q\|^2 - 1\rvert \le 2^{-26.29}$ (`f64`), $2^{-11.79}$ (`f32`) (§3.6) | defined everywhere; $0$ at $\|q\|^2 = 3$, $q$ reversed beyond |
 | `solve_cubic` | every input; the mask is the report: a non-finite coefficient, $a = 0$, or $1/a$, $b/a$, $c/a$ or $d/a$ overflowing gives no valid slot (§16) | — |

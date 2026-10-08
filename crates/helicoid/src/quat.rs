@@ -71,6 +71,11 @@ impl<S: Real> Quat<S> {
     /// quaternion outside the domain is garbage in, garbage out. One [`renormalize`] step repairs
     /// a quaternion inside it to rounding level (`docs/maths/so3.md` SO.15).
     ///
+    /// The bound is a claim the caller makes, that `q` is unit. A caller whose chains drift by
+    /// design is not making that claim. It uses a struct literal moved into
+    /// [`SO3::from_quat_unchecked`](crate::SO3::from_quat_unchecked), whose domain is the wider
+    /// drift band (`0058`).
+    ///
     /// [`renormalize`]: Quat::renormalize
     #[inline]
     pub fn from_wxyz_unchecked(w: S, x: S, y: S, z: S) -> Self {
