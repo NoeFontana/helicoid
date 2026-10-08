@@ -29,6 +29,7 @@ defined by the status tables in `docs/`; they win over this file.
 
 ### Changed
 
+- **`eig3` anchors its frame on the more isolated end** (`0057`): a tie of the top pair no longer leaves every column wrong (`eig:gap-1e-12/top` and `eig:rank1`: `1e16` → `6e7 u`; residual `0.8 |A|` → below `64 sqrt(u) |A|` on `diag(5, 1, 5)`); bit-identical where the top is the isolated end; `f64` +1.7%.
 - **`solve_cubic` stops inheriting omnisac's limits** (`0031`): the one-real-root arm pairs its cube roots and takes `-q/(w² + p/3 + v²)` where `p > 0` (`x³ + px − 1` at small `p`: 1.8e10 → 1.7 `u`); the monic cubic is homogenised by exact powers of two, so a scaled cubic keeps its roots (`1e-100`-scaled: no root → 51 `u`) and `p³`, `q²` never underflow into a wrong arm; the leading-coefficient floor is gone, a cubic is `a ≠ 0` with `1/a`, `b/a`, `c/a`, `d/a` finite. `GOLDEN` regenerated; `benches/linalg.rs` added (`f64` 1.01–1.30×, `f32` 1.24–1.37× latency).
 
 - **`Real::branch` is inlined; `abs`/`copysign` are `core`'s**: the coefficient kernels run 0.55× and the group operations 0.915× (geomean) of before, `so3/exp` 0.57×, results bit-identical (`0055`).

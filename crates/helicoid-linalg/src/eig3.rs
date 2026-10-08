@@ -71,11 +71,12 @@ fn null_vec<S: Real>(m: [S; 6], lambda: S) -> Vec3<S> {
 /// With `q = trace / 3`, `B = A - q I` and `p = sqrt(|B|_F^2 / 6)` the eigenvalues are Smith's
 /// `q + 2 p cos((acos(r) + 2 pi k) / 3)`, `k = 0, 1, 2`, `r = det(B) / (2 p^3)` clamped to
 /// `[-1, 1]`, sorted by a compare-exchange network (`acos` and `pi` as in
-/// [`solve_cubic`](crate::solve_cubic)). For the eigenvalues `l0 <= l1 <= l2`, the vector of `l2` is
-/// the longest cross product of two rows of `A - l2 I`, normalised (`v2`); that of `l1` is the same
-/// for `l1`, projected orthogonal to `v2` and normalised (`v1`); the third is `v1 x v2`. Where a
-/// cross product is zero, `v2` is `e_z` and `v1` a fixed unit vector orthogonal to `v2`: a multiple
-/// of the identity gives the identity.
+/// [`solve_cubic`](crate::solve_cubic)). For the eigenvalues `l0 <= l1 <= l2`, the frame is anchored
+/// on the more isolated end (`0057`): `l2` where `l2 - l1 >= l1 - l0`, else `l0`. The anchor's vector
+/// is the longest cross product of two rows of `A - l I`, normalised; that of `l1` is the same for
+/// `l1`, projected orthogonal to the anchor's and normalised (`v1`); the third closes the frame,
+/// `v0 = v1 x v2` or `v2 = v0 x v1`. Where a cross product is zero, the anchor's vector is `e_z` and
+/// `v1` a fixed unit vector orthogonal to it: a multiple of the identity gives the identity.
 ///
 /// # Domain
 ///
@@ -102,11 +103,12 @@ fn null_vec<S: Real>(m: [S; 6], lambda: S) -> Vec3<S> {
 /// (`0056` decision 5), which nalgebra's iterative `SymmetricEigen` beats at every narrow gap;
 /// Kopp's hybrid is owed.
 ///
-/// **Where the two largest eigenvalues are within about `2 sqrt(u) |A|` of each other, equal ones
-/// included, no column is reliable.** The eigenvalues are right (the pair to `sqrt(u) |A|`), but
-/// `v2` is rounding noise or the fallback `e_z`, and `v1` and `v0` are built from it: the vector of
-/// the isolated `l0` has a residual of the order of `|A|` however wide its gap (`0.8 |A|` for
-/// `diag(5, 1, 5)`).
+/// **A tied pair is not the anchor.** Where two eigenvalues are within about `2 sqrt(u) |A|`, equal
+/// ones included, the vector of either is rounding noise; the frame is anchored on the third, whose
+/// gap is the wide one, so its vector is an eigenvector and so is any vector of the tied pair's
+/// plane (`diag(5, 1, 5)`: residuals below `64 sqrt(u) |A|`, against `0.8 |A|` while the frame was
+/// anchored on `l2` alone). Only where all three are within that distance, a multiple of the
+/// identity to rounding, is no end isolated, and every frame is an eigenbasis there.
 ///
 /// A `Dual` result differentiates the arm taken: the derivative is `NaN` where `acos` sees
 /// `r = +-1` (a double eigenvalue), and for a multiple of the identity the arms are constants.
@@ -180,13 +182,25 @@ pub fn eig3<S: Real>(a: &Mat3<S>) -> (Vec3<S>, Mat3<S>) {
     let (l1, l2) = order(l1, lambda(2));
     let (l0, l1) = order(l0, l1);
 
+    // The frame is anchored on the more isolated end of the spectrum (`0057`, answering
+    // `0023` (draft) question 2): the anchor's null vector is the one its own gap makes well
+    // conditioned, the middle one is projected into the plane orthogonal to it, and the third
+    // closes the frame with `det = +1`.
+    // Anchored on `l2` alone, a tie of the top pair left `v2` as rounding noise and every column
+    // wrong, the isolated `l0`'s included.
+    let top = (l1 - l0).le(l2 - l1);
     let e_z = Vector([zero, zero, one]);
-    let v2 = unit_or(null_vec(m, l2), e_z);
-    let w = any_orthogonal(v2);
-    let x = v2.cross(w);
+    let va = unit_or(null_vec(m, S::select(top, l2, l0)), e_z);
+    let w = any_orthogonal(va);
+    let x = va.cross(w);
     let u1 = unit_or(null_vec(m, l1), w);
     let in_plane = w.scale(w.dot(u1)) + x.scale(x.dot(u1));
     let v1 = unit_or(in_plane, w);
-    let v0 = unit_or(v1.cross(v2), x);
+    // `v0 = v1 x v2` with `va = v2`, `v2 = v0 x v1` with `va = v0`: one cross product, signed.
+    let closing = v1.cross(va);
+    let sign = S::select(top, one, -one);
+    let vc = unit_or(closing.scale(sign), x.scale(sign));
+    let pick = |t: Vec3<S>, f: Vec3<S>| Vector([0, 1, 2].map(|i| S::select(top, t.0[i], f.0[i])));
+    let (v0, v2) = (pick(vc, va), pick(va, vc));
     (Vector([l0, l1, l2]), Mat3::from_cols([v0, v1, v2]))
 }
