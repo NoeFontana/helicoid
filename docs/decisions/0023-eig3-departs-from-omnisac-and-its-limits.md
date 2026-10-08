@@ -4,6 +4,8 @@
 **Owner:** @NoeFontana
 **Implementation:** —
 
+> **Open question 2 answered by [`0057`](./0057-eig3-anchors-the-isolated-end.md)**: anchor by mask. Question 3 is answered by [`0056`](./0056-the-routines-d7-does-not-reach.md) (the bar is the committed per-stratum maximum). Questions 1 and 4 stay open.
+
 ## Context
 
 `0017` decision 4 ports `eig3` "the same way" as `solve_cubic`: omnisac's algorithm, generic over

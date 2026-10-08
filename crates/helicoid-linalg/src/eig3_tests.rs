@@ -752,29 +752,33 @@ fn diagonal_residual<S: Lane>(d: V3) -> f64 {
     residual(&a, l[0], col(&v, 0)) / d.iter().fold(0.0_f64, |m, x| m.max(x.abs()))
 }
 
-/// The limits of `# Domain`, pinned: they are where Kopp's hybrid is owed, and the test that fails
-/// when it lands is this one. Where the top pair is a tie (a gap below about `2 sqrt(u) |A|`, equal
-/// eigenvalues included) the frame is orthonormal (`check` asserts it on every row) but neither the
-/// vector of the isolated smallest eigenvalue nor the second is an eigenvector, however wide the
-/// gap of the first: over 100 rotations the worst residual of each exceeds `0.01 |A|`, ten times
-/// the largest the recorded bounds allow (`f32`, `1e-3 |A|`). So it does on axis-aligned ties,
-/// `5, 5, 0.1` among them. On a rank-1 matrix (a double eigenvalue
-/// 0) the eigenvalues are off by a fraction of `sqrt(u) |A|`.
+/// A tie of the top pair, which left every column wrong while the frame was anchored on `l2` alone
+/// (residuals above `0.01 |A|`, `0.4 |A|` on axis-aligned ties), now anchors on the isolated `l0`
+/// (`0057`): its vector is an eigenvector to the eigenvalue error, and so is any vector of the tied
+/// pair's plane. What stays is the eigenvalue error of a double root, a fraction of `sqrt(u) |A|`
+/// (`# Domain`), pinned on a rank-1 matrix: it is where Kopp's hybrid is owed.
 #[test]
-fn the_limits_of_the_closed_form_are_pinned() {
+fn a_tie_of_the_top_pair_anchors_on_the_isolated_end() {
+    let tie = |res: [f64; 3], u: f64| res[0] < 64.0 * u.sqrt() && res[1] < 64.0 * u.sqrt();
     for l in [
         [1.0, 5.0, 5.0],
         [1.0, 5.0, 5.0 + 1e-9],
         [0.5, 2.0, 2.0 + 4e-12],
     ] {
         let res = worst_of::<f64>(l).0;
-        assert!(res[0] > 0.01 && res[1] > 0.01, "{l:?}: {res:?}");
+        assert!(tie(res, unit::<f64>()), "{l:?}: {res:?}");
     }
     let res = worst_of::<f32>([0.5, 2.0, 2.0 + 4e-6]).0;
-    assert!(res[0] > 0.01 && res[1] > 0.01, "{res:?}");
+    assert!(tie(res, unit::<f32>()), "{res:?}");
     for d in [[5.0, 1.0, 5.0], [5.0, 5.0, 0.1], [100.0, 100.0, 1.0]] {
-        assert!(diagonal_residual::<f64>(d) > 0.4, "{d:?}");
-        assert!(diagonal_residual::<f32>(d) > 0.4, "{d:?}");
+        assert!(
+            diagonal_residual::<f64>(d) < 64.0 * unit::<f64>().sqrt(),
+            "{d:?}"
+        );
+        assert!(
+            diagonal_residual::<f32>(d) < 64.0 * unit::<f32>().sqrt(),
+            "{d:?}"
+        );
     }
     assert!(worst_of::<f64>([0.0, 0.0, 1.0]).1 > 0.05 * unit::<f64>().sqrt());
     assert!(worst_of::<f32>([0.0, 0.0, 1.0]).1 > 0.05 * unit::<f32>().sqrt());
