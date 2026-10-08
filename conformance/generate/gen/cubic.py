@@ -27,6 +27,9 @@ P_SMALL = {False: ("1e-7", "1e-3"), True: ("1e-4", "1e-1")}
 COEFF_SCALE = {False: 100, True: 20}
 EXTRAPREC = 300  # bits
 MAXSTEPS = 500
+# `cubic:one-real-small-root` (`0031`): x^3 + x + q, |q| log-uniform in the precision's range and
+# the sign alternating, one real root near -q beside a complex pair of size 1, where w + v cancels.
+SMALL_ROOT = {False: ("1e-12", "1e-2"), True: ("1e-6", "1e-1")}
 
 
 def _bits(rng: SplitMix64, n: int) -> int:
@@ -149,6 +152,17 @@ def _p_small(draw: Draw, n: int) -> list[dict]:
     ]
 
 
+def _small_root(draw: Draw, n: int) -> list[dict]:
+    """x^3 + x + q, |q| log-uniform in the precision's range, the sign alternating."""
+    rng = draw.stream("q")
+    lo, hi = (mpf(b) for b in SMALL_ROOT[draw.f32])
+    out = []
+    for i in range(n):
+        q = log_uniform_at(rng, lo, hi, draw.f32)
+        out.append({"a": 1.0, "b": 0.0, "c": 1.0, "d": -q if i % 2 else q})
+    return out
+
+
 def _coeff_scale(sign: int):
     """`cubic:distinct`'s cubics, from its stream, every coefficient times 10^(sign s), s the
     precision's, rounded once."""
@@ -180,6 +194,7 @@ def _strata():
         ("cubic:one-real-p-small", _p_small, False),
         ("cubic:coeff-scale-up", _coeff_scale(1), False),
         ("cubic:coeff-scale-down", _coeff_scale(-1), False),
+        ("cubic:one-real-small-root", _small_root, False),
     ]
     shared = [(name, make, True) for name, make in planted + near]
     every = [*shared, *rest]

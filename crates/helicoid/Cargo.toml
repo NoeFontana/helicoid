@@ -49,3 +49,7 @@ harness = false
 [[bench]]
 name = "groups"
 harness = false
+
+[[bench]]
+name = "linalg"
+harness = false

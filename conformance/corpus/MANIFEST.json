@@ -375,12 +375,12 @@
     },
     "solve_cubic.jsonl": {
       "kind": "corpus",
-      "rechecked": 22,
-      "records": 1408,
-      "sha256": "f7f22bdc49094aa00ef24833f208cc6b32150892abe8bee71dc60b2429048655"
+      "rechecked": 24,
+      "records": 1536,
+      "sha256": "3780fb0bfac76491d5c03b5ebbeb52fc333c95edaf3784bf6e805add3f219f2b"
     }
   },
-  "generator": "sha256:d87b3ea4a72537b9a664873ce9a62599e1328d0df18c77a9f369ff995c162b37",
+  "generator": "sha256:c260a462ba03ca93195079e9f77bcd55f580a96817b9347ff91deacfbcaa1848",
   "mpmath": "1.4.1",
   "python": "3.12",
   "recheck": {

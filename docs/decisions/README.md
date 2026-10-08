@@ -44,7 +44,7 @@ grep -m1 -H '^\*\*Status:' docs/decisions/0*.md
 | [`0028`](./0028-two-ready-specs-disagree-on-the-blocks-of-sen3jac.md) | `SEn3Jac` internal block representation made `pub(crate)`. |
 | [`0029`](./0029-a-product-needs-a-way-to-be-built-from-its-factors.md) | `Product::from_parts`/`parts` constructor added alongside factor types. |
 | [`0030`](./0030-a-consumer-comparison-is-a-trigger-0021-does-not-list.md) | Cholesky benchmarking against external subjects; nothing decided. |
-| [`0031`](./0031-what-the-cubic-port-inherits-from-omnisac.md) | numerical limits in cubic root solving (cancellation and underflow); nothing decided. |
+| [`0031`](./0031-what-the-cubic-port-inherits-from-omnisac.md) | **ready.** `solve_cubic` pairs its cube roots (and takes a quotient where `p > 0`), homogenises the monic cubic by powers of two, and drops the leading-coefficient floor; `1/a` stays (L5 measured against). Dominates nalgebra on every binary64 stratum. |
 | [`0032`](./0032-domination-charges-helicoid-for-d16.md) | attribution of `so3_log` domination failures to `libm::atan2` vs host glibc; nothing decided. |
 | [`0033`](./0033-a-latency-floor-is-measured-beside-the-comparison.md) | measuring benchmark latency floors beside comparison rather than stored; nothing decided. |
 | [`0034`](./0034-a-second-transcendental-backend-owes-a-measurement.md) | determinism bounds across `libm` versions and criteria for alternate backends; nothing decided. |

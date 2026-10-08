@@ -11,13 +11,14 @@ use crate::vector::{Vec3, Vector};
 ///
 /// # Domain
 ///
-/// `-1022 <= e <= 0`, asserted; exact at both precisions while `e >= -126`. Outside it the shift
-/// would discard the sign-extended high bits and return an arbitrary finite float, so the assert
-/// stands rather than a `debug_assert!` (D11 governs release *checks*, and every caller evaluates
-/// this in a `const` block, where the assert is a compile error and costs nothing at run time).
+/// `-1022 <= e <= 1023`, asserted; exact at both precisions while `-126 <= e <= 127`. Outside it the
+/// shift would discard the sign-extended high bits and return an arbitrary finite float, so the
+/// assert stands rather than a `debug_assert!` (D11 governs release *checks*, and every caller
+/// evaluates this in a `const` context, where the assert is a compile error and costs nothing at
+/// run time).
 const fn pow2(e: i32) -> f64 {
     assert!(
-        e >= -1022 && e <= 0,
+        e >= -1022 && e <= 1023,
         "pow2: exponent outside the normal range"
     );
     f64::from_bits(((1023 + e) as u64) << 52)
@@ -35,7 +36,7 @@ fn tol<S: Real, const ULPS_LOG2: i32>() -> S {
     }
 }
 
-/// `2^7 u`, the floor on the leading coefficient and the triple-root test.
+/// `2^7 u`, the triple-root test.
 const NEAR_ZERO: i32 = 7;
 /// `2^13 u`, the relative band of the discriminant.
 const DISCRIMINANT_BAND: i32 = 13;
@@ -44,6 +45,82 @@ const DISCRIMINANT_BAND: i32 = 13;
 #[inline]
 fn max<S: Real>(x: S, y: S) -> S {
     S::select(x.lt(y), y, x)
+}
+
+/// `2^k` for the two-sided steps of [`homogenise`], down to the edge of its window: after them the
+/// scale lies in `[2^-127, 2^128)` (`f64`) or `[2^-7, 2^8)` (`f32`).
+const STEPS_F64: [f64; 3] = [pow2(512), pow2(256), pow2(128)];
+const STEPS_F32: [f64; 4] = [pow2(64), pow2(32), pow2(16), pow2(8)];
+
+/// One two-sided step of [`homogenise`] at `K = 2^k`: where the scale `s = max(|B|, sqrt|C|,
+/// cbrt|D|)` is at least `K`, divide the cubic by it (`B/K`, `C/K^2`, `D/K^3`); where it is below
+/// `2/K`, multiply. Each comparison is on an exact power-of-two multiple of a coefficient, so
+/// nothing is rounded and no `sqrt` or `cbrt` is taken; a product that underflows or overflows
+/// compares on the side it belongs to.
+#[inline]
+fn step<S: Real>(k: f64, (b, c, d, m): (S, S, S, S)) -> (S, S, S, S) {
+    let (one, two) = (S::one(), S::lit(2.0));
+    let (big, small) = (S::lit(k), S::lit(1.0 / k));
+    let (ab, ac, ad) = (b.abs(), c.abs(), d.abs());
+    let down = big
+        .le(ab)
+        .or(big.le(ac * small))
+        .or(big.le(ad * small * small));
+    let up = (ab * big)
+        .lt(two)
+        .and((ac * big * big).lt(two * two))
+        .and((ad * big * big * big).lt(two * two * two));
+    let f = S::select(down, small, S::select(up, big, one));
+    let g = S::select(down, big, S::select(up, small, one));
+    (b * f, c * f * f, d * f * f * f, m * g)
+}
+
+/// The cubic `y^3 + B y^2 + C y + D` homogenised to `x = m y` (`0031` L2): `(B/m, C/m^2, D/m^3, m)`
+/// with `m` a power of two, every value exact.
+///
+/// What the scaling owes is that neither summand of `disc` over- or underflows: `p` is of the
+/// order `s^2` or, cancelling, at least `u s^2`, and `q` of `s^3`, so a scale `s` in `[2^-128,
+/// 2^128)` (`f64`) or `[2^-8, 2^16)` (`f32`) keeps `p^3` and `q^2` normal, and every tolerance of
+/// the arms compares quantities of one degree in `s`. Inside that window `m = 1` and the cubic is
+/// untouched; outside it the ladder brings `s` in, as a lazy branch, so a scalar cubic in the window
+/// pays three comparisons per coefficient. Below the smallest normal, and at `B = C = D = 0`, the
+/// scale stays below the window (the ladders sum to `2^896`, `2^120`), which leaves the arithmetic
+/// exact.
+// `always`: left to LLVM it is a call returning four values through memory, measured 10-33 ns of
+// a 14-45 ns solver; inline, the window test is a few comparisons.
+#[inline(always)]
+fn homogenise<S: Real>(b: S, c: S, d: S) -> (S, S, S, S) {
+    // The window's edges `L`, `H` and their squares and cubes: `s >= L` is `|B| >= L` or
+    // `|C| >= L^2` or `|D| >= L^3`, and `s < H` the same with `<` and `and`.
+    let (steps, lo, hi): (&[f64], [f64; 3], [f64; 3]) = match S::PRECISION {
+        Precision::F64 => (
+            &STEPS_F64,
+            [pow2(-128), pow2(-256), pow2(-384)],
+            [pow2(128), pow2(256), pow2(384)],
+        ),
+        Precision::F32 => (
+            &STEPS_F32,
+            [pow2(-8), pow2(-16), pow2(-24)],
+            [pow2(16), pow2(32), pow2(48)],
+        ),
+    };
+    let ([lo1, lo2, lo3], [hi1, hi2, hi3]) = (lo.map(S::lit), hi.map(S::lit));
+    let (ab, ac, ad) = (b.abs(), c.abs(), d.abs());
+    let inside = ab
+        .lt(hi1)
+        .and(ac.lt(hi2))
+        .and(ad.lt(hi3))
+        .and(lo1.le(ab).or(lo2.le(ac)).or(lo3.le(ad)));
+    let start = (b, c, d, S::one());
+    S::branch(inside, || start, || ladder(steps, start))
+}
+
+/// [`homogenise`]'s steps, out of line: rarely taken, and a call is an arm LLVM cannot speculate
+/// into the common path, which it does with the arithmetic inline.
+#[cold]
+#[inline(never)]
+fn ladder<S: Real>(steps: &[f64], start: (S, S, S, S)) -> (S, S, S, S) {
+    steps.iter().fold(start, |x, &k| step(k, x))
 }
 
 /// `pi`, correctly rounded at this precision; a `Dual` sees a constant.
@@ -70,31 +147,39 @@ pub(crate) fn pi<S: Real>() -> S {
 /// never `-0`. The order of the slots is that of the arm that produced them; it is not sorted:
 /// three roots come as the phases `k = 0, 1, 2`, largest first up to rounding.
 ///
-/// With `B = b/a`, `C = c/a`, `D = d/a` the substitution `x = t - B/3` gives `t^3 + p t + q`,
-/// `p = C - B^2/3`, `q = 2 B^3/27 - B C/3 + D`, and `disc = q^2/4 + p^3/27` (positive for one real
-/// root). With `band = max(q^2/4, |p^3/27|) 2^-40` (`f64`), the arms are, in this order:
+/// With `B = b/a`, `C = c/a`, `D = d/a`, the cubic is first homogenised (`0031` L2): `m` is the
+/// power of two with `max(|B|, sqrt|C|, cbrt|D|) / m` in `[1, 2)`, and `x = m y` gives the monic
+/// cubic in `y` with coefficients `B/m`, `C/m^2`, `D/m^3`, every one at most 8 in magnitude and at
+/// least one near 1, all formed exactly. On those, the substitution `y = t - B/(3m)` gives
+/// `t^3 + p t + q`, `p = C - B^2/3`, `q = 2 B^3/27 - B C/3 + D` (scaled), and
+/// `disc = q^2/4 + p^3/27` (positive for one real root). With
+/// `band = max(q^2/4, |p^3/27|) 2^-40` (`f64`), the arms are, in this order:
 ///
-/// | arm | taken when | valid slots and their values (each `- B/3`) |
+/// | arm | taken when | valid slots and their values (each `- B/(3m)`, then times `m`) |
 /// |---|---|---|
-/// | one real root | `disc > band` | 0: `cbrt(-q/2 + sqrt disc) + cbrt(-q/2 - sqrt disc)` |
+/// | one real root | `disc > band` | 0: `w + v` where `p <= 0`, `-q / (w^2 + p/3 + v^2)` where `p > 0`; `w = cbrt(-q/2 + copysign(sqrt disc, -q/2))`, `v = -(p/3)/w` |
 /// | three real roots | `disc < -band` or `p < 0` | 0, 1, 2: `2 r cos(acos(3q / (2 p r)) / 3 - 2 pi k / 3)`, `r = sqrt(-p/3)`, the `acos` argument clamped to `[-1, 1]` |
 /// | triple root | else, and `\|p\| <= max(\|p\|, \|q\|, 1) 2^-46` | 0: `cbrt(-q)` |
 /// | single and double root | else | 0: `3q/p`; 1: `-3q/(2p)`, the double root, once |
 ///
-/// The last arm is unreachable for coefficients that pass the floor: with `p >= 0` both summands of
-/// `disc` are non-negative, so it lies within `band` of zero only when both underflow to `+0`, and
-/// the triple-root test takes that. A slot whose value is not finite is not valid: `2 p r`
-/// underflows for `x^3 - 1e-250 x`, the `acos` argument is NaN, and no root is reported although
-/// there are three.
+/// The one-real-root arm pairs its two cube roots through `w v = -p/3` (`0031` L1): `w` is the one
+/// whose radicand is a sum of like signs, so it never cancels, and `v = -p/(3w)`. Where `p > 0` the
+/// two have opposite signs and their sum cancels for a root small against the scale, so the root
+/// is taken from `w^3 + v^3 = -q` instead, over `w^2 - w v + v^2`, a sum of positive terms.
+///
+/// The last arm is unreachable: with `p >= 0` both summands of `disc` are non-negative, so it lies
+/// within `band` of zero only when both underflow to `+0`, which on the homogenised cubic needs
+/// `|p|` and `|q|` below `2^-46` and the triple-root test takes that. A slot whose value is not
+/// finite is not valid: a root beyond the largest finite number after the `m` scaling.
 ///
 /// # Tolerances
 ///
-/// Three thresholds are powers of two, exact at both precisions, a fixed multiple of the unit
-/// roundoff `u` (`2^-53`, `2^-24`) (`0017`):
+/// Two thresholds are powers of two, exact at both precisions, a fixed multiple of the unit
+/// roundoff `u` (`2^-53`, `2^-24`) (`0017`), and both compare quantities of the homogenised cubic,
+/// so they are relative to the cubic's own scale (`0031`):
 ///
 /// | threshold | multiple | `f64` | `f32` |
 /// |---|---|---|---|
-/// | leading coefficient floor: `max(scale, 1) tol` | `2^7 u` | `2^-46` | `2^-17` |
 /// | relative discriminant band | `2^13 u` | `2^-40` | `2^-11` |
 /// | relative triple-root test | `2^7 u` | `2^-46` | `2^-17` |
 ///
@@ -103,34 +188,26 @@ pub(crate) fn pi<S: Real>() -> S {
 /// # Domain
 ///
 /// Every input is legal and nothing is asserted (`docs/API.md` R4, R6): the mask is the report. A
-/// non-finite coefficient, `a = 0` and a leading coefficient below its floor are not a cubic and
-/// give no valid slot; there is no fallback to a quadratic, as `a -> 0` sends a root to infinity.
-/// The floor also bounds each of `|B|`, `|C|`, `|D|` (`b/a`, `c/a`, `d/a`) by `1/tol`, `2^17` at
-/// `f32` and `2^46` at `f64`: at `f32`, `x^3 - 10^5 x` is solved and `x^3 - 10^6 x` (roots `0`,
-/// `+-1000`) and `(x - 100)(x - 101)(x + 99)` (`D = 999900`) are not.
+/// non-finite coefficient, `a = 0`, and an `a` so small that `1/a` or one of `b/a`, `c/a`, `d/a`
+/// overflows (a subnormal `a` below about `5.6e-309`, `2.9e-39` at `f32`, whatever `b`, `c`, `d`)
+/// are not a cubic and give no valid slot; there is no fallback to a quadratic, as `a -> 0` sends a
+/// root to infinity (`0031` L3). Scaling every coefficient by the same factor changes no root and
+/// no mask, at both precisions, down to a scale `max(|B|, sqrt|C|, cbrt|D|)` at the smallest
+/// normal.
 ///
-/// The formulas are not backward stable. Near a multiple root they cancel: a double root is found
-/// to about `sqrt(u)` and a triple root to `u^(1/3)` of the scale, and a complex pair whose
-/// imaginary part is below about `sqrt(band)` of the scale is reported as a real double root (the
-/// price of never dropping a repeated root). In the one-real-root arm the root is a difference of
-/// two cube roots, one of them of a `disc` that cancels when `p^3` is small against `q^2`: for
-/// `x^3 + p x - 1` the root is off by up to `4e-6` at `p` near `1e-5` (`f64`), `4e-3` at `p` near
-/// `1e-2` (`f32`), and `p = 0` is exact.
+/// The formulas are not backward stable near a multiple root. A double root is found to about
+/// `sqrt(u)` and a triple root to `u^(1/3)` of the scale, and a complex pair whose imaginary part is
+/// below about `sqrt(band)` of the scale is reported as a real double root (the price of never
+/// dropping a repeated root).
 ///
 /// The band is relative to the two summands of `disc`, not to `B`, `C`, `D`. Where `p` and `q`
 /// cancel (roots close together, far from the origin) the rounding error of `disc` can exceed it, a
 /// pair of real roots reads as positive and the arm has one root: `(x - 1.09375)^2 (x - 0.921875)`
-/// at `f32` loses its double root. Where `p^3` and `q^2` underflow (roots of the size `sqrt|p|`
-/// below about `4e-8` at `f32`, `2e-54` at `f64`) `disc` reads 0 and `p < 0` sends every cubic to
-/// the trigonometric arm: with one real root the three valid slots are not roots
-/// (`x^3 - 10^-16 x + 10^-24` at `f32`).
+/// at `f32` loses its double root (`0031` L4).
 ///
 /// A `Dual` root differentiates the arm taken, the mask reading the value part. The derivative is
 /// infinite or NaN where the true one is (a multiple root) and where the `acos` argument is `+-1`
-/// (`sqrt` at 0). In the one-real-root arm it is `-inf` wherever `h - s` cancels to exactly 0,
-/// although the root is simple: at `p = 0` (`x^3 + q`), where `cbrt` is evaluated at 0
-/// (`Real::cbrt`), and for `x^3 + p x - 1` at `f64` for every `p` below about `1.3e-5`, where the
-/// value is off by up to `4e-6`; above that it loses accuracy faster than the value.
+/// (`sqrt` at 0). In the one-real-root arm it is finite at every simple root.
 ///
 /// # Example
 ///
@@ -153,23 +230,23 @@ pub fn solve_cubic<S: Real>(a: S, b: S, c: S, d: S) -> (Vec3<S>, [S::Mask; 3]) {
     let (zero, one) = (S::zero(), S::one());
     let (two, three) = (S::lit(2.0), S::lit(3.0));
 
-    let abs_a = a.abs();
-    let scale = max(max(abs_a, b.abs()), max(c.abs(), d.abs()));
-    let is_cubic = is_finite(a)
-        .and(is_finite(b))
-        .and(is_finite(c))
-        .and(is_finite(d))
-        .and(abs_a.le(max(scale, one) * tol::<S, NEAR_ZERO>()).not());
-    // Where there is no cubic every lane evaluates `x^3 = 0`, so no arm sees a value it cannot take.
-    let (a, b, c, d) = (
-        S::select(is_cubic, a, one),
-        S::select(is_cubic, b, zero),
-        S::select(is_cubic, c, zero),
-        S::select(is_cubic, d, zero),
-    );
-
-    let inv_a = one / a;
+    // `1/a` and three products, not three divisions (`0031` L5, measured against).
+    let usable = is_finite(a).and(zero.lt(a.abs()));
+    let safe_a = S::select(usable, a, one);
+    let inv_a = one / safe_a;
     let (big_b, big_c, big_d) = (b * inv_a, c * inv_a, d * inv_a);
+    let is_cubic = usable
+        .and(is_finite(big_b))
+        .and(is_finite(big_c))
+        .and(is_finite(big_d));
+    // Where there is no cubic every lane evaluates `x^3 = 0`, so no arm sees a value it cannot take.
+    let (big_b, big_c, big_d) = (
+        S::select(is_cubic, big_b, zero),
+        S::select(is_cubic, big_c, zero),
+        S::select(is_cubic, big_d, zero),
+    );
+    let (big_b, big_c, big_d, m) = homogenise(big_b, big_c, big_d);
+
     let shift = big_b / three;
     let p = big_c - big_b * big_b / three;
     let q = two * big_b * big_b * big_b / S::lit(27.0) - big_b * big_c / three + big_d;
@@ -183,28 +260,30 @@ pub fn solve_cubic<S: Real>(a: S, b: S, c: S, d: S) -> (Vec3<S>, [S::Mask; 3]) {
     let three_roots = one_root.not().and(disc.lt(-band).or(p.lt(zero)));
     let repeated = one_root.not().and(three_roots.not());
     let triple = p.abs().le(p_scale * tol::<S, NEAR_ZERO>());
-    // The fourth arm is unreachable for coefficients that pass the floor, and this is where that
-    // claim is executable rather than prose: `repeated` forces `p >= 0`, so both summands of `disc`
-    // are non-negative and `fl(term_q + term_p) >= max(term_q, term_p)`, so `disc <= band` only
-    // when both are `+0`, which `triple` then takes. It holds *because* the floor bounds `|B|`,
-    // `|C|`, `|D|`, which keeps either summand from overflowing to `+inf` (there `band` is `+inf`
-    // too and nothing is `one_root` or `three_roots`). Lowering that floor is the change that would
-    // make the arm live again, and `0031` (draft) L3 recommends exactly that, so this fires first.
+    // The fourth arm is unreachable on the homogenised cubic, and this is where that claim is
+    // executable rather than prose: `repeated` forces `p >= 0`, so both summands of `disc` are
+    // non-negative and `fl(term_q + term_p) >= max(term_q, term_p)`, so `disc <= band` only when
+    // both are `+0`, which needs `|p|` far below the triple-root test's `2^-46`.
     debug_assert!(
         !repeated.and(triple.not()).any(),
-        "solve_cubic: the single-and-double-root arm became reachable; see `0031` (draft) L3"
+        "solve_cubic: the single-and-double-root arm became reachable"
     );
 
     let t: [S; 3] = S::branch(
         one_root,
         || {
+            // `w v = -p/3` (`0031` L1). An inactive lane has `disc = 1`, so `|w| >= 1`; an active
+            // one has `disc > band >= 0`, so `w != 0` either way and `v` is safe. Where `p > 0`, `w`
+            // and `v` have opposite signs and `w + v` cancels when the root is small against the
+            // scale, so the root is `-q / (w^2 - w v + v^2)`, a sum of positive terms: the same
+            // root, from `w^3 + v^3 = -q`. Its denominator is at least `|p|/3` in every lane.
             let root_disc = S::select(one_root, disc, one).sqrt();
             let half = S::lit(-0.5) * q;
-            [
-                (half + root_disc).cbrt() + (half - root_disc).cbrt(),
-                zero,
-                zero,
-            ]
+            let third = p / three;
+            let w = (half + root_disc.copysign(half)).cbrt();
+            let v = -third / w;
+            let t = S::branch(zero.lt(p), || -q / (w * w + third + v * v), || w + v);
+            [t, zero, zero]
         },
         || {
             S::branch(
@@ -245,7 +324,8 @@ pub fn solve_cubic<S: Real>(a: S, b: S, c: S, d: S) -> (Vec3<S>, [S::Mask; 3]) {
         is_cubic.and(three_roots),
     ];
     let slot = |k: usize| {
-        let alpha = t[k] - shift;
+        // Times `m`, exact: the root of the cubic as given.
+        let alpha = (t[k] - shift) * m;
         let valid = active[k].and(is_finite(alpha));
         // `+ 0` turns `-0` into `+0` and leaves every other value, and its derivative, alone.
         (S::select(valid, alpha + zero, zero), valid)
