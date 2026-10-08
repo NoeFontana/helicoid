@@ -1,0 +1,46 @@
+# crates.io publication by OIDC, no stored token; a Trusted Publisher is scoped to
+# this filename.
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false # never cancel a publish mid-flight
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  # OIDC, no stored token. Needs a Trusted Publisher per crate at
+  # https://crates.io/me/trusted-publishers (owner `NoeFontana`, repository
+  # `helicoid`, workflow `release.yml`, environment `crates-io`).
+  publish:
+    name: publish to crates.io
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: crates-io
+    permissions:
+      id-token: write # mint the crates.io token
+      contents: read # actions/checkout
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: mint a short-lived crates.io token
+        id: auth
+        uses: rust-lang/crates-io-auth-action@v1
+
+      # Topological order; each crate needs its dependencies live on the index.
+      - name: cargo publish helicoid-linalg
+        env: { CARGO_REGISTRY_TOKEN: "${{ steps.auth.outputs.token }}" }
+        run: cargo publish --locked -p helicoid-linalg
+      - name: cargo publish helicoid
+        env: { CARGO_REGISTRY_TOKEN: "${{ steps.auth.outputs.token }}" }
+        run: cargo publish --locked -p helicoid
