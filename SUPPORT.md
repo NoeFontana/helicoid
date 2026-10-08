@@ -19,7 +19,7 @@ A **single-maintainer, pre-1.0 project**; the expectations below are the ceiling
 
 - **x86_64 and aarch64 Linux, and wasm32**, for the library crates (bit-identical outputs, D16).
 - **The current release**, and only it: no backports.
-- Nothing is published yet; the workspace is `0.0.x`, where every release may break every other
+- `0.0.1` is the first release; the workspace is `0.0.x`, where every release may break every other
   ([`CHANGELOG.md`](./CHANGELOG.md)). Each spec's §0.0 status table says what is implemented.
 
 ## What is not supported

@@ -7,6 +7,10 @@ defined by the status tables in `docs/`; they win over this file.
 
 ## [Unreleased]
 
+## [0.0.1] - 2026-10-08
+
+First release: `helicoid-linalg` and `helicoid` at `0.0.1` (`0049`).
+
 ### Added
 
 - **Corpus ids for the routines D7 did not reach** (`0056`): `solve_cubic`, `eig3`, `chol_n{3,6}`, `chol_solve_n{3,6}`, `quat_renormalize` and `real_*` (`Dual`'s derivatives), at both precisions; root-set, gap-weighted eigenvector and mask metrics; a nalgebra oracle runner (`just oracle-nalgebra`); 198 committed per-stratum maxima reproduced bit for bit by the shipped subject.

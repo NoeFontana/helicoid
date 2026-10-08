@@ -12,7 +12,7 @@ series coefficient, a switch point, a tangent ordering or a sign.
 ## Status
 
 Each spec's **§0.0 status table is the source of truth**, over its own prose, the README and this
-file. Nothing is published. The workspace is on `0.0.x` (every release may break every other)
+file. `0.0.1` is published. The workspace is on `0.0.x` (every release may break every other)
 until [`PHASE6.md`](./docs/PHASE6.md) §6's 1.0 criteria hold. MSRV **1.87**, and never above the
 lowest MSRV among consumers (D17).
 
