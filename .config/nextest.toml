@@ -4,6 +4,17 @@
 slow-timeout = { period = "60s", terminate-after = 3 }
 final-status-level = "slow"
 
+[[profile.default.overrides]]
+# Threshold sweep and check tests evaluate multiple kernels across grids; allow 360s total before terminating.
+filter = 'package(xtask) and test(thresholds::)'
+slow-timeout = { period = "120s", terminate-after = 3 }
+
 [profile.ci]
 slow-timeout = { period = "60s", terminate-after = 3 }
 fail-fast = false
+
+[[profile.ci.overrides]]
+# Match default override on CI runners.
+filter = 'package(xtask) and test(thresholds::)'
+slow-timeout = { period = "120s", terminate-after = 3 }
+
