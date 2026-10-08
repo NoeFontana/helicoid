@@ -44,10 +44,13 @@ mod oracle;
 pub(crate) mod report;
 mod selftest;
 mod selftest_envelope;
+mod selftest_linalg;
 mod selftest_se3;
 mod selftest_so3;
 pub(crate) mod subject;
 
+#[cfg(test)]
+mod committed_linalg;
 #[cfg(test)]
 mod measure_geodesic;
 #[cfg(test)]
@@ -480,8 +483,11 @@ mod tests {
             .skip(1)
             .map(|l| l.split(',').collect())
             .collect();
-        // The 8 ids that have `@f32` strata: 28 each, and `coeff_r`'s `q:w0@f32`.
-        assert_eq!(rows.len(), 8 * 28 + 1);
+        // The 8 coefficient ids' 28 each and `coeff_r`'s `q:w0@f32`, then `0056`'s: `solve_cubic`
+        // 11, `eig3` 19, `chol_n*` 6 each, `chol_solve_n*` 5 each, `quat_renormalize` 5, `real_sqrt`
+        // and `real_cbrt` 8 each, `real_sin_cos` 5, `real_acos` 4, `real_atan2` 7, `real_div` 2.
+        let new = 11 + 19 + 2 * 6 + 2 * 5 + 5 + 2 * 8 + 5 + 4 + 7 + 2;
+        assert_eq!(rows.len(), 8 * 28 + 1 + new);
         assert!(rows.iter().all(|c| c[1].ends_with("@f32") && c[2] == "f32"));
         // An id named without any is an error, not an empty run.
         let named = ["--precision", "f32", "--fn", "so3_exp"];
@@ -551,10 +557,18 @@ mod tests {
         let dir = corpus_dir()?;
         let split = |subjects: &[Registered]| split_f32(&dir, corpus::manifest(&dir)?, subjects);
         let (with, left_out) = split(&[registered(Perfect::exact())])?;
-        assert_eq!(with.len(), 8);
-        assert!(with.iter().all(|e| e.fn_id.starts_with("coeff_")));
+        // The 8 coefficient ids (`0016`) and `0056`'s 13.
+        assert_eq!(with.len(), 8 + 13);
+        let of_0056 = |id: &str| {
+            ["solve_cubic", "eig3", "chol", "quat_", "real_"]
+                .iter()
+                .any(|p| id.starts_with(p))
+        };
+        assert!(with
+            .iter()
+            .all(|e| e.fn_id.starts_with("coeff_") || of_0056(&e.fn_id)));
         let total = corpus::manifest(&dir)?.len();
-        assert_eq!(left_out.len(), total - 8);
+        assert_eq!(left_out.len(), total - 8 - 13);
         assert!(["so3_exp", "sen3_exp_n1", "so2_exp"]
             .iter()
             .all(|id| left_out.iter().any(|l| l == id)));

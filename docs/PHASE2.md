@@ -13,10 +13,10 @@ signatures in code blocks are normative.
 | Area | Status |
 |---|---|
 | `Mask`, `Real`, `Blend`, `Precision`; `f64`/`f32` impls (§2) | Partial: traits and scalar impls implemented, including `cbrt` and `sqrt` bit identity with `libm` `arch` (`0017`, `0018`). |
-| `Dual<S, N>` (§3) | Partial: dual numbers generic over `Real` with automatic differentiation. Corpus ids `real_*` pending generator. |
-| `Vector`, `Matrix`, `Point`, `hat`/`vee`, `Mat3::inverse_adj`, `chol` (§4) | Partial: fixed-size types, operations, and `chol_solve` implemented (`0019`). `Mat2` adjugate pending. |
+| `Dual<S, N>` (§3) | Partial: dual numbers generic over `Real` with automatic differentiation; corpus ids `real_sqrt`, `real_cbrt`, `real_sin_cos`, `real_acos`, `real_atan2`, `real_div` at both precisions, ≤ 3.65 `u` ([`0056`](./decisions/0056-the-routines-d7-does-not-reach.md)). |
+| `Vector`, `Matrix`, `Point`, `hat`/`vee`, `Mat3::inverse_adj`, `chol` (§4) | Partial: fixed-size types, operations, and `chol_solve` implemented (`0019`); corpus ids `chol_n{3,6}`, `chol_solve_n{3,6}` (`0056`). `Mat2` adjugate pending. |
 | `Strided`, `StridedMut` (§5) | Done: column-major, row-major, strided slice views. |
-| `eig3`, `svd3`, `solve_cubic` + corpus ids (§6) | Partial: `solve_cubic` and `eig3` implemented with `libm` transcendentals (`0017`, `0022`, `0053`). `svd3` and corpus ids pending. |
+| `eig3`, `svd3`, `solve_cubic` + corpus ids (§6) | Partial: `solve_cubic` and `eig3` implemented with `libm` transcendentals (`0017`, `0022`, `0053`). Corpus ids `solve_cubic` and `eig3` at both precisions, `eig3` against nalgebra (`0056`). `svd3` and its id pending. |
 | `mint` feature (§7) | Done: optional feature conversions for fixed-size types. |
 | Downstream perception migration (§9) | Not started |
 
@@ -207,10 +207,17 @@ their Jacobian through these (faer `MatMut` and Ceres row-major buffers both map
 
 - `eig3(a: &Mat3<S>) -> (Vec3<S>, Mat3<S>)`: symmetric input; eigenvalues ascending, orthonormal
   eigenvectors as columns with $\det = +1$. Smith's closed form. Bars against `mp.eigsy`: eigenvalue error in $u\|A\|$; eigenvector angular error in
-  $u\|A\|/\mathrm{gap}$. Strata: `eig:gap-1e-k`, `eig:triple`, `eig:rank1`, `eig:random`.
+  $u\|A\|/\mathrm{gap}$ (`NUMERICS.md` §11), each the committed per-stratum maximum and no typed
+  constant. Strata: `eig:gap-1e-k/{bottom,top}` ($k = 0, \dots, 12$; `@f32` $0, \dots, 6$),
+  `eig:triple`, `eig:rank1`, `eig:random`, `eig:scale-{up,down}`
+  ([`0056`](./decisions/0056-the-routines-d7-does-not-reach.md)).
 - `svd3(a: &Mat3<S>) -> (Mat3<S>, Vec3<S>, Mat3<S>)`: McAdams et al., fixed Jacobi sweep count, signed so $\det U = \det V = +1$.
 - `solve_cubic<S: Real>(a: S, b: S, c: S, d: S) -> (Vec3<S>, [S::Mask; 3])`: real roots of
-  `a x³ + b x² + c x + d` with validity mask ([`0017`](./decisions/0017-cbrt-and-mask-valued-roots.md)); power-of-two tolerances; `Real::acos` and `Real::cos` via `libm` ([`0022`](./decisions/0022-real-owes-acos-and-cos.md), [`0053`](./decisions/0053-acos-is-better-the-roots-are-not-necessarily.md)).
+  `a x³ + b x² + c x + d` with validity mask ([`0017`](./decisions/0017-cbrt-and-mask-valued-roots.md)); power-of-two tolerances; `Real::acos` and `Real::cos` via `libm` ([`0022`](./decisions/0022-real-owes-acos-and-cos.md), [`0053`](./decisions/0053-acos-is-better-the-roots-are-not-necessarily.md)). Against
+  `mp.polyroots` of the stored coefficients, by root-set distance (`NUMERICS.md` §11). Strata:
+  `cubic:distinct`, `cubic:double`, `cubic:triple`, `cubic:one-real` (planted, exact),
+  `cubic:near-double-1e-k` ($k = 2, 4, 6, 8$), `cubic:one-real-p-small`,
+  `cubic:coeff-scale-{up,down}` (`0056`).
 - All three branch only through `S::branch`/`S::select`.
 
 ## 7. `mint`

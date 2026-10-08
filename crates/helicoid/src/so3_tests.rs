@@ -803,3 +803,31 @@ fn geodesic_at_zero_is_the_left_endpoint_bit_for_bit() {
          on `LieGroup::geodesic` can be dropped"
     );
 }
+
+/// `SO3::renormalize` is `Quat::renormalize` on the stored quaternion, bit for bit, at both
+/// precisions and through `Dual`: `0056` scores the step as `quat_renormalize` alone, so the
+/// group's spelling must not be a second one.
+#[test]
+fn renormalize_is_the_quaternions_step_bit_for_bit() {
+    fn both<S: helicoid_linalg::Real>(q: Quat<S>) -> [Quat<S>; 2] {
+        let (mut group, mut quat) = (SO3::from_quat_unchecked(q), q);
+        group.renormalize();
+        quat.renormalize();
+        [group.quat(), quat]
+    }
+    let parts = |q: Quat<f64>| [q.w, q.x, q.y, q.z].map(f64::to_bits);
+    // `‖q‖² − 1` near 2^-27 and 2^-12, inside each precision's band (`NUMERICS.md` §3.6).
+    let drift = |e: f64| [0.5 * (1.0 + e), 0.5, -0.5, 0.5 * (1.0 - e / 3.0)];
+    let [w, x, y, z] = drift(2f64.powi(-27));
+    let [a, b] = both(Quat { w, x, y, z });
+    assert_eq!(parts(a), parts(b));
+    let [w, x, y, z] = drift(2f64.powi(-12)).map(|c| c as f32);
+    let [a, b] = both(Quat { w, x, y, z });
+    let parts32 = |q: Quat<f32>| [q.w, q.x, q.y, q.z].map(f32::to_bits);
+    assert_eq!(parts32(a), parts32(b));
+    let [w, x, y, z] = drift(2f64.powi(-27)).map(|c| Dual::<f64, 1>::variable(c, 0));
+    let [a, b] = both(Quat { w, x, y, z });
+    let dual =
+        |q: Quat<Dual<f64, 1>>| [q.w, q.x, q.y, q.z].map(|c| [c.v.to_bits(), c.d[0].to_bits()]);
+    assert_eq!(dual(a), dual(b));
+}

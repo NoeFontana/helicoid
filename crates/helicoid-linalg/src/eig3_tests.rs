@@ -20,7 +20,10 @@
 //!
 //! **Measured** worst `ev` (in `u |A|`) and `ang` (in `u |A| / gap`) over 5000 matrices per stratum
 //! against a double-double Jacobi reference, by a scratch harness that is not committed, so the
-//! table cannot be reproduced from this repository. `k` is `eig:gap-1e-k`: the pair at gap `10^-k`
+//! table cannot be reproduced from this repository. The corpus id `eig3` is the reproducible
+//! instrument that replaces it: its `eig:gap-1e-k/{bottom,top}` strata, scored on the same
+//! `u |A| / gap` scale with gaps relative to `|λ|₂` rather than this table's absolute ones, are
+//! committed rows (`0056` decision 5). `k` is `eig:gap-1e-k`: the pair at gap `10^-k`
 //! at the bottom (`1, 1 + 10^-k, 3`) or `2 10^-k` at the top (`0.5, 2, 2 + 2 10^-k`) of the spectrum:
 //!
 //! ```text

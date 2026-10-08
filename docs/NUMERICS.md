@@ -370,6 +370,18 @@ $X(t) = X_0\,\mathrm{Exp}(t\,d)$ with $d = X_1 \ominus_R X_0$ and $\Delta = X_0^
   where the metric is sign-invariant: $\min(\|\hat\varphi - \varphi\|, \|\hat\varphi + \varphi\|)$.
   Matrix inputs (`from_matrix`) are ill-conditioned near $\pi$ in the axis; their strata report
   backward error only.
+- **Eigenvectors** (`eig3`): column by column, sign-aligned, weighted by the reference gap,
+  $\max_i \min(\|\hat v_i - v_i\|, \|\hat v_i + v_i\|)\,\mathrm{gap}_i / (\|\lambda\|_2\,u)$ with
+  $\mathrm{gap}_i = \min_{j \ne i}\lvert\lambda_i - \lambda_j\rvert$: the Davis–Kahan scale
+  $u\|A\|/\mathrm{gap}$, so a column at its conditioning reads $O(1)$ and a repeated eigenvalue's
+  column, which is not unique, weighs 0 ([`0056`](./decisions/0056-the-routines-d7-does-not-reach.md)).
+- **Roots** (`solve_cubic`): the Hausdorff distance between the valid slots $\hat R$ and the three
+  reference roots $Z$, complex ones included, over $\|Z\|_2\,u$: each real root to its nearest
+  valid slot, each valid slot to its nearest root, $\lvert\hat r - z\rvert$ in $\mathbb C$, over
+  $\max(\|Z\|_2, \text{smallest normal})\,u$. Each distance is capped at $\|Z\|_2$, a total loss,
+  and with no valid slot each real root is at the cap: the worst answer scores $1/u$ (`0056`).
+- **Masks** (`chol`): a reported mask that differs from the reference scores $1/u$; where the
+  reference reports failure, the values beside the mask are not scored (`0056`).
 - **Per stratum:** max and p99; never a mean. Non-finite outputs are counted separately and any
   non-zero count fails.
 - **Bars** ([`0006`](./decisions/0006-the-instrument-comes-first.md)): domination over the best
@@ -384,6 +396,8 @@ $X(t) = X_0\,\mathrm{Exp}(t\,d)$ with $d = X_1 \ominus_R X_0$ and $\Delta = X_0^
 | `from_wxyz_unchecked` | $\lvert\|q\|^2 - 1\rvert \le 2^{-40}$ (`f64`), $2^{-16}$ (`f32`) | garbage in, garbage out |
 | `from_wxyz_normalized` | $\|q\|^2$ normal (components within $\approx 10^{\pm154}$ `f64`, $10^{\pm19}$ `f32`); `debug_assert!` on the result (§3.6, [`0027`](./decisions/0027-a-normalizing-constructor-normalizes.md)) | NaN at $q = 0$; zero above the overflow |
 | `renormalize` | none; a normalization only for $\lvert\|q\|^2 - 1\rvert \le 2^{-26.29}$ (`f64`), $2^{-11.79}$ (`f32`) (§3.6) | defined everywhere; $0$ at $\|q\|^2 = 3$, $q$ reversed beyond |
+| `solve_cubic` | every input; the mask is the report: a non-finite coefficient, $a = 0$ or a leading coefficient below its floor give no valid slot | — |
+| `eig3` | every input, lower triangle read; entries of magnitude $m$ with $p^3$ normal, $10^{-100} < m < 10^{100}$ (`f64`), $10^{-12} < m < 10^{12}$ (`f32`); the vectors need $\|A\|^4$ normal, $10^{\pm75}$, $10^{\pm9}$ | eigenvalues not finite, never a plausible number ([`0023`](./decisions/0023-eig3-departs-from-omnisac-and-its-limits.md), draft) |
 | `S2Chart::local` | $m \ne -n$ | unspecified finite value |
 | `geodesic` | $\theta(d) < \pi$ | §10 |
 | `Sim3` | $\sigma$ finite | — |
@@ -391,6 +405,7 @@ $X(t) = X_0\,\mathrm{Exp}(t\,d)$ with $d = X_1 \ominus_R X_0$ and $\Delta = X_0^
 | `Real::cbrt` | every $x$ (odd; signed zeros and infinities are their own cube roots) | — |
 | `Dual::cbrt` derivative | $v \ne 0$ | $\pm\infty$ ($d \ne 0$), NaN ($d = 0$); value unaffected |
 | `Dual::atan2` derivative | $x_v^2 + y_v^2$ normal (larger argument in $\approx 10^{\pm154}$ `f64`, $10^{\pm19}$ `f32`) | $\pm\infty$, NaN at the origin, or $0$; value unaffected |
+| `Dual::acos` derivative | $\lvert v\rvert < 1$ | $\mp\infty$ ($d \ne 0$), NaN ($d = 0$) at $v = \pm1$; outside $[-1, 1]$ the value is NaN |
 | `Dual` quotient derivative | $q = a_v/b_v$ finite | NaN (value $\pm\infty$) |
 | `chol` | positive definite | `(L, mask = false)`; `L` finite for every input, nothing asserted (§15.3) |
 | `solve_lower`, `solve_upper`, `chol_solve` | every diagonal entry nonzero and not NaN (`debug_assert!`) | $\pm\infty$ or NaN (§15.3) |

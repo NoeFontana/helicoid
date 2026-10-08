@@ -69,6 +69,7 @@ grep -m1 -H '^\*\*Status:' docs/decisions/0*.md
 | [`0053`](./0053-acos-is-better-the-roots-are-not-necessarily.md) | **ready.** Implements `Real::acos` and `cos` via `libm`; verified bounds across cubic and eigen solvers. |
 | [`0054`](./0054-the-screw-twin-takes-two-arms-in-the-world-frame.md) | **ready.** `SE3::geodesic`'s screw twin: `SO3::geodesic`'s rotation, the world-frame translation in two arms; `se3_geodesic` dominates `ScLerp`, 4.6–6.1% faster inside `tf_tree`'s lookup bench. |
 | [`0055`](./0055-the-branch-is-inlined-and-the-sign-is-a-bit.md) | **ready.** `Real::branch` is `#[inline]` and `abs`/`copysign` are `core`'s: coefficient kernels 0.55×, groups 0.915× geomean, bit-identical. |
+| [`0056`](./0056-the-routines-d7-does-not-reach.md) | **ready.** Corpus ids for `solve_cubic`, `eig3`, `chol`/`chol_solve`, `quat_renormalize` and `real_*` at both precisions; root-set, gap-weighted eigenvector and mask metrics; a nalgebra oracle; committed rows reproduced bit for bit. |
 
 ## Lifecycle
 

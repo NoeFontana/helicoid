@@ -17,7 +17,7 @@ first blessed envelope. SO(3)/SE(3) start as a port of `tf_tree_math` generalize
 |---|---|
 | Traits: `Tangent`, `Jac`, `LieGroup`, `Side` (§2) | Partial: core traits implemented and verified under `laws.rs` for `Rn`, `SO3`, `SEn3` (`0025`). Chained primitive twins pending. |
 | Coefficient kernel + `__sweep` + generated thresholds (§3) | Partial: `helicoid::coeffs` implemented with two-stage sweep and generated switches (`0039`, `0047`). `se2_coeffs` pending. |
-| `Quat`, `SO3` (§4) | Partial: `Quat` and `SO3` implemented, dominating oracles across all `so3_*` corpus ids. Dedicated `renormalize` corpus strata pending. |
+| `Quat`, `SO3` (§4) | Partial: `Quat` and `SO3` implemented, dominating oracles across all `so3_*` corpus ids. `renormalize` scored as `quat_renormalize`, its `renorm:*` strata inside `NUMERICS.md` §3.6's band at both precisions ([`0056`](./decisions/0056-the-routines-d7-does-not-reach.md)). |
 | `SEn3<S, N>`, `SEn3Tangent`, `SEn3Jac`; `SE3`, `SE23` (§5) | Partial: `SEn3` implemented for general $N$ (`0042`); structural zeros skipped in products; verified across 21 `sen3_*` corpus ids. |
 | `SO2`, `SE2` (§6) | Not started |
 | `Rn`, `Product` (§7) | Partial: `Rn` and `Product<A, B>` implemented with structured `ProductJac` and constructors (`0025`, `0029`). |

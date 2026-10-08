@@ -21,6 +21,8 @@ uv run --frozen python -m gen list
 | `gen/rng.py` | splitmix64, per-stratum streams, log-uniform, uniform on S² |
 | `gen/strata.py` | the strata; `gen/registry.py` the function ids; `gen/coeff.py`, `gen/so3.py`, `gen/sen3.py`, `gen/so2.py`, `gen/se2.py` their definitions |
 | `gen/series.py`, `gen/check.py`, `gen/check_sen3.py`, `gen/check_se2.py` | the exact Taylor series (`coeff_series`); the per-record cross-checks |
+| `gen/cubic.py`, `gen/eig.py`, `gen/chol.py`, `gen/quat.py`, `gen/real.py`, `gen/dense.py` | the ids of `docs/decisions/0056`, each with its strata (`strata.Drawn`); n×n helpers and exact rational LDLᵀ |
+| `gen/check_linalg.py`, `gen/check_real.py` | their cross-checks |
 | `gen/fmt.py`, `gen/corpus.py`, `gen/manifest.py` | text formats and `Mat`, assembly (parallel by stratum) and recheck, `MANIFEST.json` |
 
 ## Record schema
@@ -57,7 +59,7 @@ One JSONL file per function id, one record per line, compact JSON with sorted ke
 | `<S>@f32`, S each of the above | S's values rounded to nearest-even binary32 (`theta:subnormal@f32`: below) | as S |
 
 `@f32` strata (`docs/decisions/0016`) belong to the coefficient ids (`coeff_k`, `a`…`e`, `cos_half`,
-`r`) and follow every stratum of the ids they belong to, in the order of the strata they twin: no
+`r`), and to the ids of `docs/decisions/0056` (their own section), and follow every stratum of the ids they belong to, in the order of the strata they twin: no
 id, stratum name or record of the binary64 corpus moves. Each input is exactly a binary32, so a
 binary32 subject receives it by a lossless cast, and the reference is the function at that rounded
 input, at 120 digits (`to_f32` is integer arithmetic, and `corpus.require_binary32` asserts every
@@ -219,6 +221,80 @@ tangent's order, `"shape":[3,3]`.
   J_l = Ad_Exp(τ) J_r, Exp by `mp.expm`, against the other series; the inverses: J J⁻¹ = I against
   the series.
 
+## The routines D7 did not reach (`docs/decisions/0056`)
+
+`solve_cubic`, `eig3`, `chol_n{3,6}`, `chol_solve_n{3,6}`, `quat_renormalize` and `real_*`: the
+record's decision 1 fixes their fields and references, decision 2 their strata. Every one has
+`@f32` strata, after all its binary64 ones, in the same order.
+
+| Id | In | Out | Reference |
+|---|---|---|---|
+| `solve_cubic` | `a`, `b`, `c`, `d` | `re[3]`, `im[3]`, by (re, im) | the roots of the stored cubic (below) |
+| `eig3` | `A` (3×3) | `lambda[3]` ascending, `V` (columns) | `mp.eigsy`; each column's largest component (the first of equals) positive |
+| `chol_n*` | `A` (n×n) | `valid[1]`, `L` | `valid` by an exact LDLᵀ; `mp.cholesky(A, tol=0)`, or zeros |
+| `chol_solve_n*` | `A`, `b[n]` | `x[n]` | `mp.lu_solve` of the equilibrated system: x = D (DAD)⁻¹ D b, D = diag(A)^-1/2 |
+| `quat_renormalize` | `q[4]` | `q[4]` | q/‖q‖ |
+| `real_sqrt`, `real_cbrt`, `real_acos` | `x` | `value`, `d` | the function and its calculus derivative |
+| `real_sin_cos` | `x` | `sin`, `cos`, `d_sin`, `d_cos` | the same |
+| `real_atan2` | `y`, `x` | `value`, `d_y`, `d_x` | the same |
+| `real_div` | `n`, `d` | `value`, `d_n`, `d_d` | the same |
+
+| Id | Strata (binary64; `@f32`), records |
+|---|---|
+| `solve_cubic` | `cubic:distinct`, `double`, `triple`, `one-real`, `near-double-1e-{2,4,6,8}`, `one-real-p-small`, `coeff-scale-up`, `coeff-scale-down`; the same at f32. 64 each, 1408 |
+| `eig3` | `eig:random`, `eig:gap-1e-k/bottom` k = 0…12 (0…6), then `/top`, `eig:triple`, `rank1`, `scale-up`, `scale-down`. 64, gaps 32; 1920 |
+| `chol_n*` | `chol:spd`, `cond-1e-{4,8,12}` (`{2,4,6}`), `diag-scale`, `indefinite`. 32 each, 384 |
+| `chol_solve_n*` | the same without `indefinite`, 320 |
+| `quat_renormalize` | `renorm:eta-2^-{27,30,40,52}` (`{12,16,20,23}`), `renorm:eta-edge`. 64 each, 640 |
+| `real_sqrt`, `real_cbrt` | `x:1e{e}`, e ∈ {−300, −100, −10, −1, 0, 1, 10, 100, 300} ({−37, −10, −1, 0, 1, 10, 37}), `x:subnormal`. 64 each, 1152 |
+| `real_sin_cos` | `x:tiny`, `small`, `moderate`, `large`, `near-k-pi/2`, 640 |
+| `real_acos` | `x:interior`, `near+1`, `near-1`, `tiny`, 512 |
+| `real_atan2` | `yx:generic`, `yx:ratio-1e-k` then `yx:ratio-1e+k`, k ∈ {8, 100, 300} ({4, 15, 30}), 896 |
+| `real_div` | `nd:generic`, `nd:wide`, 256 |
+
+- **Streams and rounding.** A `Drawn` stratum draws whole records. An `@f32` stratum whose range is
+  its binary64 namesake's reads that stratum's streams and rounds the same 120-digit values once
+  to binary32, never the binary64 ones; one whose range differs, or that has no namesake
+  (`x:1e37@f32`), has its own. `cubic:coeff-scale-*` are `cubic:distinct`'s cubics, `eig:scale-*`
+  `eig:random`'s matrices and `chol:diag-scale` `chol:spd`'s, read from those streams at both
+  precisions and scaled at 120 digits before the one rounding. A symmetric matrix rounds its upper
+  triangle and mirrors it.
+- **Planted cubics.** A root or `a` is m·2^(e−6), 1 ≤ m ≤ 63 (six bits), e ∈ [−4, 4], the three roots
+  sharing e: d = −a r₁r₂r₃ then has at most 24 bits, so every coefficient is exact at binary32 and
+  the `@f32` records are the binary64 ones. `one-real` plants r, p as roots and q = m·2^(2e−8), p² < 4q. `near-double` draws |r|, |s|
+  log-uniform in [2⁻⁴, 2⁴] (|s − r| ≥ max/4) and a planted `a`; at binary64 27 of the 64
+  `1e-8` records round to a complex pair, at binary32 about half of `1e-4`…`1e-8`.
+- **Cubic roots.** Real versus complex is the exact discriminant's sign. Zero: the rational roots in
+  closed form. Otherwise `mp.polyroots(extraprec=300, maxsteps=500, error=True)`, its error
+  estimate held to 16 eps (it reports eps once converged); a real root is snapped to the nearest
+  fraction of denominator ≤ 2⁶⁴ and kept if it is a root in rationals (every planted root), and a
+  complex pair beside a rational root comes from Vieta, exact but for one square root.
+- **`eig3`.** `eig:gap` sets the pair's gap to exactly 10⁻ᵏ ‖λ‖₂ (a quadratic in the gap), the third
+  eigenvalue h ∈ [¼, 1] beyond; `top` negates. `eig:triple` is c I itself (Q c I Qᵀ rounds to
+  1e-121 off the diagonal). An exactly singular A has its zero eigenvalues set to 0.
+- **`chol`.** Q is n Householder reflections, directions normalized Gaussians. `mp.cholesky`'s
+  default refuses pivots below an absolute eps (all of `chol:diag-scale`'s, down to 1e-200), and
+  `mp.lu_solve` pivots against ‖A‖₁ eps and loses cond(A) eps (1e400 eps there): hence `tol=0`,
+  `valid` already being exact, and the equilibration. Every `chol_solve` A is asserted positive
+  definite in rationals.
+- **`quat_renormalize`.** Every stored q has |‖q‖² − 1| within `NUMERICS.md` §3.6's band, decided in
+  rationals; a draw that rounding takes outside (only `eta-edge` can) is drawn again.
+- **`real_*`.** `x:near-k-pi/2` is k π/2 rounded once, k = ⌊10^(5u)⌋. Signs alternate per record
+  (`nd:*`: (n, d) cycles (+, +), (−, +), (+, −), (−, −); `yx:ratio-*` the quadrants). The larger of
+  `yx:ratio-*`'s y, x is log-uniform in [10⁻³, 10³], so every partial is a normal number. Every
+  output of these ids is finite and normal at its precision.
+- **Cross-checks**, at 240 digits to 1e-100: `solve_cubic` each root's residual and Vieta's relations
+  against the size of their terms, the count of real roots against the discriminant, a
+  conjugate pair, multiple roots exact in rationals; `eig3` ‖AV − VΛ‖ ≤ 1e-100 ‖A‖ and
+  ‖VᵀV − I‖ ≤ 1e-100; `chol` `valid` against `mp.eigsy` of the equilibrated A (a congruence keeps
+  the signs), L lower with a positive diagonal and ‖LLᵀ − A‖ ≤ 1e-100 ‖A‖; `chol_solve`
+  ‖Ax − b‖ ≤ 1e-100 ‖A‖‖x‖; `quat_renormalize` ‖q'‖ = 1, every 2×2 minor of [q, q'], q'·q > 0.
+  `real_*`: each derivative against `mp.diff` at h = 10⁻⁷⁰|x| to 60 digits, the precision raised
+  until the difference's rounding is 60 digits under it; and identities to 100 digits: v² = x,
+  2vd = 1; v³ = x, 3v²d = 1; sin² + cos² = 1, the Maclaurin series for |x| ≤ 1; the half-angle
+  `atan2` form of `acos`, d²(1 − x²) = 1; `atan` by quadrant, y d_y + x d_x = 0,
+  x d_y − y d_x = 1; vd = n, d d_n = 1, d d_d = −v.
+
 ## Coefficients
 
 `coeff_k`, `coeff_a`…`coeff_e`, `coeff_cos_half` take θ; `coeff_r` takes `(n, w)`. Each is the
@@ -320,8 +396,8 @@ algorithm that produced it (`check.py`):
   `pyproject.toml`, `uv.lock`, `.python-version` and `gen/**/*.py`, not a git revision, which would
   change with every commit and cannot appear inside the commit it names. Any edit to those files
   changes the manifest, so the corpus is regenerated in the same PR.
-- **Tests.** The unit tests regenerate a subset (`exact0`, `1e-6`, `q:w0` and their `@f32` twins)
-  serially and with two workers and compare it with the committed records: the worker count cannot change a
+- **Tests.** The unit tests regenerate a subset (`exact0`, `1e-6`, `q:w0` and their `@f32` twins,
+  and one or two cheap strata of each 0056 family) serially and with two workers and compare it with the committed records: the worker count cannot change a
   byte. The whole corpus is regenerated once, and compared to the committed one byte for byte,
   manifest included, by `just corpus-check`; a second full regeneration inside the tests would
   only double its 18 CPU-minutes.

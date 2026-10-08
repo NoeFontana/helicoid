@@ -7,6 +7,7 @@ use std::path::PathBuf;
 use helicoid_linalg::Precision;
 
 use super::corpus::{Record, Tensor};
+use super::metric::{self, Rule};
 use super::number::Decimal;
 use super::subject::{Output, Subject};
 
@@ -96,7 +97,7 @@ impl Subject for Perfect {
         true
     }
 
-    fn eval(&self, _: &str, record: &Record, precision: Precision) -> Output {
+    fn eval(&self, fn_id: &str, record: &Record, precision: Precision) -> Output {
         let up = |x: f32| (0..self.ulps).fold(x, |x, _| x.next_up());
         let round = |d: &Decimal| match precision {
             Precision::F64 => (0..self.ulps).fold(d.to_f64(), |x, _| x.next_up()),
@@ -104,7 +105,34 @@ impl Subject for Perfect {
         };
         let field =
             |(k, t): (&String, &Tensor<Decimal>)| (k.clone(), t.data.iter().map(round).collect());
-        record.reference.iter().map(field).collect()
+        let out: Output = record.reference.iter().map(field).collect();
+        if !matches!(metric::rule(fn_id), Some(Rule::Roots)) {
+            return out;
+        }
+        // A root-finder's answer is slots and their mask: every real root in a valid slot, the
+        // complex ones' slots clear (`0056` decision 3). Real is read off the reference, before
+        // rounding moves an exact zero.
+        let re = out.get("re").cloned().unwrap_or_default();
+        let im = record
+            .reference
+            .get("im")
+            .map(|t| t.data.as_slice())
+            .unwrap_or_default();
+        let real = |i: usize| im.get(i).is_some_and(|d| d.mant == 0);
+        Output::from([
+            (
+                "roots".to_string(),
+                (0..re.len())
+                    .map(|i| if real(i) { re[i] } else { 0.0 })
+                    .collect(),
+            ),
+            (
+                "valid".to_string(),
+                (0..re.len())
+                    .map(|i| if real(i) { 1.0 } else { 0.0 })
+                    .collect(),
+            ),
+        ])
     }
 }
 

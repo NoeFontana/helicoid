@@ -69,6 +69,17 @@ pub(crate) enum Rule {
     /// `NUMERICS.md` §11: a matrix input is scored by backward error only, which is owed; until
     /// then its outputs are checked for shape and finiteness (`finiteness`).
     BackwardOnly,
+    /// `eig3` (`0056` decision 3): `lambda` by forward error, `V` column by column, sign-aligned and
+    /// weighted by the reference gap, [`eigen`].
+    Eigen,
+    /// `solve_cubic`: the distance between the valid slots and the reference roots, [`roots`].
+    Roots,
+    /// `chol`: the reported `mask` must be the reference's; `fields` are scored where it is set,
+    /// [`masked`].
+    Masked {
+        mask: &'static str,
+        fields: &'static [FieldRule],
+    },
 }
 
 impl Rule {
@@ -82,7 +93,29 @@ impl Rule {
         match self {
             Rule::Forward(fields) => score(fields, rec, out, precision),
             Rule::BackwardOnly => finiteness(rec, out),
+            Rule::Eigen => eigen(rec, out, precision),
+            Rule::Roots => roots(rec, out, precision),
+            Rule::Masked { mask, fields } => masked(mask, fields, rec, out, precision),
         }
+    }
+
+    /// The reference fields the rule reads, sorted; `None` for [`Rule::BackwardOnly`], which reads
+    /// whatever the reference holds.
+    #[cfg(test)]
+    pub(crate) fn reference_fields(&self) -> Option<Vec<&'static str>> {
+        let mut fields = match self {
+            Rule::Forward(fields) => fields.iter().map(|f| f.field).collect(),
+            Rule::BackwardOnly => return None,
+            Rule::Eigen => vec!["lambda", "V"],
+            Rule::Roots => vec!["re", "im"],
+            Rule::Masked { mask, fields } => {
+                let mut v: Vec<&str> = fields.iter().map(|f| f.field).collect();
+                v.push(mask);
+                v
+            }
+        };
+        fields.sort_unstable();
+        Some(fields)
     }
 }
 
@@ -152,6 +185,32 @@ const SE2_EXP: &[FieldRule] = &[
     ),
 ];
 
+/// `0056` decision 3: relative, as a tangent's is (`Floor::Tiny`), for the factor, the solution,
+/// the projected quaternion and every value and derivative of `Dual`.
+const CHOL: &[FieldRule] = &[field("L", Floor::Tiny, SignRule::Fixed)];
+const CHOL_SOLVE: &[FieldRule] = &[field("x", Floor::Tiny, SignRule::Fixed)];
+const RENORMALIZE: &[FieldRule] = &[field("q", Floor::Tiny, SignRule::Fixed)];
+const REAL_UNARY: &[FieldRule] = &[
+    field("value", Floor::Tiny, SignRule::Fixed),
+    field("d", Floor::Tiny, SignRule::Fixed),
+];
+const REAL_SIN_COS: &[FieldRule] = &[
+    field("sin", Floor::Tiny, SignRule::Fixed),
+    field("cos", Floor::Tiny, SignRule::Fixed),
+    field("d_sin", Floor::Tiny, SignRule::Fixed),
+    field("d_cos", Floor::Tiny, SignRule::Fixed),
+];
+const REAL_ATAN2: &[FieldRule] = &[
+    field("value", Floor::Tiny, SignRule::Fixed),
+    field("d_y", Floor::Tiny, SignRule::Fixed),
+    field("d_x", Floor::Tiny, SignRule::Fixed),
+];
+const REAL_DIV: &[FieldRule] = &[
+    field("value", Floor::Tiny, SignRule::Fixed),
+    field("d_n", Floor::Tiny, SignRule::Fixed),
+    field("d_d", Floor::Tiny, SignRule::Fixed),
+];
+
 use Rule::{BackwardOnly, Forward};
 
 /// The rule of every corpus family; `sen3_*` share one row over `_n1`, `_n2`, `_n3`.
@@ -190,12 +249,30 @@ const TABLE: &[(&str, Rule)] = &[
     ("se2_jl", Forward(JAC)),
     ("se2_jr_inv", Forward(JAC)),
     ("se2_jl_inv", Forward(JAC)),
+    ("solve_cubic", Rule::Roots),
+    ("eig3", Rule::Eigen),
+    (
+        "chol",
+        Rule::Masked {
+            mask: "valid",
+            fields: CHOL,
+        },
+    ),
+    ("chol_solve", Forward(CHOL_SOLVE)),
+    ("quat_renormalize", Forward(RENORMALIZE)),
+    ("real_sqrt", Forward(REAL_UNARY)),
+    ("real_cbrt", Forward(REAL_UNARY)),
+    ("real_acos", Forward(REAL_UNARY)),
+    ("real_sin_cos", Forward(REAL_SIN_COS)),
+    ("real_atan2", Forward(REAL_ATAN2)),
+    ("real_div", Forward(REAL_DIV)),
 ];
 
 /// The rule of function id `fn_id`, if the table has one.
 pub(crate) fn rule(fn_id: &str) -> Option<&'static Rule> {
     let family = match fn_id.rsplit_once("_n") {
         Some((f, n)) if f.starts_with("sen3_") && matches!(n, "1" | "2" | "3") => f,
+        Some((f, n)) if matches!(f, "chol" | "chol_solve") && matches!(n, "3" | "6") => f,
         _ => fn_id,
     };
     TABLE.iter().find(|(f, _)| *f == family).map(|(_, r)| r)
@@ -321,67 +398,288 @@ pub(crate) fn finiteness(rec: &Record, out: &Output) -> Result<Score, String> {
     })
 }
 
-/// A shift or power that is non-negative by construction.
-fn nonneg(n: i64) -> usize {
-    debug_assert!(n >= 0);
-    usize::try_from(n).unwrap_or(0)
+/// Every value of one score over one denominator `S = 2^p · 5^q`: times `S`, a decimal `A·10^c` is
+/// `A·5^(c+q)·2^(c+p)` and a dyadic `m·2^k` is `m·2^(k+p)·5^q`, both integers. A zero has no
+/// exponent to speak of and is 0.
+struct Exact {
+    p: i64,
+    q: i64,
+    s5: BigUint,
 }
 
-/// `‖ŷ − y‖ / (max(‖y‖, ‖floor‖) · 2^-bits)`, all of `y`, `ŷ` and `floor` exact; `aligned` takes
-/// the smaller of `‖ŷ − y‖` and `‖ŷ + y‖`. `0/0` is 0, `x/0` is infinite, and so is an `F` past binary64.
-fn forward_u(y: &[Decimal], yh: &[f64], floor: &[Dyadic], aligned: bool, bits: usize) -> f64 {
-    let yh: Vec<Dyadic> = yh.iter().map(|&x| Dyadic::of(x)).collect();
-    // Times S = 2^p · 5^q every value is an integer: A·10^c is A·5^(c+q)·2^(c+p), m·2^k is
-    // m·2^(k+p)·5^q. A zero has no exponent to speak of and is 0.
-    let q = y
-        .iter()
-        .filter(|d| d.mant != 0)
-        .map(|d| -i64::from(d.exp10))
-        .fold(0, i64::max);
-    let low = |v: &[Dyadic]| {
-        let exps = v.iter().filter(|d| d.mant != 0).map(|d| -i64::from(d.exp));
-        exps.fold(0, i64::max)
-    };
-    let p = q.max(low(&yh)).max(low(floor));
-    let five = |n: i64| BigUint::from(5u32).pow(nonneg(n) as u32);
-    let s5 = five(q);
-    let signed = |neg, mag| BigInt::from_biguint(if neg { Sign::Minus } else { Sign::Plus }, mag);
-    let dyadic = |d: &Dyadic| {
+impl Exact {
+    fn of<'a>(
+        decimals: impl IntoIterator<Item = &'a Decimal>,
+        dyadics: impl IntoIterator<Item = &'a Dyadic>,
+    ) -> Self {
+        let q = decimals
+            .into_iter()
+            .filter(|d| d.mant != 0)
+            .map(|d| -i64::from(d.exp10))
+            .fold(0, i64::max);
+        let p = dyadics
+            .into_iter()
+            .filter(|d| d.mant != 0)
+            .map(|d| -i64::from(d.exp))
+            .fold(q, i64::max);
+        Self { p, q, s5: five(q) }
+    }
+
+    fn dyadic(&self, d: &Dyadic) -> BigInt {
         if d.mant == 0 {
             return BigInt::default();
         }
         signed(
             d.neg,
-            (BigUint::from(d.mant) << nonneg(i64::from(d.exp) + p)) * &s5,
+            (BigUint::from(d.mant) << nonneg(i64::from(d.exp) + self.p)) * &self.s5,
         )
-    };
-    let decimal = |d: &Decimal| {
+    }
+
+    fn decimal(&self, d: &Decimal) -> BigInt {
         if d.mant == 0 {
             return BigInt::default();
         }
         let c = i64::from(d.exp10);
         signed(
             d.neg,
-            (BigUint::from(d.mant) * five(c + q)) << nonneg(c + p),
+            (BigUint::from(d.mant) * five(c + self.q)) << nonneg(c + self.p),
         )
-    };
-    let sy: Vec<BigInt> = y.iter().map(decimal).collect();
-    let square = |b: BigInt| b.magnitude() * b.magnitude();
+    }
+
+    /// `S²`.
+    fn square(&self) -> BigUint {
+        (&self.s5 * &self.s5) << nonneg(2 * self.p)
+    }
+}
+
+fn five(n: i64) -> BigUint {
+    BigUint::from(5u32).pow(nonneg(n) as u32)
+}
+
+fn signed(neg: bool, mag: BigUint) -> BigInt {
+    BigInt::from_biguint(if neg { Sign::Minus } else { Sign::Plus }, mag)
+}
+
+fn square(b: &BigInt) -> BigUint {
+    b.magnitude() * b.magnitude()
+}
+
+/// `sqrt(num / den)` in `u`, given `num` before its `2^(2·bits)`: `0/0` is 0, `x/0` is infinite.
+fn ratio_u(num: &BigUint, den: &BigUint, bits: usize) -> f64 {
+    if den.bits() == 0 {
+        return if num.bits() == 0 { 0.0 } else { f64::INFINITY };
+    }
+    sqrt_ratio(&(num << (2 * bits)), den)
+}
+
+/// `‖ŷ − y‖ / (max(‖y‖, ‖floor‖) · 2^-bits)`, all of `y`, `ŷ` and `floor` exact; `aligned` takes
+/// the smaller of `‖ŷ − y‖` and `‖ŷ + y‖`. `0/0` is 0, `x/0` is infinite, and so is an `F` past binary64.
+fn forward_u(y: &[Decimal], yh: &[f64], floor: &[Dyadic], aligned: bool, bits: usize) -> f64 {
+    let yh: Vec<Dyadic> = yh.iter().map(|&x| Dyadic::of(x)).collect();
+    let ex = Exact::of(y, yh.iter().chain(floor));
+    let sy: Vec<BigInt> = y.iter().map(|d| ex.decimal(d)).collect();
     let (mut minus, mut plus) = (BigUint::default(), BigUint::default());
-    for (h, b) in yh.iter().map(dyadic).zip(&sy) {
-        minus += square(&h - b);
+    for (h, b) in yh.iter().map(|d| ex.dyadic(d)).zip(&sy) {
+        minus += square(&(&h - b));
         if aligned {
-            plus += square(&h + b);
+            plus += square(&(&h + b));
         }
     }
     let err = if aligned { minus.min(plus) } else { minus };
-    let sum_y: BigUint = sy.into_iter().map(square).sum();
-    let sum_floor: BigUint = floor.iter().map(|d| square(dyadic(d))).sum();
-    let scale = sum_y.max(sum_floor);
-    if scale.bits() == 0 {
-        return if err.bits() == 0 { 0.0 } else { f64::INFINITY };
+    let sum_y: BigUint = sy.iter().map(square).sum();
+    let sum_floor: BigUint = floor.iter().map(|d| square(&ex.dyadic(d))).sum();
+    ratio_u(&err, &sum_y.max(sum_floor), bits)
+}
+
+/// The subject's values of `field`, `n` of them, finite and of the precision: `Ok(None)` when one
+/// is not finite.
+fn values<'a>(
+    out: &'a Output,
+    field: &str,
+    n: usize,
+    precision: Precision,
+) -> Result<Option<&'a [f64]>, String> {
+    let v = out
+        .get(field)
+        .ok_or_else(|| format!("the subject returned no `{field}`"))?;
+    if v.len() != n {
+        return Err(format!(
+            "`{field}`: the subject returned {} values, not {n}",
+            v.len()
+        ));
     }
-    sqrt_ratio(&(err << (2 * bits)), &scale)
+    if !v.iter().all(|x| x.is_finite()) {
+        return Ok(None);
+    }
+    if precision == Precision::F32 && v.iter().any(|&x| exact_f32(x).is_none()) {
+        return Err(format!("`{field}` is not exactly binary32"));
+    }
+    Ok(Some(v))
+}
+
+/// The reference values of `field`, `n` of them.
+fn reference<'a>(rec: &'a Record, field: &str, n: usize) -> Result<&'a [Decimal], String> {
+    let y = rec
+        .reference
+        .get(field)
+        .ok_or_else(|| format!("the reference has no `{field}`"))?;
+    if y.data.len() != n {
+        return Err(format!(
+            "the reference's `{field}` has {} values, not {n}",
+            y.data.len()
+        ));
+    }
+    Ok(&y.data)
+}
+
+/// A mask the subject reports as numbers: 1 set, 0 clear, anything else an error.
+fn mask(values: &[f64], field: &str) -> Result<Vec<bool>, String> {
+    values
+        .iter()
+        .map(|&v| match v {
+            1.0 => Ok(true),
+            0.0 => Ok(false),
+            _ => Err(format!("`{field}` holds {v}, not a mask")),
+        })
+        .collect()
+}
+
+fn finite_or_nonfinite(worst: f64) -> Score {
+    if worst.is_finite() {
+        Score::Finite(worst)
+    } else {
+        Score::NonFinite
+    }
+}
+
+/// `NUMERICS.md` §11's eigenvector error (`0056` decision 3), with `lambda`'s forward error beside
+/// it: column `i` of `V` scores `min(‖v̂ᵢ − vᵢ‖, ‖v̂ᵢ + vᵢ‖) · gapᵢ / (‖λ‖₂ u)`, `gapᵢ` the
+/// reference's `min_{j≠i} |λᵢ − λⱼ|`, so a repeated eigenvalue's column weighs 0.
+fn eigen(rec: &Record, out: &Output, precision: Precision) -> Result<Score, String> {
+    let bits = unit_bits(precision);
+    let (lambda, v) = (reference(rec, "lambda", 3)?, reference(rec, "V", 9)?);
+    let (Some(lh), Some(vh)) = (
+        values(out, "lambda", 3, precision)?,
+        values(out, "V", 9, precision)?,
+    ) else {
+        return Ok(Score::NonFinite);
+    };
+    let tiny = [Dyadic {
+        neg: false,
+        mant: 1,
+        exp: min_exp(precision),
+    }];
+    let mut worst = forward_u(lambda, lh, &tiny, false, bits);
+    let vh: Vec<Dyadic> = vh.iter().map(|&x| Dyadic::of(x)).collect();
+    let ex = Exact::of(lambda.iter().chain(v), &vh);
+    let l: Vec<BigInt> = lambda.iter().map(|d| ex.decimal(d)).collect();
+    let norm: BigUint = l.iter().map(square).sum();
+    for i in 0..3 {
+        let gap = (0..3)
+            .filter(|&j| j != i)
+            .map(|j| square(&(&l[i] - &l[j])))
+            .min()
+            .unwrap_or_default();
+        let (mut minus, mut plus) = (BigUint::default(), BigUint::default());
+        for r in 0..3 {
+            let (h, y) = (ex.dyadic(&vh[3 * i + r]), ex.decimal(&v[3 * i + r]));
+            minus += square(&(&h - &y));
+            plus += square(&(&h + &y));
+        }
+        // (d S)² (gap S)² / ((‖λ‖ S)² S²): every factor scaled by the one `S`.
+        let num = minus.min(plus) * gap;
+        worst = worst.max(ratio_u(&num, &(&norm * ex.square()), bits));
+    }
+    Ok(finite_or_nonfinite(worst))
+}
+
+/// `NUMERICS.md` §11's root-set distance (`0056` decision 3): the Hausdorff distance between the
+/// valid slots and the three reference roots `re + i·im`, each real root to its nearest valid slot
+/// and each valid slot to its nearest root, over `max(‖Z‖₂, smallest normal) · u`. Every distance
+/// is capped at `‖Z‖₂`, a total loss, and with no valid slot at all each real root is at the cap:
+/// the worst answer reads `1/u` and no-regress orders "no root" below "a root far off".
+fn roots(rec: &Record, out: &Output, precision: Precision) -> Result<Score, String> {
+    let bits = unit_bits(precision);
+    let (re, im) = (reference(rec, "re", 3)?, reference(rec, "im", 3)?);
+    let valid = mask(
+        out.get("valid").ok_or("the subject returned no `valid`")?,
+        "valid",
+    )?;
+    let slots = out.get("roots").ok_or("the subject returned no `roots`")?;
+    if valid.len() != 3 || slots.len() != 3 {
+        return Err("`roots` and `valid` hold three slots each".into());
+    }
+    let answered: Vec<f64> = slots
+        .iter()
+        .zip(&valid)
+        .filter_map(|(&r, &ok)| ok.then_some(r))
+        .collect();
+    if !answered.iter().all(|x| x.is_finite()) {
+        return Ok(Score::NonFinite);
+    }
+    if precision == Precision::F32 && answered.iter().any(|&x| exact_f32(x).is_none()) {
+        return Err("`roots` is not exactly binary32".into());
+    }
+    let rh: Vec<Dyadic> = answered.iter().map(|&x| Dyadic::of(x)).collect();
+    let tiny = Dyadic {
+        neg: false,
+        mant: 1,
+        exp: min_exp(precision),
+    };
+    let ex = Exact::of(re.iter().chain(im), rh.iter().chain([&tiny]));
+    let z: Vec<(BigInt, BigInt)> = re
+        .iter()
+        .zip(im)
+        .map(|(a, b)| (ex.decimal(a), ex.decimal(b)))
+        .collect();
+    let rh: Vec<BigInt> = rh.iter().map(|d| ex.dyadic(d)).collect();
+    let norm: BigUint = z.iter().map(|(a, b)| square(a) + square(b)).sum();
+    let dist = |r: &BigInt, (a, b): &(BigInt, BigInt)| square(&(r - a)) + square(b);
+    let mut far = BigUint::default();
+    for zi in z.iter().filter(|(_, b)| b.sign() == Sign::NoSign) {
+        let near = rh.iter().map(|r| dist(r, zi)).min();
+        far = far.max(near.unwrap_or_else(|| norm.clone()));
+    }
+    for r in &rh {
+        far = far.max(z.iter().map(|zi| dist(r, zi)).min().unwrap_or_default());
+    }
+    let far = far.min(norm.clone());
+    let floor = square(&ex.dyadic(&tiny));
+    Ok(finite_or_nonfinite(ratio_u(&far, &norm.max(floor), bits)))
+}
+
+/// `NUMERICS.md` §11's mask rule (`0056` decision 3): a reported mask that is not the reference's
+/// reads `1/u`; where both are clear the values beside it are not scored, where both are set they
+/// are, under `fields`.
+fn masked(
+    field: &str,
+    fields: &[FieldRule],
+    rec: &Record,
+    out: &Output,
+    precision: Precision,
+) -> Result<Score, String> {
+    let want = reference(rec, field, 1)?[0].mant != 0;
+    let got = mask(
+        out.get(field)
+            .ok_or_else(|| format!("the subject returned no `{field}`"))?,
+        field,
+    )?;
+    let &[got] = got.as_slice() else {
+        return Err(format!("`{field}` holds one mask"));
+    };
+    if got != want {
+        return Ok(Score::Finite(2f64.powi(unit_bits(precision) as i32)));
+    }
+    if !want {
+        return Ok(Score::Finite(0.0));
+    }
+    score(fields, rec, out, precision)
+}
+
+/// A shift or power that is non-negative by construction.
+fn nonneg(n: i64) -> usize {
+    debug_assert!(n >= 0);
+    usize::try_from(n).unwrap_or(0)
 }
 
 #[cfg(test)]
@@ -763,6 +1061,21 @@ mod tests {
         add(&["se2_exp"], "t", Want::Scale, false);
         add(&["so3_geodesic", "se3_geodesic"], "q", Want::Unit, true);
         add(&["se3_geodesic"], "x", Want::Scale, false);
+        add(&["chol_solve_n3", "chol_solve_n6"], "x", Want::Tiny, false);
+        add(&["quat_renormalize"], "q", Want::Tiny, false);
+        for name in ["real_sqrt", "real_cbrt", "real_acos"] {
+            add(&[name], "value", Want::Tiny, false);
+            add(&[name], "d", Want::Tiny, false);
+        }
+        for f in ["sin", "cos", "d_sin", "d_cos"] {
+            add(&["real_sin_cos"], f, Want::Tiny, false);
+        }
+        for f in ["value", "d_y", "d_x"] {
+            add(&["real_atan2"], f, Want::Tiny, false);
+        }
+        for f in ["value", "d_n", "d_d"] {
+            add(&["real_div"], f, Want::Tiny, false);
+        }
         rows
     }
 
@@ -792,12 +1105,14 @@ mod tests {
             assert_eq!(got, want, "{id}");
         }
         for (family, r) in TABLE {
-            let listed =
-                |w: &(String, &str, Want, bool)| w.0 == *family || w.0 == format!("{family}_n1");
-            assert!(
-                matches!(r, BackwardOnly) || wanted.iter().any(listed),
-                "{family}"
+            let listed = |w: &(String, &str, Want, bool)| {
+                w.0 == *family || ["1", "3"].iter().any(|n| w.0 == format!("{family}_n{n}"))
+            };
+            let own_test = matches!(
+                r,
+                BackwardOnly | Rule::Eigen | Rule::Roots | Rule::Masked { .. }
             );
+            assert!(own_test || wanted.iter().any(listed), "{family}");
         }
     }
 
@@ -881,5 +1196,171 @@ mod tests {
         assert_eq!(probe("se2_exp", "t", "0e0", 1e-300, tau)?, Score::NonFinite);
         assert_eq!(probe("se2_exp", "t", "0e0", 0.0, tau)?, Score::Finite(0.0));
         Ok(())
+    }
+
+    /// `rule`'s score of `out` against a record of `reference`.
+    fn rule_score(
+        r: &Rule,
+        reference: &[(&str, &[&str])],
+        out: &[(&str, &[f64])],
+    ) -> Result<Score, String> {
+        let out: Output = out
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_vec()))
+            .collect();
+        r.score(&record(&[], reference)?, &out, Precision::F64)
+    }
+
+    const LAMBDA: [&str; 3] = ["1e0", "2e0", "4e0"];
+    const IDENTITY: [&str; 9] = [
+        "1e0", "0e0", "0e0", "0e0", "1e0", "0e0", "0e0", "0e0", "1e0",
+    ];
+    const EYE: [f64; 9] = [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0];
+
+    fn eig(lambda: [&str; 3], v: [f64; 9]) -> Result<Score, String> {
+        let l: Vec<f64> = lambda
+            .iter()
+            .map(|s| s.parse::<Decimal>().map(|d| d.to_f64()))
+            .collect::<Result<_, _>>()?;
+        rule_score(
+            &Rule::Eigen,
+            &[("lambda", &lambda), ("V", &IDENTITY)],
+            &[("lambda", &l), ("V", &v)],
+        )
+    }
+
+    #[test]
+    fn an_eigenvector_scores_its_angle_times_its_gap_and_each_column_aligns_alone(
+    ) -> Result<(), String> {
+        assert_eq!(eig(LAMBDA, EYE)?, Score::Finite(0.0));
+        let mut flipped = EYE;
+        flipped[4] = -1.0;
+        assert_eq!(eig(LAMBDA, flipped)?, Score::Finite(0.0));
+        // Column 0 tilted by e = 2^-40 into axis 1: ‖v̂ − v‖ = e (to first order the length change
+        // is e²/2, below the score's resolution here), gap₀ = 1, ‖λ‖ = √21.
+        let e = 2f64.powi(-40);
+        let mut tilted = EYE;
+        tilted[1] = e;
+        let want = e / (21f64.sqrt() * U);
+        let Score::Finite(f) = eig(LAMBDA, tilted)? else {
+            return Err("non-finite".into());
+        };
+        near(f, want);
+        // The same tilt between two equal eigenvalues weighs nothing: their vectors are not unique.
+        let Score::Finite(f) = eig(["1e0", "1e0", "4e0"], tilted)? else {
+            return Err("non-finite".into());
+        };
+        assert_eq!(f, 0.0);
+        Ok(())
+    }
+
+    fn cubic(
+        re: [&str; 3],
+        im: [&str; 3],
+        roots: [f64; 3],
+        valid: [f64; 3],
+    ) -> Result<Score, String> {
+        rule_score(
+            &Rule::Roots,
+            &[("re", &re), ("im", &im)],
+            &[("roots", &roots), ("valid", &valid)],
+        )
+    }
+
+    #[test]
+    fn the_root_set_distance_needs_no_order_and_reads_a_lost_root_as_one_over_u(
+    ) -> Result<(), String> {
+        let (re, im) = (["1e0", "2e0", "2e0"], ["0e0"; 3]);
+        assert_eq!(
+            cubic(re, im, [2.0, 1.0, 2.0], [1.0; 3])?,
+            Score::Finite(0.0)
+        );
+        // A double root reported once is still every real root answered.
+        assert_eq!(
+            cubic(re, im, [2.0, 1.0, 7.0], [1.0, 1.0, 0.0])?,
+            Score::Finite(0.0)
+        );
+        // The root 1 answered only by the slots at 2: 1 / (‖Z‖ u), ‖Z‖ = 3.
+        let Score::Finite(f) = cubic(re, im, [2.0, 2.0, 2.0], [1.0; 3])? else {
+            return Err("non-finite".into());
+        };
+        near(f, 1.0 / (3.0 * U));
+        // No valid slot at all: every real root is unanswered, ‖Z‖ / (‖Z‖ u).
+        assert_eq!(
+            cubic(re, im, [2.0, 2.0, 2.0], [0.0; 3])?,
+            Score::Finite(1.0 / U)
+        );
+        // A slot farther than ‖Z‖ from every root is a total loss too, never worse than none.
+        assert_eq!(
+            cubic(re, im, [1.0, 2.0, -9.0], [1.0; 3])?,
+            Score::Finite(1.0 / U)
+        );
+        // A slot off by one ulp of 2: 2^-51 / (3 u) = 4/3.
+        let Score::Finite(f) = cubic(re, im, [1.0, 2.0 + 4.0 * f64::EPSILON / 2.0, 2.0], [1.0; 3])?
+        else {
+            return Err("non-finite".into());
+        };
+        near(f, 4.0 / 3.0);
+        Ok(())
+    }
+
+    #[test]
+    fn a_complex_pair_reported_as_a_real_double_root_costs_its_imaginary_part() -> Result<(), String>
+    {
+        // Roots -1 and 1 ± 2^-30 i; the slots 1, 1 stand for the pair. ‖Z‖² = 3 + 2·2^-60.
+        let (re, im) = (
+            ["-1e0", "1e0", "1e0"],
+            [
+                "0e0",
+                "-9.31322574615478515625e-10",
+                "9.31322574615478515625e-10",
+            ],
+        );
+        let Score::Finite(f) = cubic(re, im, [-1.0, 1.0, 1.0], [1.0; 3])? else {
+            return Err("non-finite".into());
+        };
+        near(f, 2f64.powi(-30) / (3f64.sqrt() * U));
+        // Clear slots are not read, whatever they hold.
+        assert_eq!(
+            cubic(re, im, [-1.0, f64::NAN, 9.0], [1.0, 0.0, 0.0])?,
+            Score::Finite(0.0)
+        );
+        assert!(cubic(re, im, [-1.0, 0.0, 0.0], [1.0, 0.5, 0.0]).is_err());
+        Ok(())
+    }
+
+    #[test]
+    fn a_mask_that_disagrees_reads_one_over_u_and_a_clear_one_hides_its_values(
+    ) -> Result<(), String> {
+        let rule = Rule::Masked {
+            mask: "valid",
+            fields: CHOL,
+        };
+        let at = |want: &str, got: f64, l: f64| {
+            rule_score(
+                &rule,
+                &[("valid", &[want]), ("L", &["2e0"])],
+                &[("valid", &[got]), ("L", &[l])],
+            )
+        };
+        assert_eq!(at("1e0", 1.0, 2.0)?, Score::Finite(0.0));
+        assert_eq!(
+            at("1e0", 1.0, 2.0 + 2.0 * f64::EPSILON)?,
+            Score::Finite(2.0)
+        );
+        assert_eq!(at("1e0", 0.0, 2.0)?, Score::Finite(1.0 / U));
+        assert_eq!(at("0e0", 1.0, 2.0)?, Score::Finite(1.0 / U));
+        assert_eq!(at("0e0", 0.0, 99.0)?, Score::Finite(0.0));
+        Ok(())
+    }
+
+    #[test]
+    fn the_new_rules_read_the_fields_they_name() {
+        let fields = |id| rule(id).and_then(Rule::reference_fields);
+        assert_eq!(fields("eig3"), Some(vec!["V", "lambda"]));
+        assert_eq!(fields("solve_cubic"), Some(vec!["im", "re"]));
+        assert_eq!(fields("chol_n6"), Some(vec!["L", "valid"]));
+        assert_eq!(fields("chol_solve_n3"), Some(vec!["x"]));
+        assert!(rule("chol_n4").is_none() && fields("so3_from_matrix").is_none());
     }
 }

@@ -567,7 +567,7 @@ mod tests {
         // The page does not exist yet: that is drift, and the only failure.
         let r = run("check")?;
         assert_eq!(bars(&r), ["drift"]);
-        assert!(r.text.contains("NOT evaluated") && r.text.contains("48 required ids"));
+        assert!(r.text.contains("NOT evaluated") && r.text.contains("61 required ids"));
         let r = run("bless")?;
         assert!(r.failures.is_empty() && r.text.contains("wrote docs/evidence/ENVELOPE.md"));
         assert!(run("check")?.failures.is_empty());
@@ -658,14 +658,14 @@ mod tests {
             write_file(&scratch.0, &path, &text)?;
         }
         let r = go(&scratch, CANDIDATE, &[], "")?;
-        assert_eq!(bars(&r), ["coverage", "coverage", "coverage"]);
+        assert_eq!(bars(&r), ["coverage"]);
         assert!(r.text.contains(
-            "FAIL coverage: phase 2's row `corpus ids (§6)` is Done and `eig3` (PHASE2.md §6) has no corpus file"
+            "FAIL coverage: phase 2's row `corpus ids (§6)` is Done and `svd3` (PHASE2.md §6) has no corpus file"
         ));
         // A checkout whose docs lack the row cannot tell, and does not excuse.
         std::fs::remove_file(scratch.0.join("docs/PHASE6.md")).map_err(|e| e.to_string())?;
         let r = go(&scratch, CANDIDATE, &[], "")?;
-        assert_eq!(r.failures.len(), 4);
+        assert_eq!(r.failures.len(), 2);
         assert!(r.text.contains("docs/PHASE6.md: "), "{}", r.text);
         Ok(())
     }

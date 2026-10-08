@@ -3,7 +3,25 @@
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from . import check, check_geodesic, check_se2, check_sen3, coeff, geodesic, se2, sen3, so2, so3
+from . import (
+    check,
+    check_geodesic,
+    check_linalg,
+    check_real,
+    check_se2,
+    check_sen3,
+    chol,
+    coeff,
+    cubic,
+    eig,
+    geodesic,
+    quat,
+    real,
+    se2,
+    sen3,
+    so2,
+    so3,
+)
 from .strata import (
     COEFF_R_STRATA,
     COEFF_STRATA,
@@ -13,14 +31,16 @@ from .strata import (
     SE2_STRATA,
     SEN3_QUAT_STRATA,
     SEN3_STRATA,
+    Drawn,
     Stratum,
+    drawn_inputs,
 )
 
 
 @dataclass(frozen=True)
 class FunctionSpec:
     name: str
-    strata: tuple[Stratum, ...]
+    strata: tuple[Stratum | Drawn, ...]
     inputs: Callable[[Stratum], list[dict]]  # exact binary64 inputs: float or list[float] values
     evaluate: Callable[[dict], dict]  # definition at the current mp.dps: mpf or list[mpf] values
     check: Callable[[dict, dict], None] | None = None  # (inputs, out), raises on a disagreement
@@ -126,5 +146,41 @@ FUNCTIONS: dict[str, FunctionSpec] = {
                 ),
             )
         ),
+        # docs/decisions/0056: the routines D7 did not reach. Binary64 strata, then `@f32` ones.
+        FunctionSpec(
+            "solve_cubic", cubic.STRATA, drawn_inputs, cubic.solve_cubic, check_linalg.solve_cubic
+        ),
+        FunctionSpec("eig3", eig.STRATA, drawn_inputs, eig.eig3, check_linalg.eig3),
+        *(
+            FunctionSpec(f"chol_n{n}", chol.strata(n, False), drawn_inputs, chol.chol, check_linalg.chol)
+            for n in (3, 6)
+        ),
+        *(
+            FunctionSpec(
+                f"chol_solve_n{n}",
+                chol.strata(n, True),
+                drawn_inputs,
+                chol.chol_solve,
+                check_linalg.chol_solve,
+            )
+            for n in (3, 6)
+        ),
+        FunctionSpec(
+            "quat_renormalize",
+            quat.STRATA,
+            drawn_inputs,
+            quat.renormalize,
+            check_linalg.quat_renormalize,
+        ),
+        FunctionSpec("real_sqrt", real.SQRT_STRATA, drawn_inputs, real.sqrt, check_real.real_sqrt),
+        FunctionSpec("real_cbrt", real.CBRT_STRATA, drawn_inputs, real.cbrt, check_real.real_cbrt),
+        FunctionSpec(
+            "real_sin_cos", real.SIN_COS_STRATA, drawn_inputs, real.sin_cos, check_real.real_sin_cos
+        ),
+        FunctionSpec("real_acos", real.ACOS_STRATA, drawn_inputs, real.acos, check_real.real_acos),
+        FunctionSpec(
+            "real_atan2", real.ATAN2_STRATA, drawn_inputs, real.atan2, check_real.real_atan2
+        ),
+        FunctionSpec("real_div", real.DIV_STRATA, drawn_inputs, real.div, check_real.real_div),
     )
 }

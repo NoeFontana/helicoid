@@ -9,6 +9,8 @@ defined by the status tables in `docs/`; they win over this file.
 
 ### Added
 
+- **Corpus ids for the routines D7 did not reach** (`0056`): `solve_cubic`, `eig3`, `chol_n{3,6}`, `chol_solve_n{3,6}`, `quat_renormalize` and `real_*` (`Dual`'s derivatives), at both precisions; root-set, gap-weighted eigenvector and mask metrics; a nalgebra oracle runner (`just oracle-nalgebra`); 198 committed per-stratum maxima reproduced bit for bit by the shipped subject.
+
 - **`Real` transcendental primitives (`sin`, `cos`, `acos`)**: added to `Real` via `libm` to avoid discarding unneeded components from `sin_cos` (`0022`, `0052`, `0053`).
 - **`SEn3` constructors for general $N$**: `from_parts` and `parts` by value through `SO3` to preserve unit invariants across all orders (`0042`).
 - **`Product` constructors**: `Product::from_parts` and `parts` to enable composition without `Exp`/`Log` roundtrips (`0029`, `0040`).

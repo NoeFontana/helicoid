@@ -162,11 +162,13 @@ jobs:
             .
             runners/tf_tree_math
             runners/sophus_rs
+            runners/nalgebra
       - uses: taiki-e/install-action@v2
         with:
           tool: just,cargo-nextest,cargo-deny
       - run: just oracle-tf-tree-math
       - run: just oracle-sophus-rs
+      - run: just oracle-nalgebra
       - run: just envelope --check
 
   # The committed corpus must regenerate byte-identically from the pinned generator.

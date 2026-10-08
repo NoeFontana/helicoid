@@ -15,6 +15,7 @@ from gen.strata import SCALAR_THETA_STRATA, Stratum
 
 precision.setup()
 COMMITTED = manifest.ROOT.parent / "corpus"
+ASKED_FOR_F32 = ("solve_cubic", "eig3", "chol_", "quat_", "real_")  # docs/decisions/0056
 SUBSET_STRATUM = next(s for s in SCALAR_THETA_STRATA if s.name == "theta:exact0")
 
 
@@ -165,9 +166,27 @@ class BuildTest(unittest.TestCase):
         strata = [s.name for s in FUNCTIONS["coeff_r"].strata]
         self.assertEqual(strata[:29], [*(s.name for s in SCALAR_THETA_STRATA), "q:w0"])
         self.assertEqual(strata[29:], [*(f"{s.name}@f32" for s in SCALAR_THETA_STRATA), "q:w0@f32"])
-        other = [n for n in FUNCTIONS if not n.startswith("coeff_")]
+        other = [n for n in FUNCTIONS if not n.startswith(("coeff_", *ASKED_FOR_F32))]
         for name in other:  # no other id has an @f32 stratum until a record asks for one
             self.assertFalse(any(s.f32 for s in FUNCTIONS[name].strata), name)
+
+    def test_the_0056_ids_have_their_f32_strata_after_every_binary64_one(self):
+        """An `@f32` stratum is named for its binary64 namesake where one exists (0056 decision 2)
+        and follows the binary64 order; the others (`x:1e37@f32`) are the binary32 range's own."""
+        names = [n for n in FUNCTIONS if n.startswith(ASKED_FOR_F32)]
+        self.assertEqual(len(names), 13)
+        for name in names:
+            strata = FUNCTIONS[name].strata
+            flags = [s.f32 for s in strata]
+            self.assertEqual(flags, sorted(flags), name)  # every binary64 stratum first
+            half = [s.name for s in strata if not s.f32]
+            twins = [s.name.removesuffix("@f32") for s in strata if s.f32]
+            self.assertTrue(all(s.name.endswith("@f32") == s.f32 for s in strata), name)
+            shared = [t for t in twins if t in half]
+            self.assertEqual(shared, sorted(shared, key=half.index), name)
+            for s in strata:  # a twin reads its namesake's stream exactly when it has one
+                if s.f32 and s.stream_of is not None:
+                    self.assertEqual(s.stream_of, s.name.removesuffix("@f32"), (name, s.name))
 
     def test_ids_are_sequential_and_strata_in_canonical_order(self):
         data, n, _ = corpus.build(FUNCTIONS["coeff_k"], only={"theta:1e-3", "theta:exact0"})
@@ -178,6 +197,9 @@ class BuildTest(unittest.TestCase):
 
 # The full corpus is regenerated and compared by `just corpus-check`; the tests regenerate these.
 SUBSET = {"theta:exact0", "theta:1e-6", "q:w0", "theta:exact0@f32", "theta:1e-6@f32", "q:w0@f32"}
+# and one cheap stratum of each 0056 family, a shared-stream and an own-stream @f32 among them
+SUBSET |= {"cubic:one-real", "eig:triple@f32", "renorm:eta-edge@f32", "nd:generic@f32", "nd:wide"}
+SUBSET |= {"x:1e-37@f32", "yx:ratio-1e+8", "chol:cond-1e-2@f32"}
 
 
 def subset_registry() -> dict:
