@@ -29,6 +29,8 @@ defined by the status tables in `docs/`; they win over this file.
 
 ### Changed
 
+- **`solve_cubic` stops inheriting omnisac's limits** (`0031`): the one-real-root arm pairs its cube roots and takes `-q/(w² + p/3 + v²)` where `p > 0` (`x³ + px − 1` at small `p`: 1.8e10 → 1.7 `u`); the monic cubic is homogenised by exact powers of two, so a scaled cubic keeps its roots (`1e-100`-scaled: no root → 51 `u`) and `p³`, `q²` never underflow into a wrong arm; the leading-coefficient floor is gone, a cubic is `a ≠ 0` with `1/a`, `b/a`, `c/a`, `d/a` finite. `GOLDEN` regenerated; `benches/linalg.rs` added (`f64` 1.01–1.30×, `f32` 1.24–1.37× latency).
+
 - **`Real::branch` is inlined; `abs`/`copysign` are `core`'s**: the coefficient kernels run 0.55× and the group operations 0.915× (geomean) of before, `so3/exp` 0.57×, results bit-identical (`0055`).
 - **`SE3::geodesic` is the screw twin**: `SO3::geodesic`'s rotation, and the translation in the world frame — the definition's closed form below `r`'s second switch, GE.12's dual-quaternion power above it. `se3_geodesic` dominates `tf_tree_math`'s `ScLerp` on all three strata, 0.59–0.92× the provided body's latency, 4.6–6.1% faster than `screw_pow` inside `tf_tree`'s lookup bench; through `Dual` it differentiates like the provided body below the switch. `SE₂(3)` keeps the provided body (`PHASE4.md` §1.2, `0054`).
 - **`SO3::geodesic` two-arm dispatch**: provided body below `log_ratio` short switch and blend above, preserving near-identity performance without accuracy loss (`0051`, superseding `0050`).

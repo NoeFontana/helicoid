@@ -396,7 +396,7 @@ $X(t) = X_0\,\mathrm{Exp}(t\,d)$ with $d = X_1 \ominus_R X_0$ and $\Delta = X_0^
 | `from_wxyz_unchecked` | $\lvert\|q\|^2 - 1\rvert \le 2^{-40}$ (`f64`), $2^{-16}$ (`f32`) | garbage in, garbage out |
 | `from_wxyz_normalized` | $\|q\|^2$ normal (components within $\approx 10^{\pm154}$ `f64`, $10^{\pm19}$ `f32`); `debug_assert!` on the result (§3.6, [`0027`](./decisions/0027-a-normalizing-constructor-normalizes.md)) | NaN at $q = 0$; zero above the overflow |
 | `renormalize` | none; a normalization only for $\lvert\|q\|^2 - 1\rvert \le 2^{-26.29}$ (`f64`), $2^{-11.79}$ (`f32`) (§3.6) | defined everywhere; $0$ at $\|q\|^2 = 3$, $q$ reversed beyond |
-| `solve_cubic` | every input; the mask is the report: a non-finite coefficient, $a = 0$ or a leading coefficient below its floor give no valid slot | — |
+| `solve_cubic` | every input; the mask is the report: a non-finite coefficient, $a = 0$, or $1/a$, $b/a$, $c/a$ or $d/a$ overflowing gives no valid slot (§16) | — |
 | `eig3` | every input, lower triangle read; entries of magnitude $m$ with $p^3$ normal, $10^{-100} < m < 10^{100}$ (`f64`), $10^{-12} < m < 10^{12}$ (`f32`); the vectors need $\|A\|^4$ normal, $10^{\pm75}$, $10^{\pm9}$ | eigenvalues not finite, never a plausible number ([`0023`](./decisions/0023-eig3-departs-from-omnisac-and-its-limits.md), draft) |
 | `S2Chart::local` | $m \ne -n$ | unspecified finite value |
 | `geodesic` | $\theta(d) < \pi$ | §10 |
@@ -558,3 +558,28 @@ $\pm\infty$ included, and so is the release behaviour at a zero or NaN diagonal.
 is the sign and payload of a NaN produced by arithmetic, which Rust leaves unspecified and a
 release build may swap by commuting operands (`PHASE2.md` §3): a NaN is a NaN in both. The error
 bound is that of the composition (Thm 10.4, §15.4).
+
+## 16. The real roots of a cubic
+
+`solve_cubic`'s formulas ([`0031`](./decisions/0031-what-the-cubic-port-inherits-from-omnisac.md)); its
+arms and tolerances are the rustdoc's table.
+
+- **Monic form.** $B = b\cdot(1/a)$, $C = c\cdot(1/a)$, $D = d\cdot(1/a)$; the cubic is one when
+  $a \ne 0$ and $1/a$, $B$, $C$, $D$ are finite. There is no floor on $a$.
+- **Homogenisation.** With $s = \max(\lvert B\rvert, \lvert C\rvert^{1/2}, \lvert D\rvert^{1/3})$ and
+  $m$ a power of two, $x = m y$ gives $y^3 + (B/m)\,y^2 + (C/m^2)\,y + D/m^3$, formed exactly. $m = 1$
+  while $s \in [2^{-128}, 2^{128})$ (`f64`), $[2^{-8}, 2^{16})$ (`f32`), where neither $p^3$ nor
+  $q^2$ can over- or underflow; outside, two-sided power-of-two steps bring $s$ in. Every comparison
+  is on an exact power-of-two multiple of a coefficient, so no $\sqrt{\ }$ or $\sqrt[3]{\ }$ is
+  taken and scaling the cubic by $2^k$ scales its roots by $2^k$ exactly.
+- **Depressed cubic.** $y = t - B/3$ gives $t^3 + p\,t + q$, $p = C - B^2/3$,
+  $q = 2B^3/27 - BC/3 + D$, $\Delta = q^2/4 + p^3/27$.
+- **One real root** ($\Delta$ above its band). $w = \sqrt[3]{-q/2 + \operatorname{copysign}(\sqrt\Delta, -q/2)}$,
+  a sum of like signs, and $v = -(p/3)/w$ from $w v = -p/3$. The root is $w + v$ where
+  $p \le 0$, where the two have one sign, and $-q / (w^2 + p/3 + v^2)$ where $p > 0$: the same root
+  from $w^3 + v^3 = -q$ over $w^2 - wv + v^2$, a sum of positive terms, where $w + v$ cancels for a
+  root small against $s$.
+- **Three real roots** ($\Delta$ below its band, or $p < 0$): $2r\cos(\arccos(3q/(2pr))/3 - 2\pi k/3)$,
+  $r = \sqrt{-p/3}$, the argument clamped to $[-1, 1]$. **Triple root:** $\sqrt[3]{-q}$.
+- **Each root** is $(t - B/3)\cdot m$.
+

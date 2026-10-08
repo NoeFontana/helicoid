@@ -241,7 +241,7 @@ record's decision 1 fixes their fields and references, decision 2 their strata. 
 
 | Id | Strata (binary64; `@f32`), records |
 |---|---|
-| `solve_cubic` | `cubic:distinct`, `double`, `triple`, `one-real`, `near-double-1e-{2,4,6,8}`, `one-real-p-small`, `coeff-scale-up`, `coeff-scale-down`; the same at f32. 64 each, 1408 |
+| `solve_cubic` | `cubic:distinct`, `double`, `triple`, `one-real`, `near-double-1e-{2,4,6,8}`, `one-real-p-small`, `coeff-scale-up`, `coeff-scale-down`, `one-real-small-root` (`0031`: x³ + x + q, |q| log-uniform in [1e-12, 1e-2], [1e-6, 1e-1] at f32); the same at f32. 64 each, 1536 |
 | `eig3` | `eig:random`, `eig:gap-1e-k/bottom` k = 0…12 (0…6), then `/top`, `eig:triple`, `rank1`, `scale-up`, `scale-down`. 64, gaps 32; 1920 |
 | `chol_n*` | `chol:spd`, `cond-1e-{4,8,12}` (`{2,4,6}`), `diag-scale`, `indefinite`. 32 each, 384 |
 | `chol_solve_n*` | the same without `indefinite`, 320 |

@@ -484,9 +484,9 @@ mod tests {
             .map(|l| l.split(',').collect())
             .collect();
         // The 8 coefficient ids' 28 each and `coeff_r`'s `q:w0@f32`, then `0056`'s: `solve_cubic`
-        // 11, `eig3` 19, `chol_n*` 6 each, `chol_solve_n*` 5 each, `quat_renormalize` 5, `real_sqrt`
+        // 12, `eig3` 19, `chol_n*` 6 each, `chol_solve_n*` 5 each, `quat_renormalize` 5, `real_sqrt`
         // and `real_cbrt` 8 each, `real_sin_cos` 5, `real_acos` 4, `real_atan2` 7, `real_div` 2.
-        let new = 11 + 19 + 2 * 6 + 2 * 5 + 5 + 2 * 8 + 5 + 4 + 7 + 2;
+        let new = 12 + 19 + 2 * 6 + 2 * 5 + 5 + 2 * 8 + 5 + 4 + 7 + 2;
         assert_eq!(rows.len(), 8 * 28 + 1 + new);
         assert!(rows.iter().all(|c| c[1].ends_with("@f32") && c[2] == "f32"));
         // An id named without any is an error, not an empty run.

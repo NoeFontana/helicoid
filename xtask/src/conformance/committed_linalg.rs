@@ -129,14 +129,19 @@ const F64: &[(&str, &str, f64)] = &[
     ("solve_cubic", "cubic:distinct", 37.0561032994736),
     ("solve_cubic", "cubic:double", 154457280.5870304),
     ("solve_cubic", "cubic:triple", 0.0),
-    ("solve_cubic", "cubic:one-real", 1814.9565217391305),
+    ("solve_cubic", "cubic:one-real", 1.7001805707579358),
     ("solve_cubic", "cubic:near-double-1e-2", 509.27880489346023),
     ("solve_cubic", "cubic:near-double-1e-4", 108300.5935573035),
     ("solve_cubic", "cubic:near-double-1e-6", 15878262.95250792),
     ("solve_cubic", "cubic:near-double-1e-8", 90869871.39177251),
-    ("solve_cubic", "cubic:one-real-p-small", 18002103457.852215),
+    ("solve_cubic", "cubic:one-real-p-small", 1.7102572974660597),
     ("solve_cubic", "cubic:coeff-scale-up", 16.45779949292739),
-    ("solve_cubic", "cubic:coeff-scale-down", 9007199254740992.0),
+    ("solve_cubic", "cubic:coeff-scale-down", 51.14647623707047),
+    (
+        "solve_cubic",
+        "cubic:one-real-small-root",
+        0.0054587359395373595,
+    ),
 ];
 
 /// `(fn, stratum, max_u)` of the `@f32` strata.
@@ -243,8 +248,8 @@ const F32: &[(&str, &str, f64)] = &[
     ("real_sqrt", "x:subnormal@f32", 1.0964127862704565),
     ("solve_cubic", "cubic:distinct@f32", 44.746992663515286),
     ("solve_cubic", "cubic:double@f32", 1809172.1779990862),
-    ("solve_cubic", "cubic:triple@f32", 68648.04093347234),
-    ("solve_cubic", "cubic:one-real@f32", 637.9130434782609),
+    ("solve_cubic", "cubic:triple@f32", 68493.4326087546),
+    ("solve_cubic", "cubic:one-real@f32", 2.4550904125803092),
     (
         "solve_cubic",
         "cubic:near-double-1e-2@f32",
@@ -268,10 +273,19 @@ const F32: &[(&str, &str, f64)] = &[
     (
         "solve_cubic",
         "cubic:one-real-p-small@f32",
-        29899.550679661792,
+        1.3888154836145314,
     ),
     ("solve_cubic", "cubic:coeff-scale-up@f32", 42.45508436606197),
-    ("solve_cubic", "cubic:coeff-scale-down@f32", 16777216.0),
+    (
+        "solve_cubic",
+        "cubic:coeff-scale-down@f32",
+        77.86191104182657,
+    ),
+    (
+        "solve_cubic",
+        "cubic:one-real-small-root@f32",
+        0.06909626748909296,
+    ),
 ];
 
 /// The shipped subject's `(fn, stratum, max_u)` over [`IDS`] at `precision`.

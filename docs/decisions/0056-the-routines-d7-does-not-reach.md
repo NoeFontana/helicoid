@@ -89,6 +89,7 @@ record.
 | | `cubic:one-real` | `a (x − r)(x² + p x + q)` with `p² < 4q`, all of `r`, `p`, `q` planted |
 | | `cubic:near-double-1e-k`, k ∈ {2, 4, 6, 8} | Roots `r`, `r(1 + 10^-k)`, `s` at 120 digits, coefficients rounded to the precision. The reference is the stored coefficients' roots: it may be a complex pair |
 | | `cubic:one-real-p-small` | `x³ + p x − 1`, `p` log-uniform in `[1e-7, 1e-3]` (`[1e-4, 1e-1]`). This is the cancellation the rustdoc documents |
+| | `cubic:one-real-small-root` (added by `0031`) | `x³ + x + q`, `\|q\|` log-uniform in `[1e-12, 1e-2]` (`[1e-6, 1e-1]`), the sign alternating: a small root beside a complex pair of size 1 |
 | | `cubic:coeff-scale-up`, `cubic:coeff-scale-down` | `cubic:distinct`'s cubics with every coefficient times `10^±100` (`10^±20`) |
 | `eig3` | `eig:random` | `A = Q Λ Qᵀ`, `Q` from a Haar-random quaternion, `λ` uniform in `[−1, 1]` |
 | | `eig:gap-1e-k/bottom`, `eig:gap-1e-k/top`, k = 0…12 (0…6) | The two smallest (or largest) eigenvalues at relative gap `10^-k` of `‖Λ‖`. 32 records each |

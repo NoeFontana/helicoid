@@ -49,23 +49,26 @@ fn valid<S: Lane>(c: [f64; 4]) -> Vec<f64> {
     v
 }
 
-/// The leading-coefficient floor and the discriminant band of the rustdoc table, written here
-/// independently of the code: the tests pin the table, not the implementation.
-fn table<S: Real>() -> (f64, f64) {
+/// The discriminant band of the rustdoc table, written here independently of the code: the tests
+/// pin the table, not the implementation.
+fn band<S: Real>() -> f64 {
     match S::PRECISION {
-        Precision::F64 => (2f64.powi(-46), 2f64.powi(-40)),
-        Precision::F32 => (2f64.powi(-17), 2f64.powi(-11)),
+        Precision::F64 => 2f64.powi(-40),
+        Precision::F32 => 2f64.powi(-11),
     }
 }
 
+/// The rustdoc's "is a cubic" (`0031` L3): `a` finite and nonzero, and `b/a`, `c/a`, `d/a` finite
+/// at the precision.
 fn is_cubic<S: Lane>(c: [f64; 4]) -> bool {
-    let c = c.map(|x| S::make(x, [0.0; 2]).lane(0));
-    c[0].abs() > table::<S>().0 * c.iter().fold(1.0_f64, |m, x| m.max(x.abs()))
+    let [a, b, cc, d] = c.map(|x| S::make(x, [0.0; 2]));
+    let finite = |x: S| x.lane(0).is_finite();
+    finite(a) && a.lane(0) != 0.0 && [b / a, cc / a, d / a].into_iter().all(finite)
 }
 
 /// Reference `poly` and `fundamental` cases: three real roots, one, none, an exact triple root and
-/// `x^3` in every sign of zero (the root is `+0`), non-finite input, a leading coefficient below its
-/// floor; at `f64` also repeated roots and a pair `1e-7` apart.
+/// `x^3` in every sign of zero (the root is `+0`), non-finite input, `a = 0`, a tiny `a` that is
+/// still a cubic; at `f64` also repeated roots and a pair `1e-7` apart.
 fn reference_cases<S: Lane>() {
     let same = |c: [f64; 4], want: &[f64]| {
         let got = valid::<S>(c);
@@ -80,15 +83,27 @@ fn reference_cases<S: Lane>() {
     same([1.0, 1.0, 1.0, 1.0], &[-1.0]);
     same([1.0, 0.0, 0.0, -1.0], &[1.0]);
     same([1.0, -6.0, 12.0, -8.0], &[2.0]);
-    for c in [
-        [1e-20, 1.0, 2.0, 3.0],
-        [0.0, 1.0, -3.0, 2.0],
-        [0.0; 4],
-        [1e-310; 4],
-        [1e-40; 4],
-    ] {
+    for c in [[0.0, 1.0, -3.0, 2.0], [0.0; 4]] {
         assert!(valid::<S>(c).is_empty(), "{c:?} is not a cubic");
     }
+    // A tiny `a` is a cubic while `b/a`, `c/a`, `d/a` are finite (`0031` L3): every coefficient
+    // equal is `(x + 1)(x^2 + 1)` at any scale, and `1e-20 x^3 + x^2 + 2x + 3` has one real root
+    // near `-1e20` and a complex pair of size `sqrt 2`, which at `f32` is inside the band of a
+    // scale `1e20` and may read as a real double root (`# Domain`).
+    for c in [[1e-30; 4], [1e30; 4]] {
+        same(c, &[-1.0]);
+    }
+    // A subnormal `a` whose reciprocal overflows is not a cubic (`# Domain`).
+    let subnormal = match S::PRECISION {
+        Precision::F64 => 1e-310,
+        Precision::F32 => 1e-40,
+    };
+    assert!(valid::<S>([subnormal; 4]).is_empty());
+    let big = valid::<S>([1e-20, 1.0, 2.0, 3.0]);
+    assert!(
+        (big[0] / -1e20 - 1.0).abs() < 1e-6 && big[1..].iter().all(|x| x.abs() < 1e-6 * 1e20),
+        "{big:?}"
+    );
     for (i, bad) in
         (0..4).flat_map(|i| [f64::NAN, f64::INFINITY, f64::NEG_INFINITY].map(|b| (i, b)))
     {
@@ -106,8 +121,13 @@ fn reference_cases<S: Lane>() {
         );
     }
     if S::PRECISION == Precision::F64 {
-        // `2 p r` underflows: the `acos` argument is NaN, and the mask says so instead of a NaN slot.
-        assert!(solve::<S>([1.0, 0.0, -1e-250, 0.0]).1 == [false; 3]);
+        // Homogenised (`0031` L2), `x^3 - 1e-250 x` keeps its roots `0` and `+-1e-125`.
+        let small = valid::<S>([1.0, 0.0, -1e-250, 0.0]);
+        let near = |(g, w): (&f64, &f64)| (g - w).abs() <= 1e-15 * 1e-125;
+        assert!(
+            small.len() == 3 && small.iter().zip(&[-1e-125, 0.0, 1e-125]).all(near),
+            "{small:?}"
+        );
         let eval = |c: [f64; 4], x: f64| ((c[0] * x + c[1]) * x + c[2]) * x + c[3];
         for (r, s) in [
             (0.1, 2.7),
@@ -124,10 +144,12 @@ fn reference_cases<S: Lane>() {
                 .iter()
                 .all(|&x| eval(c, x).abs() < 1e-6 * (1.0 + s).powi(3)));
         }
-        // `p^3` and `q^2` underflow: the triple-root arm, `cbrt(-q)`, not the `3q/p` of a double root.
+        // Where `p^3` and `q^2` would underflow unscaled, the one real root of
+        // `x^3 + 1e-110 x + 1e-200`, `-1e-90` to within `1e-110`, and not the `cbrt(-q)` of a
+        // triple root the unscaled cubic read.
         let (r, m) = solve::<S>([1.0, 0.0, 1e-110, 1e-200]);
         assert!(
-            m == [true, false, false] && (r[0] + 2.1544e-67).abs() < 1e-70,
+            m == [true, false, false] && (r[0] / -1e-90 - 1.0).abs() < 1e-15,
             "{r:?}"
         );
         let (r, e, s) = (1.0, 1e-7, 2.0);
@@ -150,33 +172,31 @@ fn reference_cases_hold_at_every_scalar() {
     reference_cases::<D>();
 }
 
-/// The leading coefficient must exceed `max(scale, 1) 2^-46` (`2^-17` at `f32`), `scale` the
-/// largest coefficient. The band of `disc` is `2^-40` (`2^-11`): inside the band the trigonometric
-/// arm reports three roots, above it Cardano one.
+/// The band of `disc` is `2^-40` (`2^-11`): inside the band the trigonometric arm reports three
+/// roots, above it Cardano one. There is no floor on the leading coefficient (`0031` L3): the
+/// cubics the old one rejected, its two `# Domain` examples at `f32` and a span of `2^60`, are
+/// solved at both precisions.
 fn thresholds<S: Lane>() {
-    let (floor, band) = table::<S>();
+    let band = band::<S>();
     let n = |c: [f64; 4]| valid::<S>(c).len();
-    assert!(n([floor * 1.001, 1.0, 1.0, -1.0]) >= 1 && n([floor * 0.999, 1.0, 1.0, -1.0]) == 0);
     let q = |delta: f64| [1.0, 0.0, -3.0, 2.0 * (1.0 + delta).sqrt()];
     assert_eq!((n(q(0.9 * band)), n(q(1.1 * band))), (3, 1));
     if S::PRECISION == Precision::F64 {
-        assert_eq!((n([1.2e-14, 1.0, 1.0, -1.0]), n(q(0.98e-12))), (0, 1));
+        assert_eq!(n(q(0.98e-12)), 1);
     }
-    // A monic coefficient beyond `1 / floor` is rejected: `x^3 - c x` has the roots `0` and `+-sqrt(c)`.
-    let (ok, over) = (
-        n([1.0, 0.0, -0.9 / floor, 0.0]),
-        n([1.0, 0.0, -1.1 / floor, 0.0]),
-    );
-    assert!(ok >= 1 && over == 0, "{ok} {over}");
-    // Each of `b`, `c`, `d` in turn the largest coefficient (8): the floor is `8 floor`, and a
-    // leading coefficient at it is rejected (`<=`) and just above it accepted.
-    for i in 1..4 {
-        let mut c = [0.0, 1.0, 1.0, 1.0];
-        c[i] = -8.0;
-        let with = |a: f64| n([a, c[1], c[2], c[3]]);
-        let at = 8.0 * floor;
-        assert_eq!((with(at), with(at * 1.001) >= 1), (0, true), "{c:?}");
-    }
+    let same = |c: [f64; 4], want: [f64; 3]| {
+        let got = valid::<S>(c);
+        let scale = want.iter().fold(1.0_f64, |m, w| m.max(w.abs()));
+        let close = |(g, w): (&f64, &f64)| (g - w).abs() <= 64.0 * unit::<S>() * scale;
+        assert!(
+            got.len() == 3 && got.iter().zip(&want).all(close),
+            "{c:?}: {got:?}"
+        );
+    };
+    same([1.0, 0.0, -1e6, 0.0], [-1000.0, 0.0, 1000.0]);
+    same([1.0, -102.0, -9799.0, 999_900.0], [-99.0, 100.0, 101.0]);
+    let wide = 2f64.powi(30);
+    same([1.0, 0.0, -wide * wide, 0.0], [-wide, 0.0, wide]);
 }
 
 #[test]
@@ -318,7 +338,7 @@ fn disc_exact(z: [(f64, f64); 3]) -> f64 {
 fn regular<S: Real>(&(stratum, c, re, im): &Row) -> bool {
     let (noise, big) = disc_noise(c, unit::<S>());
     let z = [0, 1, 2].map(|j| (re[j], im[j]));
-    let band = table::<S>().1;
+    let band = band::<S>();
     match stratum {
         "triple" => true,
         "one-real" => disc_exact(z) / big > band + noise,
@@ -329,7 +349,7 @@ fn regular<S: Real>(&(stratum, c, re, im): &Row) -> bool {
 /// One row at scalar `S` against the bound of the header, and the number of valid slots its stratum
 /// allows. A row with a coefficient that is not an `f32` is skipped at `f32`.
 fn check<S: Lane>(&(stratum, c, re, im): &Row) {
-    let (u, band) = (unit::<S>(), table::<S>().1);
+    let (u, band) = (unit::<S>(), band::<S>());
     if c.iter()
         .any(|&v| S::make(v, [0.0; 2]).lane(0).to_bits() != v.to_bits())
     {
@@ -337,7 +357,7 @@ fn check<S: Lane>(&(stratum, c, re, im): &Row) {
     }
     let (x, m) = solve::<S>(c);
     if !is_cubic::<S>(c) {
-        assert!(m == [false; 3], "{c:?} is below the leading floor");
+        assert!(m == [false; 3], "{c:?} is not a cubic");
         return;
     }
     let z = [0, 1, 2].map(|j| (re[j], im[j]));
@@ -541,10 +561,20 @@ fn derivative_is_the_implicit_function_derivative() {
             assert!(err < 1e-10, "{stratum} {c:?} slot {k}: {dv:?} vs {want:?}");
         }
     }
+    // `x^3 - 1` at `p = 0`, where the unpaired arm evaluated `cbrt(0)` and gave `-inf`: the paired
+    // one (`0031` L1) gives the implicit derivative, `-x^k / 3` at the root 1.
     let x = [0, 1, 2, 3].map(|i| D4::variable([1.0, 0.0, 0.0, -1.0][i], i));
     let (r, m) = solve_cubic(x[0], x[1], x[2], x[3]);
     assert!(m == [true, false, false] && r.0[0].v.to_bits() == 1.0_f64.to_bits());
-    assert!(r.0[0].d.iter().all(|d| !d.is_finite()));
+    let third = 1.0 / 3.0;
+    assert!(
+        r.0[0]
+            .d
+            .iter()
+            .all(|d| (d + third).abs() <= 4.0 * f64::EPSILON),
+        "{:?}",
+        r.0[0].d
+    );
 }
 
 /// Both arms of every branch run in every lane, so a lane that does not take an arm must still
@@ -596,16 +626,17 @@ proptest! {
     #![proptest_config(cfg())]
 
     /// A slot that is not valid is `+0`, a valid one finite and never `-0` (checked by `solve`),
-    /// and nothing is valid when a coefficient is not finite or the leading one is below half its
-    /// floor.
+    /// nothing is valid when the coefficients are not a cubic at the precision (`is_cubic`), and a
+    /// cubic always reports a root: every real cubic has one.
     #[test]
     fn the_mask_is_honest_for_any_bits(c in prop::array::uniform4(any_coef())) {
-        let finite = c.iter().all(|x| x.is_finite());
-        let masks = [(table::<f64>(), solve::<f64>(c)), (table::<f32>(), solve::<f32>(c)), (table::<f64>(), solve::<D>(c))];
-        for ((floor, _), (_, m)) in masks {
-            if !finite || c[0].abs() < floor / 2.0 {
-                prop_assert!(m == [false; 3], "{c:?}: {m:?}");
-            }
+        let masks = [
+            (is_cubic::<f64>(c), solve::<f64>(c).1),
+            (is_cubic::<f32>(c), solve::<f32>(c).1),
+            (is_cubic::<D>(c), solve::<D>(c).1),
+        ];
+        for (cubic, m) in masks {
+            prop_assert!(cubic || m == [false; 3], "{c:?}: {m:?}");
         }
     }
 
@@ -649,18 +680,18 @@ const GOLDEN: &[([u64; 4], [u64; 3], u8)] = &[
     ([0x3FE5_6572_0C41_39E0, 0x3FE7_7774_B694_0CD8, 0xBFED_35B2_0482_684E, 0xBFD1_136B_4161_2560], [0x3FEC_E881_D45D_2376, 0xBFD0_2DBB_8CE7_2830, 0xBFFB_F528_B03B_D0A0], 7),
     ([0x3FF0_0000_0000_0000, 0x4000_0508_D822_B31C, 0xBFFF_956B_2D17_1FD0, 0xC010_EC6C_3B8E_7C22], [0x3FF6_EF98_CD57_A558, 0xBFFB_7CA0_D109_0A9D, 0xBFFB_7D09_AC94_00F7], 7),
     // one real root (mask bit `k` is slot `k`)
-    ([0x3FE6_8122_FE4D_E24C, 0x4007_2D71_262E_16A2, 0x4017_3E0B_CF22_46BF, 0x4015_D48E_3C5E_9A52], [0xBFFE_BEA7_2E67_BFC7, 0x0000_0000_0000_0000, 0x0000_0000_0000_0000], 1),
+    ([0x3FE6_8122_FE4D_E24C, 0x4007_2D71_262E_16A2, 0x4017_3E0B_CF22_46BF, 0x4015_D48E_3C5E_9A52], [0xBFFE_BEA7_2E67_BFC6, 0x0000_0000_0000_0000, 0x0000_0000_0000_0000], 1),
     ([0xBFD8_4C06_E4E2_8C48, 0x3FDD_CE81_1E0C_A3A8, 0x3FE5_1325_9D58_2268, 0x3FEA_5AA1_7D4E_2AF6], [0x4002_D679_1C5B_D408, 0x0000_0000_0000_0000, 0x0000_0000_0000_0000], 1),
-    ([0x3FC6_B517_C7C1_1C50, 0xBFE6_7619_FC92_666C, 0x3FE9_5D03_F501_6C4C, 0x3FEC_B1AB_B57E_A49C], [0xBFE5_64FC_F1E6_82AE, 0x0000_0000_0000_0000, 0x0000_0000_0000_0000], 1),
-    ([0x40F0_3356_85FD_2D73, 0x4100_3C8F_D40E_0913, 0x4128_2385_60D4_6FA7, 0xC0DD_8E46_2919_D716], [0x3FA3_76BB_2DD0_9360, 0x0000_0000_0000_0000, 0x0000_0000_0000_0000], 1),
-    ([0x3FF0_0000_0000_0000, 0x0000_0000_0000_0000, 0xC003_DF7D_8951_6414, 0xC003_303E_6DB7_B958], [0x3FFE_E319_A57D_A823, 0x0000_0000_0000_0000, 0x0000_0000_0000_0000], 1),
+    ([0x3FC6_B517_C7C1_1C50, 0xBFE6_7619_FC92_666C, 0x3FE9_5D03_F501_6C4C, 0x3FEC_B1AB_B57E_A49C], [0xBFE5_64FC_F1E6_82AC, 0x0000_0000_0000_0000, 0x0000_0000_0000_0000], 1),
+    ([0x40F0_3356_85FD_2D73, 0x4100_3C8F_D40E_0913, 0x4128_2385_60D4_6FA7, 0xC0DD_8E46_2919_D716], [0x3FA3_76BB_2DD0_9340, 0x0000_0000_0000_0000, 0x0000_0000_0000_0000], 1),
+    ([0x3FF0_0000_0000_0000, 0x0000_0000_0000_0000, 0xC003_DF7D_8951_6414, 0xC003_303E_6DB7_B958], [0x3FFE_E319_A57D_A824, 0x0000_0000_0000_0000, 0x0000_0000_0000_0000], 1),
     ([0x3FF0_0000_0000_0000, 0x0000_0000_0000_0000, 0xC001_2BF8_8F3E_3639, 0x4005_02C1_EC18_31AB], [0xBFFE_1CB8_B08F_23A4, 0x0000_0000_0000_0000, 0x0000_0000_0000_0000], 1),
     ([0x3FD1_27F1_54DF_834C, 0xBFCD_0D71_CC27_D078, 0xBFD6_5DA7_787B_CE4C, 0xBFCC_D1AD_9D22_51A0], [0x3FFD_165B_4528_EA3C, 0x0000_0000_0000_0000, 0x0000_0000_0000_0000], 1),
     ([0x3FF7_B278_DD23_8C1E, 0xBFEC_2CE2_EEEF_BCF7, 0xBFF1_8ECB_45C1_18C6, 0x3FEC_080A_8E76_5C00], [0xBFED_57BC_34FC_C64F, 0x0000_0000_0000_0000, 0x0000_0000_0000_0000], 1),
-    ([0x4007_D9D0_C4DC_777C, 0xBFD5_3065_E8A6_E94A, 0x3FE5_1B49_ADAD_9DE4, 0xC000_EEB7_6440_0552], [0x3FEB_0635_4BAD_1511, 0x0000_0000_0000_0000, 0x0000_0000_0000_0000], 1),
+    ([0x4007_D9D0_C4DC_777C, 0xBFD5_3065_E8A6_E94A, 0x3FE5_1B49_ADAD_9DE4, 0xC000_EEB7_6440_0552], [0x3FEB_0635_4BAD_150B, 0x0000_0000_0000_0000, 0x0000_0000_0000_0000], 1),
     ([0x3FE5_CF01_C71C_D7A6, 0xBFD8_73A1_9701_0328, 0x3FCF_DF92_9B67_93D8, 0xBFE2_D340_9BAC_8002], [0x3FF0_67BE_39EA_85A4, 0x0000_0000_0000_0000, 0x0000_0000_0000_0000], 1),
     ([0x3FF2_2335_1EAC_F265, 0x4009_3DE0_B629_1683, 0x3FF9_713F_2799_1C4F, 0x3FF0_A02C_6B14_1656], [0xC002_D26D_65FF_AE78, 0x0000_0000_0000_0000, 0x0000_0000_0000_0000], 1),
-    ([0x3FF0_0000_0000_0000, 0x0000_0000_0000_0000, 0x3FFC_E02F_3056_86B4, 0x4000_6E4D_1DB2_5D44], [0xBFEA_6DB7_C011_F3B9, 0x0000_0000_0000_0000, 0x0000_0000_0000_0000], 1),
+    ([0x3FF0_0000_0000_0000, 0x0000_0000_0000_0000, 0x3FFC_E02F_3056_86B4, 0x4000_6E4D_1DB2_5D44], [0xBFEA_6DB7_C011_F3BD, 0x0000_0000_0000_0000, 0x0000_0000_0000_0000], 1),
     // a triple root (mask bit `k` is slot `k`)
     ([0x3FF0_0000_0000_0000, 0xBCC5_DFCB_9B20_E65E, 0x3983_EFCB_2891_055F, 0xB628_3A4C_DCD6_7DF2], [0x3CAD_2A64_CED6_887D, 0x0000_0000_0000_0000, 0x0000_0000_0000_0000], 1),
     ([0x3FF0_0000_0000_0000, 0xBFF4_951F_141B_3D46, 0x3FE1_A6D2_58E4_A1AF, 0xBFB4_2F25_FF71_8A3C], [0x3FDB_717E_C579_A708, 0x0000_0000_0000_0000, 0x0000_0000_0000_0000], 1),
@@ -677,6 +708,25 @@ fn bits_are_golden() {
             got.map(f64::to_bits) == r && mask == [m & 1 != 0, m & 2 != 0, m & 4 != 0],
             "{c:?}: {got:?} {mask:?}"
         );
+    }
+}
+
+/// The `GOLDEN` rows this implementation gives, to paste over the table when a change to the
+/// solver's arithmetic is meant (`0031`): the coefficients stay, the roots and mask are re-recorded.
+#[test]
+#[ignore = "prints the table `bits_are_golden` pins"]
+#[allow(clippy::print_stdout)]
+fn print_golden() {
+    for &(c, _, _) in GOLDEN {
+        let (got, mask) = solve::<f64>(c.map(f64::from_bits));
+        let m = (0..3).fold(0u8, |m, k| m | (u8::from(mask[k]) << k));
+        let hex = |x: u64| {
+            let h = std::format!("{x:016X}");
+            std::format!("0x{}_{}_{}_{}", &h[0..4], &h[4..8], &h[8..12], &h[12..16])
+        };
+        let c = c.map(hex).join(", ");
+        let r = got.map(|x| hex(x.to_bits())).join(", ");
+        std::println!("    ([{c}], [{r}], {m}),");
     }
 }
 
@@ -704,37 +754,38 @@ fn slots_are_in_the_order_of_the_phases() {
     slot_order::<D>();
 }
 
-/// Where `p^3` and `q^2` of the depressed cubic underflow (roots below about `4e-8` at `f32`,
-/// `2e-54` at `f64`) `disc` reads 0. `2 p r` underflowing first leaves no root (the `acos` argument
-/// is NaN); with `p >= 0` the triple-root arm answers `cbrt(-q)`; with `p < 0` the trigonometric arm
-/// reports three valid slots for a cubic with one real root, none of them a root (`# Domain`).
+/// Cubics whose `p^3` and `q^2` underflow unscaled, at the size where the solver used to lose them
+/// (`2e-54` at `f64`, `4e-8` at `f32`): homogenised (`0031` L2) they keep every root. Unscaled,
+/// the first had no valid slot (`2 p r` underflowed), the second answered a triple root and the
+/// third three valid slots of which none was a root.
 fn underflow<S: Lane>() {
-    let rows = match S::PRECISION {
+    // `(coefficients, roots ascending)`; `-1.3247...` is the real root of `y^3 - y + 1`.
+    let plastic = -1.324_717_957_244_746;
+    let rows: [([f64; 4], &[f64]); 3] = match S::PRECISION {
         Precision::F64 => [
-            [1.0, 0.0, -1e-250, 0.0],
-            [1.0, 0.0, 1e-110, 1e-200],
-            [1.0, 0.0, -1e-110, 1e-165],
+            ([1.0, 0.0, -1e-250, 0.0], &[-1e-125, 0.0, 1e-125]),
+            ([1.0, 0.0, 1e-110, 1e-200], &[-1e-90]),
+            ([1.0, 0.0, -1e-110, 1e-165], &[plastic * 1e-55]),
         ],
         Precision::F32 => [
-            [1.0, 0.0, -1e-32, 0.0],
-            [1.0, 0.0, 1e-16, 1e-30],
-            [1.0, 0.0, -1e-16, 1e-24],
+            ([1.0, 0.0, -1e-32, 0.0], &[-1e-16, 0.0, 1e-16]),
+            ([1.0, 0.0, 1e-16, 1e-30], &[-1e-14]),
+            ([1.0, 0.0, -1e-16, 1e-24], &[plastic * 1e-8]),
         ],
     };
-    assert!(solve::<S>(rows[0]).1 == [false; 3]);
-    let (r, m) = solve::<S>(rows[1]);
-    assert!(m == [true, false, false] && (r[0] + rows[1][3].cbrt()).abs() <= 1e-3 * r[0].abs());
-    let c = rows[2].map(|x| S::make(x, [0.0; 2]).lane(0));
-    let (r, m) = solve::<S>(c);
-    let f = |x: f64| (x * x + c[2]) * x + c[3];
-    assert!(
-        m == [true; 3] && r.iter().all(|&x| f(x).abs() > 0.5 * c[3]),
-        "{r:?}"
-    );
+    for (c, want) in rows {
+        let got = valid::<S>(c);
+        let scale = want.iter().fold(0.0_f64, |m, w| m.max(w.abs()));
+        let close = |(g, w): (&f64, &f64)| (g - w).abs() <= 1e-4 * scale;
+        assert!(
+            got.len() == want.len() && got.iter().zip(want).all(close),
+            "{c:?}: {got:?}"
+        );
+    }
 }
 
 #[test]
-fn underflow_is_pinned_at_both_precisions() {
+fn small_cubics_keep_their_roots_at_both_precisions() {
     underflow::<f64>();
     underflow::<f32>();
     underflow::<D>();

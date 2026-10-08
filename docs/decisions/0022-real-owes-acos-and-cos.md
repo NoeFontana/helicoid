@@ -28,7 +28,7 @@
 > and carried two open questions. The first is answered here, against the measurements its first
 > draft did not have. The second — which of the four numerical limits the port inherits from omnisac
 > get a fix — is a different subject with a larger plan and is now
-> [`0031`](./0031-what-the-cubic-port-inherits-from-omnisac.md) (draft).
+> [`0031`](./0031-what-the-cubic-port-inherits-from-omnisac.md).
 
 ## Context
 
@@ -151,7 +151,7 @@ that overhead twice.
   regenerated from the new code and the mpmath strata re-measured; a polynomial sitting between the
   old and new values could in principle change root count, which `PHASE2.md` §9's second clause
   already covers.
-- This does **not** touch any arm's formula. The four inherited numerical limits are `0031` (draft)
+- This does **not** touch any arm's formula. The four inherited numerical limits are `0031`
   and are independent of this record: `0031` can land before or after it.
 
 ## Implementation plan

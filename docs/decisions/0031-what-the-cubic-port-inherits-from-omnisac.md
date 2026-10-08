@@ -1,10 +1,9 @@
 # 0031: What the cubic port inherits from omnisac
 
-**Status:** draft
+**Status:** ready
 **Owner:** @NoeFontana
-**Implementation:** records four limits with their measurements and a recommended order; no code
-change. Carried over from [`0022`](./0022-real-owes-acos-and-cos.md)'s open question 2, which was a
-different subject from that record's title.
+**Implementation:** the PR that lands its *Decision*, with `0056`'s corpus id as the instrument.
+Carried over from [`0022`](./0022-real-owes-acos-and-cos.md)'s open question 2.
 
 ## Context
 
@@ -156,7 +155,82 @@ is not the lopsided call L1 is.
 - `0022` is independent: it changes which `libm` functions the trigonometric arm calls, not any
   arm's formula, and can land before or after.
 
+## Decision
+
+`0056` gave `solve_cubic` a corpus id, so each item below is measured on it, per stratum, at both
+precisions, against nalgebra's companion-matrix roots (`0056` decision 4). `NUMERICS.md` §16 states
+the formulas.
+
+1. **L1 lands, and goes one step further.** The one-real-root arm pairs its cube roots: `w` is the
+   cube root whose radicand cannot cancel and `v = -(p/3)/w`. Where `p <= 0`, `w` and `v` share a
+   sign and the root is `w + v`. **Where `p > 0`, `w + v` cancels** whenever the root is small
+   against the cubic's scale (`x³ + x + q`, root near `-q`). That regime is not in L1 above, and
+   the unpaired form cancels there too. There the root is `-q / (w² + p/3 + v²)`, the same root from
+   `w³ + v³ = -q` over a sum of positive terms. Over 20 000 one-real-root cubics with `p` and `q`
+   log-uniform in `[1e-8, 1e8]`, the pairing alone reads **8.7e19 `u`** on the `p > 0` side and
+   the quotient 10.7; on the `p < 0` side the pairing reads 5.1 and the quotient 9.8. The arm takes
+   each where it is the better, through a lazy branch on the sign of `p`. A stratum,
+   `cubic:one-real-small-root`, now draws the regime.
+2. **L2 lands as homogenisation of the monic cubic**, not of the depressed one. Once L3 removes the
+   floor, `B` can be as large as the format allows and `B²` overflows before `p` exists. So the
+   power-of-two scaling `x = m y` divides `B`, `C`, `D` by `m`, `m²`, `m³`. Only over- and
+   underflow of `p³` and `q²` has to be prevented, not a unit scale: every tolerance compares
+   quantities of one degree in the scale, and the triple-root test is reached only when both
+   summands of `disc` are zero or underflow. So `m = 1` inside a window, `[2^-128, 2^128)` (`f64`)
+   or `[2^-8, 2^16)` (`f32`), tested by comparisons, and a cold, out-of-line ladder of two-sided
+   power-of-two steps brings the rest in. No `sqrt` or `cbrt` is spent on the scale.
+3. **L3 lands as written.** A cubic is `a != 0` with `1/a`, `B`, `C`, `D` finite.
+4. **L5 does not land**, measured against. The three divisions cost about 20 ns of a 20–60 ns
+   solver once L2 is in, in a binary that times both forms side by side. On the corpus they win
+   `cubic:triple@f32` (0 against `6.8e4` `u`: `1/a` is inexact for a planted `a`) and lose
+   `cubic:near-double-1e-4` (`3.5e5` against `1.1e5`). `1/a` stays, and with it the subnormal `a`
+   whose reciprocal overflows, which is "not a cubic" (`# Domain`).
+5. **L4 stays a limit**, documented and pinned (`a_repeated_root_can_be_dropped`). It owes a bench
+   to judge its prologue cost, and `benches/linalg.rs` is now that bench.
+
+## Measured
+
+`max_u` per stratum, the shipped subject against the committed corpus (`0056`), before and after,
+with nalgebra's binary64 row:
+
+| stratum | before | after | nalgebra |
+|---|---|---|---|
+| `cubic:one-real` | 1815 | **1.70** | 1551 |
+| `cubic:one-real-p-small` | 1.8e10 | **1.71** | 3.03 |
+| `cubic:one-real-small-root` | 0.65 | **0.0055** | 0.0056 |
+| `cubic:coeff-scale-down` | 9.0e15 (no root) | **51.2** | 9.3e4 |
+| `cubic:one-real-p-small@f32` | 3.0e4 | **1.39** | — |
+| `cubic:coeff-scale-down@f32` | 1.7e7 (no root) | **77.9** | — |
+| `cubic:one-real@f32` | 638 | **2.46** | — |
+| every other stratum | — | equal | — |
+
+`solve_cubic` now dominates nalgebra on every binary64 stratum. Before, it lost three. The
+small-root stratum reads below 1 `u` before too, because the root-set metric is relative to `‖Z‖`,
+which the complex pair dominates. The quotient's gain is in the small root's *relative* error, the
+`8.7e19 u` above, which no stratum of `0056` scores.
+
+Latency, `benches/linalg.rs`, `bench-gate --against` a baseline built in this tree. Core 5 pinned,
+with no other process above 20% CPU during the run; concurrent A/A floor median 0.7%:
+
+| row | `f64` | `f32` |
+|---|---|---|
+| `one-real` | 45.2 → 46.0 ns (1.014) | 27.7 → 34.6 ns (1.25) |
+| `distinct` | 34.6 → 38.6 ns (1.11) | 22.0 → 27.2 ns (1.24) |
+| `triple` | 14.3 → 19.3 ns (1.30) | 12.1 → 16.5 ns (1.37) |
+
+Two traps cost most of the first attempt, both now in the code's comments:
+- **`homogenise` left to `#[inline]`** was a call returning four values through memory, 10–33 ns.
+- **A bench wrapper taking `[S; 4]` by value** measured a store-to-load forwarding stall, 10–20 ns,
+  that moved with the routine's own load order.
+
 ## Open questions
+
+None. Question 1 is `0056`'s corpus id. Question 2: the bar is max-domination per stratum, plus
+`0056`'s committed rows, which are per-row no-regress in both directions. Question 3: the constants
+keep their values, since on the homogenised cubic they compare quantities of one degree in the
+scale. Question 4: two treatments; `eig3` is `0023`'s.
+
+## Former open questions
 
 1. **Does `solve_cubic` get a corpus id and a conformance subject?** `PHASE2.md` §6's status row
    says "no corpus id and no conformance subject yet". Every item above is an accuracy claim, and
