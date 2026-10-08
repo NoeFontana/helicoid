@@ -30,7 +30,10 @@ nalgebra's `SymmetricEigen` reads 5–13 on all of them.
    - `v1` is that of `A − l1 I`, projected orthogonal to the anchor's.
    - The third closes the frame with `det = +1`: `v0 = v1 × v2` when anchored on `l2`, and
      `v2 = v0 × v1` when anchored on `l0`. It is one cross product, signed by the mask.
-2. Where `l2 − l1 ≥ l1 − l0` the result is **bit-identical** to the frame anchored on `l2`.
+2. **The closing vector is not normalised again.** It is the cross product of two unit vectors
+   orthogonal to rounding, so it is unit to `O(u)` and never zero. The `sqrt` and the divisions
+   that renormalised it bought nothing, and the fallback they guarded had the wrong handedness for
+   one of the two anchors.
 3. This answers `0023` open question 2 and nothing else of it. Its questions 1 (a mask beside the
    result) and 4 (scaling) stay open. Its question 3 is answered by `0056`.
 
@@ -86,9 +89,9 @@ are listed; every other stratum is equal or lower.
 | `eig:rank1@f32` | 2.1e7 | **3.5e3** | — |
 
 Latency, `benches/linalg.rs`, `bench-gate --against` a baseline built in this tree, core 5 pinned,
-no other process above 20% CPU (concurrent A/A floor median 0.28%):
-- `f64`: 1.017–1.018 on every row, about 2.7 ns of 164.
-- `f32`: within its floor.
+no other process above 20% CPU: `eig3/gap-1e-8` reads **0.95** at `f64` (157 against 164 ns) and
+within its floor at `f32`. Anchoring alone read 1.017, so decision 2 more than pays for it. Every
+committed corpus row is unchanged by decision 2.
 
 ## Further work
 

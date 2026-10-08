@@ -196,11 +196,10 @@ pub fn eig3<S: Real>(a: &Mat3<S>) -> (Vec3<S>, Mat3<S>) {
     let u1 = unit_or(null_vec(m, l1), w);
     let in_plane = w.scale(w.dot(u1)) + x.scale(x.dot(u1));
     let v1 = unit_or(in_plane, w);
-    // `v0 = v1 x v2` with `va = v2`, `v2 = v0 x v1` with `va = v0`: one cross product, signed.
-    let closing = v1.cross(va);
-    let sign = S::select(top, one, -one);
-    let vc = unit_or(closing.scale(sign), x.scale(sign));
-    let pick = |t: Vec3<S>, f: Vec3<S>| Vector([0, 1, 2].map(|i| S::select(top, t.0[i], f.0[i])));
-    let (v0, v2) = (pick(vc, va), pick(va, vc));
+    // `v0 = v1 x v2` with `va = v2`, `v2 = v0 x v1` with `va = v0`: one cross product, signed. Of
+    // two unit vectors orthogonal to rounding, so unit to `O(u)` and never zero: normalising it
+    // again would cost a `sqrt` and buy nothing.
+    let vc = v1.cross(va).scale(S::select(top, one, -one));
+    let (v0, v2) = (Vec3::blend(top, vc, va), Vec3::blend(top, va, vc));
     (Vector([l0, l1, l2]), Mat3::from_cols([v0, v1, v2]))
 }

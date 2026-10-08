@@ -168,8 +168,9 @@ the formulas.
    the unpaired form cancels there too. There the root is `-q / (w² + p/3 + v²)`, the same root from
    `w³ + v³ = -q` over a sum of positive terms. Over 20 000 one-real-root cubics with `p` and `q`
    log-uniform in `[1e-8, 1e8]`, the pairing alone reads **8.7e19 `u`** on the `p > 0` side and
-   the quotient 10.7; on the `p < 0` side the pairing reads 5.1 and the quotient 9.8. The arm takes
-   each where it is the better, through a lazy branch on the sign of `p`. A stratum,
+   the quotient 10.7; on the `p < 0` side the pairing reads 5.1 and the quotient 9.8. The arm forms
+   both and selects on the sign of `p`, with no branch: the quotient's denominator is at least
+   `|p|/3` either way, and a branch would mispredict on a stream of mixed signs. A stratum,
    `cubic:one-real-small-root`, now draws the regime.
 2. **L2 lands as homogenisation of the monic cubic**, not of the depressed one. Once L3 removes the
    floor, `B` can be as large as the format allows and `B²` overflows before `p` exists. So the
@@ -178,13 +179,21 @@ the formulas.
    quantities of one degree in the scale, and the triple-root test is reached only when both
    summands of `disc` are zero or underflow. So `m = 1` inside a window, `[2^-128, 2^128)` (`f64`)
    or `[2^-8, 2^16)` (`f32`), tested by comparisons, and a cold, out-of-line ladder of two-sided
-   power-of-two steps brings the rest in. No `sqrt` or `cbrt` is spent on the scale.
-3. **L3 lands as written.** A cubic is `a != 0` with `1/a`, `B`, `C`, `D` finite.
+   power-of-two steps brings the rest in. No `sqrt` or `cbrt` is spent on the scale. The window
+   is `[2^-7, 2^16)` at `f32`: from `2^-8`, a `p` that cancels to one ulp has a subnormal `p³/27`.
+   With the floor gone, the single-and-double-root arm can no longer be reached: `p ≥ 0` with
+   `disc` inside the band needs both summands at `+0`. The triple-root test that guarded that arm
+   goes with it, and the remaining case is `∛(−q)`.
+3. **L3 lands, with `a` brought into `1/a`'s range.** A cubic is `a != 0` with `B`, `C`, `D`
+   finite. All four coefficients are first scaled by one power of two whenever `|a|` lies outside
+   `[2^-1020, 2^1020)` (`[2^-124, 2^124)` at `f32`), by a cold ladder behind a window test. That
+   changes no root, so a subnormal `a` or one near the largest finite number is a cubic like any
+   other, and `1/a` is never subnormal.
 4. **L5 does not land**, measured against. The three divisions cost about 20 ns of a 20–60 ns
    solver once L2 is in, in a binary that times both forms side by side. On the corpus they win
    `cubic:triple@f32` (0 against `6.8e4` `u`: `1/a` is inexact for a planted `a`) and lose
-   `cubic:near-double-1e-4` (`3.5e5` against `1.1e5`). `1/a` stays, and with it the subnormal `a`
-   whose reciprocal overflows, which is "not a cubic" (`# Domain`).
+   `cubic:near-double-1e-4` (`3.5e5` against `1.1e5`). `1/a` stays, made safe by decision 3's
+   scaling.
 5. **L4 stays a limit**, documented and pinned (`a_repeated_root_can_be_dropped`). It owes a bench
    to judge its prologue cost, and `benches/linalg.rs` is now that bench.
 
@@ -209,14 +218,17 @@ small-root stratum reads below 1 `u` before too, because the root-set metric is 
 which the complex pair dominates. The quotient's gain is in the small root's *relative* error, the
 `8.7e19 u` above, which no stratum of `0056` scores.
 
-Latency, `benches/linalg.rs`, `bench-gate --against` a baseline built in this tree. Core 5 pinned,
-with no other process above 20% CPU during the run; concurrent A/A floor median 0.7%:
+Latency, `benches/linalg.rs`, against `main` built in this tree, core 5 pinned, no other process
+above 20% CPU. Point ratio (median ns):
 
 | row | `f64` | `f32` |
 |---|---|---|
-| `one-real` | 45.2 → 46.0 ns (1.014) | 27.7 → 34.6 ns (1.25) |
-| `distinct` | 34.6 → 38.6 ns (1.11) | 22.0 → 27.2 ns (1.24) |
-| `triple` | 14.3 → 19.3 ns (1.30) | 12.1 → 16.5 ns (1.37) |
+| `distinct` | 0.99 (34.5) | 0.97 (21.9) |
+| `one-real` | ~1.0 (45.4) | 0.97 (27.7) |
+| `one-real-small-root` | ~1.0 (45.5) | 0.97 (27.8) |
+| `triple` | 1.05 (15.0) | 1.13 (13.3) |
+| `out-of-window` | 7.8 (100; `main` rejected it as "not a cubic" in 12.7) | 7.5 (85; also rejected) |
+| `mixed-six-calls` | 1.41: the `out-of-window` call alone | 1.56: the same |
 
 Two traps cost most of the first attempt, both now in the code's comments:
 - **`homogenise` left to `#[inline]`** was a call returning four values through memory, 10–33 ns.
@@ -229,6 +241,15 @@ None. Question 1 is `0056`'s corpus id. Question 2: the bar is max-domination pe
 `0056`'s committed rows, which are per-row no-regress in both directions. Question 3: the constants
 keep their values, since on the homogenised cubic they compare quantities of one degree in the
 scale. Question 4: two treatments; `eig3` is `0023`'s.
+
+## Further work
+
+1. **A root small against `|B|` still cancels**, in `t − B/3`. For `(x − 1e-8)(x² + 10x + 26)`, the
+   root `1e-8` comes back with a relative error of about `6e-9`, roughly `2.7e7 u`. The norm-wise
+   root-set metric, relative to `‖Z‖`, reads it as a fraction of `u`, and no stratum draws `b ≠ 0`
+   with a small root. One Newton step on the given cubic, or the smallest root from Vieta's
+   `−D / (r₁ r₂)`, would give it relative accuracy. Either is a formula and a record, with a
+   relative-error stratum to gate it.
 
 ## Former open questions
 
