@@ -36,8 +36,6 @@ fn tol<S: Real, const ULPS_LOG2: i32>() -> S {
     }
 }
 
-/// `2^7 u`, the triple-root test.
-const NEAR_ZERO: i32 = 7;
 /// `2^13 u`, the relative band of the discriminant.
 const DISCRIMINANT_BAND: i32 = 13;
 
@@ -46,6 +44,17 @@ const DISCRIMINANT_BAND: i32 = 13;
 fn max<S: Real>(x: S, y: S) -> S {
     S::select(x.lt(y), y, x)
 }
+
+/// [`homogenise`]'s window edges `L`, `H` and their squares and cubes: `s >= L` is `|B| >= L` or
+/// `|C| >= L^2` or `|D| >= L^3`, and `s < H` the same with `<` and `and`.
+const WINDOW_F64: ([f64; 3], [f64; 3]) = (
+    [pow2(-128), pow2(-256), pow2(-384)],
+    [pow2(128), pow2(256), pow2(384)],
+);
+const WINDOW_F32: ([f64; 3], [f64; 3]) = (
+    [pow2(-7), pow2(-14), pow2(-21)],
+    [pow2(16), pow2(32), pow2(48)],
+);
 
 /// `2^k` for the two-sided steps of [`homogenise`], down to the edge of its window: after them the
 /// scale lies in `[2^-127, 2^128)` (`f64`) or `[2^-7, 2^8)` (`f32`).
@@ -80,8 +89,8 @@ fn step<S: Real>(k: f64, (b, c, d, m): (S, S, S, S)) -> (S, S, S, S) {
 ///
 /// What the scaling owes is that neither summand of `disc` over- or underflows: `p` is of the
 /// order `s^2` or, cancelling, at least `u s^2`, and `q` of `s^3`, so a scale `s` in `[2^-128,
-/// 2^128)` (`f64`) or `[2^-8, 2^16)` (`f32`) keeps `p^3` and `q^2` normal, and every tolerance of
-/// the arms compares quantities of one degree in `s`. Inside that window `m = 1` and the cubic is
+/// 2^128)` (`f64`) or `[2^-7, 2^16)` (`f32`) keeps `p^3` and `q^2` normal, and the one tolerance of
+/// the arms, the band, compares quantities of one degree in `s`. Inside that window `m = 1` and the cubic is
 /// untouched; outside it the ladder brings `s` in, as a lazy branch, so a scalar cubic in the window
 /// pays three comparisons per coefficient. Below the smallest normal, and at `B = C = D = 0`, the
 /// scale stays below the window (the ladders sum to `2^896`, `2^120`), which leaves the arithmetic
@@ -90,19 +99,9 @@ fn step<S: Real>(k: f64, (b, c, d, m): (S, S, S, S)) -> (S, S, S, S) {
 // a 14-45 ns solver; inline, the window test is a few comparisons.
 #[inline(always)]
 fn homogenise<S: Real>(b: S, c: S, d: S) -> (S, S, S, S) {
-    // The window's edges `L`, `H` and their squares and cubes: `s >= L` is `|B| >= L` or
-    // `|C| >= L^2` or `|D| >= L^3`, and `s < H` the same with `<` and `and`.
-    let (steps, lo, hi): (&[f64], [f64; 3], [f64; 3]) = match S::PRECISION {
-        Precision::F64 => (
-            &STEPS_F64,
-            [pow2(-128), pow2(-256), pow2(-384)],
-            [pow2(128), pow2(256), pow2(384)],
-        ),
-        Precision::F32 => (
-            &STEPS_F32,
-            [pow2(-8), pow2(-16), pow2(-24)],
-            [pow2(16), pow2(32), pow2(48)],
-        ),
+    let (steps, (lo, hi)): (&[f64], ([f64; 3], [f64; 3])) = match S::PRECISION {
+        Precision::F64 => (&STEPS_F64, WINDOW_F64),
+        Precision::F32 => (&STEPS_F32, WINDOW_F32),
     };
     let ([lo1, lo2, lo3], [hi1, hi2, hi3]) = (lo.map(S::lit), hi.map(S::lit));
     let (ab, ac, ad) = (b.abs(), c.abs(), d.abs());
@@ -121,6 +120,42 @@ fn homogenise<S: Real>(b: S, c: S, d: S) -> (S, S, S, S) {
 #[inline(never)]
 fn ladder<S: Real>(steps: &[f64], start: (S, S, S, S)) -> (S, S, S, S) {
     steps.iter().fold(start, |x, &k| step(k, x))
+}
+
+/// `|a|`'s window for `1/a`: inside it `1/a` is finite and normal, outside it all four coefficients
+/// are scaled by one power of two (`0031` L3), which changes no root.
+const LEADING_F64: (f64, f64, [f64; 2]) = (pow2(-1020), pow2(1020), [pow2(512), pow2(256)]);
+const LEADING_F32: (f64, f64, [f64; 2]) = (pow2(-124), pow2(124), [pow2(64), pow2(32)]);
+
+/// `(a, b, c, d)` times a power of two that brings `|a|` into the window of `1/a`, exact: the same
+/// cubic, so neither a subnormal `a` nor one near the largest finite number loses a cubic to `1/a`
+/// overflowing or going subnormal. A lazy branch around a cold ladder, as [`homogenise`]'s.
+#[inline(always)]
+fn lead<S: Real>(a: S, b: S, c: S, d: S) -> (S, S, S, S) {
+    let (lo, hi, steps) = match S::PRECISION {
+        Precision::F64 => LEADING_F64,
+        Precision::F32 => LEADING_F32,
+    };
+    let aa = a.abs();
+    let inside = S::lit(lo).le(aa).and(aa.lt(S::lit(hi)));
+    S::branch(
+        inside,
+        || (a, b, c, d),
+        || lead_ladder(&steps, (a, b, c, d)),
+    )
+}
+
+/// [`lead`]'s steps, two-sided on `|a|`, out of line for [`ladder`]'s reason.
+#[cold]
+#[inline(never)]
+fn lead_ladder<S: Real>(steps: &[f64], start: (S, S, S, S)) -> (S, S, S, S) {
+    let (one, two) = (S::one(), S::lit(2.0));
+    steps.iter().fold(start, |(a, b, c, d), &k| {
+        let (big, small) = (S::lit(k), S::lit(1.0 / k));
+        let aa = a.abs();
+        let f = S::select(big.le(aa), small, S::select((aa * big).lt(two), big, one));
+        (a * f, b * f, c * f, d * f)
+    })
 }
 
 /// `pi`, correctly rounded at this precision; a `Dual` sees a constant.
@@ -147,10 +182,11 @@ pub(crate) fn pi<S: Real>() -> S {
 /// never `-0`. The order of the slots is that of the arm that produced them; it is not sorted:
 /// three roots come as the phases `k = 0, 1, 2`, largest first up to rounding.
 ///
-/// With `B = b/a`, `C = c/a`, `D = d/a`, the cubic is first homogenised (`0031` L2): `m` is the
-/// power of two with `max(|B|, sqrt|C|, cbrt|D|) / m` in `[1, 2)`, and `x = m y` gives the monic
-/// cubic in `y` with coefficients `B/m`, `C/m^2`, `D/m^3`, every one at most 8 in magnitude and at
-/// least one near 1, all formed exactly. On those, the substitution `y = t - B/(3m)` gives
+/// With `B = b/a`, `C = c/a`, `D = d/a` (`1/a` and three products, after `a`, `b`, `c`, `d` are
+/// scaled by one power of two into `1/a`'s range), the cubic is homogenised (`0031` L2): `x = m y`,
+/// `m` a power of two, gives the monic cubic in `y` with coefficients `B/m`, `C/m^2`, `D/m^3`, formed
+/// exactly, whose scale `max(|B|, sqrt|C|, cbrt|D|)` keeps `p^3` and `q^2` normal (`m = 1` for a
+/// scale in `[2^-128, 2^128)`, `[2^-7, 2^16)` at `f32`). On those, `y = t - B/(3m)` gives
 /// `t^3 + p t + q`, `p = C - B^2/3`, `q = 2 B^3/27 - B C/3 + D` (scaled), and
 /// `disc = q^2/4 + p^3/27` (positive for one real root). With
 /// `band = max(q^2/4, |p^3/27|) 2^-40` (`f64`), the arms are, in this order:
@@ -159,41 +195,39 @@ pub(crate) fn pi<S: Real>() -> S {
 /// |---|---|---|
 /// | one real root | `disc > band` | 0: `w + v` where `p <= 0`, `-q / (w^2 + p/3 + v^2)` where `p > 0`; `w = cbrt(-q/2 + copysign(sqrt disc, -q/2))`, `v = -(p/3)/w` |
 /// | three real roots | `disc < -band` or `p < 0` | 0, 1, 2: `2 r cos(acos(3q / (2 p r)) / 3 - 2 pi k / 3)`, `r = sqrt(-p/3)`, the `acos` argument clamped to `[-1, 1]` |
-/// | triple root | else, and `\|p\| <= max(\|p\|, \|q\|, 1) 2^-46` | 0: `cbrt(-q)` |
-/// | single and double root | else | 0: `3q/p`; 1: `-3q/(2p)`, the double root, once |
+/// | triple root | else | 0: `cbrt(-q)` |
 ///
 /// The one-real-root arm pairs its two cube roots through `w v = -p/3` (`0031` L1): `w` is the one
-/// whose radicand is a sum of like signs, so it never cancels, and `v = -p/(3w)`. Where `p > 0` the
+/// whose radicand is a sum of like signs, so it never cancels, and `v = -(p/3)/w`. Where `p > 0` the
 /// two have opposite signs and their sum cancels for a root small against the scale, so the root
-/// is taken from `w^3 + v^3 = -q` instead, over `w^2 - w v + v^2`, a sum of positive terms.
+/// is taken from `w^3 + v^3 = -q` instead, over `w^2 - w v + v^2`, a sum of positive terms. Both
+/// are formed and one selected, without a branch.
 ///
-/// The last arm is unreachable: with `p >= 0` both summands of `disc` are non-negative, so it lies
-/// within `band` of zero only when both underflow to `+0`, which on the homogenised cubic needs
-/// `|p|` and `|q|` below `2^-46` and the triple-root test takes that. A slot whose value is not
-/// finite is not valid: a root beyond the largest finite number after the `m` scaling.
+/// The triple-root arm is the only other case: with `p >= 0` both summands of `disc` are
+/// non-negative, so `disc` lies within `band` of zero only when both are `+0`, which on the
+/// homogenised cubic is `p` and `q` zero or below about `2^-340` (`f64`), a triple root of the
+/// scale. A slot whose value is not finite is not valid: a root beyond the largest finite number
+/// after the `m` scaling.
 ///
 /// # Tolerances
 ///
-/// Two thresholds are powers of two, exact at both precisions, a fixed multiple of the unit
-/// roundoff `u` (`2^-53`, `2^-24`) (`0017`), and both compare quantities of the homogenised cubic,
-/// so they are relative to the cubic's own scale (`0031`):
+/// The one threshold is a power of two, exact at both precisions, a fixed multiple of the unit
+/// roundoff `u` (`2^-53`, `2^-24`) (`0017`), relative to the two summands of `disc` (`0031`):
 ///
 /// | threshold | multiple | `f64` | `f32` |
 /// |---|---|---|---|
 /// | relative discriminant band | `2^13 u` | `2^-40` | `2^-11` |
-/// | relative triple-root test | `2^7 u` | `2^-46` | `2^-17` |
 ///
-/// Changing one is a changelog line naming this function.
+/// Changing it is a changelog line naming this function.
 ///
 /// # Domain
 ///
 /// Every input is legal and nothing is asserted (`docs/API.md` R4, R6): the mask is the report. A
-/// non-finite coefficient, `a = 0`, and an `a` so small that `1/a` or one of `b/a`, `c/a`, `d/a`
-/// overflows (a subnormal `a` below about `5.6e-309`, `2.9e-39` at `f32`, whatever `b`, `c`, `d`)
-/// are not a cubic and give no valid slot; there is no fallback to a quadratic, as `a -> 0` sends a
-/// root to infinity (`0031` L3). Scaling every coefficient by the same factor changes no root and
-/// no mask, at both precisions, down to a scale `max(|B|, sqrt|C|, cbrt|D|)` at the smallest
-/// normal.
+/// non-finite coefficient, `a = 0`, and one of `b/a`, `c/a`, `d/a` overflowing are not a cubic and
+/// give no valid slot; there is no fallback to a quadratic, as `a -> 0` sends a root to infinity
+/// (`0031` L3). Scaling every coefficient by the same power of two changes no root and no mask, at
+/// both precisions, for every finite nonzero `a` and down to a scale `max(|B|, sqrt|C|, cbrt|D|)` at
+/// the smallest normal.
 ///
 /// The formulas are not backward stable near a multiple root. A double root is found to about
 /// `sqrt(u)` and a triple root to `u^(1/3)` of the scale, and a complex pair whose imaginary part is
@@ -230,10 +264,11 @@ pub fn solve_cubic<S: Real>(a: S, b: S, c: S, d: S) -> (Vec3<S>, [S::Mask; 3]) {
     let (zero, one) = (S::zero(), S::one());
     let (two, three) = (S::lit(2.0), S::lit(3.0));
 
-    // `1/a` and three products, not three divisions (`0031` L5, measured against).
+    // `1/a` and three products, not three divisions (`0031` L5, measured against), after `a` is
+    // brought into `1/a`'s range.
     let usable = is_finite(a).and(zero.lt(a.abs()));
-    let safe_a = S::select(usable, a, one);
-    let inv_a = one / safe_a;
+    let (a, b, c, d) = lead(S::select(usable, a, one), b, c, d);
+    let inv_a = one / a;
     let (big_b, big_c, big_d) = (b * inv_a, c * inv_a, d * inv_a);
     let is_cubic = usable
         .and(is_finite(big_b))
@@ -254,20 +289,9 @@ pub fn solve_cubic<S: Real>(a: S, b: S, c: S, d: S) -> (Vec3<S>, [S::Mask; 3]) {
     let term_p = p * p * p / S::lit(27.0);
     let disc = term_q + term_p;
     let band = max(term_q, term_p.abs()) * tol::<S, DISCRIMINANT_BAND>();
-    let p_scale = max(max(p.abs(), q.abs()), one);
 
     let one_root = band.lt(disc);
     let three_roots = one_root.not().and(disc.lt(-band).or(p.lt(zero)));
-    let repeated = one_root.not().and(three_roots.not());
-    let triple = p.abs().le(p_scale * tol::<S, NEAR_ZERO>());
-    // The fourth arm is unreachable on the homogenised cubic, and this is where that claim is
-    // executable rather than prose: `repeated` forces `p >= 0`, so both summands of `disc` are
-    // non-negative and `fl(term_q + term_p) >= max(term_q, term_p)`, so `disc <= band` only when
-    // both are `+0`, which needs `|p|` far below the triple-root test's `2^-46`.
-    debug_assert!(
-        !repeated.and(triple.not()).any(),
-        "solve_cubic: the single-and-double-root arm became reachable"
-    );
 
     let t: [S; 3] = S::branch(
         one_root,
@@ -276,14 +300,15 @@ pub fn solve_cubic<S: Real>(a: S, b: S, c: S, d: S) -> (Vec3<S>, [S::Mask; 3]) {
             // one has `disc > band >= 0`, so `w != 0` either way and `v` is safe. Where `p > 0`, `w`
             // and `v` have opposite signs and `w + v` cancels when the root is small against the
             // scale, so the root is `-q / (w^2 - w v + v^2)`, a sum of positive terms: the same
-            // root, from `w^3 + v^3 = -q`. Its denominator is at least `|p|/3` in every lane.
+            // root, from `w^3 + v^3 = -q`. Its denominator is at least `|p|/3` in every lane, so
+            // both are formed and one selected: a `p` of either sign costs no misprediction.
             let root_disc = S::select(one_root, disc, one).sqrt();
             let half = S::lit(-0.5) * q;
             let third = p / three;
             let w = (half + root_disc.copysign(half)).cbrt();
             let v = -third / w;
-            let t = S::branch(zero.lt(p), || -q / (w * w + third + v * v), || w + v);
-            [t, zero, zero]
+            let quotient = -q / (w * w + third + v * v);
+            [S::select(zero.lt(p), quotient, w + v), zero, zero]
         },
         || {
             S::branch(
@@ -304,23 +329,14 @@ pub fn solve_cubic<S: Real>(a: S, b: S, c: S, d: S) -> (Vec3<S>, [S::Mask; 3]) {
                     // bit-identical (`0052`, `0022`), so this drops three kernels and no bit.
                     core::array::from_fn(|k| two_r * (third - step * S::lit(k as f64)).cos())
                 },
-                || {
-                    S::branch(
-                        triple,
-                        || [(-q).cbrt(), zero, zero],
-                        || {
-                            let p = S::select(triple, one, p);
-                            [three * q / p, S::lit(-1.5) * q / p, zero]
-                        },
-                    )
-                },
+                || [(-q).cbrt(), zero, zero],
             )
         },
     );
 
     let active = [
         is_cubic,
-        is_cubic.and(three_roots.or(repeated.and(triple.not()))),
+        is_cubic.and(three_roots),
         is_cubic.and(three_roots),
     ];
     let slot = |k: usize| {

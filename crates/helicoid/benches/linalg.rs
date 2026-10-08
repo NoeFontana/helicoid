@@ -58,13 +58,26 @@ impl Fixture for f32 {
     }
 }
 
-/// `(name, a, b, c, d)`.
-const CUBICS: &[(&str, [f64; 4])] = &[
-    ("distinct", [1.0, -6.0, 11.0, -6.0]),
-    ("one-real", [1.0, 1.0, 1.0, 1.0]),
-    ("one-real-small-root", [1.0, 0.0, 1.0, 1e-6]),
-    ("triple", [1.0, -6.0, 12.0, -8.0]),
-];
+/// `(name, a, b, c, d)`: each arm of `solve_cubic`, the one-root arm at both signs of `p`, and a
+/// cubic outside the homogenisation window (`(x - 1e40)(x - 2e40)(x - 3e40)` at `f64`, `1e6` at
+/// `f32`), whose cold ladder the others never reach.
+fn cubics<S: Real>() -> [(&'static str, [f64; 4]); 6] {
+    let far = match S::PRECISION {
+        helicoid_linalg::Precision::F64 => 1e40,
+        helicoid_linalg::Precision::F32 => 1e6,
+    };
+    [
+        ("distinct", [1.0, -6.0, 11.0, -6.0]),
+        ("one-real", [1.0, 1.0, 1.0, 1.0]),
+        ("one-real-p-negative", [1.0, 0.0, -3.0, 3.0]),
+        ("one-real-small-root", [1.0, 0.0, 1.0, 1e-6]),
+        ("triple", [1.0, -6.0, 12.0, -8.0]),
+        (
+            "out-of-window",
+            [1.0, -6.0 * far, 11.0 * far * far, -6.0 * far * far * far],
+        ),
+    ]
+}
 
 /// `Q diag(λ) Qᵀ`, `Q` the rotation by `1` rad about `(1, 2, 2)/3`, rounded once at `f64`.
 fn sym<S: Fixture>(lambda: [f64; 3]) -> Mat3<S> {
@@ -96,12 +109,21 @@ const SPECTRA: &[(&str, [f64; 3])] = &[
 ];
 
 fn rows<S: Fixture>(g: &mut BenchmarkGroup<'_, WallTime>) {
-    for &(name, c) in CUBICS {
-        let [a, b, c, d] = c.map(S::of);
+    let all = cubics::<S>().map(|(name, c)| (name, c.map(S::of)));
+    for (name, [a, b, c, d]) in all {
         g.bench_function(format!("solve_cubic/{name}"), |bench| {
             bench.iter(|| cubic_of(black_box(a), black_box(b), black_box(c), black_box(d)));
         });
     }
+    // Every fixture in turn, so a branch on the arm or on the sign of `p` is taken both ways: the
+    // cost a caller with mixed cubics pays, six calls a row, that the rows above predict perfectly.
+    g.bench_function("solve_cubic/mixed-six-calls", |bench| {
+        bench.iter(|| {
+            for (_, [a, b, c, d]) in black_box(&all) {
+                black_box(cubic_of(*a, *b, *c, *d));
+            }
+        });
+    });
     for &(name, lambda) in SPECTRA {
         let a = sym::<S>(lambda);
         g.bench_function(format!("eig3/{name}"), |b| {

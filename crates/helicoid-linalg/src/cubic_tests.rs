@@ -93,12 +93,18 @@ fn reference_cases<S: Lane>() {
     for c in [[1e-30; 4], [1e30; 4]] {
         same(c, &[-1.0]);
     }
-    // A subnormal `a` whose reciprocal overflows is not a cubic (`# Domain`).
-    let subnormal = match S::PRECISION {
-        Precision::F64 => 1e-310,
-        Precision::F32 => 1e-40,
+    // A subnormal `a` is a cubic: `a`, `b`, `c`, `d` are scaled together into `1/a`'s range first,
+    // and so is an `a` near the largest finite number, where `1/a` would be subnormal.
+    let (tiny, huge) = match S::PRECISION {
+        Precision::F64 => (1e-310, 1e307),
+        Precision::F32 => (1e-40, 3e37),
     };
-    assert!(valid::<S>([subnormal; 4]).is_empty());
+    same([tiny; 4], &[-1.0]);
+    same([huge; 4], &[-1.0]);
+    same(
+        [huge, -6.0 * huge, 11.0 * huge, -6.0 * huge],
+        &[1.0, 2.0, 3.0],
+    );
     let big = valid::<S>([1e-20, 1.0, 2.0, 3.0]);
     assert!(
         (big[0] / -1e20 - 1.0).abs() < 1e-6 && big[1..].iter().all(|x| x.abs() < 1e-6 * 1e20),

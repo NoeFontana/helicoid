@@ -564,22 +564,26 @@ bound is that of the composition (Thm 10.4, §15.4).
 `solve_cubic`'s formulas ([`0031`](./decisions/0031-what-the-cubic-port-inherits-from-omnisac.md)); its
 arms and tolerances are the rustdoc's table.
 
-- **Monic form.** $B = b\cdot(1/a)$, $C = c\cdot(1/a)$, $D = d\cdot(1/a)$; the cubic is one when
-  $a \ne 0$ and $1/a$, $B$, $C$, $D$ are finite. There is no floor on $a$.
+- **Monic form.** $a$, $b$, $c$, $d$ are first scaled by one power of two when $\lvert a\rvert$ lies
+  outside $[2^{-1020}, 2^{1020})$ ($[2^{-124}, 2^{124})$ at `f32`), which changes no root; then
+  $B = b\cdot(1/a)$, $C = c\cdot(1/a)$, $D = d\cdot(1/a)$. The cubic is one when $a \ne 0$ and
+  $B$, $C$, $D$ are finite. There is no floor on $a$.
 - **Homogenisation.** With $s = \max(\lvert B\rvert, \lvert C\rvert^{1/2}, \lvert D\rvert^{1/3})$ and
   $m$ a power of two, $x = m y$ gives $y^3 + (B/m)\,y^2 + (C/m^2)\,y + D/m^3$, formed exactly. $m = 1$
-  while $s \in [2^{-128}, 2^{128})$ (`f64`), $[2^{-8}, 2^{16})$ (`f32`), where neither $p^3$ nor
+  while $s \in [2^{-128}, 2^{128})$ (`f64`), $[2^{-7}, 2^{16})$ (`f32`), where neither $p^3$ nor
   $q^2$ can over- or underflow; outside, two-sided power-of-two steps bring $s$ in. Every comparison
   is on an exact power-of-two multiple of a coefficient, so no $\sqrt{\ }$ or $\sqrt[3]{\ }$ is
   taken and scaling the cubic by $2^k$ scales its roots by $2^k$ exactly.
 - **Depressed cubic.** $y = t - B/3$ gives $t^3 + p\,t + q$, $p = C - B^2/3$,
   $q = 2B^3/27 - BC/3 + D$, $\Delta = q^2/4 + p^3/27$.
 - **One real root** ($\Delta$ above its band). $w = \sqrt[3]{-q/2 + \operatorname{copysign}(\sqrt\Delta, -q/2)}$,
-  a sum of like signs, and $v = -(p/3)/w$ from $w v = -p/3$. The root is $w + v$ where
+  a sum of like signs, and $v = -(p/3)/w$ from $w v = -p/3$. Both of the following are formed and
+  one selected, without a branch. The root is $w + v$ where
   $p \le 0$, where the two have one sign, and $-q / (w^2 + p/3 + v^2)$ where $p > 0$: the same root
   from $w^3 + v^3 = -q$ over $w^2 - wv + v^2$, a sum of positive terms, where $w + v$ cancels for a
   root small against $s$.
 - **Three real roots** ($\Delta$ below its band, or $p < 0$): $2r\cos(\arccos(3q/(2pr))/3 - 2\pi k/3)$,
-  $r = \sqrt{-p/3}$, the argument clamped to $[-1, 1]$. **Triple root:** $\sqrt[3]{-q}$.
+  $r = \sqrt{-p/3}$, the argument clamped to $[-1, 1]$. **Otherwise** ($p \ge 0$ and both summands
+  of $\Delta$ zero or underflowed: a triple root of the scale) $\sqrt[3]{-q}$.
 - **Each root** is $(t - B/3)\cdot m$.
 
