@@ -1,4 +1,4 @@
-//! `so3::{gamma1, gamma2, gamma_apply_jacobian}` (`0064`, `docs/PHASE5.md` §4) against their
+//! `so3::{gamma1, gamma2, gamma_apply_jacobians}` (`0064`, `docs/PHASE5.md` §4) against their
 //! definitions: `Γ₁` is `J_l` to the bit, `Γ₂` at zero and its identities GG.2(b), (d), and the
 //! directional Jacobian against `reference::gamma_apply` on `Dual<_, 3>`, the §14 twin.
 //!
@@ -15,7 +15,7 @@ use helicoid_linalg::{Dual, Mat3, Precision, Real, Vec3, Vector};
 
 use crate::laws::{e, worst};
 use crate::reference::gamma_apply;
-use crate::so3::{gamma1, gamma2, gamma_apply_jacobian};
+use crate::so3::{gamma1, gamma2, gamma_apply_jacobians};
 use crate::{LieGroup, SO3Tangent, SO3};
 
 /// The upper ends of the `θ` bands the bounds are stated on.
@@ -91,12 +91,12 @@ fn twin<S: Real>(m: usize, phi: &SO3Tangent<S>, v: Vec3<S>) -> ([f64; 3], [f64; 
     )
 }
 
-/// The worst `(value, Jacobian)` error per band of `gamma_apply_jacobian::<M>` against the twin.
+/// The worst `(value, Jacobian)` error per band of `gamma_apply_jacobians::<M>` against the twin.
 fn twin_errors<const M: usize, S: Real>() -> [(f64, f64); 4] {
     let mut out = [(0.0, 0.0); 4];
     for (phi, v) in draws(20_000) {
         let (p, w) = (tan::<S>(phi), Vector(v.map(at::<S>)));
-        let (gv, j) = gamma_apply_jacobian::<M, S>(&p, w);
+        let (gv, j, _) = gamma_apply_jacobians::<M, S>(&p, w);
         let (want_v, want_j) = twin(M, &p, w);
         let b = band(&phi);
         out[b].0 = worst(out[b].0, e::<S>(&f64s(gv), &want_v));
@@ -124,27 +124,27 @@ fn assert_within(got: [(f64, f64); 4], bounds: [(f64, f64); 4], what: &str) {
 }
 
 #[test]
-fn gamma_apply_jacobian_matches_reference_m1_f64() {
+fn gamma_apply_jacobians_matches_reference_m1_f64() {
     assert_within(twin_errors::<1, f64>(), BOUNDS_1_F64, "M = 1, f64");
 }
 
 #[test]
-fn gamma_apply_jacobian_matches_reference_m2_f64() {
+fn gamma_apply_jacobians_matches_reference_m2_f64() {
     assert_within(twin_errors::<2, f64>(), BOUNDS_2_F64, "M = 2, f64");
 }
 
 #[test]
-fn gamma_apply_jacobian_matches_reference_m1_f32() {
+fn gamma_apply_jacobians_matches_reference_m1_f32() {
     assert_within(twin_errors::<1, f32>(), BOUNDS_1_F32, "M = 1, f32");
 }
 
 #[test]
-fn gamma_apply_jacobian_matches_reference_m2_f32() {
+fn gamma_apply_jacobians_matches_reference_m2_f32() {
     assert_within(twin_errors::<2, f32>(), BOUNDS_2_F32, "M = 2, f32");
 }
 
 /// `Γ₂`'s matrix against the twin's columns `Γ₂ e_k`, and `Γ_M v` from the matrices against the
-/// vector form `gamma_apply_jacobian` evaluates: the worst per band, `(matrix, value)`.
+/// vector form `gamma_apply_jacobians` evaluates: the worst per band, `(matrix, value)`.
 fn matrix_errors<const M: usize, S: Real>() -> [(f64, f64); 4] {
     let mut out = [(0.0, 0.0); 4];
     for (phi, v) in draws(20_000) {
@@ -160,7 +160,7 @@ fn matrix_errors<const M: usize, S: Real>() -> [(f64, f64); 4] {
         });
         let b = band(&phi);
         out[b].0 = worst(out[b].0, e::<S>(&cols(&g), &want));
-        let (gv, _) = gamma_apply_jacobian::<M, S>(&p, w);
+        let (gv, _, _) = gamma_apply_jacobians::<M, S>(&p, w);
         out[b].1 = worst(out[b].1, e::<S>(&f64s(gv), &f64s(g * w)));
     }
     out
@@ -191,6 +191,43 @@ fn gamma1_is_jl_to_the_bit() {
     }
 }
 
+/// `gamma_apply_jacobians`' third output is `gamma1` or `gamma2` to the bit, and its value is the
+/// vector form's: the `Dual<S, 1>` coefficients carry the plain evaluation's bits (`0003`, `0066`).
+fn third_output_is_the_matrix_at<S: Real>() {
+    let bits = |m: &Mat3<S>| cols(m).map(f64::to_bits);
+    for (phi, v) in draws(5_000) {
+        let (p, w) = (tan::<S>(phi), Vector(v.map(at::<S>)));
+        let (_, _, g1) = gamma_apply_jacobians::<1, S>(&p, w);
+        let (_, _, g2) = gamma_apply_jacobians::<2, S>(&p, w);
+        assert_eq!(bits(&g1), bits(&gamma1(&p)), "Γ₁ at {phi:?}");
+        assert_eq!(bits(&g2), bits(&gamma2(&p)), "Γ₂ at {phi:?}");
+    }
+}
+
+#[test]
+fn the_third_output_is_gamma_to_the_bit() {
+    third_output_is_the_matrix_at::<f64>();
+    third_output_is_the_matrix_at::<f32>();
+}
+
+/// `reference::gamma_apply` takes `m` while `m!` is exact at `S` (`0066`): `13!` is a binary32 and
+/// `14!` is not.
+#[cfg(debug_assertions)]
+mod twin_domain {
+    use super::*;
+
+    #[test]
+    fn thirteen_is_in_the_binary32_domain() {
+        let _ = gamma_apply::<f32>(13, &tan::<f32>([0.1, 0.0, 0.0]), Vector([1.0; 3]));
+    }
+
+    #[test]
+    #[should_panic(expected = "reference::gamma_apply")]
+    fn fourteen_is_not() {
+        let _ = gamma_apply::<f32>(14, &tan::<f32>([0.1, 0.0, 0.0]), Vector([1.0; 3]));
+    }
+}
+
 /// `Γ₂(0) = ½I` exactly (GG.2(d)), `½I + bW` with `W` subnormal at a subnormal `φ`, and the
 /// directional Jacobian at both is `−v^/(M+1)!` (GG.5(b)) to the rounding of `1/(M+1)!`, finite
 /// (GG.6(b)).
@@ -216,8 +253,8 @@ fn gamma_at_zero_is_the_leading_term() {
                 0.0,
             ]
         };
-        let (_, j1) = gamma_apply_jacobian::<1, f64>(&p, Vector(v));
-        let (_, j2) = gamma_apply_jacobian::<2, f64>(&p, Vector(v));
+        let (_, j1, _) = gamma_apply_jacobians::<1, f64>(&p, Vector(v));
+        let (_, j2, _) = gamma_apply_jacobians::<2, f64>(&p, Vector(v));
         // `−v^` column-major: column `c` is `−e_c × v`... written out as `v × e_c`.
         for (got, want) in [(cols(&j1), hat(-0.5)), (cols(&j2), hat(-1.0 / 6.0))] {
             for (g, w) in got.iter().zip(want) {

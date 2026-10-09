@@ -57,7 +57,7 @@ pub use chart::{Chart, LeftChart, Lifted, Manifold, RightChart, WithChart};
 pub use coeffs::sweep as __sweep;
 pub use coeffs::{sinc, sinc_value};
 pub use dualmat::SEn3Jac;
-pub use gaussian::Gaussian;
+pub use gaussian::{Gaussian, Whitener};
 pub use product::{Product, ProductJac};
 pub use quat::Quat;
 pub use rn::{Rn, RnJac, RnTangent};
