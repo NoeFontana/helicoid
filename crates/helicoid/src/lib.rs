@@ -34,6 +34,7 @@
 // SO(3) is the kernel's first consumer (`exp_coeffs`, `jr_coeffs`, `jr_inv_coeff`, `log_ratio`),
 // so the `cfg` the module carried until this point is gone: a default build reaches every grouped
 // entry point through `SO3`. `q_coeffs` is SE_N(3)'s and stays gated inside until §5 lands.
+mod chart;
 mod coeffs;
 mod dualmat;
 mod product;
@@ -47,6 +48,7 @@ mod so3;
 mod so3_tests;
 mod traits;
 
+pub use chart::{Chart, LeftChart, Lifted, Manifold, RightChart, WithChart};
 #[cfg(feature = "__sweep")]
 #[doc(hidden)]
 pub use coeffs::sweep as __sweep;
@@ -72,6 +74,8 @@ mod readme {}
 #[cfg(test)]
 extern crate std;
 
+#[cfg(test)]
+mod chart_tests;
 #[cfg(test)]
 mod dualmat_tests;
 #[cfg(test)]

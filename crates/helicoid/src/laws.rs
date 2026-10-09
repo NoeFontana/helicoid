@@ -8,7 +8,7 @@
 //! measured run. Group elements are compared through `Log(a ⊖_R b)`: a group has no equality (R4),
 //! so `Log` is trusted wherever a group's tests do not check it first.
 
-use crate::{Jac, Left, LieGroup, Right, Side, Tangent};
+use crate::{Chart, Jac, Left, LieGroup, Right, Side, Tangent};
 use core::array;
 use helicoid_linalg::{Dual, Matrix, Precision, Real};
 use proptest::prelude::*;
@@ -995,6 +995,182 @@ macro_rules! laws_for {
     };
 }
 pub(crate) use laws_for;
+
+// Charts (`docs/PHASE5.md` §1, `0060`). The laws take the chart as a type and read everything
+// else from it, so a chart that is not a group's (S²) reuses them with its own distance.
+
+/// The names of [`chart_legs`]'s legs, in order.
+pub(crate) const CHART_LEGS: [&str; 4] = [
+    "retract(0)",
+    "local(retract)",
+    "retract(local)",
+    "local(base)",
+];
+
+/// CH.2's round trips at a base `x`: `retract(0) = x`, `local(retract(δ)) = δ` (`θ < π`),
+/// `retract(local(y)) = y` (every `y`, CH.4(a)), `local(x) = 0`. Points are compared by [`gerr`],
+/// tangents by [`terr`].
+pub(crate) fn chart_legs<S, G, C, const D: usize>(x: &G, delta: &G::Tangent, y: &G) -> [f64; 4]
+where
+    S: Real,
+    G: LieGroup<S>,
+    C: Chart<S, G, Tangent = G::Tangent>,
+{
+    let c = C::at(x);
+    let zero = <G::Tangent as Tangent<S>>::zero();
+    [
+        gerr::<S, G, D>(&c.retract(&zero), x),
+        terr::<S, G, D>(&c.local(&c.retract(delta)), delta),
+        gerr::<S, G, D>(&c.retract(&c.local(y)), y),
+        terr::<S, G, D>(&c.local(x), &zero),
+    ]
+}
+
+/// The tangent whose dense components are `v`, each a `Dual` constant.
+fn lift_dual<S: Real, T: Tangent<Dual<S, D>>, const D: usize>(v: &[f64; D]) -> T {
+    T::read_dense(&v.map(|x| Dual::constant(S::lit(x))))
+}
+
+/// The tangent `η` whose lane `i` is `∂/∂η_i`, valued `0`.
+fn seeded<S: Real, T: Tangent<Dual<S, D>>, const D: usize>() -> T {
+    let seeds: [Dual<S, D>; D] = array::from_fn(|i| Dual::variable(S::zero(), i));
+    T::read_dense(&seeds)
+}
+
+/// The `D x D` in a tangent's derivative lanes, column-major as [`dense`] reads a `Jac`.
+fn lanes<S: Real, T: Tangent<Dual<S, D>>, const D: usize>(t: &T) -> [[f64; D]; D] {
+    let mut buf = [Dual::constant(S::zero()); D];
+    t.write_dense(&mut buf);
+    array::from_fn(|col| array::from_fn(|row| buf[row].d[col].value_f64()))
+}
+
+/// The value lanes of a chart Jacobian as a dense `f64` matrix, column-major.
+fn dense_value<S: Real, T: Tangent<Dual<S, D>>, J: Jac<Dual<S, D>, T>, const D: usize>(
+    j: &J,
+) -> [[f64; D]; D] {
+    dense::<Dual<S, D>, T, J, D>(j).map(|col| col.map(|x| x.value_f64()))
+}
+
+/// `a b` for column-major `D x D` matrices (`m[c][r]`).
+fn matmul<const D: usize>(a: &[[f64; D]; D], b: &[[f64; D]; D]) -> [[f64; D]; D] {
+    array::from_fn(|c| array::from_fn(|r| (0..D).map(|k| a[k][r] * b[c][k]).sum()))
+}
+
+/// `C`'s two Jacobians against `Dual`, CH.1 read literally: `retract_jacobian(δ)` is the lanes of
+/// `C::at(y).local(c.retract(δ + η))` with `y = c.retract(δ)`, and `local_jacobian(y')` those of
+/// `c.local(C::at(y').retract(η))`. The point a chart is frozen at is built from constants, so
+/// only `η` carries lanes. The error is [`e`]'s, in `u`.
+pub(crate) fn chart_jacobians_match_dual<S, G, C, const D: usize>(
+    a: &[f64; D],
+    b: &[f64; D],
+    c: &[f64; D],
+) -> f64
+where
+    S: Real,
+    G: LieGroup<Dual<S, D>>,
+    C: Chart<Dual<S, D>, G, Tangent = G::Tangent>,
+{
+    let x = G::exp(&lift_dual::<S, G::Tangent, D>(a));
+    let (delta, other) = (
+        lift_dual::<S, G::Tangent, D>(b),
+        lift_dual::<S, G::Tangent, D>(c),
+    );
+    let eta = seeded::<S, G::Tangent, D>();
+    let chart = C::at(&x);
+    let y = chart.retract(&delta);
+    let rj = lanes::<S, G::Tangent, D>(&C::at(&y).local(&chart.retract(&delta.add(&eta))));
+    let y2 = chart.retract(&other);
+    let lj = lanes::<S, G::Tangent, D>(&chart.local(&C::at(&y2).retract(&eta)));
+    let want_rj = dense_value::<S, G::Tangent, C::Jac, D>(&chart.retract_jacobian(&delta));
+    let want_lj = dense_value::<S, G::Tangent, C::Jac, D>(&chart.local_jacobian(&y2));
+    worst(
+        e::<Dual<S, D>>(want_rj.as_flattened(), rj.as_flattened()),
+        e::<Dual<S, D>>(want_lj.as_flattened(), lj.as_flattened()),
+    )
+}
+
+/// `DΦ(δ)` of the transition `Φ = C2::at(x).local ∘ C1::at(x).retract` (CH.6), by `Dual`.
+pub(crate) fn transition_dual<S, G, C1, C2, const D: usize>(
+    x: &G,
+    delta: &G::Tangent,
+) -> [[f64; D]; D]
+where
+    S: Real,
+    G: LieGroup<Dual<S, D>>,
+    C1: Chart<Dual<S, D>, G, Tangent = G::Tangent>,
+    C2: Chart<Dual<S, D>, G, Tangent = G::Tangent>,
+{
+    let eta = seeded::<S, G::Tangent, D>();
+    lanes::<S, G::Tangent, D>(&C2::at(x).local(&C1::at(x).retract(&delta.add(&eta))))
+}
+
+/// `DΦ(0)` by `Dual` against a closed form `closed` (`Ad_X` from right to left, CH.6;
+/// `SE3::chart_transition` between the SE(3) charts, CH.4(b)).
+pub(crate) fn transition_matches<S, G, C1, C2, J, const D: usize>(
+    a: &[f64; D],
+    closed: impl Fn(&G) -> J,
+) -> f64
+where
+    S: Real,
+    G: LieGroup<Dual<S, D>>,
+    C1: Chart<Dual<S, D>, G, Tangent = G::Tangent>,
+    C2: Chart<Dual<S, D>, G, Tangent = G::Tangent>,
+    J: Jac<Dual<S, D>, G::Tangent>,
+{
+    let x = G::exp(&lift_dual::<S, G::Tangent, D>(a));
+    let zero = <G::Tangent as Tangent<Dual<S, D>>>::zero();
+    let got = transition_dual::<S, G, C1, C2, D>(&x, &zero);
+    let want = dense_value::<S, G::Tangent, J, D>(&closed(&x));
+    e::<Dual<S, D>>(want.as_flattened(), got.as_flattened())
+}
+
+/// CH.6's two identities for charts `C1`, `C2` at `x`, `δ`, `Y = C1::at(x).retract(δ)`:
+/// `rj₂(Φ(δ)) DΦ(δ) = Ψ_Y rj₁(δ)` and `lj₂(Y) Ψ_Y = DΦ(δ) lj₁(Y)`, with `DΦ` and `Ψ_Y = DΦ_Y(0)`
+/// taken from the charts by [`transition_dual`]: nothing here is a closed form, so a pair is checked
+/// without stating its transition.
+pub(crate) fn change_of_chart<S, G, C1, C2, const D: usize>(a: &[f64; D], b: &[f64; D]) -> f64
+where
+    S: Real,
+    G: LieGroup<Dual<S, D>>,
+    C1: Chart<Dual<S, D>, G, Tangent = G::Tangent>,
+    C2: Chart<Dual<S, D>, G, Tangent = G::Tangent>,
+{
+    let x = G::exp(&lift_dual::<S, G::Tangent, D>(a));
+    let delta = lift_dual::<S, G::Tangent, D>(b);
+    let zero = <G::Tangent as Tangent<Dual<S, D>>>::zero();
+    let (c1, c2) = (C1::at(&x), C2::at(&x));
+    let y = c1.retract(&delta);
+    let dphi = transition_dual::<S, G, C1, C2, D>(&x, &delta);
+    let psi = transition_dual::<S, G, C1, C2, D>(&y, &zero);
+    let phi = c2.local(&y);
+    let rj1 = dense_value::<S, G::Tangent, C1::Jac, D>(&c1.retract_jacobian(&delta));
+    let rj2 = dense_value::<S, G::Tangent, C2::Jac, D>(&c2.retract_jacobian(&phi));
+    let lj1 = dense_value::<S, G::Tangent, C1::Jac, D>(&c1.local_jacobian(&y));
+    let lj2 = dense_value::<S, G::Tangent, C2::Jac, D>(&c2.local_jacobian(&y));
+    worst(
+        e::<Dual<S, D>>(
+            matmul(&rj2, &dphi).as_flattened(),
+            matmul(&psi, &rj1).as_flattened(),
+        ),
+        e::<Dual<S, D>>(
+            matmul(&lj2, &psi).as_flattened(),
+            matmul(&dphi, &lj1).as_flattened(),
+        ),
+    )
+}
+
+/// The bounds of the chart laws, in `u`, recorded as [`Bounds`] is: twice the worst of the
+/// measurement, rounded up, `0` where that is `0`.
+pub(crate) struct ChartBounds {
+    /// [`chart_legs`], in [`CHART_LEGS`]'s order.
+    pub(crate) legs: [f64; CHART_LEGS.len()],
+    /// [`chart_jacobians_match_dual`].
+    pub(crate) dual: f64,
+    /// [`transition_matches`] at the pair the tests name.
+    pub(crate) transition: f64,
+    /// [`change_of_chart`] at the same pair.
+    pub(crate) change: f64,
+}
 
 /// The harness's own rules, which no group's laws would show.
 mod self_test {
