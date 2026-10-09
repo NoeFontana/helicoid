@@ -5,7 +5,7 @@
 //! where `local(retract(δ)) = δ` holds (CH.2). The bounds are recorded as described at
 //! [`ChartBounds`], from `measure_charts`.
 
-use crate::laws::{self, ChartBounds, CHART_LEGS};
+use crate::laws::{self, ChartBounds, ChartLegs, CHART_LEGS};
 use crate::{
     Chart, LeftChart, LieGroup, Lifted, Manifold, Product, RightChart, Rn, SEn3, Tangent,
     WithChart, SO3,
@@ -19,7 +19,7 @@ macro_rules! chart_laws_for {
     ($p:ident, $G:ident, $C:ident, $C2:ident, $phi0:expr, $D:literal, $b64:ident, $b32:ident) => {
         mod $p {
             use super::*;
-            chart_laws_for!(@case as_f64, f64, $b64, $G, $C, $D);
+            chart_laws_for!(@case as_f64, f64, $b64.legs, $G, $C, $D);
             chart_laws_for!(@case as_f32, f32, $b32, $G, $C, $D);
 
             type Dl = helicoid_linalg::Dual<f64, $D>;
@@ -80,7 +80,7 @@ macro_rules! chart_laws_for {
             }
         }
     };
-    (@case $m:ident, $S:ty, $B:ident, $G:ident, $C:ident, $D:literal) => {
+    (@case $m:ident, $S:ty, $B:expr, $G:ident, $C:ident, $D:literal) => {
         mod $m {
             use super::*;
 
@@ -97,9 +97,15 @@ macro_rules! chart_laws_for {
                 fn chart_legs(
                     a in laws::sample::<$D>(), b in laws::sample::<$D>(), c in laws::sample::<$D>(),
                 ) {
-                    for ((name, v), bound) in CHART_LEGS.iter().zip(legs(&a, &b, &c)).zip($B.legs) {
+                    for ((name, v), bound) in CHART_LEGS.iter().zip(legs(&a, &b, &c)).zip($B) {
                         laws::within_leg(name, v, bound)?;
                     }
+                }
+                #[test]
+                fn local_with_jacobian_is_the_two_calls(a in laws::sample::<$D>(), c in laws::sample::<$D>()) {
+                    let t = |v: &[f64; $D]| laws::tangent::<S, $G<S>, $D>(v);
+                    let (x, y) = (<$G<S>>::exp(&t(&a)), <$G<S>>::exp(&t(&c)));
+                    proptest::prop_assert!(laws::local_with_jacobian_is_the_two_calls::<S, $G<S>, $C<S>, $D>(&x, &y));
                 }
             }
         }
@@ -124,10 +130,7 @@ const PRODUCT_LEFT_F64: ChartBounds = ChartBounds {
     transition: 7.0,
     change: 11.0,
 };
-const PRODUCT_LEFT_F32: ChartBounds = ChartBounds {
-    legs: [3.0, 13.0, 17.0, 3.0],
-    ..PRODUCT_LEFT_F64
-};
+const PRODUCT_LEFT_F32: ChartLegs = [3.0, 13.0, 17.0, 3.0];
 
 // `product_right`, worst of `measure_charts`: legs `f64` [1.116, 6.06, 8.013, 1.118], `f32` [1.068, 6.102, 7.802, 1.118]; `Dual` 3.489, transition 2.739,
 // change of chart 4.779.
@@ -137,10 +140,7 @@ const PRODUCT_RIGHT_F64: ChartBounds = ChartBounds {
     transition: 6.0,
     change: 10.0,
 };
-const PRODUCT_RIGHT_F32: ChartBounds = ChartBounds {
-    legs: [3.0, 13.0, 16.0, 3.0],
-    ..PRODUCT_RIGHT_F64
-};
+const PRODUCT_RIGHT_F32: ChartLegs = [3.0, 13.0, 16.0, 3.0];
 
 // `rn_left`, worst of `measure_charts`: legs `f64` [0.0, 1.5, 1.5, 0.0], `f32` [0.0, 1.732, 1.5, 0.0]; `Dual` 0.0, transition 0.0,
 // change of chart 0.0.
@@ -150,10 +150,7 @@ const RN_LEFT_F64: ChartBounds = ChartBounds {
     transition: 0.0,
     change: 0.0,
 };
-const RN_LEFT_F32: ChartBounds = ChartBounds {
-    legs: [0.0, 4.0, 3.0, 0.0],
-    ..RN_LEFT_F64
-};
+const RN_LEFT_F32: ChartLegs = [0.0, 4.0, 3.0, 0.0];
 
 // `rn_right`, worst of `measure_charts`: legs `f64` [0.0, 1.5, 1.5, 0.0], `f32` [0.0, 1.732, 1.5, 0.0]; `Dual` 0.0, transition 0.0,
 // change of chart 0.0.
@@ -163,10 +160,7 @@ const RN_RIGHT_F64: ChartBounds = ChartBounds {
     transition: 0.0,
     change: 0.0,
 };
-const RN_RIGHT_F32: ChartBounds = ChartBounds {
-    legs: [0.0, 4.0, 3.0, 0.0],
-    ..RN_RIGHT_F64
-};
+const RN_RIGHT_F32: ChartLegs = [0.0, 4.0, 3.0, 0.0];
 
 // `se23_left`, worst of `measure_charts`: legs `f64` [1.092, 7.412, 12.629, 1.92], `f32` [1.052, 8.154, 10.577, 1.804]; `Dual` 7.239, transition 2.561,
 // change of chart 6.793.
@@ -176,10 +170,7 @@ const SE23_LEFT_F64: ChartBounds = ChartBounds {
     transition: 6.0,
     change: 14.0,
 };
-const SE23_LEFT_F32: ChartBounds = ChartBounds {
-    legs: [3.0, 17.0, 22.0, 4.0],
-    ..SE23_LEFT_F64
-};
+const SE23_LEFT_F32: ChartLegs = [3.0, 17.0, 22.0, 4.0];
 
 // `se23_right`, worst of `measure_charts`: legs `f64` [1.092, 6.188, 8.262, 1.118], `f32` [1.052, 6.16, 8.009, 1.118]; `Dual` 5.896, transition 2.425,
 // change of chart 7.559.
@@ -189,10 +180,7 @@ const SE23_RIGHT_F64: ChartBounds = ChartBounds {
     transition: 5.0,
     change: 16.0,
 };
-const SE23_RIGHT_F32: ChartBounds = ChartBounds {
-    legs: [3.0, 13.0, 17.0, 3.0],
-    ..SE23_RIGHT_F64
-};
+const SE23_RIGHT_F32: ChartLegs = [3.0, 13.0, 17.0, 3.0];
 
 // `se3_left`, worst of `measure_charts`: legs `f64` [1.116, 7.282, 10.193, 1.871], `f32` [1.068, 8.762, 9.949, 1.734]; `Dual` 8.484, transition 3.592,
 // change of chart 6.845.
@@ -202,10 +190,7 @@ const SE3_LEFT_F64: ChartBounds = ChartBounds {
     transition: 8.0,
     change: 14.0,
 };
-const SE3_LEFT_F32: ChartBounds = ChartBounds {
-    legs: [3.0, 18.0, 20.0, 4.0],
-    ..SE3_LEFT_F64
-};
+const SE3_LEFT_F32: ChartLegs = [3.0, 18.0, 20.0, 4.0];
 
 // `se3_right`, worst of `measure_charts`: legs `f64` [1.116, 6.212, 9.106, 1.118], `f32` [1.068, 6.183, 7.984, 1.118]; `Dual` 4.849, transition 3.082,
 // change of chart 7.477.
@@ -215,10 +200,7 @@ const SE3_RIGHT_F64: ChartBounds = ChartBounds {
     transition: 7.0,
     change: 15.0,
 };
-const SE3_RIGHT_F32: ChartBounds = ChartBounds {
-    legs: [3.0, 13.0, 16.0, 3.0],
-    ..SE3_RIGHT_F64
-};
+const SE3_RIGHT_F32: ChartLegs = [3.0, 13.0, 16.0, 3.0];
 
 // `sen3_n3_left`, worst of `measure_charts`: legs `f64` [1.033, 7.911, 12.455, 1.961], `f32` [1.048, 8.756, 10.912, 1.939]; `Dual` 7.914, transition 2.606,
 // change of chart 7.699.
@@ -228,10 +210,7 @@ const SEN3_N3_LEFT_F64: ChartBounds = ChartBounds {
     transition: 6.0,
     change: 16.0,
 };
-const SEN3_N3_LEFT_F32: ChartBounds = ChartBounds {
-    legs: [3.0, 18.0, 22.0, 4.0],
-    ..SEN3_N3_LEFT_F64
-};
+const SEN3_N3_LEFT_F32: ChartLegs = [3.0, 18.0, 22.0, 4.0];
 
 // `sen3_n3_right`, worst of `measure_charts`: legs `f64` [1.033, 6.039, 9.24, 1.118], `f32` [1.048, 6.294, 7.939, 1.118]; `Dual` 5.826, transition 2.346,
 // change of chart 8.021.
@@ -241,10 +220,7 @@ const SEN3_N3_RIGHT_F64: ChartBounds = ChartBounds {
     transition: 5.0,
     change: 17.0,
 };
-const SEN3_N3_RIGHT_F32: ChartBounds = ChartBounds {
-    legs: [3.0, 13.0, 16.0, 3.0],
-    ..SEN3_N3_RIGHT_F64
-};
+const SEN3_N3_RIGHT_F32: ChartLegs = [3.0, 13.0, 16.0, 3.0];
 
 // `so3_left`, worst of `measure_charts`: legs `f64` [1.08, 6.032, 8.162, 1.118], `f32` [1.079, 6.088, 8.644, 1.118]; `Dual` 5.257, transition 3.391,
 // change of chart 7.293.
@@ -254,10 +230,7 @@ const SO3_LEFT_F64: ChartBounds = ChartBounds {
     transition: 7.0,
     change: 15.0,
 };
-const SO3_LEFT_F32: ChartBounds = ChartBounds {
-    legs: [3.0, 13.0, 18.0, 3.0],
-    ..SO3_LEFT_F64
-};
+const SO3_LEFT_F32: ChartLegs = [3.0, 13.0, 18.0, 3.0];
 
 // `so3_right`, worst of `measure_charts`: legs `f64` [1.08, 6.63, 8.27, 1.118], `f32` [1.079, 7.022, 9.074, 1.118]; `Dual` 4.954, transition 3.464,
 // change of chart 6.565.
@@ -267,10 +240,7 @@ const SO3_RIGHT_F64: ChartBounds = ChartBounds {
     transition: 7.0,
     change: 14.0,
 };
-const SO3_RIGHT_F32: ChartBounds = ChartBounds {
-    legs: [3.0, 15.0, 19.0, 3.0],
-    ..SO3_RIGHT_F64
-};
+const SO3_RIGHT_F32: ChartLegs = [3.0, 15.0, 19.0, 3.0];
 
 type So3<S> = SO3<S>;
 type So3R<S> = RightChart<SO3<S>>;

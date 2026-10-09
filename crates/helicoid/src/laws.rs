@@ -999,6 +999,9 @@ pub(crate) use laws_for;
 // Charts (`docs/PHASE5.md` §1, `0060`). The laws take the chart as a type and read everything
 // else from it, so a chart that is not a group's (S²) reuses them with its own distance.
 
+/// One bound per leg of [`chart_legs`].
+pub(crate) type ChartLegs = [f64; CHART_LEGS.len()];
+
 /// The names of [`chart_legs`]'s legs, in order.
 pub(crate) const CHART_LEGS: [&str; 4] = [
     "retract(0)",
@@ -1024,6 +1027,24 @@ where
         gerr::<S, G, D>(&c.retract(&c.local(y)), y),
         terr::<S, G, D>(&c.local(x), &zero),
     ]
+}
+
+/// Whether `local_with_jacobian(y)` is `(local(y), local_jacobian(y))` to the bit, the contract of
+/// every override (`0060` decision 3): a fused path is a cost, never a value.
+pub(crate) fn local_with_jacobian_is_the_two_calls<S, G, C, const D: usize>(x: &G, y: &G) -> bool
+where
+    S: Real,
+    G: LieGroup<S>,
+    C: Chart<S, G, Tangent = G::Tangent>,
+{
+    let c = C::at(x);
+    let (t, j) = c.local_with_jacobian(y);
+    let bits = |v: [f64; D]| v.map(f64::to_bits);
+    let jbits = |m: &C::Jac| {
+        dense::<S, G::Tangent, C::Jac, D>(m).map(|col| col.map(|e| e.value_f64().to_bits()))
+    };
+    bits(dt::<S, G, D>(&t)) == bits(dt::<S, G, D>(&c.local(y)))
+        && jbits(&j) == jbits(&c.local_jacobian(y))
 }
 
 /// The tangent whose dense components are `v`, each a `Dual` constant.
@@ -1159,11 +1180,12 @@ where
     )
 }
 
-/// The bounds of the chart laws, in `u`, recorded as [`Bounds`] is: twice the worst of the
-/// measurement, rounded up, `0` where that is `0`.
+/// The bounds of the chart laws at `f64`, in `u`, recorded as [`Bounds`] is: twice the worst of the
+/// measurement, rounded up, `0` where that is `0`. At `f32` only [`chart_legs`] runs, so its bound
+/// is a bare [`ChartLegs`]: the `Dual` laws differentiate at `f64` alone.
 pub(crate) struct ChartBounds {
     /// [`chart_legs`], in [`CHART_LEGS`]'s order.
-    pub(crate) legs: [f64; CHART_LEGS.len()],
+    pub(crate) legs: ChartLegs,
     /// [`chart_jacobians_match_dual`].
     pub(crate) dual: f64,
     /// [`transition_matches`] at the pair the tests name.
