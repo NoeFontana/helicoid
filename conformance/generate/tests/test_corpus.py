@@ -166,7 +166,14 @@ class BuildTest(unittest.TestCase):
         strata = [s.name for s in FUNCTIONS["coeff_r"].strata]
         self.assertEqual(strata[:29], [*(s.name for s in SCALAR_THETA_STRATA), "q:w0"])
         self.assertEqual(strata[29:], [*(f"{s.name}@f32" for s in SCALAR_THETA_STRATA), "q:w0@f32"])
-        other = [n for n in FUNCTIONS if not n.startswith(("coeff_", *ASKED_FOR_F32))]
+        # 0064: `so3_gamma2` is a scalar-theta id with the coefficients' layout.
+        gamma2 = [s.name for s in FUNCTIONS["so3_gamma2"].strata]
+        self.assertEqual(gamma2, [s.name for s in FUNCTIONS["coeff_k"].strata])
+        other = [
+            n
+            for n in FUNCTIONS
+            if not n.startswith(("coeff_", *ASKED_FOR_F32)) and n != "so3_gamma2"
+        ]
         for name in other:  # no other id has an @f32 stratum until a record asks for one
             self.assertFalse(any(s.f32 for s in FUNCTIONS[name].strata), name)
 
