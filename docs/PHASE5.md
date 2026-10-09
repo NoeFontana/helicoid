@@ -112,6 +112,13 @@ Corpus ids: `sim3_exp`, `sim3_log`, `sim3_jr`, `sim3_jr_inv`, `sim3_ad`.
 (`NUMERICS.md` §7); corpus id `so3_gamma2`. Directional Jacobian computes
 $\partial(\Gamma_m(\varphi)v)/\partial\varphi$ via `gamma_m` on `Dual<S, 3>`.
 
+[`0064`](./decisions/0064-the-integrated-exponentials-reuse-the-swept-switches.md) fixes the shape:
+- `gamma_apply_jacobian::<M, S>(&φ, v) -> (Γ_M v, ∂(Γ_M v)/∂φ)` for `M` 1 or 2, asserted at
+  monomorphization.
+- `gamma2_coeffs` takes no switch of its own.
+- `so3_gamma2` has `so3_jl`'s strata and their `@f32` twins.
+- The seeded defect "Γ₂ from Γ₁'s coefficients" is in `PHASE1.md` §10.
+
 ## 5. `Gaussian`
 
 **NORMATIVE.**
