@@ -385,6 +385,12 @@
       "records": 2594,
       "sha256": "089405df4ac313a89707a588bcd3efa44410679444cbc3bf4d11d3eced2353e5"
     },
+    "so3_gamma2.jsonl": {
+      "kind": "corpus",
+      "rechecked": 72,
+      "records": 4932,
+      "sha256": "23789e6a9d6781f3dda058f1e463c3739790909132db875af32c1701630cb0b8"
+    },
     "so3_geodesic.jsonl": {
       "kind": "corpus",
       "rechecked": 3,
@@ -428,7 +434,7 @@
       "sha256": "3780fb0bfac76491d5c03b5ebbeb52fc333c95edaf3784bf6e805add3f219f2b"
     }
   },
-  "generator": "sha256:54df234aa988de0c8cc8a78b52d6a261398cbcd2fae656eb1bbd749c6197bd2c",
+  "generator": "sha256:6727763f27ada0a2bf2ee3568517358f4a5116089c3d2561e02a604c3599c131",
   "mpmath": "1.4.1",
   "python": "3.12",
   "recheck": {

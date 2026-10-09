@@ -83,6 +83,9 @@ FUNCTIONS: dict[str, FunctionSpec] = {
             )
             for name in ("jr", "jl", "jr_inv", "jl_inv")
         ),
+        # 0064: the strata of `so3_jl` and their `@f32` twins (0016 item 1), the one vector id
+        # scored at both precisions.
+        FunctionSpec("so3_gamma2", COEFF_STRATA, so3.phi_inputs, so3.gamma2, check.so3_gamma2),
         FunctionSpec("so2_exp", SCALAR_THETA_STRATA, so2.theta_inputs, so2.exp, check_se2.so2_exp),
         FunctionSpec("so2_log", SCALAR_THETA_STRATA, so2.z_inputs, so2.log, check_se2.so2_log),
         FunctionSpec("se2_exp", SE2_STRATA, se2.tau_inputs, se2.exp, check_se2.se2_exp),

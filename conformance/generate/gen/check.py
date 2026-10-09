@@ -198,6 +198,21 @@ def so3_from_matrix(inputs: dict, out: dict) -> None:
         raise CrossCheckError("so3_from_matrix: H is not positive definite")
 
 
+def so3_gamma2(inputs: dict, out: dict) -> None:
+    """GG.2(b) I + Gamma_2 W = Gamma_1 against `so3_jl`'s series, which pins Gamma_2 off the kernel
+    of W, and GG.2(d) Gamma_2 phi = phi / 2, which pins it on that kernel."""
+    phi, G = [mpf(c) for c in inputs["phi"]], so3.from_mat(out["G"])
+    shifted = [
+        [(1 if i == j else 0) + w for j, w in enumerate(row)]
+        for i, row in enumerate(so3.mm(G, so3.hat(phi)))
+    ]
+    jl = so3.jl(phi)
+    _agree_mat("so3_gamma2: I + Gamma_2 W", shifted, jl, _offdiag(jl))
+    scale = so3.maxabs(phi) or mpf(1)
+    G_phi = [sum(G[i][k] * phi[k] for k in range(3)) for i in range(3)]
+    _agree("so3_gamma2: Gamma_2 phi", G_phi, [c / 2 for c in phi], scale)
+
+
 def so3_jacobian(name: str) -> Callable[[dict, dict], None]:
     """J_l = R J_r (NUMERICS section 1) for `jr`/`jl`; J^-1 J = I, against the series, for the
     inverses. The off-diagonal part is held to 1e-100 of the series' own: it is all there is to

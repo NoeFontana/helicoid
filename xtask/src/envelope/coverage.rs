@@ -28,7 +28,6 @@ const OWED: &[(u8, &str, &str, &[&str])] = &[
         "PHASE5.md §3",
         &["sim3_exp", "sim3_log", "sim3_jr", "sim3_jr_inv", "sim3_ad"],
     ),
-    (5, "Γ₁, Γ₂", "PHASE5.md §4", &["so3_gamma2"]),
     (
         6,
         "ambient Jacobians",
@@ -86,6 +85,8 @@ pub(super) fn required() -> Vec<String> {
     );
     // `0061`'s, with its corpus file in the same step.
     ids.push("mat2_inverse_adj".to_string());
+    // `0064`'s, out of `OWED` with its corpus file in the same step.
+    ids.push("so3_gamma2".to_string());
     ids
 }
 
@@ -215,6 +216,12 @@ mod tests {
         move |_, row| Ok(done.contains(&row))
     }
 
+    /// Every id `OWED` names: what a check with no row `Done` excuses, so a row moved out of it is
+    /// not a count to bump by hand.
+    fn owed_total() -> usize {
+        OWED.iter().map(|o| o.3.len()).sum()
+    }
+
     #[test]
     fn the_committed_corpus_covers_what_is_required_and_holds_nothing_owed() -> Result<(), String> {
         let dir = crate::conformance::corpus_dir()?;
@@ -224,7 +231,7 @@ mod tests {
             .collect();
         let c = check(&have, &rows(&[]));
         assert!(c.failures.is_empty(), "{:?}", messages(&c));
-        assert_eq!((c.required, c.excused), (required().len(), 11));
+        assert_eq!((c.required, c.excused), (required().len(), owed_total()));
         Ok(())
     }
 
@@ -273,7 +280,7 @@ mod tests {
         assert!(messages(&c)[0].starts_with(
             "phase 2's row `corpus ids (§6)` is Done and `svd3` (PHASE2.md §6) has no corpus file"
         ));
-        assert_eq!(c.excused, 10);
+        assert_eq!(c.excused, owed_total() - 1);
     }
 
     #[test]
@@ -282,7 +289,7 @@ mod tests {
             let only = |p: u8, r: &str| -> Result<bool, String> { Ok(p == phase && r == row) };
             let c = check(&required(), &only);
             assert_eq!(c.failures.len(), ids.len(), "{row}");
-            assert_eq!(c.excused, 11 - ids.len(), "{row}");
+            assert_eq!(c.excused, owed_total() - ids.len(), "{row}");
         }
     }
 
