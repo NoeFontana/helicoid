@@ -117,9 +117,10 @@ of item 7, which item 7's fix removes.
    and 12 additions in all.
    - `SO3::jr` is `poly(1, −a, b)`, `SO3::jr_inv` is `poly(1, ½, c)`, and `so3::gamma2` is
      `poly(½, b, d)`.
-   - Each caller forms `HatSq::of(φ)` **before** its coefficient `branch`. With the products after
-     the out-of-line call they were on the result's critical path, and `f32`
-     `so3/gamma2/near-identity` read 1.19×. Before it, the core overlaps them with the call.
+   - Each caller forms `HatSq::of(φ)` **before** its coefficient `branch`. The products do not
+     depend on it, so the core can overlap them with the out-of-line call. This rests on the
+     scheduling argument alone: no bench row moved either way, `f32` `so3/gamma2/near-identity`
+     included (*Measured*).
    - Each entry is the three-matrix sum's to the bit for finite operands. `W²` is `mul_hat`'s
      rounding: its diagonal `(−z)z + y(−y)` is exactly `−(z² + y²)`, and its off-diagonal pair is
      `xy` both ways. The dropped terms are exact zeros.
