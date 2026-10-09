@@ -15,6 +15,18 @@ defined by the status tables in `docs/`; they win over this file.
 
 - **`Mat2::inverse_adj`** (`0061`): `(adj/det, det)` with `Mat3::inverse_adj`'s contract; the adjugate is exact, so `det` is the only rounding. Corpus id `mat2_inverse_adj` (`cond:1`, `1e4`, `1e8`, an exactly singular stratum; `cond:1e8` at binary64 only), scored with `NUMERICS.md` §11's expected-non-finite rule; nalgebra's `Matrix2::try_inverse` answers it in the nalgebra runner, equal on every stratum.
 
+- **Integrated exponentials** (`PHASE5.md` §4, `0064`):
+  - `helicoid::so3::{gamma1, gamma2, gamma_apply_jacobian::<M>}`. `Γ₁` is `SO3::jl` to the bit; `Γ₂ = ½I + bW + dW²` comes from a new group `gamma2_coeffs` over the swept switches of `b` and `d`, with no new switch.
+  - `gamma_apply_jacobian` returns `(Γ_M v, ∂(Γ_M v)/∂φ)` for `M` 1 or 2, through `Dual<S, 3>`. Its twin is `reference::gamma_apply`.
+  - Corpus id `so3_gamma2` at both precisions: at most 1.46 `u` (`f64`) and 1.68 `u` (`f32`). A planted Γ₂-from-Γ₁ defect is detected.
+
+- **`Gaussian<S, G, Sd, D>`** (`PHASE5.md` §5, `0065`):
+  - The side is in the type; `new` is the only constructor, and it asserts `D == G::DOF`.
+  - `cov` is read by its lower triangle and returned exactly symmetric.
+  - `to_left`/`to_right` stay within `γ_{4D+42}(|B||A|)|Σ|(|B||A|)ᵀ` on the round trip.
+  - `propagate` documents its side contract; `mahalanobis_sq` returns `chol`'s mask.
+  - Corpus ids `gaussian_mahalanobis_{se3,se23}`, each stratum within 0.44 of its componentwise condition number.
+
 ## [0.0.2] - 2026-10-09
 
 A patch release: the geodesic below `r`'s second switch is faster and more accurate (`0059`), and the carried quaternion's domain is stated (`0058`). No API change.
