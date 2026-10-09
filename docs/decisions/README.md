@@ -77,6 +77,7 @@ grep -m1 -H '^\*\*Status:' docs/decisions/0*.md
 | [`0061`](./0061-mat2-keeps-its-adjugate.md) | **ready.** `Mat2::inverse_adj -> (Mat2, S)` with `Mat3`'s contract (the adjugate is exact; `det` is the only rounding); id `mat2_inverse_adj` by conditioning, an exactly singular stratum, nalgebra as oracle. Answers `0015` (draft) PH.2.
 | [`0062`](./0062-sin-theta-over-theta-is-public-and-differentiates-its-branch.md) | **ready.** `helicoid::sinc(θ²) -> (α, dα/dz)`: the value `2k cos(θ/2)` from `exp_coeffs`, the derivative by `Dual` through the same branch (measured 2.3× better than `(b − a)/2` on `[1, π]`); no new switch; id `coeff_alpha`.
 | [`0063`](./0063-the-sphere-reads-its-sign-by-comparison-and-is-held-unit.md) | **ready.** S²: `ς = +1` unless `n_z < 0`; `S2` vouched, normalized and renormalized entry points with the quaternion's bounds (band measured on 3-vectors); `α/s = ½ r(s², w)`; `s2_local`'s reference without `mp.logm`; §11's direction metric.
+| [`0064`](./0064-the-integrated-exponentials-reuse-the-swept-switches.md) | **ready.** `so3::{gamma1, gamma2, gamma_apply_jacobian::<M>}` (`M` 1 or 2): `gamma2_coeffs` is a group over the swept switches of `b` and `d` (no new switch, `q_coeffs`' to the bit); the Jacobian is `Dual<S, 3>` through the vector form, twin `reference::gamma_apply` (40 terms, `θ ≤ π`); `so3_gamma2` at both precisions (worst 1.46 / 1.68 `u`); the seeded defect Γ₂ from Γ₁'s coefficients.
 
 ## Lifecycle
 
