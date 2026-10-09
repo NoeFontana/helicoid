@@ -76,8 +76,8 @@ pub mod sweep;
 #[cfg(test)]
 mod tests;
 
-/// `(sin θ/θ, d(sin θ/θ)/d(θ²))` at `theta_sq = θ²`: the only item of `coeffs` outside the crate
-/// (`docs/decisions/0062`).
+/// `(sin θ/θ, d(sin θ/θ)/d(θ²))` at `theta_sq = θ²`: with [`sinc_value`], the only items of
+/// `coeffs` outside the crate (`docs/decisions/0062`).
 ///
 /// The value is `2k cos(θ/2)` of the group `Exp` uses (`docs/NUMERICS.md` §4), so it adds no
 /// switch point and no series; the derivative is the `Dual` lane of that same evaluation, the
@@ -92,13 +92,29 @@ mod tests;
 ///
 /// # Domain
 ///
-/// Every `theta_sq >= 0`. The value and the derivative are each within `5u` times their own
-/// condition number in `θ²` (measured: 2.3u and 3.7u at `f64`, 2.5u and 4.1u at `f32`, for
-/// `θ <= 6.2`). The derivative is zero at `θ = 4.4934` (`tan θ = θ`), where only its absolute
-/// error, about `u`, is meaningful. NaN returns NaN; a negative `theta_sq` is a sign error upstream
-/// and fails a `debug_assert!`.
+/// Defined for every `theta_sq >= 0`. For `θ <= π`, the range the corpus id `coeff_alpha` scores,
+/// the value and the derivative are each within `5u` times their own condition number in `θ²`
+/// (measured: 1.9u and 2.4u at `f64`, 2.0u and 2.3u at `f32`); beyond `π` nothing is promised.
+/// NaN returns NaN; a negative `theta_sq` is a sign error upstream and fails a `debug_assert!`.
 pub fn sinc<S: Real>(theta_sq: S) -> (S, S) {
     kernel::alpha(theta_sq)
+}
+
+/// `sin θ/θ` at `theta_sq = θ²`, the value of [`sinc`] to the bit, without its derivative.
+///
+/// For a caller that needs no Jacobian, such as a camera model unprojecting every point of a
+/// frame: `sinc` evaluates its group once on `Dual<S, 1>` to get the derivative, and this runs it
+/// on plain `S`.
+///
+/// ```
+/// assert_eq!(helicoid::sinc_value(0.25_f64).to_bits(), helicoid::sinc(0.25_f64).0.to_bits());
+/// ```
+///
+/// # Domain
+///
+/// [`sinc`]'s.
+pub fn sinc_value<S: Real>(theta_sq: S) -> S {
+    kernel::alpha_value(theta_sq)
 }
 
 /// `M` series terms, in the branch variable, below the switch `below`, and the first

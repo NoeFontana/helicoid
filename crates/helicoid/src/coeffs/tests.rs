@@ -1167,6 +1167,25 @@ fn sinc_is_two_k_cos_half() {
     sinc_is_two_k_cos_half_at::<f32>();
 }
 
+/// `sinc_value` is `sinc`'s value to the bit at every sample (`0062` decision 1): the same product
+/// in the same order, on plain `S` rather than on the `Dual` value lane.
+fn sinc_value_is_sincs_value_at<S: Real>() {
+    for z in samples::<S>() {
+        assert_eq!(
+            bits(super::sinc_value(z)),
+            bits(super::sinc(z).0),
+            "z = {}",
+            z.value_f64()
+        );
+    }
+}
+
+#[test]
+fn sinc_value_is_sincs_value() {
+    sinc_value_is_sincs_value_at::<f64>();
+    sinc_value_is_sincs_value_at::<f32>();
+}
+
 /// The derivative is lane 0 of `exp_coeffs` on `Dual<S, 1>` seeded at `z` (`0062` decision 3), and
 /// it agrees with the closed form `(b − a)/2` of `jr_coeffs` within `16u` relative on
 /// `θ² ∈ [1e-6, 9.8)`, where `b − a` is in `[-1/3, -0.1014]` and neither form cancels.

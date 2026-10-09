@@ -47,10 +47,10 @@ mod so3;
 mod so3_tests;
 mod traits;
 
-pub use coeffs::sinc;
 #[cfg(feature = "__sweep")]
 #[doc(hidden)]
 pub use coeffs::sweep as __sweep;
+pub use coeffs::{sinc, sinc_value};
 pub use dualmat::SEn3Jac;
 pub use product::{Product, ProductJac};
 pub use quat::Quat;

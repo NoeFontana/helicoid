@@ -26,7 +26,7 @@ use helicoid_linalg::{
 
 use crate::conformance::corpus::{exact_f32, Record};
 use crate::conformance::subject::{Output, Registered, Subject};
-use crate::seeded::{input, Coeff, Host, Input, Swept};
+use crate::seeded::{exact_input, input, Coeff, Host, Input, Swept};
 
 /// The group of `id` at `x`, as the shipped kernel evaluates it.
 pub(crate) fn shipped<S: Real>(id: Swept, x: Input<Dual<S, 1>>) -> Dual<S, 1> {
@@ -606,7 +606,7 @@ impl Subject for Helicoid {
 
     fn supports(&self, fn_id: &str) -> bool {
         Swept::of_fn(fn_id).is_some()
-            || fn_id == "coeff_alpha"
+            || Unswept::of_fn(fn_id).is_some()
             || So3::of_fn(fn_id).is_some()
             || Sen3::of_fn(fn_id).is_some()
             || Geodesic::of_fn(fn_id).is_some()
@@ -643,10 +643,10 @@ impl Subject for Helicoid {
                 Precision::F32 => Output::new(),
             };
         }
-        if fn_id == "coeff_alpha" {
+        if let Some(id) = Unswept::of_fn(fn_id) {
             return match precision {
-                Precision::F64 => alpha_answer::<f64>(record),
-                Precision::F32 => alpha_answer::<f32>(record),
+                Precision::F64 => id.answer::<f64>(record),
+                Precision::F32 => id.answer::<f32>(record),
             };
         }
         let Some(id) = Swept::of_fn(fn_id) else {
@@ -659,18 +659,42 @@ impl Subject for Helicoid {
     }
 }
 
-/// `coeff_alpha` through the public `helicoid::sinc` (`0062`): no `Swept` member, since `α` has no
-/// switch of its own and the sweep must not see it. Its input is `coeff_k`'s, `z = fl(θ·θ)` at the
-/// precision, and `sinc` returns `d/dz` already, the `d_branch` the corpus holds.
-fn alpha_answer<S: Real + Into<f64>>(record: &Record) -> Output {
-    let Some(x) = input::<S>(Swept::Coeff(Coeff::K), record) else {
-        return Output::new();
-    };
-    let (value, d) = helicoid::sinc(x.z);
-    Output::from([
-        ("value".to_string(), vec![value.into()]),
-        ("d_branch".to_string(), vec![d.into()]),
-    ])
+/// A coefficient id answered outside [`Swept`] (`0062`): no switch of its own, so the sweep must not
+/// see it, and its answer is a public function's.
+///
+/// An enum with an exhaustive `answer`, for the reason the [`So3`] note gives. `Helicoid` and
+/// `HostStd` both dispatch through it, so what a subject `supports` and what it answers cannot
+/// part: they once did, and `just conformance-twin` stopped on `coeff_alpha`'s first record.
+#[derive(Clone, Copy)]
+enum Unswept {
+    Alpha,
+}
+
+impl Unswept {
+    const ALL: [(&'static str, Unswept); 1] = [("coeff_alpha", Unswept::Alpha)];
+
+    fn of_fn(fn_id: &str) -> Option<Self> {
+        Self::ALL
+            .iter()
+            .find(|(name, _)| *name == fn_id)
+            .map(|&(_, id)| id)
+    }
+
+    /// `z = fl(θ·θ)` at `S`, as the swept coefficients form it; `sinc` returns `d/dz`, the
+    /// `d_branch` the corpus holds.
+    fn answer<S: Real + Into<f64>>(self, record: &Record) -> Output {
+        let Some(theta) = exact_input::<S>(record, "theta") else {
+            return Output::new();
+        };
+        let z = theta * theta;
+        let (value, d) = match self {
+            Unswept::Alpha => helicoid::sinc(z),
+        };
+        Output::from([
+            ("value".to_string(), vec![value.into()]),
+            ("d_branch".to_string(), vec![d.into()]),
+        ])
+    }
 }
 
 /// The library's own host-`std` twin: this subject's program at [`Host`], whose transcendentals
@@ -707,8 +731,8 @@ impl Subject for HostStd {
         if let Some(id) = Linalg::of_fn(fn_id) {
             return id.answer::<Host>(record);
         }
-        if fn_id == "coeff_alpha" {
-            return alpha_answer::<Host>(record);
+        if let Some(id) = Unswept::of_fn(fn_id) {
+            return id.answer::<Host>(record);
         }
         if let Some(id) = So3::of_fn(fn_id) {
             return id.answer::<Host>(record);
@@ -850,9 +874,12 @@ mod tests {
             assert!(twin.supports(&id), "{id}");
         }
         assert!(!twin.supports("so3_jl_jr"));
-        // `coeff_alpha` is answered outside `Swept` (`0062`), so the loop above does not reach it:
-        // the twin must answer it, not only claim it, or `just conformance-twin` stops on it.
+        // `Unswept`'s ids are not in the loop above: the twin must answer each, not only claim it,
+        // or `just conformance-twin` stops on it.
         let alpha = record(&[("theta", &[0.5])], &[])?;
+        for (id, _) in Unswept::ALL {
+            assert!(twin.supports(id), "{id}");
+        }
         assert!(twin
             .eval("coeff_alpha", &alpha, Precision::F64)
             .contains_key("value"));
