@@ -102,7 +102,7 @@ constructors normalize.
 | `sinc`, `sinc_value` | fns | 5 | `(sin θ/θ, its derivative in θ²)` at `θ²`, and the value alone on plain `S`, evaluated in `coeffs` ([`0062`](./decisions/0062-sin-theta-over-theta-is-public-and-differentiates-its-branch.md)). |
 | `Sim3<S>` | struct | 5 | Formula block owed (`NUMERICS.md` §9). |
 | `so3::gamma1`, `so3::gamma2`, `so3::gamma_apply_jacobian` | fns | 5 | `pub mod so3`. `Γ₁ = SO3::jl` to the bit; `Γ₂ = ½I + bW + dW²`; `gamma_apply_jacobian::<M, S>(&φ, v) -> (Γ_M v, ∂(Γ_M v)/∂φ)`, `M ∈ {1, 2}`, through `Dual<S, 3>` ([`0064`](./decisions/0064-the-integrated-exponentials-reuse-the-swept-switches.md)). |
-| `Gaussian<S, G, Sd, const D: usize>` | struct | 5 | `D == G::DOF` asserted at compile time. |
+| `Gaussian<S, G, Sd, const D: usize>` | struct | 5 | `D == G::DOF` asserted at monomorphization in `new`, the only constructor; `to_left` (`Right` → `Left`), `to_right`, `propagate`, `mahalanobis_sq -> (d², chol's mask)`; `cov` read by its lower triangle and returned exactly symmetric ([`0065`](./decisions/0065-a-gaussian-names-its-side-and-is-stored-symmetric.md)). |
 | `AmbientChart` | trait | 6 | Ceres-style `PlusJacobian`/`MinusJacobian`. |
 | `reference::*` | module | 3–5 | Public and documented: the twins are the definition of *correct* (D6). |
 

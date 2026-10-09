@@ -419,6 +419,11 @@ $X(t) = X_0\,\mathrm{Exp}(t\,d)$ with $d = X_1 \ominus_R X_0$ and $\Delta = X_0^
   and with no valid slot each real root is at the cap: the worst answer scores $1/u$ (`0056`).
 - **Masks** (`chol`): a reported mask that differs from the reference scores $1/u$; where the
   reference reports failure, the values beside the mask are not scored (`0056`).
+- **Mahalanobis distances** (`gaussian_mahalanobis_*`): `chol`'s mask rule, and $d^2$ relative
+  where it is set. The reading is the componentwise condition number
+  $\kappa = \sum_i\lvert\partial d^2/\partial x_i\cdot x_i\rvert/d^2$ over every input: a residual of
+  two absolute poses against a $\sigma$ of $10^{-3}$ is conditioned to $\sim10^3$, and every
+  stratum's maximum is measured at most $0.44\,\kappa$ ([`0065`](./decisions/0065-a-gaussian-names-its-side-and-is-stored-symmetric.md)).
 - **Directions** (`s2_retract`, any unit-vector output): $\max(\mathrm{atan2}(\|\hat a \times a\|,
   \hat a\cdot a)/u,\ \lvert\|\hat a\|^2 - 1\rvert/(2u))$, the angle to the reference and the drift off the
   sphere, which the angle cannot see; `atan2` keeps the small angle that `acos` of the dot product
@@ -506,7 +511,7 @@ row spells the composition and the proptest writes it inline
 | `SO3::geodesic` (GE.14's blend, §10) | $q_0\,\mathrm{Exp}(t\,\mathrm{Log}(q_0^{*}q_1))$ — `reference::geodesic`, which is also `LieGroup::geodesic`'s **provided** body, so the `twin` leg of `laws::geodesic` is this row's proptest and reads 7.213 `u` at binary64 and 7.089 at binary32, where it read `gerr`'s 1.118 floor while the two were one expression ([`0050`](./decisions/0050-the-geodesic-s-denominator-is-the-whole-domination-gap.md)) | 4 |
 | `SE3::geodesic` (screw power, §10) | $X_0\,\mathrm{Exp}(t\,\mathrm{Log}(X_0^{-1}X_1))$ — `reference::geodesic`; `se3_geodesic_matches_reference` ($10^5$ pairs per precision, three regimes, extrapolation its own row), `the_screw_twin_differentiates_like_the_reference` and the `twin` leg of `laws::geodesic`, 8.051 `u` at binary64 and 8.579 at binary32 ([`0054`](./decisions/0054-the-screw-twin-takes-two-arms-in-the-world-frame.md)) | 4 |
 | `geodesic_jacobians` | `Dual` through the reference geodesic | 4 |
-| `Gaussian::to_left` / `to_right` | dense $\mathrm{Ad}\,\Sigma\,\mathrm{Ad}^\top$: `reference::sen3jac_sandwich` with $J = \mathrm{Ad}$ | 5 |
+| `Gaussian::to_left` / `to_right` | dense $\mathrm{Ad}\,\Sigma\,\mathrm{Ad}^\top$: `reference::sen3jac_sandwich` with $J = \mathrm{Ad}$, componentwise within $2\gamma_{2D}\lvert A\rvert\lvert\Sigma\rvert\lvert A\rvert^\top$ (`to_left_and_to_right_match_reference_*`, [`0065`](./decisions/0065-a-gaussian-names-its-side-and-is-stored-symmetric.md)) | 5 |
 | `gamma_apply_jacobian` | `Dual` through `reference::gamma_apply`: the first 40 terms of $\sum W^n v/(n+m)!$, left to right, for $\theta \le \pi$; tolerance per $\theta$ band (`gamma_apply_jacobian_matches_reference_*`, [`0064`](./decisions/0064-the-integrated-exponentials-reuse-the-swept-switches.md)) | 5 |
 | `S2Chart::local` | $\mathrm{Log}$ of the minimal rotation taking $n$ to $m$, projected on $B$ | 5 |
 | `chol_solve` (`helicoid-linalg`) | composition of public fns, no `reference` item: `solve_upper(&l.transpose(), solve_lower(&l, b))` | 2 |
