@@ -20,7 +20,7 @@ use super::kernel::{
     exact_a, exact_b, exact_c, exact_cos_half, exact_d, exact_e, exact_k, exact_r, series_a,
     series_b, series_c, series_cos_half, series_d, series_e, series_k, series_r,
 };
-use super::{exp_coeffs, jr_coeffs, jr_inv_coeff, log_ratio, q_coeffs, Switch};
+use super::{exp_coeffs, gamma2_coeffs, jr_coeffs, jr_inv_coeff, log_ratio, q_coeffs, Switch};
 
 /// The order of the coefficients everywhere below, and of `coeff_series.jsonl`.
 const NAMES: [&str; 8] = ["k", "a", "b", "c", "d", "e", "cos_half", "r"];
@@ -42,11 +42,13 @@ fn arms<S: Real>(i: usize, z: S, terms: usize) -> (S, S) {
     }
 }
 
-/// Every group at `(z, w)`: `NAMES`, then `b` again, from `q_coeffs`.
-fn groups<S: Real>(z: S, w: S) -> [S; 9] {
+/// Every group at `(z, w)`: `NAMES`, then `b` again, from `q_coeffs`, then `b` and `d` from
+/// `gamma2_coeffs`.
+fn groups<S: Real>(z: S, w: S) -> [S; 11] {
     let (k, cos_half) = exp_coeffs(z);
     let (a, b) = jr_coeffs(z);
     let (b_q, d, e) = q_coeffs(z);
+    let (b_g, d_g) = gamma2_coeffs(z);
     [
         k,
         a,
@@ -57,6 +59,8 @@ fn groups<S: Real>(z: S, w: S) -> [S; 9] {
         cos_half,
         log_ratio(z, w),
         b_q,
+        b_g,
+        d_g,
     ]
 }
 
@@ -421,13 +425,13 @@ fn the_two_series_arms_part_by_at_most_an_ulp_at_f32() -> Result<(), String> {
 }
 
 /// Which coefficient of `NAMES` each output of `groups` is.
-const OF: [usize; 9] = [0, 1, 2, 3, 4, 5, 6, 7, 2];
+const OF: [usize; 11] = [0, 1, 2, 3, 4, 5, 6, 7, 2, 2, 4];
 
 /// The call-site group each output of `groups` belongs to, as `NAMES` indices (`PHASE3.md` §3):
 /// `exp_coeffs` is `{k, cos θ/2}`, `jr_coeffs` `{a, b}`, `jr_inv_coeff` `{c}`, `q_coeffs`
-/// `{b, d, e}`, `log_ratio` `{r}`. The **second** switch is read at the group's smallest, so this
+/// `{b, d, e}`, `log_ratio` `{r}`, `gamma2_coeffs` `{b, d}`. The **second** switch is read at the group's smallest, so this
 /// is what decides which arm a member takes there (`0047` item 7).
-const GROUP: [&[usize]; 9] = [
+const GROUP: [&[usize]; 11] = [
     &[0, 6],
     &[1, 2],
     &[1, 2],
@@ -437,6 +441,8 @@ const GROUP: [&[usize]; 9] = [
     &[0, 6],
     &[7],
     &[2, 4, 5],
+    &[2, 4],
+    &[2, 4],
 ];
 
 /// A group member is the arm its own two switches select — the short series arm, the whole series
@@ -666,7 +672,11 @@ fn the_series_answers_at_zero<S: Real>() {
         S::lit(2.0),
     ];
     let got = groups(S::zero(), S::one());
-    for (i, w) in want.into_iter().chain([inv(6.0)]).enumerate() {
+    for (i, w) in want
+        .into_iter()
+        .chain([inv(6.0), inv(6.0), inv(24.0)])
+        .enumerate()
+    {
         assert_eq!(bits(got[i]), bits(w), "{}", NAMES[OF[i]]);
     }
 }
@@ -1011,27 +1021,28 @@ fn a_lane_that_evaluates_both_arms_sees_no_non_finite_operation_f32() {
 }
 
 /// Each group's `(sqrt, sin_cos, sin, cos, acos, atan2)` calls, in the order `exp`, `jr`, `jr_inv`,
-/// `q`, `log`, one call each under a scalar mask, at `z` (`n²` for `log`, at `w = 1`).
+/// `q`, `gamma2`, `log`, one call each under a scalar mask, at `z` (`n²` for `log`, at `w = 1`).
 ///
 /// Each cheaper call is a column of its own because it *is* cheaper -- `sin` 3.84 ns against
 /// `sin_cos`'s 5.17 (`0052`), `acos` 2.63x under the `atan2(sqrt(..), ..)` it replaced (`0022`) --
 /// so a group that moved a call between them changed its cost and folding them would hide it. The
 /// `cos` and `acos` columns are expected to stay **zero** here: the kernel wants neither, and D5
 /// forbids `acos` on a rotation path at all (lint check 8).
-fn calls<const F32: bool>(z: f64) -> [(usize, usize, usize, usize, usize, usize); 5] {
+fn calls<const F32: bool>(z: f64) -> [(usize, usize, usize, usize, usize, usize); 6] {
     let (z, w) = (Narrow::<F32>::new(z), Narrow::<F32>::one());
     [
         counted(|| exp_coeffs(z)).1,
         counted(|| jr_coeffs(z)).1,
         counted(|| jr_inv_coeff(z)).1,
         counted(|| q_coeffs(z)).1,
+        counted(|| gamma2_coeffs(z)).1,
         counted(|| log_ratio(z, w)).1,
     ]
     .map(|c| (c.sqrt, c.sin_cos, c.sin, c.cos, c.acos, c.atan2))
 }
 
 /// The coefficients of each group of `calls`, as indices of `NAMES`.
-const MEMBERS: [&[usize]; 5] = [&[0, 6], &[1, 2], &[3], &[2, 4, 5], &[7]];
+const MEMBERS: [&[usize]; 6] = [&[0, 6], &[1, 2], &[3], &[2, 4, 5], &[2, 4], &[7]];
 
 /// While every member is on its series arm no exact arm runs: no `sqrt`, `sin_cos` or `atan2`,
 /// at `θ² = 0` and below the smallest switch of the group.
@@ -1070,12 +1081,14 @@ fn a_group_below_its_smallest_switch_runs_no_exact_arm_f32() {
 /// cosine and so do `exact_a_b`'s and `d_from`'s, so they are `Real::sin`. `(1, 2, 0, 0)` for `jr`
 /// would say that regressed — a `sin_cos` where a `sin` will do is a cosine kernel nobody reads.
 fn a_group_runs_each_exact_arm_once<const F32: bool>() {
-    // (sqrt, sin_cos, sin, atan2) of `exp`, `jr`, `jr_inv`, `q`, `log`.
+    // (sqrt, sin_cos, sin, atan2) of `exp`, `jr`, `jr_inv`, `q`, `gamma2`, `log`. `gamma2` is `jr`'s
+    // two sines: `b`'s `sin θ` and `d`'s `sin(θ/2)`, neither cosine read.
     let above = [
         (1, 1, 0, 0, 0, 0),
         (1, 0, 2, 0, 0, 0),
         (1, 1, 0, 0, 0, 0),
         (1, 1, 1, 0, 0, 0),
+        (1, 0, 2, 0, 0, 0),
         (1, 0, 0, 0, 0, 1),
     ];
     // **Read from the table, not typed.** `0039` lifted the sweep's grid to span the domain and
@@ -1112,6 +1125,7 @@ fn a_group_runs_each_exact_arm_once<const F32: bool>() {
         (0, (1, 1, 0, 0, 0, 0)),
         (1, (1, 0, 2, 0, 0, 0)),
         (3, (1, 1, 1, 0, 0, 0)),
+        (4, (1, 0, 2, 0, 0, 0)),
     ] {
         let of = |f: fn(f64, f64) -> f64, init| MEMBERS[g].iter().map(|&i| t[i].0).fold(init, f);
         let (lo, hi) = (of(f64::min, f64::INFINITY), of(f64::max, 0.0));
@@ -1129,6 +1143,30 @@ fn a_group_runs_each_exact_arm_once_f64() {
 #[test]
 fn a_group_runs_each_exact_arm_once_f32() {
     a_group_runs_each_exact_arm_once::<true>();
+}
+
+/// `gamma2_coeffs` is `q_coeffs`' `(b, d)` to the bit, value and derivative, at every sample: the
+/// same arms and the same short prefix (`d`'s second switch is the smallest of both groups), and
+/// `sin θ` for `sin_cos(θ).0`, which `0052` measured identical. A second evaluation of the same
+/// numbers would otherwise be free to drift from the one `SEn3::jr` is scored on.
+fn gamma2_coeffs_are_q_coeffs_to_the_bit<S: Real + Into<f64>>() {
+    for z in samples::<S>() {
+        let z = D::variable(z, 0);
+        let ((b, d), (b_q, d_q, _)) = (gamma2_coeffs(z), q_coeffs(z));
+        let bits = |x: D<S>| (bits(x.v), bits(x.d[0]));
+        assert_eq!(bits(b), bits(b_q), "b at {}", z.v.value_f64());
+        assert_eq!(bits(d), bits(d_q), "d at {}", z.v.value_f64());
+    }
+}
+
+#[test]
+fn gamma2_coeffs_are_q_coeffs_to_the_bit_f64() {
+    gamma2_coeffs_are_q_coeffs_to_the_bit::<f64>();
+}
+
+#[test]
+fn gamma2_coeffs_are_q_coeffs_to_the_bit_f32() {
+    gamma2_coeffs_are_q_coeffs_to_the_bit::<f32>();
 }
 
 #[cfg(debug_assertions)]
