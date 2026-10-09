@@ -29,7 +29,7 @@ use crate::dualmat::{dof, SEn3Jac};
 use crate::product::ProductJac;
 use crate::so3::SO3Tangent;
 use crate::traits::{Jac, LieGroup, Tangent};
-use helicoid_linalg::{Mask, Matrix, Real, StridedMut, Vec3, Vector};
+use helicoid_linalg::{Mask, Matrix, Precision, Real, StridedMut, Vec3, Vector};
 
 /// The terms added left to right from the first, `+0` when there are none.
 ///
@@ -49,14 +49,23 @@ fn sum<S: Real>(mut terms: impl Iterator<Item = S>) -> S {
 
 /// `Γ_m(φ) v = Σ Wⁿ v/(n+m)!`, the definition (`NUMERICS.md` §7), summed left to right over its
 /// first [`GAMMA_TERMS`] terms with `Wⁿ v` as repeated cross products: the twin of
-/// [`so3::gamma_apply_jacobian`](crate::so3::gamma_apply_jacobian), which runs it on `Dual<S, 3>`
-/// (§14).
+/// [`so3::gamma_apply_jacobians`](crate::so3::gamma_apply_jacobians), run on `Dual<S, 3>` for
+/// its Jacobian (§14).
 ///
 /// # Domain
 ///
-/// `θ ≤ π`: the last term is below `π⁴⁰/40! < 10⁻²⁷` of `v` there. Beyond it the truncation is not
-/// bounded by this constant, and the terms grow to `θⁿ/n!` before they fall, which cancels.
+/// `m!` exact at `S`, as `S::lit` requires: `m ≤ 18` at binary64 and `m ≤ 13` at binary32,
+/// `debug_assert!`ed (`0066`). `θ ≤ π` for the stated accuracy: the last term is below
+/// `π⁴⁰/40! < 10⁻²⁷` of `v` there. Beyond it the truncation is not bounded by this constant, and
+/// the terms grow to `θⁿ/n!` before they fall, which cancels.
 pub fn gamma_apply<S: Real>(m: usize, phi: &SO3Tangent<S>, v: Vec3<S>) -> Vec3<S> {
+    debug_assert!(
+        m <= match S::PRECISION {
+            Precision::F64 => 18,
+            Precision::F32 => 13,
+        },
+        "reference::gamma_apply: m! is not exact at this precision"
+    );
     let div = |w: Vec3<S>, k: f64| Vector(w.0.map(|x| x / S::lit(k)));
     let mut term = div(v, factorial(m));
     let mut acc = term;
@@ -70,7 +79,7 @@ pub fn gamma_apply<S: Real>(m: usize, phi: &SO3Tangent<S>, v: Vec3<S>) -> Vec3<S
 /// The number of terms [`gamma_apply`] sums.
 pub const GAMMA_TERMS: usize = 40;
 
-/// `m!` for the `m` of [`gamma_apply`], exact in `f64` through `m = 18`.
+/// `m!` for the `m` of [`gamma_apply`], exact in binary64 through `m = 18` and binary32 through 13.
 fn factorial(m: usize) -> f64 {
     (1..=m).fold(1.0, |f, k| f * k as f64)
 }
