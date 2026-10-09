@@ -94,7 +94,8 @@ each stratum's max.
   fast twin, invariance tests; the parity table, envelope and bench evidence a `tf_tree` record
   needs. `docs/PHASE4.md`.
 - **Phase 5 — extended geometry and the retraction migrations.** Charts, S², Sim(3), Γ₁/Γ₂,
-  `Gaussian`; consumer migrations onto `helicoid`. `docs/PHASE5.md`.
+  `Gaussian`; consumer migrations onto `helicoid`. `docs/PHASE5.md`. All but Sim(3) proceed beside
+  Phase 4 and SO(2)/SE(2), charts first ([`0060`](./decisions/0060-the-charts-go-first-and-name-their-frame.md)).
 - **Phase 6 — interop, determinism, calibration, 1.0.** Ambient (Ceres-style) Jacobians, `mint`,
   the cross-target bit-identity gate, calibration tooling support, the 1.0 criteria.
   `docs/PHASE6.md`.

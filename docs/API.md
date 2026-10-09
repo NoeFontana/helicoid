@@ -74,7 +74,7 @@ constructors normalize.
 | `Dual<S, const N: usize>` | struct | `{ v: S, d: [S; N] }`; `variable(v, i)`, `constant(v)`; nests. |
 | `Vector<S, N>`, `Matrix<S, R, C>`, `Point<S, N>` | structs | `repr(C)`; `Matrix` column-major `[[S; R]; C]`; aliases `Vec2`, `Vec3`, `Mat2`, `Mat3`, `Point2`, `Point3`. |
 | `hat`, `vee` | fns | `Vec3 ↔ Mat3` skew. |
-| `Mat3::inverse_adj` | fn | `(adjugate/det, det)`; the caller decides what `det` means. |
+| `Mat2::inverse_adj`, `Mat3::inverse_adj` | fns | `(adjugate/det, det)`; the caller decides what `det` means. `Mat2`'s adjugate is exact, so `det` is its only rounding ([`0061`](./decisions/0061-mat2-keeps-its-adjugate.md)). |
 | `chol<S, N>`, `solve_lower`, `solve_upper`, `chol_solve` | fns | Fixed-size Cholesky; `(L, S::Mask)`. Triangular solves reading one triangle each; `chol_solve(&L, b)` solves `A x = b` from the factor without a transpose ([`0019`](./decisions/0019-a-cholesky-solve-without-the-transpose.md)); `NUMERICS.md` §15. |
 | `Strided<'a, S>`, `StridedMut<'a, S>` | structs | `col_major`, `row_major`, `block`; bounds-checked (`# Panics`). |
 | `eig3`, `svd3`, `solve_cubic` | fns | `NUMERICS.md` §13 references; signatures in `PHASE2.md` §6. |
@@ -94,16 +94,19 @@ constructors normalize.
 | `act`, `act_many`, `act_jacobians` | methods | 3 | SO(2), SO(3), SE(2), SE(3), Sim(3) only. |
 | `from_matrix` | method | 3 | SO(3): Shepperd, closed form, never iterative. |
 | `LieGroup::geodesic`, `geodesic_jacobians`, `geodesic_velocity` | provided methods | 4 | Reference twin = definition. |
-| `Chart<S, M>`, `Manifold<S>`, `WithChart<M, C>` | traits/struct | 5 | [`0012`](./decisions/0012-a-retraction-is-a-chart.md). |
-| `Screw`, `Decoupled`, `WorldTranslation`, `RightChart<G>`, `LeftChart<G>` | charts | 5 | |
-| `S2<S>`, `S2Chart<S>` | structs | 5 | Frozen Householder basis. |
+| `Chart<S, M>`, `Manifold<S>`, `WithChart<M, C>`, `Lifted<C>` | traits/structs | 5 | [`0012`](./decisions/0012-a-retraction-is-a-chart.md). One `Manifold` impl per group, no blanket; `WithChart`'s chart is `Lifted<C>` ([`0060`](./decisions/0060-the-charts-go-first-and-name-their-frame.md)). |
+| `RightChart<G>`, `LeftChart<G>`; `Screw<S> = RightChart<SE3<S>>`, `Decoupled<S>`, `WorldTranslation<S>` | charts | 5 | Each holds its frozen base. The three SE(3) charts share the tangent `Twist<S>` (`0060`). |
+| `TwistBlockJac<S>` | struct | 5 | `Decoupled`'s and `WorldTranslation`'s `Jac`: a newtype over `ProductJac<Mat3, Mat3>` implementing `Jac<S, Twist<S>>` only; `rotation_block`, `translation_block` (`0060`). |
+| `Se3Chart<S>`, `SE3::chart_transition::<From, To>` | sealed trait, method | 5 | `DΦ(0)` between two SE(3) charts at a base: `I`, `diag(I, R)` or `diag(I, Rᵀ)` (`0060`). |
+| `S2<S>`, `S2Chart<S>` | structs | 5 | Frozen Householder basis. `S2::{from_vec_unchecked, from_vec_normalized, renormalize, vec}` ([`0063`](./decisions/0063-the-sphere-reads-its-sign-by-comparison-and-is-held-unit.md)). |
+| `sinc` | fn | 5 | `(sin θ/θ, its derivative in θ²)` at `θ²`, evaluated in `coeffs` ([`0062`](./decisions/0062-sin-theta-over-theta-is-public-and-differentiates-its-branch.md)). |
 | `Sim3<S>` | struct | 5 | Formula block owed (`NUMERICS.md` §9). |
 | `so3::gamma1`, `so3::gamma2`, `so3::gamma_apply_jacobian` | fns | 5 | Directional Jacobians via `Dual<S, 3>`. |
 | `Gaussian<S, G, Sd, const D: usize>` | struct | 5 | `D == G::DOF` asserted at compile time. |
 | `AmbientChart` | trait | 6 | Ceres-style `PlusJacobian`/`MinusJacobian`. |
 | `reference::*` | module | 3–5 | Public and documented: the twins are the definition of *correct* (D6). |
 
-`coeffs` is `pub(crate)`. Its `__sweep` feature exposes evaluators to `xtask` only and is not part of
+`coeffs` is `pub(crate)`, except `sinc` (`0062`). Its `__sweep` feature exposes evaluators to `xtask` only and is not part of
 the API ([`0004`](./decisions/0004-switch-points-are-generated-not-typed.md)); `just lint` fails if
 any crate other than `xtask` enables it.
 
