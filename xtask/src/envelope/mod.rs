@@ -567,7 +567,8 @@ mod tests {
         // The page does not exist yet: that is drift, and the only failure.
         let r = run("check")?;
         assert_eq!(bars(&r), ["drift"]);
-        assert!(r.text.contains("NOT evaluated") && r.text.contains("69 required ids"));
+        let required = format!("{} required ids", coverage::required().len());
+        assert!(r.text.contains("NOT evaluated") && r.text.contains(&required));
         let r = run("bless")?;
         assert!(r.failures.is_empty() && r.text.contains("wrote docs/evidence/ENVELOPE.md"));
         assert!(run("check")?.failures.is_empty());

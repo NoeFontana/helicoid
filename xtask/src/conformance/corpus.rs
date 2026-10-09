@@ -219,6 +219,31 @@ pub(crate) fn mentions_f32(dir: &Path, entry: &Entry) -> Result<bool, String> {
 
 /// Every record of `entry`, in file order; the count must be the manifest's and each `id` its
 /// 0-based line number.
+/// The distinct `@f32` strata of `entry` (`docs/decisions/0016`), in order.
+#[cfg(test)]
+pub(crate) fn f32_strata(dir: &Path, entry: &Entry) -> Result<Vec<String>, String> {
+    let mut names: Vec<String> = Vec::new();
+    for r in read(dir, entry)? {
+        if r.stratum.ends_with("@f32") && names.last() != Some(&r.stratum) {
+            names.push(r.stratum);
+        }
+    }
+    names.dedup();
+    Ok(names)
+}
+
+/// The `@f32` strata of every corpus id, summed: what a plain `f32` run scores. The tests that
+/// count `@f32` rows take their expectation from the corpus, so an id added to it is not a
+/// number to bump at each site (each id's own shape is checked where it is generated).
+#[cfg(test)]
+pub(crate) fn f32_strata_total(dir: &Path, keep: impl Fn(&str) -> bool) -> Result<usize, String> {
+    let mut total = 0;
+    for e in manifest(dir)?.iter().filter(|e| keep(&e.fn_id)) {
+        total += f32_strata(dir, e)?.len();
+    }
+    Ok(total)
+}
+
 pub(crate) fn read(dir: &Path, entry: &Entry) -> Result<Vec<Record>, String> {
     let path = dir.join(format!("{}.jsonl", entry.fn_id));
     let text = std::fs::read_to_string(&path).map_err(|e| format!("{}: {e}", path.display()))?;
@@ -333,7 +358,7 @@ mod tests {
     fn the_f32_strata_are_the_binary64_ones_rounded_to_binary32() -> Result<(), String> {
         let round = |x: f64| f64::from(x as f32).to_bits();
         let dir = super::super::corpus_dir()?;
-        let mut twins = 0;
+        let mut twins = BTreeMap::new();
         for e in manifest(&dir)?
             .iter()
             .filter(|e| e.fn_id.starts_with("coeff_"))
@@ -358,14 +383,16 @@ mod tests {
                         }
                     }
                 }
-                twins += 1;
+                *twins.entry(e.fn_id.clone()).or_insert(0usize) += 1;
             }
         }
-        assert_eq!(
-            twins,
-            9 * 28 + 1,
-            "28 theta strata in each of 9 ids (`coeff_alpha`, `0062`, the ninth), and `q:w0@f32`"
-        );
+        // Every θ coefficient twins `coeff_k`'s 28 `theta:*` strata, and `coeff_r` adds `q:w0@f32`:
+        // the invariant, not a count of ids that each new coefficient would bump.
+        let k = twins.get("coeff_k").copied().unwrap_or(0);
+        assert_eq!(k, 28);
+        for (id, n) in &twins {
+            assert_eq!(*n, k + usize::from(id == "coeff_r"), "{id}");
+        }
         Ok(())
     }
 

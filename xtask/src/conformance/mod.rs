@@ -483,13 +483,11 @@ mod tests {
             .skip(1)
             .map(|l| l.split(',').collect())
             .collect();
-        // The 9 coefficient ids' 28 each (`coeff_alpha`, `0062`, the ninth) and `coeff_r`'s
-        // `q:w0@f32`, then `0056`'s: `solve_cubic`
-        // 12, `eig3` 19, `chol_n*` 6 each, `chol_solve_n*` 5 each, `quat_renormalize` 5, `real_sqrt`
-        // and `real_cbrt` 8 each, `real_sin_cos` 5, `real_acos` 4, `real_atan2` 7, `real_div` 2;
-        // `0061`'s `mat2_inverse_adj` 3.
-        let new = 12 + 19 + 2 * 6 + 2 * 5 + 5 + 2 * 8 + 5 + 4 + 7 + 2 + 3;
-        assert_eq!(rows.len(), 9 * 28 + 1 + new);
+        // One row per `@f32` stratum of the corpus, every id's, and nothing else.
+        assert_eq!(
+            rows.len(),
+            corpus::f32_strata_total(&corpus_dir()?, |_| true)?
+        );
         assert!(rows.iter().all(|c| c[1].ends_with("@f32") && c[2] == "f32"));
         // An id named without any is an error, not an empty run.
         let named = ["--precision", "f32", "--fn", "so3_exp"];
@@ -559,8 +557,19 @@ mod tests {
         let dir = corpus_dir()?;
         let split = |subjects: &[Registered]| split_f32(&dir, corpus::manifest(&dir)?, subjects);
         let (with, left_out) = split(&[registered(Perfect::exact())])?;
-        // The 9 coefficient ids (`0016`, `coeff_alpha` of `0062`), `0056`'s 13 and `0061`'s one.
-        assert_eq!(with.len(), 9 + 13 + 1);
+        // Exactly the ids with an `@f32` stratum: the coefficient ids (`0016`) and the routines'
+        // (`0056`, `0061`).
+        let entries = corpus::manifest(&dir)?;
+        let mut with_f32 = Vec::new();
+        for e in &entries {
+            if corpus::mentions_f32(&dir, e)? {
+                with_f32.push(e.fn_id.clone());
+            }
+        }
+        assert_eq!(
+            with.iter().map(|e| e.fn_id.clone()).collect::<Vec<_>>(),
+            with_f32
+        );
         let of_0056 = |id: &str| {
             ["solve_cubic", "eig3", "chol", "quat_", "real_", "mat2_"]
                 .iter()
@@ -569,8 +578,7 @@ mod tests {
         assert!(with
             .iter()
             .all(|e| e.fn_id.starts_with("coeff_") || of_0056(&e.fn_id)));
-        let total = corpus::manifest(&dir)?.len();
-        assert_eq!(left_out.len(), total - 9 - 13 - 1);
+        assert_eq!(left_out.len(), entries.len() - with_f32.len());
         assert!(["so3_exp", "sen3_exp_n1", "so2_exp"]
             .iter()
             .all(|id| left_out.iter().any(|l| l == id)));
@@ -585,50 +593,28 @@ mod tests {
             .into_iter()
             .filter(|r| !r.planted)
             .collect();
-        let want = [
-            // The SE(3) chart ids (`0060` decision 8), binary64 only like every vector id.
-            "se3_decoupled_local",
-            "se3_decoupled_retract",
-            // The geodesic ids, `PHASE4.md` §4's, which the `helicoid` subject answers at `f64`.
-            "se3_geodesic",
-            "se3_screw_local",
-            "se3_screw_retract",
-            "se3_world_local",
-            "se3_world_retract",
-            "sen3_ad_n1",
-            "sen3_ad_n2",
-            "sen3_ad_n3",
-            "sen3_exp_n1",
-            "sen3_exp_n2",
-            "sen3_exp_n3",
-            "sen3_jl_inv_n1",
-            "sen3_jl_inv_n2",
-            "sen3_jl_inv_n3",
-            "sen3_jl_n1",
-            "sen3_jl_n2",
-            "sen3_jl_n3",
-            "sen3_jr_inv_n1",
-            "sen3_jr_inv_n2",
-            "sen3_jr_inv_n3",
-            "sen3_jr_n1",
-            "sen3_jr_n2",
-            "sen3_jr_n3",
-            "sen3_log_n1",
-            "sen3_log_n2",
-            "sen3_log_n3",
-            // Every `so3_*` id the `helicoid` subject answers. None has an `@f32` stratum until a
-            // record extends `0016`, so a plain `f32` run names them all and runs none.
-            "so3_act",
-            "so3_exp",
-            "so3_from_matrix",
-            "so3_geodesic",
-            "so3_jl",
-            "so3_jl_inv",
-            "so3_jr",
-            "so3_jr_inv",
+        // What a plain `f32` run names and skips: every id a plain subject answers that has no
+        // `@f32` stratum (every vector id until a record extends `0016`), spot-checked by name.
+        let dir = corpus_dir()?;
+        let mut want = Vec::new();
+        for e in corpus::manifest(&dir)? {
+            let answered = plain.iter().any(|r| r.subject.supports(&e.fn_id));
+            if answered && !corpus::mentions_f32(&dir, &e)? {
+                want.push(e.fn_id);
+            }
+        }
+        want.sort_unstable();
+        let mut left_out = split(&plain)?.1;
+        left_out.sort_unstable();
+        assert_eq!(left_out, want);
+        for id in [
             "so3_log",
-        ];
-        assert_eq!(split(&plain)?.1, want);
+            "sen3_exp_n3",
+            "se3_geodesic",
+            "se3_decoupled_local",
+        ] {
+            assert!(left_out.iter().any(|l| l == id), "{id}");
+        }
         Ok(())
     }
 
