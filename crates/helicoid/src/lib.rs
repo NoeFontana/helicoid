@@ -5,9 +5,9 @@
 //! compile generically, the quaternion [`Quat`], the SE_N(3) tangent [`SEn3Tangent`] with its
 //! [`Twist`] converters, and the dual-matrix Jacobian [`SEn3Jac`] with its dense twins in
 //! [`mod@reference`], the rotation group [`SO3`] with its tangent [`SO3Tangent`] and `Mat3`
-//! Jacobian, the products [`Product`] with the block-diagonal [`ProductJac`], [`sinc`], the
-//! one coefficient of the kernel that is public (`docs/decisions/0062`), and the integrated
-//! exponentials of [`so3`] (`docs/decisions/0064`). Every
+//! Jacobian, the products [`Product`] with the block-diagonal [`ProductJac`], the side-typed
+//! [`Gaussian`], [`sinc`], the one coefficient of the kernel that is public
+//! (`docs/decisions/0062`), and the integrated exponentials of [`so3`] (`docs/decisions/0064`). Every
 //! group is written against the traits and generic over the scalar `S: Real` of
 //! `helicoid-linalg`.
 //!
@@ -38,6 +38,7 @@
 mod chart;
 mod coeffs;
 mod dualmat;
+mod gaussian;
 mod product;
 mod quat;
 pub mod reference;
@@ -56,6 +57,7 @@ pub use chart::{Chart, LeftChart, Lifted, Manifold, RightChart, WithChart};
 pub use coeffs::sweep as __sweep;
 pub use coeffs::{sinc, sinc_value};
 pub use dualmat::SEn3Jac;
+pub use gaussian::Gaussian;
 pub use product::{Product, ProductJac};
 pub use quat::Quat;
 pub use rn::{Rn, RnJac, RnTangent};
@@ -83,6 +85,8 @@ mod chart_tests;
 mod dualmat_tests;
 #[cfg(test)]
 mod gamma_tests;
+#[cfg(test)]
+mod gaussian_tests;
 #[cfg(test)]
 mod heis_tests;
 #[cfg(test)]
