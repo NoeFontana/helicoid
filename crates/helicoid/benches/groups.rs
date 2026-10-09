@@ -42,8 +42,10 @@ use core::time::Duration;
 
 use criterion::measurement::WallTime;
 use criterion::{criterion_group, criterion_main, BatchSize, BenchmarkGroup, Criterion};
-use helicoid::{Jac, LieGroup, SEn3Tangent, SO3Tangent, Tangent, SE3, SO3};
-use helicoid_linalg::{Point, Point3, Real, Vec3, Vector};
+use helicoid::{
+    so3, Gaussian, Jac, LieGroup, Right, SEn3, SEn3Tangent, SO3Tangent, Tangent, SE3, SO3,
+};
+use helicoid_linalg::{Mat3, Matrix, Point, Point3, Real, Vec3, Vector};
 
 /// `(name, θ)`: §9's three strata.
 const THETA: &[(&str, f64)] = &[
@@ -62,6 +64,35 @@ const THETA: &[(&str, f64)] = &[
 #[inline(never)]
 fn geodesic_of<S: Real, G: LieGroup<S>>(x0: &G, x1: &G, t: S) -> G {
     G::geodesic(x0, x1, t)
+}
+
+/// `so3::gamma2` behind a call, for `geodesic_of`'s reason.
+#[inline(never)]
+fn gamma2_of<S: Real>(phi: &SO3Tangent<S>) -> Mat3<S> {
+    so3::gamma2(phi)
+}
+
+/// `so3::gamma_apply_jacobians::<M>` behind a call, for `geodesic_of`'s reason.
+#[inline(never)]
+fn gamma_apply_jacobians_of<const M: usize, S: Real>(
+    phi: &SO3Tangent<S>,
+    v: Vec3<S>,
+) -> (Vec3<S>, Mat3<S>, Mat3<S>) {
+    so3::gamma_apply_jacobians::<M, S>(phi, v)
+}
+
+/// How many candidates a gate tests against one law: a frame's association hypotheses for one
+/// track.
+const CANDIDATES: usize = 16;
+
+/// `χ²` gating of [`CANDIDATES`] points against one right Gaussian, the factor taken once.
+#[inline(never)]
+fn gate_of<S: Real, const N: usize, const D: usize>(
+    g: &Gaussian<S, SEn3<S, N>, Right, D>,
+    xs: &[SEn3<S, N>; CANDIDATES],
+) -> ([S; CANDIDATES], S::Mask) {
+    let (w, ok) = g.whitener();
+    (xs.map(|x| w.mahalanobis_sq(&x)), ok)
 }
 
 /// How many points `act_many` moves per call: one patch of a frame's worth of landmarks.
@@ -163,6 +194,16 @@ fn so3<S: Fixture>(g: &mut BenchmarkGroup<'_, WallTime>, name: &str, theta: f64)
     });
     g.bench_function(format!("so3/rminus_jacobians/{name}"), |b| {
         b.iter(|| black_box(&x).rminus_jacobians(black_box(&base)));
+    });
+    // `generic` is on `b`'s and `d`'s series arms, `near-pi` on their exact arm (`θ² > 9.65`).
+    g.bench_function(format!("so3/gamma2/{name}"), |b| {
+        b.iter(|| gamma2_of(black_box(&ta)));
+    });
+    g.bench_function(format!("so3/gamma_apply_jacobians_1/{name}"), |b| {
+        b.iter(|| gamma_apply_jacobians_of::<1, S>(black_box(&ta), black_box(v)));
+    });
+    g.bench_function(format!("so3/gamma_apply_jacobians_2/{name}"), |b| {
+        b.iter(|| gamma_apply_jacobians_of::<2, S>(black_box(&ta), black_box(v)));
     });
     // `base` to `x`, so the relative motion is `ta` and `θ(d)` is the label's, not the angle
     // between two same-`θ` elements about different axes. `t` is non-dyadic for `laws`'s reason:
@@ -267,6 +308,54 @@ fn se3_consecutive<S: Fixture>(g: &mut BenchmarkGroup<'_, WallTime>) {
     });
 }
 
+/// `Gaussian`'s rows on SE_N(3) (`0065`, `0066`): a fixed mean at `θ = 1` and a fixed `Σ`, since
+/// neither the side change nor the factorization branches on either.
+fn gaussian<S: Fixture, const N: usize, const D: usize>(
+    g: &mut BenchmarkGroup<'_, WallTime>,
+    tag: &str,
+) {
+    let ta = SEn3Tangent {
+        phi: phi::<S>(1.0, false),
+        rho: rho::<S, N>(false),
+    };
+    let mean = <SEn3<S, N> as LieGroup<S>>::exp(&ta);
+    // `A Aᵀ + I` with `A`'s entries in `[-0.2, 0.2]`: well-conditioned, no structural zero.
+    let a: [[f64; D]; D] = core::array::from_fn(|r| {
+        core::array::from_fn(|c| ((r * 7 + c * 3) % 5) as f64 * 0.1 - 0.2)
+    });
+    let cov = Matrix::from_cols(core::array::from_fn(|c| {
+        Vector(core::array::from_fn(|r| {
+            let dot: f64 = (0..D).map(|k| a[r][k] * a[c][k]).sum();
+            S::of(dot + if r == c { 1.0 } else { 0.0 })
+        }))
+    }));
+    let right = Gaussian::<S, SEn3<S, N>, Right, D>::new(mean, cov);
+    let left = right.to_left();
+    let j = <SEn3<S, N> as LieGroup<S>>::jr(&ta);
+    let xs: [SEn3<S, N>; CANDIDATES] = core::array::from_fn(|i| {
+        let s = 0.01 * (i as f64 + 1.0);
+        mean.rplus(&SEn3Tangent {
+            phi: phi::<S>(s, i % 2 == 0),
+            rho: rho::<S, N>(i % 2 == 1).map(|r| r.scale(S::of(s))),
+        })
+    });
+    g.bench_function(format!("{tag}/gaussian_to_left"), |b| {
+        b.iter(|| black_box(&right).to_left());
+    });
+    g.bench_function(format!("{tag}/gaussian_to_right"), |b| {
+        b.iter(|| black_box(&left).to_right());
+    });
+    g.bench_function(format!("{tag}/gaussian_propagate"), |b| {
+        b.iter(|| black_box(&right).propagate(black_box(&j), mean));
+    });
+    g.bench_function(format!("{tag}/gaussian_mahalanobis_sq"), |b| {
+        b.iter(|| black_box(&right).mahalanobis_sq(black_box(&xs[3])));
+    });
+    g.bench_function(format!("{tag}/gaussian_gate_{CANDIDATES}"), |b| {
+        b.iter(|| gate_of(black_box(&right), black_box(&xs)));
+    });
+}
+
 fn groups(c: &mut Criterion) {
     let mut g = c.benchmark_group("groups/f64");
     for &(name, theta) in THETA {
@@ -276,6 +365,8 @@ fn groups(c: &mut Criterion) {
         sen3::<f64, 2>(&mut g, "se23", name, theta);
     }
     se3_consecutive::<f64>(&mut g);
+    gaussian::<f64, 1, 6>(&mut g, "se3");
+    gaussian::<f64, 2, 9>(&mut g, "se23");
     g.finish();
 
     let mut g = c.benchmark_group("groups/f32");
@@ -286,6 +377,8 @@ fn groups(c: &mut Criterion) {
         sen3::<f32, 2>(&mut g, "se23", name, theta);
     }
     se3_consecutive::<f32>(&mut g);
+    gaussian::<f32, 1, 6>(&mut g, "se3");
+    gaussian::<f32, 2, 9>(&mut g, "se23");
     g.finish();
 }
 

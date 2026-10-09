@@ -6,6 +6,13 @@
 
 ## Context
 
+> **Amended by [`0066`](./0066-gamma-shares-its-coefficients-and-a-gaussian-factors-once.md), 2026-10-09.** The switches *Measured* reads as `θ ≈ 9.6`
+> and `7.8` are on `θ²`, so on `θ ≤ π` the exact arm does run: from `θ = 2.89` (`M = 1`) and `3.11`
+> (`M = 2`) at `f64`, and from `2.79` at `f32`. The table's `≤ π` column includes those draws.
+> `gamma_apply_jacobian` is now `gamma_apply_jacobians`, which also returns `Γ_M`, and differentiates
+> one `Dual<S, 1>` coefficient evaluation by the chain rule instead of running on `Dual<S, 3>`;
+> `gamma2` is assembled by `HatSq::poly`: `SO3::jr`'s entries with the structural zeros dropped.
+
 `PHASE5.md` §4 asks for `so3::gamma1(φ) = jl(φ)`, `so3::gamma2(φ)` from `gamma2_coeffs → (b, d)`,
 a directional Jacobian `∂(Γ_m(φ) v)/∂φ` through `Dual<S, 3>`, and the corpus id `so3_gamma2`. A
 fusion estimator's IMU increments are `Δv = Δt Γ₁(ωΔt) f` and `Δp = Δt² Γ₂(ωΔt) f` (GG.4), at

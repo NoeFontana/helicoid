@@ -148,10 +148,10 @@ fn round_trip<S: Sample, G: LieGroup<S>, const D: usize>(c: &Case<D>) -> f64 {
     let g = c.gaussian::<S, G>();
     let back = g.to_left().to_right();
     let m = abs_mul(&ad::<S, G, D>(&g.mean.inverse()), &ad::<S, G, D>(&g.mean));
-    let s = f64_of(&g.cov);
+    let s = f64_of(g.cov());
     let k = gamma::<S>(4 * D + ROUND_TRIP_AD);
     let bound = abs_sandwich(&m, &s).map(|r| r.map(|x| k * x));
-    ratio(&f64_of(&back.cov), &s, &bound)
+    ratio(&f64_of(back.cov()), &s, &bound)
 }
 
 /// `to_left` and `to_right` against `reference::sen3jac_sandwich` with `J = Ad`, as a fraction of
@@ -173,10 +173,10 @@ fn twins<S: Sample, const N: usize, const D: usize>(c: &Case<D>) -> f64 {
         (want, bound)
     };
     let left = g.to_left();
-    let (want, bound) = twin(&g.mean, &g.cov);
-    let l = ratio(&f64_of(&left.cov), &want, &bound);
-    let (want, bound) = twin(&left.mean.inverse(), &left.cov);
-    let r = ratio(&f64_of(&left.to_right().cov), &want, &bound);
+    let (want, bound) = twin(&g.mean, g.cov());
+    let l = ratio(&f64_of(left.cov()), &want, &bound);
+    let (want, bound) = twin(&left.mean.inverse(), left.cov());
+    let r = ratio(&f64_of(left.to_right().cov()), &want, &bound);
     laws::worst(l, r)
 }
 
@@ -222,7 +222,7 @@ fn shadow<S: Sample, G: LieGroup<S>, Sd: Side, const D: usize>(
     assert!(ok.all(), "mask clear on a positive definite Σ");
     let mut delta = [S::zero(); D];
     crate::Tangent::write_dense(&Sd::minus(x, &g.mean), &mut delta);
-    let want = shadow_d2(&f64_of(&g.cov), &delta.map(S::value_f64));
+    let want = shadow_d2(&f64_of(g.cov()), &delta.map(S::value_f64));
     let twice = if laws::unit::<S>() < 1e-10 { 2.0 } else { 1.0 };
     let bound = twice * c_d(D) * laws::unit::<S>() / lambda;
     (d2.value_f64() - want).abs() / want / bound
@@ -284,12 +284,28 @@ macro_rules! gaussian_for {
                     let mut raw = c.cov::<f64>();
                     raw.set(0, $D - 1, 7.0); // an upper triangle that disagrees is not read
                     let g = Gaussian::<f64, $G<f64>, Right, $D>::new(c.mean::<f64, $G<f64>>(), raw);
-                    prop_assert!(symmetric(&g.cov));
-                    prop_assert!(g.cov.get(0, $D - 1).to_bits() == c.cov::<f64>().get($D - 1, 0).to_bits());
-                    prop_assert!(symmetric(&g.to_left().cov));
-                    prop_assert!(symmetric(&g.to_left().to_right().cov));
+                    prop_assert!(symmetric(g.cov()));
+                    prop_assert!(g.cov().get(0, $D - 1).to_bits() == c.cov::<f64>().get($D - 1, 0).to_bits());
+                    prop_assert!(symmetric(g.to_left().cov()));
+                    prop_assert!(symmetric(g.to_left().to_right().cov()));
                     let j = g.mean.adjoint();
-                    prop_assert!(symmetric(&g.propagate(&j, g.mean).cov));
+                    prop_assert!(symmetric(g.propagate(&j, g.mean).cov()));
+                }
+                /// `Whitener::mahalanobis_sq` is `mahalanobis_sq`'s value to the bit, and the
+                /// mask is `chol`'s, on both sides and at both precisions (`0066`).
+                #[test]
+                fn the_whitener_is_mahalanobis_sq_to_the_bit(c in case::<$D>()) {
+                    let g = c.gaussian::<f64, $G<f64>>();
+                    let x = point::<f64, $G<f64>, $D>(&c, &g.mean);
+                    let (w, ok) = g.whitener();
+                    let (d2, mask) = g.mahalanobis_sq(&x);
+                    prop_assert!(w.mahalanobis_sq(&x).to_bits() == d2.to_bits() && ok == mask);
+                    let l = g.to_left();
+                    let (w, _) = l.whitener();
+                    prop_assert!(w.mahalanobis_sq(&x).to_bits() == l.mahalanobis_sq(&x).0.to_bits());
+                    let g = c.gaussian::<f32, $G<f32>>();
+                    let x = point::<f32, $G<f32>, $D>(&c, &g.mean);
+                    prop_assert!(g.whitener().0.mahalanobis_sq(&x).to_bits() == g.mahalanobis_sq(&x).0.to_bits());
                 }
                 #[test]
                 fn propagate_by_the_identity_keeps_cov(c in case::<$D>()) {
@@ -298,7 +314,7 @@ macro_rules! gaussian_for {
                     for i in 0..$D {
                         for k in 0..$D {
                             // `(a − b)` is `+0` exactly when `a == b`, signed zeros included.
-                            prop_assert!((p.cov.get(i, k) - g.cov.get(i, k)).abs().to_bits() == 0);
+                            prop_assert!((p.cov().get(i, k) - g.cov().get(i, k)).abs().to_bits() == 0);
                         }
                     }
                 }
