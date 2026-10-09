@@ -182,9 +182,9 @@ mod tests {
         assert!(answer_file("so3_exp", LINE).is_err());
     }
 
-    /// Every input of every supported corpus file is `float.hex()` to the byte, every matrix
-    /// exactly symmetric (nalgebra reads one triangle), and every record answered without a
-    /// panic. A non-finite answer is the harness's to record (§7), not this test's to refuse. The
+    /// Every input of every supported corpus file is `float.hex()` to the byte, every matrix of an
+    /// id nalgebra answers from one triangle exactly symmetric (`mat2_inverse_adj`'s are general),
+    /// and every record answered without a panic. A non-finite answer is the harness's to record (§7), not this test's to refuse. The
     /// corpus is committed, so this reads it as it is.
     #[test]
     fn the_whole_supported_corpus_is_answered() -> Result<(), String> {
@@ -205,7 +205,7 @@ mod tests {
                     }
                 }
                 let given = inputs(object)?;
-                if let Some(a) = given.get("A") {
+                if let Some(a) = given.get("A").filter(|_| fn_id != "mat2_inverse_adj") {
                     let n = (a.len() as f64).sqrt() as usize;
                     for (i, j) in (0..n).flat_map(|i| (0..n).map(move |j| (i, j))) {
                         assert_eq!(a[i + n * j].to_bits(), a[j + n * i].to_bits(), "{fn_id}");

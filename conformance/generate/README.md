@@ -234,6 +234,7 @@ record's decision 1 fixes their fields and references, decision 2 their strata. 
 | `chol_n*` | `A` (n×n) | `valid[1]`, `L` | `valid` by an exact LDLᵀ; `mp.cholesky(A, tol=0)`, or zeros |
 | `chol_solve_n*` | `A`, `b[n]` | `x[n]` | `mp.lu_solve` of the equilibrated system: x = D (DAD)⁻¹ D b, D = diag(A)^-1/2 |
 | `quat_renormalize` | `q[4]` | `q[4]` | q/‖q‖ |
+| `mat2_inverse_adj` | `A[2x2]` | `inv[2x2]`, `det` | adj(A)/det and det of the stored entries in rationals; `inv` zeros where det = 0 (`0061`) |
 | `real_sqrt`, `real_cbrt`, `real_acos` | `x` | `value`, `d` | the function and its calculus derivative |
 | `real_sin_cos` | `x` | `sin`, `cos`, `d_sin`, `d_cos` | the same |
 | `real_atan2` | `y`, `x` | `value`, `d_y`, `d_x` | the same |
@@ -246,6 +247,7 @@ record's decision 1 fixes their fields and references, decision 2 their strata. 
 | `chol_n*` | `chol:spd`, `cond-1e-{4,8,12}` (`{2,4,6}`), `diag-scale`, `indefinite`. 32 each, 384 |
 | `chol_solve_n*` | the same without `indefinite`, 320 |
 | `quat_renormalize` | `renorm:eta-2^-{27,30,40,52}` (`{12,16,20,23}`), `renorm:eta-edge`. 64 each, 640 |
+| `mat2_inverse_adj` | `cond:1`, `cond:1e4`, `cond:1e8`, `cond:singular` (`0061`: s R(α) diag(1, 1/κ) R(β)ᵀ; [[x, 2^j x], [y, 2^j y]], exactly singular); at f32 the same without `cond:1e8` (κ > 1/u: `det` rounds to 0 on a nonsingular input), shared streams. 6 each, 42 |
 | `real_sqrt`, `real_cbrt` | `x:1e{e}`, e ∈ {−300, −100, −10, −1, 0, 1, 10, 100, 300} ({−37, −10, −1, 0, 1, 10, 37}), `x:subnormal`. 64 each, 1152 |
 | `real_sin_cos` | `x:tiny`, `small`, `moderate`, `large`, `near-k-pi/2`, 640 |
 | `real_acos` | `x:interior`, `near+1`, `near-1`, `tiny`, 512 |

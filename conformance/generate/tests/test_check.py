@@ -67,7 +67,7 @@ class RegistryTest(unittest.TestCase):
     def test_every_coefficient_id_carries_its_own_cross_check(self):
         for name, spec in FUNCTIONS.items():
             prefixes = ("coeff_", "so2_", "so3_", "se2_", "se3_", "sen3_")
-            prefixes += ("solve_cubic", "eig3", "chol_", "quat_", "real_")  # 0056
+            prefixes += ("solve_cubic", "eig3", "chol_", "quat_", "real_", "mat2_")  # 0056, 0061
             self.assertTrue(name.startswith(prefixes), name)  # the others: their own tests
             self.assertIsNotNone(spec.check, name)
             if not name.startswith("coeff_"):

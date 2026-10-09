@@ -105,7 +105,19 @@ impl Subject for Perfect {
         };
         let field =
             |(k, t): (&String, &Tensor<Decimal>)| (k.clone(), t.data.iter().map(round).collect());
-        let out: Output = record.reference.iter().map(field).collect();
+        let mut out: Output = record.reference.iter().map(field).collect();
+        if matches!(metric::rule(fn_id), Some(Rule::Adjugate)) {
+            // A singular reference's `inv` is zeros standing for "none": the right answer is a
+            // non-finite inverse (`0061` decision 3).
+            let singular = record
+                .reference
+                .get("det")
+                .is_some_and(|t| t.data.iter().all(|d| d.mant == 0));
+            if singular {
+                out.insert("inv".to_string(), vec![f64::NAN; 4]);
+            }
+            return out;
+        }
         if !matches!(metric::rule(fn_id), Some(Rule::Roots)) {
             return out;
         }

@@ -15,6 +15,7 @@ from . import (
     cubic,
     eig,
     geodesic,
+    mat2,
     quat,
     real,
     se2,
@@ -164,6 +165,14 @@ FUNCTIONS: dict[str, FunctionSpec] = {
                 check_linalg.chol_solve,
             )
             for n in (3, 6)
+        ),
+        # docs/decisions/0061.
+        FunctionSpec(
+            "mat2_inverse_adj",
+            mat2.STRATA,
+            drawn_inputs,
+            mat2.inverse_adj,
+            check_linalg.mat2_inverse_adj,
         ),
         FunctionSpec(
             "quat_renormalize",

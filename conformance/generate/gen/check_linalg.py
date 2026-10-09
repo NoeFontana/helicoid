@@ -12,6 +12,8 @@ the route that computed the record, at twice the working precision, to 100 digit
 - `chol_solve`: |A x - b| <= 1e-100 |A| |x|.
 - `quat_renormalize`: |q'| = 1, q' parallel to q (every 2x2 minor of [q, q'] to 1e-100 |q|),
   and q'.q > 0.
+- `mat2_inverse_adj` (0061): |det - mp.det(A)| <= 1e-100 |A|^2; where det is 0, inv is zero; else
+  |A inv - I| <= 1e-100 |A| |inv|.
 """
 
 from mpmath import mp, mpf
@@ -113,3 +115,20 @@ def quat_renormalize(inputs: dict, out: dict) -> None:
                 _within(f"quat_renormalize: minor {i}{j}", abs(p[i] * q[j] - p[j] * q[i]), norm_q)
         if not sum(a * b for a, b in zip(p, q, strict=True)) > 0:
             raise CrossCheckError("quat_renormalize: q' is not on q's side")
+
+
+def mat2_inverse_adj(inputs: dict, out: dict) -> None:
+    (det,) = out["det"]
+    with mp.workdps(2 * DPS):
+        A, inv = from_mat(inputs["A"]), from_mat(out["inv"])
+        size = frobenius(A) ** 2
+        _within("mat2_inverse_adj: det - mp.det(A)", abs(det - mp.det(A)), size)
+        if det == 0:
+            if any(inv[i, j] != 0 for i in range(2) for j in range(2)):
+                raise CrossCheckError("mat2_inverse_adj: inv is not zero where det is 0")
+            return
+        _within(
+            "mat2_inverse_adj: A inv - I",
+            frobenius(A * inv - mp.eye(2)),
+            frobenius(A) * frobenius(inv),
+        )

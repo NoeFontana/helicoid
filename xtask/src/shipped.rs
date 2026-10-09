@@ -412,6 +412,7 @@ enum Linalg {
     Chol6,
     CholSolve3,
     CholSolve6,
+    Mat2Inverse,
     Renormalize,
     Sqrt,
     Cbrt,
@@ -422,13 +423,14 @@ enum Linalg {
 }
 
 impl Linalg {
-    const ALL: [(&'static str, Linalg); 13] = [
+    const ALL: [(&'static str, Linalg); 14] = [
         ("solve_cubic", Linalg::SolveCubic),
         ("eig3", Linalg::Eig3),
         ("chol_n3", Linalg::Chol3),
         ("chol_n6", Linalg::Chol6),
         ("chol_solve_n3", Linalg::CholSolve3),
         ("chol_solve_n6", Linalg::CholSolve6),
+        ("mat2_inverse_adj", Linalg::Mat2Inverse),
         ("quat_renormalize", Linalg::Renormalize),
         ("real_sqrt", Linalg::Sqrt),
         ("real_cbrt", Linalg::Cbrt),
@@ -477,6 +479,16 @@ impl Linalg {
             Linalg::Chol6 => chol_answer::<S, 6>(record),
             Linalg::CholSolve3 => chol_solve_answer::<S, 3>(record),
             Linalg::CholSolve6 => chol_solve_answer::<S, 6>(record),
+            Linalg::Mat2Inverse => {
+                let Some(a) = matrix::<S, 2>(record, "A") else {
+                    return Output::new();
+                };
+                let (inv, det) = a.inverse_adj();
+                Output::from([
+                    ("inv".to_string(), cols_out(&inv)),
+                    ("det".to_string(), flat(&[det])),
+                ])
+            }
             Linalg::Renormalize => {
                 let Some(&[w, x, y, z]) = scalars::<S>(record, "q").as_deref() else {
                     return Output::new();
