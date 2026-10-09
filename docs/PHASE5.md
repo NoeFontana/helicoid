@@ -15,8 +15,8 @@ stated side; and consumer migrations onto `helicoid` without unrecorded regressi
 | SE(3) charts `Screw`, `Decoupled`, `WorldTranslation` (§1.3) | Done (`0060`, #120, #123): `TwistBlockJac`, `Se3Chart`, `SE3::chart_transition` (all nine pairs against `Dual`); corpus ids `se3_{screw,decoupled,world}_{retract,local}` |
 | S² and its chart (§2) | Not started |
 | Sim(3) (§3) | Not started |
-| Γ₁, Γ₂, directional Jacobians (§4) | Done ([`0064`](./decisions/0064-the-integrated-exponentials-reuse-the-swept-switches.md), #127, #128): `so3::{gamma1, gamma2, gamma_apply_jacobian::<M>}`, `M` 1 or 2; the twin `reference::gamma_apply`; corpus id `so3_gamma2` at both precisions; the seeded defect Γ₂ from Γ₁'s coefficients |
-| `Gaussian<S, G, Sd, D>` (§5) | Done ([`0065`](./decisions/0065-a-gaussian-names-its-side-and-is-stored-symmetric.md), #129, #130): `to_left`, `to_right`, `propagate`, `mahalanobis_sq`; the round-trip bound and the twins on SE(3), SE₂(3), SO(3), SO(3)×ℝ³; corpus ids `gaussian_mahalanobis_{se3,se23}` |
+| Γ₁, Γ₂, directional Jacobians (§4) | Done ([`0064`](./decisions/0064-the-integrated-exponentials-reuse-the-swept-switches.md), #127, #128): `so3::{gamma1, gamma2, gamma_apply_jacobians::<M>}`, `M` 1 or 2 (one coefficient evaluation, [`0066`](./decisions/0066-gamma-shares-its-coefficients-and-a-gaussian-factors-once.md)); the twin `reference::gamma_apply`; corpus id `so3_gamma2` at both precisions; the seeded defect Γ₂ from Γ₁'s coefficients |
+| `Gaussian<S, G, Sd, D>` (§5) | Done ([`0065`](./decisions/0065-a-gaussian-names-its-side-and-is-stored-symmetric.md), #129, #130): `to_left`, `to_right`, `propagate`, `mahalanobis_sq`, and `whitener` for many-point gating ([`0066`](./decisions/0066-gamma-shares-its-coefficients-and-a-gaussian-factors-once.md)); the round-trip bound and the twins on SE(3), SE₂(3), SO(3), SO(3)×ℝ³; corpus ids `gaussian_mahalanobis_{se3,se23}` |
 | Consumer migrations (§6) | Not started |
 
 ## 0. Non-goals and guardrails — read first
@@ -110,11 +110,12 @@ Corpus ids: `sim3_exp`, `sim3_log`, `sim3_jr`, `sim3_jr_inv`, `sim3_ad`.
 
 **NORMATIVE.** `so3::gamma1(φ) = jl(φ)`, `so3::gamma2(φ)` via `gamma2_coeffs` → $(b, d)$
 (`NUMERICS.md` §7); corpus id `so3_gamma2`. Directional Jacobian computes
-$\partial(\Gamma_m(\varphi)v)/\partial\varphi$ via `gamma_m` on `Dual<S, 3>`.
+$\partial(\Gamma_m(\varphi)v)/\partial\varphi$ from `gamma_m`'s coefficients on `Dual<S, 1>` and the
+chain rule ([`0066`](./decisions/0066-gamma-shares-its-coefficients-and-a-gaussian-factors-once.md)).
 
 [`0064`](./decisions/0064-the-integrated-exponentials-reuse-the-swept-switches.md) fixes the shape:
-- `gamma_apply_jacobian::<M, S>(&φ, v) -> (Γ_M v, ∂(Γ_M v)/∂φ)` for `M` 1 or 2, asserted at
-  monomorphization.
+- `gamma_apply_jacobians::<M, S>(&φ, v) -> (Γ_M v, ∂/∂φ, ∂/∂v = Γ_M)` for `M` 1 or 2, asserted
+  at monomorphization ([`0066`](./decisions/0066-gamma-shares-its-coefficients-and-a-gaussian-factors-once.md) adds `Γ_M` and renames it).
 - `gamma2_coeffs` takes no switch of its own.
 - `so3_gamma2` has `so3_jl`'s strata and their `@f32` twins.
 - The seeded defect "Γ₂ from Γ₁'s coefficients" is in `PHASE1.md` §10.
@@ -126,7 +127,7 @@ $\partial(\Gamma_m(\varphi)v)/\partial\varphi$ via `gamma_m` on `Dual<S, 3>`.
 ```rust
 pub struct Gaussian<S: Real, G: LieGroup<S>, Sd: Side, const D: usize> {
     pub mean: G,
-    pub cov: Matrix<S, D, D>,
+    cov: Matrix<S, D, D>, // read through `cov()`; exactly symmetric (`0066`)
     _side: core::marker::PhantomData<Sd>,
 }
 ```
@@ -135,6 +136,8 @@ pub struct Gaussian<S: Real, G: LieGroup<S>, Sd: Side, const D: usize> {
 - `to_left()` / `to_right()`: $\Sigma_L = \mathrm{Ad}_\mu\,\Sigma_R\,\mathrm{Ad}_\mu^\top$ via `Jac::sandwich`.
 - `propagate(&self, j: &G::Jac, mean: G)`: $J\Sigma J^\top$.
 - `mahalanobis_sq(&self, x: &G) -> (S, S::Mask)`: $\|L^{-1}(x \ominus_{Sd} \mu)\|^2$ with `chol` mask.
+- `whitener(&self) -> (Whitener, S::Mask)`: $L$ once, then `Whitener::mahalanobis_sq(x) -> S` per
+  point, `mahalanobis_sq`'s value to the bit ([`0066`](./decisions/0066-gamma-shares-its-coefficients-and-a-gaussian-factors-once.md)).
 - Side is encoded in the type for invariant safety.
 
 [`0065`](./decisions/0065-a-gaussian-names-its-side-and-is-stored-symmetric.md) fixes what this leaves open:
