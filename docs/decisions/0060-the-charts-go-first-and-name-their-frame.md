@@ -116,9 +116,12 @@ as declared, not committed) settles what the language allows.
      reference uses the geometric `Log` of the quaternion (`atan2`, `0045`), not `mp.logm`, which is
      complex from `θ ≈ 3.03` (`docs/maths/index.md`). `Y` is each chart's own retract, so a
      `local` record's answer is its stratum's `δ` up to the rounding of `Y`.
-   - The metric is `NUMERICS.md` §11's forward error, as `se3_geodesic`'s and `sen3_log`'s: a
-     `retract`'s quaternion sign-aligned with floor 1 and its translation with floor `‖x₀‖`, and a
-     `local`'s tangent relative. No oracle answers these ids, so their bars are
+   - The metric is `NUMERICS.md` §11's forward error, as `se3_geodesic`'s: a `retract`'s
+     quaternion sign-aligned with floor 1 and its translation with floor `‖x₀‖`. A `local` is held
+     as `phi` and `rho`, with floors 1 and `‖x₀‖`. Its inputs are two absolute poses, so a nearby
+     pair cancels and the answer's own size is the wrong denominator: scored relative, the
+     `rho:1e-6/theta=1e-8` stratum reads `2e6 u` from `q₀* q₁`'s absolute `u`, which is the
+     problem's conditioning and not the routine's. No oracle answers these ids, so their bars are
      no-regress and coverage.
 
    The ids go into `PHASE1.md` §4.3's definitions table and `xtask/src/envelope/coverage.rs`'s
