@@ -21,8 +21,8 @@ uv run --frozen python -m gen list
 | `gen/rng.py` | splitmix64, per-stratum streams, log-uniform, uniform on S² |
 | `gen/strata.py` | the strata; `gen/registry.py` the function ids; `gen/coeff.py`, `gen/so3.py`, `gen/sen3.py`, `gen/so2.py`, `gen/se2.py` their definitions |
 | `gen/series.py`, `gen/check.py`, `gen/check_sen3.py`, `gen/check_se2.py` | the exact Taylor series (`coeff_series`); the per-record cross-checks |
-| `gen/cubic.py`, `gen/eig.py`, `gen/chol.py`, `gen/quat.py`, `gen/real.py`, `gen/dense.py` | the ids of `docs/decisions/0056`, each with its strata (`strata.Drawn`); n×n helpers and exact rational LDLᵀ |
-| `gen/check_linalg.py`, `gen/check_real.py` | their cross-checks |
+| `gen/cubic.py`, `gen/eig.py`, `gen/chol.py`, `gen/quat.py`, `gen/real.py`, `gen/dense.py`, `gen/gaussian.py` | the ids of `docs/decisions/0056`, each with its strata (`strata.Drawn`); n×n helpers and exact rational LDLᵀ |
+| `gen/check_linalg.py`, `gen/check_real.py`, `gen/check_gaussian.py` | their cross-checks |
 | `gen/fmt.py`, `gen/corpus.py`, `gen/manifest.py` | text formats and `Mat`, assembly (parallel by stratum) and recheck, `MANIFEST.json` |
 
 ## Record schema
@@ -180,6 +180,20 @@ Haar-random rotation, a unit-norm translation); `out` is the pose `{q, x}`. A `l
 cancels and the answer's own size is the wrong denominator. No `mp.logm`: the rotation's `Log` is `gen.so3`'s geometric one. Cross-checks: a
 `retract`'s answer goes back to its twist through the chart's `local` (and `screw`'s translation
 matches `mp.expm` of the 4x4 hat), a `local`'s answer back to `Y` through the chart's `retract`.
+
+## Gaussians (`docs/decisions/0065`)
+
+`gaussian_mahalanobis_se3` and `gaussian_mahalanobis_se23` (`gen/gaussian.py`,
+`docs/maths/gamma-gaussian.md` GG.10–GG.13): a record is `{q0, x0, q1, x1, side, Sigma}`, the mean,
+a point, `0` for a right Gaussian or `1` for a left one, and a symmetric `Sigma` of the tangent's
+size; `out` is `{valid, d2}`, `valid` decided exactly as `chol`'s (an LDLᵀ in rationals) and `d2`
+the residual's `δᵀ Σ⁻¹ δ` by `mp.lu_solve`, `0` where `valid` is `0`. The residual is the geometric
+`Log` of `gen.sen3` (no `mp.logm`). The point is drawn from the record's own law and rounded, so
+`d2` is a `χ²` draw. Strata: `gauss:right`, `gauss:left`, `gauss:corr-1e-{4,8}` (`{2,4}` at
+binary32), `gauss:lever` (a left `Σ_L = Ad Σ_R Adᵀ` at `‖t‖ = 10³`, binary64 only),
+`gauss:near-cut` (the residual's rotation in `[2.5, 3]`) and `gauss:indefinite`. Cross-check:
+`d2` from the other side's residual and covariance (GG.10(a)), and `valid` from the eigenvalues of
+the equilibrated `Sigma`.
 
 ## SO(2) and SE(2)
 
