@@ -10,7 +10,9 @@
 //! `Ad_R = R`), so there is no structure to exploit below a dense `3 x 3` and `0005`'s structured
 //! type is the matrix itself.
 
-use crate::coeffs::{exp_coeffs, jr_coeffs, jr_inv_coeff, log_ratio, log_ratio_takes_short_arm};
+use crate::coeffs::{
+    exp_coeffs, jr_coeffs, jr_inv_coeff, log_ratio, log_ratio_short, log_ratio_takes_short_arm,
+};
 use crate::quat::Quat;
 use crate::side::Side;
 use crate::traits::{tie_dof, Jac, LieGroup, Tangent};
@@ -489,7 +491,9 @@ pub(crate) fn geodesic_rel<S: Real>(q0: Quat<S>, q1: Quat<S>, t: S) -> GeodesicR
     let d = q0.conjugate() * q1;
     let flip = S::one().copysign(d.w);
     let (w, x, y, z) = (flip * d.w, flip * d.x, flip * d.y, flip * d.z);
-    let n2 = (x * x + y * y) + z * z;
+    // From `d`, not the flipped copy: the same bits, `flip` being `±1`, and one multiply fewer
+    // before the division `r` waits on.
+    let n2 = (d.x * d.x + d.y * d.y) + d.z * d.z;
     // The provided body below the switch, **except at exactly `t = 1`**, where only the blend
     // is exact: its right weight is `sin(1*a)/sin a`, one number over itself. `0050` shipped
     // that bit-exactness and `PHASE4.md` §0.0 records it, and giving it up at `geo:consecutive`
@@ -523,14 +527,33 @@ pub(crate) fn geodesic_rel<S: Real>(q0: Quat<S>, q1: Quat<S>, t: S) -> GeodesicR
 
 /// `SO3::geodesic` where `fast` holds: the provided body, `q₀ Exp(t r v)`, and its `r`.
 ///
-/// At its own safe argument: `log_ratio`'s series arm needs `w > 0`, which `fast` asserts, so
-/// there is nothing to select here (`0003`).
+/// Written out by two identities exact in `R`, so that only `r`'s and `Exp`'s series wait on each
+/// other (`0059`): `θ² = ‖t r v‖² = r² (t² n²)`, and `q₀ (c, k t r v) = c q₀ + k t r (q₀ (0, v))`,
+/// whose product does not wait for `r`. `θ` and the axis are `Exp`'s, so the arm is as scale-free
+/// on a carried quaternion as before (`0058`).
+///
+/// At its own safe argument: `r`'s short arm needs `w > 0`, which `fast` asserts, and
+/// `log_ratio_short` selects on `short` for a lane where it does not (`0003`).
 #[inline]
 pub(crate) fn geodesic_short<S: Real>(q0: Quat<S>, rel: &GeodesicRel<S>, t: S) -> (Quat<S>, S) {
-    let r = log_ratio(rel.n2, rel.w);
+    let r = log_ratio_short(rel.n2, rel.w, rel.short);
     let [x, y, z] = rel.v.0;
-    let phi = Vector([r * x, r * y, r * z]);
-    (SO3(q0).rplus(&SO3Tangent { phi }.scale(t)).0, r)
+    let p = q0
+        * Quat {
+            w: S::zero(),
+            x,
+            y,
+            z,
+        };
+    let (k, c) = exp_coeffs(r * r * (t * t * rel.n2));
+    let tr = t * r;
+    let rot = Quat {
+        w: c * q0.w + k * (tr * p.w),
+        x: c * q0.x + k * (tr * p.x),
+        y: c * q0.y + k * (tr * p.y),
+        z: c * q0.z + k * (tr * p.z),
+    };
+    (rot, r)
 }
 
 /// `SO3::geodesic` elsewhere: GE.14's blend (`0050`). With `COS` it also returns
@@ -664,17 +687,20 @@ impl<S: Real> LieGroup<S> for SO3<S> {
     /// boundary (`θ ≈ 0.58`) but stops being the more *accurate* one almost immediately above
     /// identity, so the two crossovers are decades apart and the accuracy one binds (`0006`).
     /// Dispatching on the series/exact switch reads `2.5019 u` at the `geo:generic` stratum and
-    /// **loses** it; `r`'s second switch, `0047`'s short arm, is four decades of `s` lower and reads
+    /// **loses** it; `r`'s second switch, `0047`'s short arm, is four decades of `s` lower and read
     /// the best cell of every stratum — 1.5721 / 1.7382 / 1.6417 `u` over `geo:consecutive` /
-    /// `geo:generic` / `geo:near-pi` — while keeping the faster arm on every bench row. Every smaller threshold reads identically, so the choice has decades of
-    /// slack; `measure_geodesic`'s scan is the table and its test is the guard.
+    /// `geo:generic` / `geo:near-pi` — while keeping the faster arm on every bench row. Every
+    /// smaller threshold reads identically, so the choice has decades of slack;
+    /// `measure_geodesic`'s scan is the table and its test is the guard. `0059` writes the arm
+    /// below out, and `geo:consecutive` reads 0.9929 `u`.
     ///
     /// No switch of its own: `0004` forbids typing one, and this needs none.
     ///
     /// # Arms
     ///
-    /// Below: `q₀ Exp(t Log(q₀* q₁))`, the provided body, which is also
-    /// [`reference::geodesic`](crate::reference::geodesic).
+    /// Below: `q₀ Exp(t Log(q₀* q₁))`, the provided body, written out so that `r`'s and `Exp`'s
+    /// series do not wait on its products (`0059`); [`reference::geodesic`](crate::reference::geodesic)
+    /// computes it as written.
     ///
     /// Above: GE.14's blend, `[sin((1−t)α) q₀ + sin(tα) q₁] / sin α` (`0050`).
     ///

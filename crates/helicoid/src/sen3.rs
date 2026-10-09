@@ -1,7 +1,7 @@
 //! SE_N(3): the group `SEn3`, its tangent `SEn3Tangent` and the twist converters
 //! (`docs/PHASE3.md` §5). The structured Jacobian `SEn3Jac` is `dualmat`'s.
 
-use crate::coeffs::log_ratio;
+use crate::coeffs::log_ratio_short;
 use crate::coeffs::{jr_coeffs, jr_inv_coeff, q_coeffs};
 use crate::dualmat::{zero3, SEn3Jac};
 use crate::quat::Quat;
@@ -635,10 +635,11 @@ fn screw_geodesic<S: Real, const N: usize>(x0: &SEn3<S, N>, x1: &SEn3<S, N>, t: 
         || {
             let (rot, s1, cos_t, nv) = geodesic_long::<S, true>(x0.q, x1.q, &rel, t);
             // Exactly `t = 1` below the switch is the one way here with `short` set; its
-            // translation is the short arm's, at `log_ratio`'s safe argument by `short` itself.
+            // translation is the short arm's, at `log_ratio_short`'s safe argument by `short`
+            // itself.
             let step = S::branch(
                 rel.short,
-                || screw_short(v, log_ratio(rel.n2, rel.w), t, &dx),
+                || screw_short(v, log_ratio_short(rel.n2, rel.w, rel.short), t, &dx),
                 || screw_long(v, &rel, nv, s1, cos_t, t, &dx),
             );
             (rot, step)

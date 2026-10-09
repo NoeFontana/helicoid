@@ -10,13 +10,16 @@
 //! - [`route_s`] is what **ships**, and it is the **control**: its figures have to reproduce the
 //!   committed `helicoid` rows, or the harness is wrong and nothing else here means anything.
 //! - [`route_a`] is the **provided body**, `q0 Exp(t Log(q0* q1))`, which shipped alone until
-//!   `0050` and is `0051`'s arm below the switch.
+//!   `0050` and was `0051`'s arm below the switch until `0059` wrote it out as [`route_f`].
 //! - [`route_b`] is GE.14's grouped middle expression, `q0 (cos t·alpha, varpi_t v)`. This is the
 //!   rotation part of GE.12, i.e. of `PHASE4.md` §1.2's screw twin, so what it measures is whether
 //!   that twin can fix these two strata.
 //! - [`route_c`] is GE.14's right-hand expression, the blend `[sin((1-t)a) q0 + sin(ta) q1]/sin a`,
 //!   with `alpha` from the quaternion product so no `sqrt(1 - d^2)` appears. This is the spelling
 //!   `tf_tree_math::slerp` computes, which is the oracle that wins these two strata.
+//! - [`route_f`] is the provided body as `0059` writes it out, the arm below the switch that
+//!   ships: the same function, with `r` and `Exp`'s coefficients no longer waiting on each other's
+//!   products.
 //! - [`route_d`] is the same blend with `alpha` from the 4-dot alone,
 //!   `atan2(sqrt(1 - d^2), d)`, which is the cheap form: one dot instead of a Hamilton product.
 //!   It is here to price the cancellation in `1 - d^2`, which is total where the two rotations are
@@ -200,6 +203,20 @@ fn route_g(q0: [f64; 4], q1: [f64; 4], t: f64) -> [f64; 4] {
     blend(q0, q1, t, alpha, libm::sincos(alpha).0)
 }
 
+/// The provided body as `0059` writes it out, which is `SO3::geodesic` below `r`'s second switch:
+/// `θ² = r² (t² n²)` and `q0 (c, k t r v) = c q0 + k t r (q0 (0, v))`, with `r` and `(k, c)` the
+/// kernel's own (`__sweep`). A transcription, so [`tests::the_shipped_route_is_the_arm_the_rule_picks`]
+/// ties the shipped arm to a stated expression rather than to itself.
+fn route_f(q0: [f64; 4], q1: [f64; 4], t: f64) -> [f64; 4] {
+    let (d, _) = rel(q0, q1);
+    let n2 = (d[1] * d[1] + d[2] * d[2]) + d[3] * d[3];
+    let r = helicoid::__sweep::log_ratio(n2, d[0]);
+    let p = mul(q0, [0.0, d[1], d[2], d[3]]);
+    let (k, c) = helicoid::__sweep::exp_coeffs(r * r * (t * t * n2));
+    let tr = t * r;
+    [0, 1, 2, 3].map(|i| c * q0[i] + k * (tr * p[i]))
+}
+
 /// The shared tail of the four blends: the two sines over `den`, which is `sin(alpha)` by one
 /// spelling or another and is what the routes above differ in.
 ///
@@ -230,13 +247,14 @@ const CORPUS: &str = concat!(
 ///
 /// `shipped` is [`route_s`]'s row. It read 1.572 / 2.721 / 2.429 while the provided body shipped
 /// alone — [`route_a`]'s column — and 1.644 / 1.738 / 1.642 under `0050`'s single blend; `0051`'s
-/// two arms take the better cell of each, which is what this row is.
+/// two arms took the better cell of each, and `0059`'s written-out arm reads 0.993 at
+/// `geo:consecutive`, where it runs.
 /// The oracle column is at **full precision**, not the three decimals the prose quotes: the shipped
 /// route reads `1.6417` at `geo:near-pi` against an oracle of `1.6417180974225531`, so a bound of
 /// `1.642` would leave less margin than its own rounding and could not tell dominating from losing.
 const COMMITTED: [(&str, f64, f64); 3] = [
     // stratum, shipped (= `0051`'s two arms), `tf_tree_math::slerp`
-    ("geo:consecutive", 1.572, 2.1873313039389336),
+    ("geo:consecutive", 0.993, 2.1873313039389336),
     ("geo:generic", 1.738, 1.8341289492373978),
     ("geo:near-pi", 1.642, 1.6417180974225531),
 ];
@@ -246,8 +264,8 @@ type Route = fn([f64; 4], [f64; 4], f64) -> [f64; 4];
 
 /// The spellings scored, in the order every table below prints them. [`route_s`] is last so the
 /// six studied spellings keep their columns and the shipped one is read beside them.
-const ROUTES: [Route; 7] = [
-    route_a, route_b, route_c, route_d, route_e, route_g, route_s,
+const ROUTES: [Route; 8] = [
+    route_a, route_b, route_c, route_d, route_e, route_f, route_g, route_s,
 ];
 
 /// [`route_s`]'s index in [`ROUTES`]: the control's column, which is the last by that array's own
@@ -317,8 +335,8 @@ fn measure() -> Result<Table, String> {
     Ok(out)
 }
 
-/// For each [`THRESHOLDS`] entry, the per-stratum max of a two-arm routine that takes [`route_a`]
-/// where `s < T` and [`route_e`] elsewhere.
+/// For each [`THRESHOLDS`] entry, the per-stratum max of a two-arm routine that takes [`route_f`]
+/// where `s < T` and [`route_e`] elsewhere: [`route_a`] until `0059`, the same function.
 ///
 /// This is the evidence a dispatch threshold needs and the thing `0050` *Further work* 1 asserted
 /// without: that the provided body is both the faster *and* the more accurate arm below some
@@ -352,7 +370,7 @@ fn scan() -> Result<BTreeMap<String, Vec<f64>>, String> {
             // `t >= 1` goes to the blend on every threshold, as the shipped dispatch does: only
             // the blend is exact there, and that is not a property to trade for a threshold.
             let q = if s < limit && t < 1.0 {
-                route_a(q0, q1, t)
+                route_f(q0, q1, t)
             } else {
                 route_e(q0, q1, t)
             };
@@ -500,9 +518,10 @@ pub(super) mod se3 {
         Ok(out)
     }
 
-    /// The subject's rows (`0054`) and `tf_tree_math`'s `ScLerp`, at full precision.
+    /// The subject's rows (`0054`, `geo:consecutive` `0059`'s) and `tf_tree_math`'s `ScLerp`, at
+    /// full precision.
     pub(super) const COMMITTED: [(&str, f64, f64); 3] = [
-        ("geo:consecutive", 1.572, 2.3363543564610385),
+        ("geo:consecutive", 0.993, 2.3363543564610385),
         ("geo:generic", 2.057, 2.501902372122162),
         ("geo:near-pi", 2.721, 3.2527931951103226),
     ];
@@ -583,7 +602,7 @@ mod tests {
     }
 
     /// `SO3::geodesic` **is** one of the two routes on every corpus record, bit for bit, and which
-    /// one follows `0051`'s rule.
+    /// one follows `0051`'s rule: [`route_f`] below the switch (`0059`), [`route_e`] above.
     ///
     /// The tables alone cannot say this: columns agreeing to three decimals is not one being the
     /// other. This is what ties the records' measurements to the routine they decided — and it
@@ -591,7 +610,7 @@ mod tests {
     /// than trusting whichever arm happens to match.
     #[test]
     fn the_shipped_route_is_the_arm_the_rule_picks() -> Result<(), String> {
-        let (mut a_arm, mut e_arm) = (0usize, 0usize);
+        let (mut f_arm, mut e_arm) = (0usize, 0usize);
         for line in lines()? {
             let (q0, q1, t, id) = case(&line)?;
             let (d, _) = rel(q0, q1);
@@ -600,8 +619,8 @@ mod tests {
             // `0051`: the provided body below `r`'s second switch, except at `t >= 1`.
             let provided = d[0] > 0.0 && s < R_SHORT_F64 && t < 1.0;
             let want = if provided {
-                a_arm += 1;
-                route_a(q0, q1, t)
+                f_arm += 1;
+                route_f(q0, q1, t)
             } else {
                 e_arm += 1;
                 route_e(q0, q1, t)
@@ -618,8 +637,8 @@ mod tests {
         }
         // Both arms are exercised, or the test is checking one of them against itself.
         assert!(
-            a_arm > 0 && e_arm > 0,
-            "arms taken: {a_arm} provided, {e_arm} blend"
+            f_arm > 0 && e_arm > 0,
+            "arms taken: {f_arm} provided, {e_arm} blend"
         );
         Ok(())
     }
@@ -696,18 +715,18 @@ mod tests {
             let (q0, q1) = pair(s);
             let got = route_s(q0, q1, t);
             let same = |x: &[f64; 4]| got.iter().zip(x).all(|(p, q)| p.to_bits() == q.to_bits());
-            let (took_a, took_e) = (same(&route_a(q0, q1, t)), same(&route_e(q0, q1, t)));
+            let (took_f, took_e) = (same(&route_f(q0, q1, t)), same(&route_e(q0, q1, t)));
             assert!(
-                took_a != took_e,
+                took_f != took_e,
                 "{name} the threshold at s = {s:e}: the arms agree to the bit, so this test \
                  cannot see which ran -- choose a `t` or an `s` where they differ"
             );
             assert_eq!(
-                took_a,
+                took_f,
                 want_provided,
                 "{name} the threshold at s = {s:e}: the shipped routine took the {} arm, so \
                  `R_SHORT_F64` is no longer `R_F64.short_below` and `scan`'s table is stale",
-                if took_a { "provided" } else { "blend" }
+                if took_f { "provided" } else { "blend" }
             );
         }
         Ok(())
@@ -722,7 +741,7 @@ mod tests {
     fn scan_the_dispatch_threshold() -> Result<(), String> {
         let got = scan()?;
         println!(
-            "so3_geodesic, binary64: max u per stratum of `route_a where s < T, else route_e`"
+            "so3_geodesic, binary64: max u per stratum of `route_f where s < T, else route_e`"
         );
         println!(
             "{:<26} {:>16} {:>14} {:>14}   verdict",
@@ -756,6 +775,7 @@ mod tests {
             "C blend/|v|",
             "D dot/|v|",
             "E blend/sin",
+            "F written out",
             "G chord/sin",
             "S shipped",
         ];
