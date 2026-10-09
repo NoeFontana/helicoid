@@ -86,6 +86,22 @@ class ExpAndJacobianTest(unittest.TestCase):
                                 (name, phi, i, j),
                             )
 
+    def test_gamma2_is_its_closed_form(self):
+        """Gamma_2 = I/2 + b W + d W^2 (GG.2(a)), b and d from their definitions."""
+        for phi in PHIS:
+            got = so3.gamma2({"phi": phi})["G"]
+            with mp.workdps(digits_for(phi)):
+                t, W, eye = norm([mpf(c) for c in phi]), hat([mpf(c) for c in phi]), mp.eye(3)
+                b, d = (
+                    (0, 0)
+                    if t == 0
+                    else ((t - mp.sin(t)) / t**3, (t**2 + 2 * mp.cos(t) - 2) / (2 * t**4))
+                )
+                want = eye / 2 + b * W + d * W * W
+                for j in range(3):  # column-major
+                    for i in range(3):
+                        self.assertTrue(close(got.data[3 * j + i], want[i, j]), (phi, i, j))
+
     def test_a_series_keeps_a_tiny_entry_to_100_digits(self):
         J = so3.jacobian("jl")({"phi": [1e-310, 0.0, 0.0]})["J"]  # I + W / 2: (2, 1) = +phi_x / 2
         self.assertTrue(close(J.data[3 * 1 + 2], mpf(1e-310) / 2))
@@ -190,6 +206,7 @@ class CheckTest(unittest.TestCase):
         yield "so3_from_matrix", {"R": A}
         for name in ("jr", "jl", "jr_inv", "jl_inv"):
             yield f"so3_{name}", {"phi": phi}
+        yield "so3_gamma2", {"phi": phi}
 
     def test_every_id_carries_its_own_check_and_it_detects_a_planted_error(self):
         # `so3_geodesic` is an `so3_*` id whose inputs are a pose pair and a parameter, so its

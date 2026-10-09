@@ -693,6 +693,7 @@ impl Subject for Helicoid {
     fn supports(&self, fn_id: &str) -> bool {
         Swept::of_fn(fn_id).is_some()
             || Unswept::of_fn(fn_id).is_some()
+            || Gamma::of_fn(fn_id).is_some()
             || So3::of_fn(fn_id).is_some()
             || Sen3::of_fn(fn_id).is_some()
             || Geodesic::of_fn(fn_id).is_some()
@@ -702,6 +703,12 @@ impl Subject for Helicoid {
 
     fn eval(&self, fn_id: &str, record: &Record, precision: Precision) -> Output {
         if let Some(id) = Linalg::of_fn(fn_id) {
+            return match precision {
+                Precision::F64 => id.answer::<f64>(record),
+                Precision::F32 => id.answer::<f32>(record),
+            };
+        }
+        if let Some(id) = Gamma::of_fn(fn_id) {
             return match precision {
                 Precision::F64 => id.answer::<f64>(record),
                 Precision::F32 => id.answer::<f32>(record),
@@ -791,6 +798,44 @@ impl Unswept {
     }
 }
 
+/// `so3_gamma2` (`0064`): the one vector id with `@f32` strata, so answered at both precisions,
+/// apart from [`So3`], whose `From<f64>` bound keeps it at binary64.
+///
+/// An enum with an exhaustive `answer`, for the reason the [`So3`] note gives; `Helicoid` and
+/// `HostStd` both dispatch through it (the [`Unswept`] note says why both).
+#[derive(Clone, Copy)]
+enum Gamma {
+    Two,
+}
+
+impl Gamma {
+    const ALL: [(&'static str, Gamma); 1] = [("so3_gamma2", Gamma::Two)];
+
+    fn of_fn(fn_id: &str) -> Option<Self> {
+        Self::ALL
+            .iter()
+            .find(|(name, _)| *name == fn_id)
+            .map(|&(_, id)| id)
+    }
+
+    /// `Γ₂(φ)` column-major as `G`, `φ` read exactly at `S` (an `@f32` record holds binary32s).
+    fn answer<S: Real + Into<f64>>(self, record: &Record) -> Output {
+        let Some(phi) = scalars::<S>(record, "phi").filter(|p| p.len() == 3) else {
+            return Output::new();
+        };
+        let phi = <SO3<S> as LieGroup<S>>::Tangent::read_dense(&phi);
+        let g = match self {
+            Gamma::Two => helicoid::so3::gamma2(&phi),
+        };
+        let mut buf = [S::zero(); 9];
+        Jac::<S, <SO3<S> as LieGroup<S>>::Tangent>::write_dense(
+            &g,
+            &mut StridedMut::col_major(&mut buf, 3, 3),
+        );
+        Output::from([("G".to_string(), buf.map(Into::into).to_vec())])
+    }
+}
+
 /// The library's own host-`std` twin: this subject's program at [`Host`], whose transcendentals
 /// are Rust `std`'s — the host's libm, so glibc on Linux — where a default build routes them
 /// through the `libm` crate (D16).
@@ -826,6 +871,9 @@ impl Subject for HostStd {
             return id.answer::<Host>(record);
         }
         if let Some(id) = Unswept::of_fn(fn_id) {
+            return id.answer::<Host>(record);
+        }
+        if let Some(id) = Gamma::of_fn(fn_id) {
             return id.answer::<Host>(record);
         }
         if let Some(id) = So3::of_fn(fn_id) {

@@ -17,7 +17,7 @@ from functools import lru_cache
 from mpmath import mp, mpf
 
 from .fmt import Mat
-from .precision import to_f64
+from .precision import to_f32, to_f64
 from .strata import Stratum
 
 MAX_ITER = 1000  # a series or an iteration that has not stopped by now is a bug, not slow
@@ -113,16 +113,16 @@ def exp_series(phi):
     return total
 
 
-def matrix_series(A):
-    """sum A^n / (n+1)!"""
+def matrix_series(A, m: int = 1):
+    """sum A^n / (n+m)!"""
     eps = _eps()
-    term = total = identity()
+    term = total = [[x / mp.factorial(m) for x in row] for row in identity()]
     n = quiet = 0
     while quiet < 2:
         n += 1
         if n > MAX_ITER:
             raise ArithmeticError("matrix series does not converge")
-        term = [[x / (n + 1) for x in row] for row in mm(term, A)]
+        term = [[x / (n + m) for x in row] for row in mm(term, A)]
         total = [
             [s + t for s, t in zip(rs, rt, strict=True)] for rs, rt in zip(total, term, strict=True)
         ]
@@ -262,6 +262,11 @@ def jacobian(name: str):
     return evaluate
 
 
+def gamma2(inputs: dict) -> dict:
+    """`so3_gamma2` (docs/decisions/0064): Gamma_2(phi) = sum W^n / (n+2)! (NUMERICS section 7)."""
+    return {"G": to_mat(matrix_series(hat([mpf(c) for c in inputs["phi"]]), 2))}
+
+
 @lru_cache(maxsize=2)
 def _log(q: tuple, dps: int) -> tuple:
     return tuple(log_newton(list(q)))
@@ -285,8 +290,10 @@ def from_matrix(inputs: dict) -> dict:
 # Inputs: exact binary64, one dict per record, in the order of the stratum's samples.
 
 
-def phi_of(theta: float, axis) -> list[float]:
-    return [to_f64(mpf(theta) * mpf(a)) for a in axis]
+def phi_of(theta: float, axis, f32: bool = False) -> list[float]:
+    """theta times the axis, each component rounded once: to binary32 in an `@f32` stratum."""
+    rnd = to_f32 if f32 else to_f64
+    return [rnd(mpf(theta) * mpf(a)) for a in axis]
 
 
 def quat_of(theta: float, axis) -> list[float]:
@@ -301,7 +308,7 @@ def quaternions(stratum: Stratum) -> list[list[float]]:
 
 
 def phi_inputs(stratum: Stratum) -> list[dict]:
-    return [{"phi": phi_of(t, a)} for t, a in stratum.samples()]
+    return [{"phi": phi_of(t, a, stratum.f32)} for t, a in stratum.samples()]
 
 
 def log_inputs(stratum: Stratum) -> list[dict]:
