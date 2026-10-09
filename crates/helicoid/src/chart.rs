@@ -48,12 +48,39 @@ pub trait Chart<S: Real, M>: Copy {
     ///
     /// That of [`local`](Chart::local), and each chart states what its inverse Jacobian needs.
     fn local_jacobian(&self, other: &M) -> Self::Jac;
+    /// `(local(other), local_jacobian(other))`, the pair every residual in a chart needs: a
+    /// Gauss–Newton step evaluates both at each measurement.
+    ///
+    /// The provided body makes the two calls. Every chart in this crate overrides it so that the
+    /// relative element and its `Log`, which both need and which dominate their cost, are formed
+    /// once; the result is the two calls' to the bit (`0060` decision 3).
+    ///
+    /// # Domain
+    ///
+    /// That of [`local_jacobian`](Chart::local_jacobian).
+    #[inline]
+    fn local_with_jacobian(&self, other: &M) -> (Self::Tangent, Self::Jac) {
+        (self.local(other), self.local_jacobian(other))
+    }
 }
 
 /// A space a solver linearizes in its default chart (`docs/PHASE5.md` §1.1).
 ///
-/// With [`LieGroup`] also in scope, a bare `SE3::<f64>::DOF` is ambiguous (E0034): write
-/// `<SE3<f64> as LieGroup<f64>>::DOF`. The two are equal on every group.
+/// `Tangent` and `DOF` share their names with [`LieGroup`]'s, as §1.1 specifies, and on every group
+/// they are the same type and value. Where both traits are in reach the bare names are ambiguous:
+/// `SE3::<f64>::DOF` is E0034 with both imported, and `G::Tangent` is E0221 under a bound
+/// `G: LieGroup<S> + Manifold<S>`. Name the trait:
+///
+/// ```
+/// use helicoid::{LieGroup, Manifold, SE3};
+///
+/// fn dims<G: LieGroup<f64> + Manifold<f64>>(t: &<G as Manifold<f64>>::Tangent) -> usize {
+///     let _ = t;
+///     <G as Manifold<f64>>::DOF
+/// }
+/// assert_eq!(dims::<SE3<f64>>(&<SE3<f64> as LieGroup<f64>>::log(&SE3::identity())), 6);
+/// assert_eq!(<SE3<f64> as LieGroup<f64>>::DOF, <SE3<f64> as Manifold<f64>>::DOF);
+/// ```
 pub trait Manifold<S: Real>: Copy + Blend<S> {
     /// The coordinates of [`Chart`](Manifold::Chart).
     type Tangent: Tangent<S>;
@@ -103,6 +130,11 @@ impl<S: Real, G: LieGroup<S>> Chart<S, G> for RightChart<G> {
     fn local_jacobian(&self, other: &G) -> G::Jac {
         G::jr_inv(&self.local(other))
     }
+    #[inline]
+    fn local_with_jacobian(&self, other: &G) -> (G::Tangent, G::Jac) {
+        let tau = self.local(other);
+        (tau, G::jr_inv(&tau))
+    }
 }
 
 impl<S: Real, G: LieGroup<S>> Chart<S, G> for LeftChart<G> {
@@ -131,6 +163,11 @@ impl<S: Real, G: LieGroup<S>> Chart<S, G> for LeftChart<G> {
     #[inline]
     fn local_jacobian(&self, other: &G) -> G::Jac {
         G::jl_inv(&self.local(other))
+    }
+    #[inline]
+    fn local_with_jacobian(&self, other: &G) -> (G::Tangent, G::Jac) {
+        let tau = self.local(other);
+        (tau, G::jl_inv(&tau))
     }
 }
 
@@ -204,6 +241,10 @@ impl<S: Real, M: Copy, C: Chart<S, M>> Chart<S, WithChart<M, C>> for Lifted<C> {
     #[inline]
     fn local_jacobian(&self, other: &WithChart<M, C>) -> C::Jac {
         self.0.local_jacobian(&other.0)
+    }
+    #[inline]
+    fn local_with_jacobian(&self, other: &WithChart<M, C>) -> (C::Tangent, C::Jac) {
+        self.0.local_with_jacobian(&other.0)
     }
 }
 
