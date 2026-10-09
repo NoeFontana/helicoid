@@ -9,6 +9,8 @@ defined by the status tables in `docs/`; they win over this file.
 
 ### Added
 
+- **Charts** (`PHASE5.md` §1, `0012`, `0060`): `Chart<S, M>`, `Manifold<S>`, `WithChart<M, C>` (its chart `Lifted<C>`), `RightChart<G>` and `LeftChart<G>` on every group. The SE(3) charts `Screw<S>`, `Decoupled<S>` (locus-tag's `Pose::retract`) and `WorldTranslation<S>` share the tangent `Twist<S>`; the last two have `TwistBlockJac<S>` Jacobians, and `SE3::chart_transition::<From, To>()` gives `DΦ(0)` (`I`, `diag(I, R)`, `diag(I, Rᵀ)`) for moving a covariance between them. `Chart::local_with_jacobian` returns a residual and its Jacobian with the `Log` taken once, bit-identical to the two calls. Every chart Jacobian is checked against `Dual`, with both CH.6 identities. Corpus ids `se3_{screw,decoupled,world}_{retract,local}`: at most 5.94 `u`.
+
 - **`helicoid::sinc(θ²) -> (sin θ/θ, d/dθ²)`** and **`helicoid::sinc_value(θ²)`** (`0062`): the value `2k cos(θ/2)` of `exp_coeffs`, the derivative the `Dual` lane of the same evaluation; `sinc_value` is the value alone on plain `S`, bit-identical, without the `Dual` cost. No new switch, `coeffs/generated.rs` unchanged; accuracy stated for `θ ≤ π`, the range the corpus scores. Corpus id `coeff_alpha` (the `theta:*` strata at both precisions): at most 2.59 `u` (`f64`) and 2.30 `u` (`f32`).
 
 - **`Mat2::inverse_adj`** (`0061`): `(adj/det, det)` with `Mat3::inverse_adj`'s contract; the adjugate is exact, so `det` is the only rounding. Corpus id `mat2_inverse_adj` (`cond:1`, `1e4`, `1e8`, an exactly singular stratum; `cond:1e8` at binary64 only), scored with `NUMERICS.md` §11's expected-non-finite rule; nalgebra's `Matrix2::try_inverse` answers it in the nalgebra runner, equal on every stratum.

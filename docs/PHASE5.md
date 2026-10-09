@@ -11,8 +11,8 @@ stated side; and consumer migrations onto `helicoid` without unrecorded regressi
 
 | Area | Status |
 |---|---|
-| `Chart`, `Manifold`, `WithChart`; group charts (§1) | Not started |
-| SE(3) charts `Screw`, `Decoupled`, `WorldTranslation` (§1.3) | Not started |
+| `Chart`, `Manifold`, `WithChart`; group charts (§1) | Done ([`0060`](./decisions/0060-the-charts-go-first-and-name-their-frame.md), #119): `RightChart`, `LeftChart` on every group, one `Manifold` impl per group, `Lifted`; the chart laws, `Dual` Jacobians and CH.6 on SO(3), SE(3), SE₂(3), SE₃(3), ℝ³, SO(3)×ℝ³ |
+| SE(3) charts `Screw`, `Decoupled`, `WorldTranslation` (§1.3) | Done (`0060`, #120, #123): `TwistBlockJac`, `Se3Chart`, `SE3::chart_transition` (all nine pairs against `Dual`); corpus ids `se3_{screw,decoupled,world}_{retract,local}` |
 | S² and its chart (§2) | Not started |
 | Sim(3) (§3) | Not started |
 | Γ₁, Γ₂, directional Jacobians (§4) | Not started |
