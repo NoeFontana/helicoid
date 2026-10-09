@@ -87,6 +87,8 @@ pub(super) fn required() -> Vec<String> {
     ids.push("mat2_inverse_adj".to_string());
     // `0064`'s, out of `OWED` with its corpus file in the same step.
     ids.push("so3_gamma2".to_string());
+    // `0065`'s, `Gaussian::mahalanobis_sq`, likewise.
+    ids.extend(["se3", "se23"].map(|g| format!("gaussian_mahalanobis_{g}")));
     ids
 }
 
