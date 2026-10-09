@@ -105,16 +105,20 @@ as declared, not committed) settles what the language allows.
    It returns `diag(I, R)` from a body-frame chart to `WorldTranslation`, `diag(I, Rᵀ)` the other
    way, and `diag(I, I)` otherwise, written as `Mat3::identity()`, so `Screw → Decoupled` is
    exactly `I`. `R` is `self.rotation().to_matrix()`.
-8. **Corpus ids.** `se3_{screw,decoupled,world}_{retract,local}`, six ids, binary64 and binary32.
+8. **Corpus ids.** `se3_{screw,decoupled,world}_{retract,local}`, six ids, binary64 only, as every
+   vector id is until a record extends `0016`.
    - `retract`: inputs are a base `X` and `δ`. The strata are `SEN3_STRATA` (the `theta:*` and
-     `rho:*` families) on `δ`, and the base is drawn generic: a unit quaternion uniform on `S³` and
-     `t` with components `N(0, 1)`. The reference is the table of `charts.md` §3 at 60 digits, with
+     `rho:*` families) on `δ`, and the base is drawn generic from the stratum's own stream: a
+     unit quaternion uniform on `S³` and `t` a uniform direction at unit norm, both rounded to
+     binary64. The reference is the table of `charts.md` §3 at 60 digits, with
      `Exp` and `J_l` by their series.
    - `local`: inputs are `X` and `Y = ret_X(δ)` rounded to binary64, over the same strata. The
      reference uses the geometric `Log` of the quaternion (`atan2`, `0045`), not `mp.logm`, which is
-     complex from `θ ≈ 3.03` (`docs/maths/index.md`).
-   - The metric is `NUMERICS.md` §11's forward error, the rotation part with floor 1 and the
-     translation part with its `‖ρ‖`-scale floor. No oracle answers these ids, so their bars are
+     complex from `θ ≈ 3.03` (`docs/maths/index.md`). `Y` is each chart's own retract, so a
+     `local` record's answer is its stratum's `δ` up to the rounding of `Y`.
+   - The metric is `NUMERICS.md` §11's forward error, as `se3_geodesic`'s and `sen3_log`'s: a
+     `retract`'s quaternion sign-aligned with floor 1 and its translation with floor `‖x₀‖`, and a
+     `local`'s tangent relative. No oracle answers these ids, so their bars are
      no-regress and coverage.
 
    The ids go into `PHASE1.md` §4.3's definitions table and `xtask/src/envelope/coverage.rs`'s
