@@ -707,6 +707,9 @@ impl Subject for HostStd {
         if let Some(id) = Linalg::of_fn(fn_id) {
             return id.answer::<Host>(record);
         }
+        if fn_id == "coeff_alpha" {
+            return alpha_answer::<Host>(record);
+        }
         if let Some(id) = So3::of_fn(fn_id) {
             return id.answer::<Host>(record);
         }
@@ -847,6 +850,12 @@ mod tests {
             assert!(twin.supports(&id), "{id}");
         }
         assert!(!twin.supports("so3_jl_jr"));
+        // `coeff_alpha` is answered outside `Swept` (`0062`), so the loop above does not reach it:
+        // the twin must answer it, not only claim it, or `just conformance-twin` stops on it.
+        let alpha = record(&[("theta", &[0.5])], &[])?;
+        assert!(twin
+            .eval("coeff_alpha", &alpha, Precision::F64)
+            .contains_key("value"));
         // Sampled, not one point: two libms agreeing to the bit at a given argument is ordinary,
         // so a single quaternion would make this test a property of the host's libc. The claim is
         // that *some* `θ` differs, which is what `host::the_scalar_differs_from_the_libm_crate_
