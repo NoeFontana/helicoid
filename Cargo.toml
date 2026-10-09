@@ -6,7 +6,7 @@ exclude = ["runners/tf_tree_math", "runners/sophus_rs", "runners/nalgebra"]
 
 [workspace.package]
 # 0.0.x: every release may break every other (`SUPPORT.md`).
-version = "0.0.1"
+version = "0.0.2"
 edition = "2021"
 # Never above the lowest MSRV among consumers (D17, `0007`). The `msrv` job reads this field.
 rust-version = "1.87"
@@ -38,8 +38,8 @@ unreachable_pub = "warn"
 unused_must_use = "deny"
 
 [workspace.dependencies]
-helicoid = { path = "crates/helicoid", version = "0.0.1" }
-helicoid-linalg = { path = "crates/helicoid-linalg", version = "0.0.1" }
+helicoid = { path = "crates/helicoid", version = "0.0.2" }
+helicoid-linalg = { path = "crates/helicoid-linalg", version = "0.0.2" }
 # `0007`: the whole third-party budget of the library crates. `arch` routes only the exactly rounded
 # `sqrt`, `fma` and `rint` to the target's instruction: every non-NaN bit is unchanged (D16, `0018`).
 libm = { version = "0.2", default-features = false, features = ["arch"] }
