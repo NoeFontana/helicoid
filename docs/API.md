@@ -99,14 +99,14 @@ constructors normalize.
 | `TwistBlockJac<S>` | struct | 5 | `Decoupled`'s and `WorldTranslation`'s `Jac`: a newtype over `ProductJac<Mat3, Mat3>` implementing `Jac<S, Twist<S>>` only; `rotation_block`, `translation_block` (`0060`). |
 | `Se3Chart<S>`, `SE3::chart_transition::<From, To>` | sealed trait, method | 5 | `DΦ(0)` between two SE(3) charts at a base: `I`, `diag(I, R)` or `diag(I, Rᵀ)` (`0060`). |
 | `S2<S>`, `S2Chart<S>` | structs | 5 | Frozen Householder basis. `S2::{from_vec_unchecked, from_vec_normalized, renormalize, vec}` ([`0063`](./decisions/0063-the-sphere-reads-its-sign-by-comparison-and-is-held-unit.md)). |
-| `sinc` | fn | 5 | `(sin θ/θ, its derivative in θ²)` at `θ²`, evaluated in `coeffs` ([`0062`](./decisions/0062-sin-theta-over-theta-is-public-and-differentiates-its-branch.md)). |
+| `sinc`, `sinc_value` | fns | 5 | `(sin θ/θ, its derivative in θ²)` at `θ²`, and the value alone on plain `S`, evaluated in `coeffs` ([`0062`](./decisions/0062-sin-theta-over-theta-is-public-and-differentiates-its-branch.md)). |
 | `Sim3<S>` | struct | 5 | Formula block owed (`NUMERICS.md` §9). |
 | `so3::gamma1`, `so3::gamma2`, `so3::gamma_apply_jacobian` | fns | 5 | Directional Jacobians via `Dual<S, 3>`. |
 | `Gaussian<S, G, Sd, const D: usize>` | struct | 5 | `D == G::DOF` asserted at compile time. |
 | `AmbientChart` | trait | 6 | Ceres-style `PlusJacobian`/`MinusJacobian`. |
 | `reference::*` | module | 3–5 | Public and documented: the twins are the definition of *correct* (D6). |
 
-`coeffs` is `pub(crate)`, except `sinc` (`0062`). Its `__sweep` feature exposes evaluators to `xtask` only and is not part of
+`coeffs` is `pub(crate)`, except `sinc` and `sinc_value` (`0062`). Its `__sweep` feature exposes evaluators to `xtask` only and is not part of
 the API ([`0004`](./decisions/0004-switch-points-are-generated-not-typed.md)); `just lint` fails if
 any crate other than `xtask` enables it.
 

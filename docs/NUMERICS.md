@@ -440,7 +440,7 @@ $X(t) = X_0\,\mathrm{Exp}(t\,d)$ with $d = X_1 \ominus_R X_0$ and $\Delta = X_0^
 | `S2::from_vec_normalized` | $\|v\|^2$ normal (`0027`) | NaN at $v = 0$; zero above the overflow |
 | `S2::renormalize` | none; a normalization only for $\lvert\|n\|^2 - 1\rvert \le 2^{-26.29}$ (`f64`), $2^{-11.79}$ (`f32`), within $5u$ of the sphere (measured, `0063`) | defined everywhere; as the quaternion's |
 | `S2Chart::local` | $m \ne -n$ | unspecified finite value |
-| `sinc` | every $z \ge 0$; value and derivative within $5u$ times their condition number; $\mathrm d\alpha/\mathrm dz = 0$ at $\theta = 4.4934$, where only its absolute error, about $u$, is meaningful (`0062`) | NaN for NaN; a negative $z$ fails `coeffs`' `debug_assert!` |
+| `sinc`, `sinc_value` | every $z \ge 0$; for $\theta \le \pi$, value and derivative within $5u$ times their condition number (the range `coeff_alpha` scores; beyond it nothing is promised, `0062`) | NaN for NaN; a negative $z$ fails `coeffs`' `debug_assert!` |
 | `Mat2::inverse_adj` | entries of magnitude $m$, $10^{-154} < m < 10^{154}$ (`f64`), $10^{-19} < m < 10^{19}$ (`f32`); the caller decides what `det` means (`0061`) | non-finite at $\det = 0$; outside the range, $\det$ overflows or underflows |
 | `geodesic` | $\theta(d) < \pi$ | §10 |
 | `Sim3` | $\sigma$ finite | — |

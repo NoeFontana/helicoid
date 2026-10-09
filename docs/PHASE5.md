@@ -42,6 +42,8 @@ pub trait Chart<S: Real, M>: Copy {
     fn local(&self, other: &M) -> Self::Tangent;
     fn retract_jacobian(&self, delta: &Self::Tangent) -> Self::Jac;
     fn local_jacobian(&self, other: &M) -> Self::Jac;
+    /// Provided: `(local(other), local_jacobian(other))`, overridden to share the `Log` (`0060`).
+    fn local_with_jacobian(&self, other: &M) -> (Self::Tangent, Self::Jac);
 }
 
 pub trait Manifold<S: Real>: Copy + Blend<S> {

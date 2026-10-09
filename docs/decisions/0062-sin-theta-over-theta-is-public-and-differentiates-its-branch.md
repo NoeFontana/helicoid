@@ -58,9 +58,13 @@ on `[1, π]`. The decision takes the measured winner.
 
 ## Decision
 
-1. **`helicoid::sinc<S: Real>(theta_sq: S) -> (S, S)`** returns `(α, dα/dz)` at `z = θ²`. It is
-   re-exported at the crate root from `coeffs`. `coeffs` stays `pub(crate)`, so only this one
-   function crosses the boundary.
+1. **`helicoid::sinc<S: Real>(theta_sq: S) -> (S, S)`** returns `(α, dα/dz)` at `z = θ²`, and
+   **`helicoid::sinc_value<S: Real>(theta_sq: S) -> S`** returns `α` alone: decision 2's product on
+   plain `S`, bit-identical to `sinc`'s value, for a per-point camera or bearing model that needs
+   no derivative and should not pay for decision 3's `Dual` evaluation (two `Dual` Horner chains
+   below the switch, a `Dual` `sqrt` and `sin_cos` above it). Both are re-exported at the crate
+   root from `coeffs`. `coeffs` stays `pub(crate)`, so only these two functions cross the
+   boundary.
 2. **The value is `2k · cos(θ/2)`** from `exp_coeffs`, the group CH.9(a) and `Exp` already use. It
    needs no new switch, no new series and no new `generated.rs` row, so `cargo xtask thresholds`
    writes the same bytes.
@@ -75,9 +79,12 @@ on `[1, π]`. The decision takes the measured winner.
      site never evaluates one coefficient on its own" holds because `sinc` is a group of one built
      from a group.
    - §6's α refers to it.
-   - §12 gains the row `sinc`: every `z ≥ 0`; relative accuracy of the value and of `dα/dz` within
-     `5u` times the condition number. The derivative is zero at `θ = 4.4934` (`tan θ = θ`), so near
-     there only its absolute error, about `u`, is meaningful.
+   - §12 gains the row `sinc`, `sinc_value`: defined for every `z ≥ 0`; the stated accuracy, the
+     value and `dα/dz` within `5u` times the condition number, is for `θ ≤ π`, the range
+     `coeff_alpha`'s strata score and every named consumer (a camera's angle off its axis, SE(2)'s
+     `θ`) stays in. The scratch measurement above holds the same bound to `θ = 6.2`, where
+     `dα/dz = 0` at `θ = 4.4934`, but no stratum verifies it there (`0006`), so the row does not
+     promise it.
 5. **Corpus id `coeff_alpha`** joins the `coeff_*` family: `COEFF_STRATA` (the scalar `theta:*`
    strata and their binary32 twins), the reference `sin θ/θ` and `d_branch = (θ cos θ − sin θ)/(2θ³)`
    at the corpus's precision, scored as the other coefficients. `xtask/src/shipped.rs`'s `Swept`
