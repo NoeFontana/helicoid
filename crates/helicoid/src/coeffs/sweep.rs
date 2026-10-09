@@ -68,6 +68,11 @@ pub fn q_coeffs<S: Real>(z: S) -> (S, S, S) {
     super::q_coeffs(z)
 }
 
+/// `(b, d)` as the kernel evaluates them at `θ² = z`.
+pub fn gamma2_coeffs<S: Real>(z: S) -> (S, S) {
+    super::gamma2_coeffs(z)
+}
+
 /// `r` as the kernel evaluates it at `n² = n2` and `w`.
 pub fn log_ratio<S: Real>(n2: S, w: S) -> S {
     super::log_ratio(n2, w)

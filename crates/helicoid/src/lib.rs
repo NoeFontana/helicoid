@@ -5,8 +5,9 @@
 //! compile generically, the quaternion [`Quat`], the SE_N(3) tangent [`SEn3Tangent`] with its
 //! [`Twist`] converters, and the dual-matrix Jacobian [`SEn3Jac`] with its dense twins in
 //! [`mod@reference`], the rotation group [`SO3`] with its tangent [`SO3Tangent`] and `Mat3`
-//! Jacobian, the products [`Product`] with the block-diagonal [`ProductJac`], and [`sinc`], the
-//! one coefficient of the kernel that is public (`docs/decisions/0062`). Every
+//! Jacobian, the products [`Product`] with the block-diagonal [`ProductJac`], [`sinc`], the
+//! one coefficient of the kernel that is public (`docs/decisions/0062`), and the integrated
+//! exponentials of [`so3`] (`docs/decisions/0064`). Every
 //! group is written against the traits and generic over the scalar `S: Real` of
 //! `helicoid-linalg`.
 //!
@@ -44,7 +45,7 @@ mod rn;
 mod se3_charts;
 mod sen3;
 mod side;
-mod so3;
+pub mod so3;
 #[cfg(test)]
 mod so3_tests;
 mod traits;
@@ -80,6 +81,8 @@ extern crate std;
 mod chart_tests;
 #[cfg(test)]
 mod dualmat_tests;
+#[cfg(test)]
+mod gamma_tests;
 #[cfg(test)]
 mod heis_tests;
 #[cfg(test)]

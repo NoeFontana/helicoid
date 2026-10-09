@@ -1,7 +1,7 @@
 //! SO(3): the rotation group on the unit quaternion (`docs/PHASE3.md` §4).
 //!
 //! `Exp` and `Log` are `NUMERICS.md` §3.1 and §3.2 over the grouped kernels of
-//! [`crate::coeffs`], which is what makes this the kernel's first consumer: `exp_coeffs` answers
+//! `crate::coeffs`, which is what makes this the kernel's first consumer: `exp_coeffs` answers
 //! `(k, cos θ/2)` in **one** `branch`, as §4's group rule asks, and `log_ratio` takes the swept
 //! `r` switch on `s = n²/w²`. The conformance subject that scores those two kernels over
 //! `so3_exp` and `so3_log` is `xtask`'s; this type is the shipped path it scores.
@@ -9,6 +9,13 @@
 //! `Jac = Mat3<S>`: SO(3)'s adjoint *is* a rotation matrix (`NUMERICS.md` §3.5,
 //! `Ad_R = R`), so there is no structure to exploit below a dense `3 x 3` and `0005`'s structured
 //! type is the matrix itself.
+//!
+//! The module is public for the integrated exponentials [`gamma1`], [`gamma2`] and
+//! [`gamma_apply_jacobian`] (`docs/PHASE5.md` §4, `0064`); the group and its tangent are also at the
+//! crate root.
+
+mod gamma;
+pub use gamma::{gamma1, gamma2, gamma_apply_jacobian};
 
 use crate::coeffs::{
     exp_coeffs, jr_coeffs, jr_inv_coeff, log_ratio, log_ratio_short, log_ratio_takes_short_arm,

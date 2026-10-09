@@ -240,6 +240,16 @@ pub(crate) fn q_coeffs<S: Real>(z: S) -> (S, S, S) {
     (b, d, e)
 }
 
+/// `(b, d)` at `θ² = z`: `Γ₂ = ½I + bW + dW²` (`NUMERICS.md` §7, `0064`). The swept arms of `b`
+/// and `d`, so no switch of its own. Its short prefix is `q_coeffs`' at both precisions (`e`'s
+/// second switch is above `d`'s), so both members are `q_coeffs`' to the bit
+/// (`gamma2_coeffs_are_q_coeffs_to_the_bit`), without `e`'s Horner or `cos θ`.
+pub(crate) fn gamma2_coeffs<S: Real>(z: S) -> (S, S) {
+    let arms = table::<S, _>([B_F64.arm(), D_F64.arm()], [B_F32.arm(), D_F32.arm()]);
+    let [b, d] = grouped(arms, exact_b_d, z);
+    (b, d)
+}
+
 /// Whether [`log_ratio`] would take its **short** arm at `(n2, w)`: `w > 0` and
 /// `s = n²/w² < short_below`, `0047`'s second, shortest series arm.
 ///
@@ -392,6 +402,12 @@ fn exact_b_d_e<S: Real>(z: S) -> [S; 3] {
     let th = z.sqrt();
     let (s, co) = th.sin_cos();
     [b_from(th, s), d_from(th), e_from(th, s, co)]
+}
+
+/// `(b, d)` sharing one `θ`: `sin θ` alone, since no member needs `cos θ` (`0052`).
+fn exact_b_d<S: Real>(z: S) -> [S; 2] {
+    let th = z.sqrt();
+    [b_from(th, th.sin()), d_from(th)]
 }
 
 #[cfg(any(test, feature = "__sweep"))]
