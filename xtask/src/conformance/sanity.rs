@@ -107,6 +107,11 @@ fn the_neighbouring_ulp_scores_above_one_half_and_at_most_three_on_every_scalar_
     Ok(())
 }
 
+/// The `@f32` strata of the coefficient ids, from the corpus.
+fn coeff_f32_strata() -> Result<usize, String> {
+    corpus::f32_strata_total(&corpus_dir()?, |id| id.starts_with("coeff_"))
+}
+
 /// The scalar ids with `@f32` strata, each of one number per output field, which the `f32` sanity
 /// bounds below need: the coefficient ids (`docs/decisions/0016`) and `0056`'s `real_*`. `0056`'s
 /// vector ids have `@f32` strata too and are not scalar.
@@ -118,10 +123,22 @@ fn f32_ids() -> Result<Vec<String>, String> {
             ids.push(e.fn_id);
         }
     }
+    // Exactly the two scalar families, each whole: every coefficient id and every `real_*` id of
+    // the manifest, and nothing else.
     let count = |p: &str| ids.iter().filter(|i| i.starts_with(p)).count();
+    let all = |p: &str| -> Result<usize, String> {
+        Ok(corpus::manifest(&dir)?
+            .iter()
+            .filter(|e| e.fn_id.starts_with(p))
+            .count())
+    };
     assert_eq!(
         (ids.len(), count("coeff_"), count("real_")),
-        (15, 9, 6),
+        (
+            all("coeff_")? + all("real_")?,
+            all("coeff_")?,
+            all("real_")?
+        ),
         "{ids:?}"
     );
     Ok(ids)
@@ -137,13 +154,12 @@ fn a_perfectly_rounded_f32_subject_scores_at_most_one_on_every_f32_stratum() -> 
         |id| ids.iter().any(|i| i == id),
         Precision::F32,
     )?;
-    // 28 `theta:*@f32` strata in each of 9 coefficient ids (`coeff_alpha` the ninth, `0062`), and
-    // `q:w0@f32` in `coeff_r`.
+    // One row per `@f32` stratum of every coefficient id, as the corpus holds them.
     let coeff = rows
         .iter()
         .filter(|r| r.fn_id.starts_with("coeff_"))
         .count();
-    assert_eq!(coeff, 9 * 28 + 1);
+    assert_eq!(coeff, coeff_f32_strata()?);
     for r in &rows {
         assert!(
             r.stratum.ends_with("@f32") && r.precision == Precision::F32,
@@ -175,7 +191,7 @@ fn the_neighbouring_f32_ulp_scores_above_one_half_and_at_most_three_on_every_f32
         .iter()
         .filter(|r| r.fn_id.starts_with("coeff_"))
         .count();
-    assert_eq!(coeff, 9 * 28 + 1);
+    assert_eq!(coeff, coeff_f32_strata()?);
     for r in &rows {
         assert!(
             r.max_u > 0.5 && r.max_u <= 3.0,

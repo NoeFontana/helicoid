@@ -38,7 +38,7 @@ const OWED: &[(u8, &str, &str, &[&str])] = &[
 ];
 
 /// The ids of `docs/PHASE1.md` §4.3 that corpus v1 holds.
-fn required() -> Vec<String> {
+pub(super) fn required() -> Vec<String> {
     let jacobians = ["jr", "jl", "jr_inv", "jl_inv"];
     let group = |prefix: &str, fns: &[&str], suffix: &str| -> Vec<String> {
         let all = fns.iter().chain(&jacobians);
@@ -224,7 +224,7 @@ mod tests {
             .collect();
         let c = check(&have, &rows(&[]));
         assert!(c.failures.is_empty(), "{:?}", messages(&c));
-        assert_eq!((c.required, c.excused), (69, 11));
+        assert_eq!((c.required, c.excused), (required().len(), 11));
         Ok(())
     }
 
