@@ -14,7 +14,7 @@ signatures in code blocks are normative.
 |---|---|
 | `Mask`, `Real`, `Blend`, `Precision`; `f64`/`f32` impls (§2) | Partial: traits and scalar impls implemented, including `cbrt` and `sqrt` bit identity with `libm` `arch` (`0017`, `0018`). |
 | `Dual<S, N>` (§3) | Partial: dual numbers generic over `Real` with automatic differentiation; corpus ids `real_sqrt`, `real_cbrt`, `real_sin_cos`, `real_acos`, `real_atan2`, `real_div` at both precisions, ≤ 3.65 `u` ([`0056`](./decisions/0056-the-routines-d7-does-not-reach.md)). |
-| `Vector`, `Matrix`, `Point`, `hat`/`vee`, `Mat3::inverse_adj`, `chol` (§4) | Partial: fixed-size types, operations, and `chol_solve` implemented (`0019`); corpus ids `chol_n{3,6}`, `chol_solve_n{3,6}` (`0056`). `Mat2` adjugate pending. |
+| `Vector`, `Matrix`, `Point`, `hat`/`vee`, `Mat3::inverse_adj`, `chol` (§4) | Partial: fixed-size types, operations, and `chol_solve` implemented (`0019`); corpus ids `chol_n{3,6}`, `chol_solve_n{3,6}` (`0056`). `Mat2::inverse_adj` and its id `mat2_inverse_adj` owed by [`0061`](./decisions/0061-mat2-keeps-its-adjugate.md). |
 | `Strided`, `StridedMut` (§5) | Done: column-major, row-major, strided slice views. |
 | `eig3`, `svd3`, `solve_cubic` + corpus ids (§6) | Partial: `solve_cubic` and `eig3` implemented with `libm` transcendentals (`0017`, `0022`, `0053`). Corpus ids `solve_cubic` and `eig3` at both precisions, `eig3` against nalgebra (`0056`). `svd3` and its id pending. |
 | `mint` feature (§7) | Done: optional feature conversions for fixed-size types. |
@@ -169,6 +169,7 @@ pub type Point2<S> = Point<S, 2>; pub type Point3<S> = Point<S, 3>;
   `Point + Point`.
 - `hat(v) -> Mat3`, `vee(m) -> Vec3` (skew part, no symmetrization check).
 - `Mat3::inverse_adj(&self) -> (Mat3, S)` returns adjugate/det and det; the caller decides.
+- `Mat2::inverse_adj(&self) -> (Mat2, S)`, the same contract; its adjugate is exact (`0061`).
 - `chol<S, const N: usize>(a: &Matrix<S, N, N>) -> (Matrix<S, N, N>, S::Mask)`: lower-triangular
   `L` and the positive-definiteness mask; `solve_lower`, `solve_upper` beside it.
 - `chol_solve<S, const N: usize>(l: &Matrix<S, N, N>, b: Vector<S, N>) -> Vector<S, N>`: solves

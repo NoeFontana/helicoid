@@ -6,6 +6,11 @@
 
 ## Context
 
+> **Amended by [`0060`](./0060-the-charts-go-first-and-name-their-frame.md), 2026-10-09.** "They
+> agree to first order" holds for `Screw` and `Decoupled` only. `WorldTranslation` agrees with
+> `Decoupled` after the linear map `diag(I, R)` on the translation tangent, exactly, and not to
+> first order unless `R = I` (`docs/maths/charts.md` CH.4(b), CH.5(c)). The Decision is unchanged.
+
 The stack already uses three SE(3) retractions: `tf_tree_math`'s $X\,\mathrm{Exp}(\xi)$, locus-tag's
 `Pose::retract` $(R\,\mathrm{Exp}(\omega),\ t + R v)$ — chosen deliberately, its rustdoc cites a
 `JᵀWJ` conditioning improvement — and the product retraction $(R\,\mathrm{Exp}(\omega),\ t + v)$

@@ -171,6 +171,7 @@ by the generator**, as a cross-check, not typed into code.
 | $d$ | $(\theta^2 + 2\cos\theta - 2)/(2\theta^4)$ | $(\theta^2 - 4\sin^2(\theta/2))/(2\theta^4)$ | $\tfrac1{24} - \tfrac{\theta^2}{720} + \tfrac{\theta^4}{40320} - \tfrac{\theta^6}{3628800}$ | $\sim 24u/\theta^4$ naive, $\sim 24u/\theta^2$ rewritten | — |
 | $e$ | $(2\theta - 3\sin\theta + \theta\cos\theta)/(2\theta^5)$ | definition — **no rewrite exists** | $\tfrac1{120} - \tfrac{\theta^2}{2520} + \tfrac{\theta^4}{120960} - \tfrac{\theta^6}{9979200}$ | $\sim 360u/\theta^4$ | — |
 | $r$ | $2\,\mathrm{atan2}(n, w)/n$ | definition | $\tfrac{2}{w}\left(1 - \tfrac{s}{3} + \tfrac{s^2}{5} - \tfrac{s^3}{7}\right)$, $s = n^2/w^2$ | none (0/0) | — |
+| $\alpha$ | $\sin\theta/\theta$ | $2k\cos\tfrac\theta2$ on **both** arms of `exp_coeffs`: no switch, no series of its own | (those of $k$, $\cos\tfrac\theta2$) | none (0/0) | — |
 
 What the "naive cancellation" column means: evaluating the definition in the exact arm keeps
 $-\log_{10}$ of that relative error in digits. $e$ is the reason one global threshold is wrong by
@@ -179,6 +180,13 @@ construction: at $\theta = 10^{-2}$ it keeps about five digits, at $10^{-3}$ abo
 **Call sites evaluate coefficients in groups, inside one `branch`:** `exp_coeffs` → $(k, \cos\tfrac\theta2)$;
 `jr_coeffs` → $(a, b)$; `jr_inv_coeff` → $c$; `q_coeffs` → $(b, d, e)$; `gamma2_coeffs` → $(b, d)$;
 `log_ratio` → $r$. A call site never evaluates one coefficient from the catalogue on its own.
+
+**One public coefficient.** `helicoid::sinc(z)` returns $(\alpha, \mathrm d\alpha/\mathrm dz)$ at
+$z = \theta^2$: the value $2k\cos\frac\theta2$, the derivative the `Dual<S, 1>` lane of the same
+evaluation, i.e. of the arm `exp_coeffs` takes. It is a group of one built from a group, and the only
+item of `coeffs` outside the crate ([`0062`](./decisions/0062-sin-theta-over-theta-is-public-and-differentiates-its-branch.md):
+both outputs within $2.5u$ (`f64`) and $4.1u$ (`f32`) times their condition number for
+$\theta \le 6.2$; the closed form $(b - a)/2$ of the derivative measured up to $2.3\times$ worse).
 
 **Continuity.** At every generated switch point, $|\text{series} - \text{exact}|$ is at most the
 recorded max error of that coefficient; `branch_continuity_*` tests assert it.
@@ -236,7 +244,8 @@ $\mathrm{Log} = \mathrm{atan2}(s, c)$, $J_r = J_l = 1$, $\mathrm{Ad} = 1$.
 SE(2), tangent $[\theta; \rho]$: $\mathrm{Exp} = (R(\theta),\ V(\theta)\rho)$ with
 $V(\theta) = \begin{bmatrix} \alpha & -\beta \\ \beta & \alpha \end{bmatrix}$,
 $\alpha = \sin\theta/\theta$, $\beta = (1 - \cos\theta)/\theta = 2\sin^2(\theta/2)/\theta$ (both 0/0
-only: series from the generator, switch generated). $\mathrm{Log}$: $\theta = \mathrm{atan2}(s, c)$,
+only: series from the generator, switch generated). §4's $\alpha$ (`sinc`, `0062`) is this $\alpha$;
+whether SE(2) keeps it or sweeps its own switch is a measurement on `coeff_alpha`. $\mathrm{Log}$: $\theta = \mathrm{atan2}(s, c)$,
 $\rho = V(\theta)^{-1} t$. $J_r$, $J_l$ and their inverses: Solà et al. 2018, Appendix (SE(2)),
 **permuted to rotation-first** in the Phase 3 PR that implements them, and verified by `Dual` and
 the corpus; that PR adds the permuted matrices to this section.
@@ -259,13 +268,20 @@ bottleneck (`PROJECT.md` §5.1).
 
 Storage: unit $n \in \mathbb{R}^3$. The chart at $n$ is frozen at construction:
 
-- **Basis.** $\nu = n + \mathrm{sgn}(n_z)\,e_z$ with $\mathrm{sgn}(0) = +1$;
-  $H = I - 2\,\nu\nu^\top/(\nu^\top\nu)$; $b_1 = H e_x$, $b_2 = H e_y$. $H e_z = -\mathrm{sgn}(n_z)\,n$,
+- **Basis.** $\nu = n + \varsigma\,e_z$ with $\varsigma = +1$ unless $n_z < 0$, a comparison and not
+  the sign bit, so $\pm0$ (and NaN) give $+1$
+  ([`0063`](./decisions/0063-the-sphere-reads-its-sign-by-comparison-and-is-held-unit.md));
+  $H = I - 2\,\nu\nu^\top/(\nu^\top\nu)$; $b_1 = H e_x$, $b_2 = H e_y$. $H e_z = -\varsigma\,n$,
   so $b_1, b_2 \perp n$; $\nu^\top\nu = 2(1 + |n_z|) \ge 2$ never cancels.
 - **Retract.** $n \oplus \delta = \mathrm{Exp}(B\delta)\,n$, $B = [b_1\ b_2]$.
 - **Local.** $\delta = B^\top\,(\alpha\,\hat m)$ with $\hat m = (n \times m)/\|n \times m\|$,
-  $\alpha = \mathrm{atan2}(\|n \times m\|, n \cdot m)$; the ratio $\alpha/\|n \times m\|$ is §4's $r$
-  kernel (with $w = n\cdot m$, $n^2 = \|n\times m\|^2$).
+  $\alpha = \mathrm{atan2}(\|n \times m\|, n \cdot m)$; the ratio $\alpha/\|n \times m\|$ is **half** §4's $r$,
+  $\tfrac12 r(s^2, w)$ with $s = \|n\times m\|$, $w = n\cdot m$, from `log_ratio` with the mask on
+  $s^2/w^2$ (`maths/charts.md` CH.9(c); `0063`). The form $r(s^2, 1 + w)$ is equal and 3 to 5 times
+  less accurate near the antipode.
+- **Unit norm.** `S2` is held unit by the quaternion's three entry points and bounds (§3.6, §12):
+  vouched, normalized, and one Newton step, whose band is measured to hold for three components
+  (`0063`).
 - **The basis is discontinuous at $n_z = 0$**, and by the hairy ball theorem every global basis is
   discontinuous somewhere. The chart is therefore computed once per linearization and reused; it is
   never recomputed inside $\oplus$ ([`0012`](./decisions/0012-a-retraction-is-a-chart.md)).
@@ -395,8 +411,16 @@ $X(t) = X_0\,\mathrm{Exp}(t\,d)$ with $d = X_1 \ominus_R X_0$ and $\Delta = X_0^
   and with no valid slot each real root is at the cap: the worst answer scores $1/u$ (`0056`).
 - **Masks** (`chol`): a reported mask that differs from the reference scores $1/u$; where the
   reference reports failure, the values beside the mask are not scored (`0056`).
+- **Directions** (`s2_retract`, any unit-vector output): $\max(\mathrm{atan2}(\|\hat a \times a\|,
+  \hat a\cdot a)/u,\ \lvert\|\hat a\|^2 - 1\rvert/(2u))$, the angle to the reference and the drift off the
+  sphere, which the angle cannot see; `atan2` keeps the small angle that `acos` of the dot product
+  resolves only to $\sim\sqrt{2u}$ ([`0063`](./decisions/0063-the-sphere-reads-its-sign-by-comparison-and-is-held-unit.md)).
+- **Expected non-finite** (`mat2_inverse_adj`'s `cond:singular`, the only stratum that declares
+  it): the reference is singular, so a non-finite inverse is the answer and a finite one scores
+  $1/u$; `det` is scored absolutely, $\lvert\widehat{\det}\rvert/(\|M\|_F^2\,u)$
+  ([`0061`](./decisions/0061-mat2-keeps-its-adjugate.md)).
 - **Per stratum:** max and p99; never a mean. Non-finite outputs are counted separately and any
-  non-zero count fails.
+  non-zero count fails, except where a stratum declares them expected (above).
 - **Bars** ([`0006`](./decisions/0006-the-instrument-comes-first.md)): domination over the best
   oracle's max; no-regress against the committed baseline, **exact** (D16).
 
@@ -412,7 +436,12 @@ $X(t) = X_0\,\mathrm{Exp}(t\,d)$ with $d = X_1 \ominus_R X_0$ and $\Delta = X_0^
 | `renormalize` | none; a normalization only for $\lvert\|q\|^2 - 1\rvert \le 2^{-26.29}$ (`f64`), $2^{-11.79}$ (`f32`) (§3.6) | defined everywhere; $0$ at $\|q\|^2 = 3$, $q$ reversed beyond |
 | `solve_cubic` | every input; the mask is the report: a non-finite coefficient, $a = 0$, or $1/a$, $b/a$, $c/a$ or $d/a$ overflowing gives no valid slot (§16) | — |
 | `eig3` | every input, lower triangle read; entries of magnitude $m$ with $p^3$ normal, $10^{-100} < m < 10^{100}$ (`f64`), $10^{-12} < m < 10^{12}$ (`f32`); the vectors need $\|A\|^4$ normal, $10^{\pm75}$, $10^{\pm9}$ | eigenvalues not finite, never a plausible number ([`0023`](./decisions/0023-eig3-departs-from-omnisac-and-its-limits.md), draft) |
+| `S2::from_vec_unchecked` | $\lvert\|v\|^2 - 1\rvert \le 2^{-40}$ (`f64`), $2^{-16}$ (`f32`); `debug_assert!`, NaN fails (`0063`) | garbage in, garbage out |
+| `S2::from_vec_normalized` | $\|v\|^2$ normal (`0027`) | NaN at $v = 0$; zero above the overflow |
+| `S2::renormalize` | none; a normalization only for $\lvert\|n\|^2 - 1\rvert \le 2^{-26.29}$ (`f64`), $2^{-11.79}$ (`f32`), within $5u$ of the sphere (measured, `0063`) | defined everywhere; as the quaternion's |
 | `S2Chart::local` | $m \ne -n$ | unspecified finite value |
+| `sinc` | every $z \ge 0$; value and derivative within $5u$ times their condition number; $\mathrm d\alpha/\mathrm dz = 0$ at $\theta = 4.4934$, where only its absolute error, about $u$, is meaningful (`0062`) | NaN for NaN; a negative $z$ fails `coeffs`' `debug_assert!` |
+| `Mat2::inverse_adj` | entries of magnitude $m$, $10^{-154} < m < 10^{154}$ (`f64`), $10^{-19} < m < 10^{19}$ (`f32`); the caller decides what `det` means (`0061`) | non-finite at $\det = 0$; outside the range, $\det$ overflows or underflows |
 | `geodesic` | $\theta(d) < \pi$ | §10 |
 | `Sim3` | $\sigma$ finite | — |
 | `Dual::sqrt` derivative | $v > 0$ | $\pm\infty$ ($d \ne 0$), NaN ($d = 0$); value unaffected (0020) |

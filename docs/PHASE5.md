@@ -23,7 +23,8 @@ stated side; and consumer migrations onto `helicoid` without unrecorded regressi
 
 **NORMATIVE.** No preintegration (Γ is the primitive; integrators live downstream), no
 sampling or RNG in `Gaussian`, no solver-facing ambient Jacobians (Phase 6). Sim(3) implementation
-awaits completion of `NUMERICS.md` §9.
+awaits completion of `NUMERICS.md` §9. §1, §2, §4 and §5 do not wait for Phase 4 or for
+`PHASE3.md` §6, and §1 comes first ([`0060`](./decisions/0060-the-charts-go-first-and-name-their-frame.md)).
 
 ## 1. Charts
 
@@ -54,12 +55,15 @@ pub struct WithChart<M, C>(pub M, core::marker::PhantomData<C>);
 ```
 
 Every `LieGroup` is a `Manifold` with `Chart = RightChart<G>` (retract $= X\,\mathrm{Exp}(\delta)$,
-local $= Y \ominus_R X$). `LeftChart<G>` is the left twin.
+local $= Y \ominus_R X$). `LeftChart<G>` is the left twin. Each group has its own `Manifold` impl: a
+blanket over `LieGroup` beside `WithChart`'s is E0119. A chart holds its frozen base, so it carries
+`S`. `WithChart<M, C>`'s chart is `Lifted<C>`, which delegates to `C`
+([`0060`](./decisions/0060-the-charts-go-first-and-name-their-frame.md)).
 
 ### 1.2 Rationale
 
 Linearization uses `M::Chart` by default. Alternative retractions are explicit in types:
-`WithChart<SE3<f64>, Decoupled>`.
+`WithChart<SE3<f64>, Decoupled<f64>>`.
 
 ### 1.3 SE(3) charts
 
@@ -69,17 +73,30 @@ Linearization uses `M::Chart` by default. Alternative retractions are explicit i
 | `Decoupled` | $(R\,\mathrm{Exp}(\varphi),\ t + R\rho)$ | $(\mathrm{Log}(R^\top R_Y),\ R^\top(t_Y - t))$ | Decoupled rotation/translation |
 | `WorldTranslation` | $(R\,\mathrm{Exp}(\varphi),\ t + \rho)$ | $(\mathrm{Log}(R^\top R_Y),\ t_Y - t)$ | `Product<SO3, R3>` chart |
 
+`Screw` and `Decoupled` agree to first order at $\delta = 0$. `WorldTranslation` equals `Decoupled`
+after $\mathrm{diag}(I, R)$ on the translation tangent, exactly, and agrees with the other two to
+first order only if $R = I$ (`docs/maths/charts.md` CH.4(b), CH.5(c); `0060`).
+`SE3::chart_transition::<From, To>()` returns that first-order transition. All three take the tangent
+`Twist<S>`. Corpus ids: `se3_{screw,decoupled,world}_{retract,local}` over the `theta:*` and
+`rho:*` strata, with a generic base (`0060` decision 8).
+
 ### 1.4 Jacobian types
 
-`Screw` uses `SEn3Jac<S, 1>`. `Decoupled` and `WorldTranslation` use `ProductJac<Mat3<S>, Mat3<S>>`
-since their diagonal blocks differ. Charts without group structure use dense matrices implementing
+`Screw` uses `SEn3Jac<S, 1>`. `Decoupled` and `WorldTranslation` use `TwistBlockJac<S>`, a newtype
+over `ProductJac<Mat3<S>, Mat3<S>>` that implements `Jac<S, Twist<S>>` only, since their diagonal
+blocks differ (a second `Jac` impl on `ProductJac` itself is E0283 at every concrete call; `0060`). Charts without group structure use dense matrices implementing
 `Jac` (S²: `Mat2<S>`). Validated against `Dual` dual numbers.
 
 ## 2. S²
 
 **NORMATIVE.** `S2<S>(Vec3<S>)`, `S2Chart<S> { base, b1, b2 }`, formulas `NUMERICS.md` §8.
-Householder basis computed once in `Chart::at`. Domain: `local(m)` requires $m \ne -n$.
-Corpus ids: `s2_retract`, `s2_local`. Strata: `s2:nz0`, `s2:near-antipode`, `s2:generic`.
+Householder basis computed once in `Chart::at`, with $\varsigma = +1$ unless $n_z < 0$. `S2` is held
+unit: `from_vec_unchecked`, `from_vec_normalized` and `renormalize` with the quaternion's bounds
+(`NUMERICS.md` §12). Domain: `local(m)` requires $m \ne -n$.
+Corpus ids: `s2_retract`, `s2_local`. Strata: `s2:nz0` (records at $n_z = +0$ and $-0$),
+`s2:near-antipode`, `s2:generic`. `s2_local`'s reference is the geometric logarithm (Rodrigues, then
+the quaternion `atan2`), never `mp.logm`. `s2_retract` is scored by `NUMERICS.md` §11's direction
+metric ([`0063`](./decisions/0063-the-sphere-reads-its-sign-by-comparison-and-is-held-unit.md)).
 
 ## 3. Sim(3)
 
@@ -115,7 +132,7 @@ pub struct Gaussian<S: Real, G: LieGroup<S>, Sd: Side, const D: usize> {
 
 **NORMATIVE gates.** Tracked in downstream consumer repositories.
 - **Vision/PnP pipelines:** Retractions become charts. Gate: discrete outputs and residual evaluations identical.
-- **Tag/Pose estimators:** `Pose::retract` adopts `WithChart<SE3<f64>, Decoupled>`. Matrix representations convert cleanly.
+- **Tag/Pose estimators:** `Pose::retract` adopts `WithChart<SE3<f64>, Decoupled<f64>>`. Matrix representations convert cleanly.
 - **Fusion estimators:** Direct consumption of `SE23`, $\Gamma$, both sides, and `Gaussian`.
 
 ## 7. Definition of done

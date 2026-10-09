@@ -148,7 +148,7 @@ $$
   matrices are closed under product and inverse, which is what `ProductJac<Mat3, Mat3>` needs.
 - (c) $\mathrm D\,\mathrm{ret}_X(0)\delta = X\delta^\wedge$ for `Screw` and `Decoupled`, and $X\big(\mathrm{diag}(I, R^\top)\delta\big)^\wedge$ for
   `WorldTranslation`. So `Screw` and `Decoupled` agree to first order at every $X$, and `WorldTranslation` agrees with them only if $R = I$:
-  $\mathrm D\Phi^{\mathrm{Dec} \to \mathrm{WT}}(0) = \mathrm{diag}(I, R)$ (`PHASE5.md` §1.3 says all three agree; index, open items).
+  $\mathrm D\Phi^{\mathrm{Dec} \to \mathrm{WT}}(0) = \mathrm{diag}(I, R)$ (`0012`'s Context said all three agree; amended by `0060`).
 
 *Proof.* (`Decoupled`) $Y = \mathrm{ret}_X(\delta)$ has $R_Y = R\,\mathrm{Exp}\,\varphi$ and $\mathrm{ret}_X(\delta + \eta) = (R\,\mathrm{Exp}(\varphi + \eta_\varphi),\ t + R(\rho + \eta_\rho))$. In the chart at $Y$ its rotation
 part is $\mathrm{Log}(\mathrm{Exp}(-\varphi)\mathrm{Exp}(\varphi + \eta_\varphi)) = J_r(\varphi)\eta_\varphi + O(\lVert\eta\rVert^2)$ (LG.8, $N = 0$) and its translation part is
