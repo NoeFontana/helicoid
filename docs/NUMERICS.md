@@ -259,10 +259,18 @@ $\Delta v = \Gamma_1(\omega\Delta t)\,a\,\Delta t$, $\Delta p = \Gamma_2(\omega\
 (Barrau & Bonnabel 2020; Brossard et al. 2022). Preintegration itself is not `helicoid`'s
 ([`0009`](./decisions/0009-what-helicoid-does-not-own.md)).
 
-**Directional Jacobians** $\partial(\Gamma_m(\varphi)\,v)/\partial\varphi$ are computed by
-evaluating $\Gamma_m$ on `Dual<S, 3>` through `coeffs` — exact to rounding, Taylor branches
-included. A closed form replaces this only if a bench shows the `Dual` path is a consumer
-bottleneck (`PROJECT.md` §5.1).
+`gamma2_coeffs` is the group $(b, d)$ over the swept switches of its members: no switch of its own,
+and `q_coeffs`' $b$ and $d$ to the bit ([`0064`](./decisions/0064-the-integrated-exponentials-reuse-the-swept-switches.md)). $\Gamma_1$ is `SO3::jl` to the bit.
+
+**Directional Jacobians** $\partial(\Gamma_m(\varphi)\,v)/\partial\varphi$, $m \in \{1, 2\}$, are
+computed by evaluating $v/m! + \sigma_{m+1}\,\varphi\times v + \sigma_{m+2}\,\varphi\times(\varphi\times v)$
+once on `Dual<S, 3>` through `coeffs`. The result is the derivative of the computed function
+(GG.6): finite at $\varphi = 0$, subnormal included, and as accurate as the arm that runs —
+worse than the value by $\approx 2K/\theta$ on a $K$-term series arm, by $\approx u/\theta$
+($m = 1$) or $u/\theta^2$ ($m = 2$) on an exact arm. On $\theta \le \pi$ the generated switches
+put every call on the series arm, measured within $4.93u$ (`f32`) of the §14 twin ([`0064`](./decisions/0064-the-integrated-exponentials-reuse-the-swept-switches.md)). A
+closed form replaces this only if a bench shows the `Dual` path is a consumer bottleneck
+(`PROJECT.md` §5.1).
 
 ## 8. S²
 
@@ -411,6 +419,11 @@ $X(t) = X_0\,\mathrm{Exp}(t\,d)$ with $d = X_1 \ominus_R X_0$ and $\Delta = X_0^
   and with no valid slot each real root is at the cap: the worst answer scores $1/u$ (`0056`).
 - **Masks** (`chol`): a reported mask that differs from the reference scores $1/u$; where the
   reference reports failure, the values beside the mask are not scored (`0056`).
+- **Mahalanobis distances** (`gaussian_mahalanobis_*`): `chol`'s mask rule, and $d^2$ relative
+  where it is set. The reading is the componentwise condition number
+  $\kappa = \sum_i\lvert\partial d^2/\partial x_i\cdot x_i\rvert/d^2$ over every input: a residual of
+  two absolute poses against a $\sigma$ of $10^{-3}$ is conditioned to $\sim10^3$, and every
+  stratum's maximum is measured at most $0.44\,\kappa$ ([`0065`](./decisions/0065-a-gaussian-names-its-side-and-is-stored-symmetric.md)).
 - **Directions** (`s2_retract`, any unit-vector output): $\max(\mathrm{atan2}(\|\hat a \times a\|,
   \hat a\cdot a)/u,\ \lvert\|\hat a\|^2 - 1\rvert/(2u))$, the angle to the reference and the drift off the
   sphere, which the angle cannot see; `atan2` keeps the small angle that `acos` of the dot product
@@ -436,6 +449,7 @@ $X(t) = X_0\,\mathrm{Exp}(t\,d)$ with $d = X_1 \ominus_R X_0$ and $\Delta = X_0^
 | `renormalize` | none; a normalization only for $\lvert\|q\|^2 - 1\rvert \le 2^{-26.29}$ (`f64`), $2^{-11.79}$ (`f32`) (§3.6) | defined everywhere; $0$ at $\|q\|^2 = 3$, $q$ reversed beyond |
 | `solve_cubic` | every input; the mask is the report: a non-finite coefficient, $a = 0$, or $1/a$, $b/a$, $c/a$ or $d/a$ overflowing gives no valid slot (§16) | — |
 | `eig3` | every input, lower triangle read; entries of magnitude $m$ with $p^3$ normal, $10^{-100} < m < 10^{100}$ (`f64`), $10^{-12} < m < 10^{12}$ (`f32`); the vectors need $\|A\|^4$ normal, $10^{\pm75}$, $10^{\pm9}$ | eigenvalues not finite, never a plausible number ([`0023`](./decisions/0023-eig3-departs-from-omnisac-and-its-limits.md), draft) |
+| `so3::gamma1`, `gamma2`, `gamma_apply_jacobian` | every finite $\varphi$ with $\theta^2$ finite: $\Gamma_m$ is entire (GG.2), no singular $\theta$; the overflow of $\theta^2$ is `Exp`'s (CO.15(c)) ([`0064`](./decisions/0064-the-integrated-exponentials-reuse-the-swept-switches.md)) | — |
 | `S2::from_vec_unchecked` | $\lvert\|v\|^2 - 1\rvert \le 2^{-40}$ (`f64`), $2^{-16}$ (`f32`); `debug_assert!`, NaN fails (`0063`) | garbage in, garbage out |
 | `S2::from_vec_normalized` | $\|v\|^2$ normal (`0027`) | NaN at $v = 0$; zero above the overflow |
 | `S2::renormalize` | none; a normalization only for $\lvert\|n\|^2 - 1\rvert \le 2^{-26.29}$ (`f64`), $2^{-11.79}$ (`f32`), within $5u$ of the sphere (measured, `0063`) | defined everywhere; as the quaternion's |
@@ -497,8 +511,8 @@ row spells the composition and the proptest writes it inline
 | `SO3::geodesic` (GE.14's blend, §10) | $q_0\,\mathrm{Exp}(t\,\mathrm{Log}(q_0^{*}q_1))$ — `reference::geodesic`, which is also `LieGroup::geodesic`'s **provided** body, so the `twin` leg of `laws::geodesic` is this row's proptest and reads 7.213 `u` at binary64 and 7.089 at binary32, where it read `gerr`'s 1.118 floor while the two were one expression ([`0050`](./decisions/0050-the-geodesic-s-denominator-is-the-whole-domination-gap.md)) | 4 |
 | `SE3::geodesic` (screw power, §10) | $X_0\,\mathrm{Exp}(t\,\mathrm{Log}(X_0^{-1}X_1))$ — `reference::geodesic`; `se3_geodesic_matches_reference` ($10^5$ pairs per precision, three regimes, extrapolation its own row), `the_screw_twin_differentiates_like_the_reference` and the `twin` leg of `laws::geodesic`, 8.051 `u` at binary64 and 8.579 at binary32 ([`0054`](./decisions/0054-the-screw-twin-takes-two-arms-in-the-world-frame.md)) | 4 |
 | `geodesic_jacobians` | `Dual` through the reference geodesic | 4 |
-| `Gaussian::to_left` / `to_right` | dense $\mathrm{Ad}\,\Sigma\,\mathrm{Ad}^\top$: `reference::sen3jac_sandwich` with $J = \mathrm{Ad}$ | 5 |
-| `gamma_apply_jacobian` | `Dual` through `reference` $\Gamma_m$ series (dense sum) | 5 |
+| `Gaussian::to_left` / `to_right` | dense $\mathrm{Ad}\,\Sigma\,\mathrm{Ad}^\top$: `reference::sen3jac_sandwich` with $J = \mathrm{Ad}$, componentwise within $2\gamma_{2D}\lvert A\rvert\lvert\Sigma\rvert\lvert A\rvert^\top$ (`to_left_and_to_right_match_reference_*`, [`0065`](./decisions/0065-a-gaussian-names-its-side-and-is-stored-symmetric.md)) | 5 |
+| `gamma_apply_jacobian` | `Dual` through `reference::gamma_apply`: the first 40 terms of $\sum W^n v/(n+m)!$, left to right, for $\theta \le \pi$; tolerance per $\theta$ band (`gamma_apply_jacobian_matches_reference_*`, [`0064`](./decisions/0064-the-integrated-exponentials-reuse-the-swept-switches.md)) | 5 |
 | `S2Chart::local` | $\mathrm{Log}$ of the minimal rotation taking $n$ to $m$, projected on $B$ | 5 |
 | `chol_solve` (`helicoid-linalg`) | composition of public fns, no `reference` item: `solve_upper(&l.transpose(), solve_lower(&l, b))` | 2 |
 

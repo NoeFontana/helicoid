@@ -112,6 +112,13 @@ Corpus ids: `sim3_exp`, `sim3_log`, `sim3_jr`, `sim3_jr_inv`, `sim3_ad`.
 (`NUMERICS.md` §7); corpus id `so3_gamma2`. Directional Jacobian computes
 $\partial(\Gamma_m(\varphi)v)/\partial\varphi$ via `gamma_m` on `Dual<S, 3>`.
 
+[`0064`](./decisions/0064-the-integrated-exponentials-reuse-the-swept-switches.md) fixes the shape:
+- `gamma_apply_jacobian::<M, S>(&φ, v) -> (Γ_M v, ∂(Γ_M v)/∂φ)` for `M` 1 or 2, asserted at
+  monomorphization.
+- `gamma2_coeffs` takes no switch of its own.
+- `so3_gamma2` has `so3_jl`'s strata and their `@f32` twins.
+- The seeded defect "Γ₂ from Γ₁'s coefficients" is in `PHASE1.md` §10.
+
 ## 5. `Gaussian`
 
 **NORMATIVE.**
@@ -129,6 +136,14 @@ pub struct Gaussian<S: Real, G: LieGroup<S>, Sd: Side, const D: usize> {
 - `propagate(&self, j: &G::Jac, mean: G)`: $J\Sigma J^\top$.
 - `mahalanobis_sq(&self, x: &G) -> (S, S::Mask)`: $\|L^{-1}(x \ominus_{Sd} \mu)\|^2$ with `chol` mask.
 - Side is encoded in the type for invariant safety.
+
+[`0065`](./decisions/0065-a-gaussian-names-its-side-and-is-stored-symmetric.md) fixes what this leaves open:
+- `new` is the only constructor. Only `cov`'s lower triangle is read, and every value a method
+  returns has its upper triangle copied from its lower one.
+- `to_right` uses the adjoint of the computed inverse.
+- `propagate`'s `j` is documented as the `Sd`-side Jacobian, which the type cannot check.
+- The round trip `to_right ∘ to_left` stays within `γ_{4D+42}(|B||A|)|Σ|(|B||A|)ᵀ` componentwise.
+- Corpus ids `gaussian_mahalanobis_se3` and `_se23`, at both precisions.
 
 ## 6. Consumer migrations
 
