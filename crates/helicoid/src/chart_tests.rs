@@ -112,6 +112,8 @@ macro_rules! chart_laws_for {
     };
 }
 
+pub(crate) use chart_laws_for;
+
 /// The right chart's first-order transition to the left one, `Ad_X` (CH.6).
 fn ad<S: helicoid_linalg::Real, G: LieGroup<S>>(x: &G) -> G::Jac {
     x.adjoint()

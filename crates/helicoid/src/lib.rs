@@ -41,6 +41,7 @@ mod product;
 mod quat;
 pub mod reference;
 mod rn;
+mod se3_charts;
 mod sen3;
 mod side;
 mod so3;
@@ -57,6 +58,7 @@ pub use dualmat::SEn3Jac;
 pub use product::{Product, ProductJac};
 pub use quat::Quat;
 pub use rn::{Rn, RnJac, RnTangent};
+pub use se3_charts::{Decoupled, Screw, Se3Chart, TwistBlockJac, WorldTranslation};
 pub use sen3::{SEn3, SEn3Tangent, Twist, SE23, SE3};
 pub use side::{Left, Right, Side};
 pub use so3::{SO3Tangent, SO3};
@@ -88,5 +90,7 @@ mod product_tests;
 mod quat_tests;
 #[cfg(test)]
 mod rn_tests;
+#[cfg(test)]
+mod se3_charts_tests;
 #[cfg(test)]
 mod sen3_tests;
