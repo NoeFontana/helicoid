@@ -214,6 +214,8 @@ const ADJUGATE: &[FieldRule] = &[
     field("det", Floor::Tiny, SignRule::Fixed),
 ];
 const CHOL_SOLVE: &[FieldRule] = &[field("x", Floor::Tiny, SignRule::Fixed)];
+/// `0065`: `d²` relative, a squared norm being its own scale.
+const MAHALANOBIS: &[FieldRule] = &[field("d2", Floor::Tiny, SignRule::Fixed)];
 const RENORMALIZE: &[FieldRule] = &[field("q", Floor::Tiny, SignRule::Fixed)];
 const REAL_UNARY: &[FieldRule] = &[
     field("value", Floor::Tiny, SignRule::Fixed),
@@ -294,6 +296,21 @@ const TABLE: &[(&str, Rule)] = &[
         },
     ),
     ("chol_solve", Forward(CHOL_SOLVE)),
+    // `0065`: `chol`'s mask must be the reference's, and `d²` is relative where it is set.
+    (
+        "gaussian_mahalanobis_se3",
+        Rule::Masked {
+            mask: "valid",
+            fields: MAHALANOBIS,
+        },
+    ),
+    (
+        "gaussian_mahalanobis_se23",
+        Rule::Masked {
+            mask: "valid",
+            fields: MAHALANOBIS,
+        },
+    ),
     ("mat2_inverse_adj", Rule::Adjugate),
     ("quat_renormalize", Forward(RENORMALIZE)),
     ("real_sqrt", Forward(REAL_UNARY)),

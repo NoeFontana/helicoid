@@ -7,6 +7,7 @@ from . import (
     charts,
     check,
     check_charts,
+    check_gaussian,
     check_geodesic,
     check_linalg,
     check_real,
@@ -16,6 +17,7 @@ from . import (
     coeff,
     cubic,
     eig,
+    gaussian,
     geodesic,
     mat2,
     quat,
@@ -199,6 +201,17 @@ FUNCTIONS: dict[str, FunctionSpec] = {
             drawn_inputs,
             mat2.inverse_adj,
             check_linalg.mat2_inverse_adj,
+        ),
+        # docs/decisions/0065: `Gaussian::mahalanobis_sq` on SE(3) and SE_2(3), both sides.
+        *(
+            FunctionSpec(
+                f"gaussian_mahalanobis_{name}",
+                gaussian.strata(n),
+                drawn_inputs,
+                gaussian.mahalanobis(n),
+                check_gaussian.mahalanobis(n),
+            )
+            for name, n in (("se3", 1), ("se23", 2))
         ),
         FunctionSpec(
             "quat_renormalize",
