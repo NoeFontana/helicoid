@@ -44,6 +44,7 @@ mod oracle;
 pub(crate) mod report;
 mod selftest;
 mod selftest_envelope;
+mod selftest_gamma;
 mod selftest_linalg;
 mod selftest_se3;
 mod selftest_so3;
@@ -557,8 +558,8 @@ mod tests {
         let dir = corpus_dir()?;
         let split = |subjects: &[Registered]| split_f32(&dir, corpus::manifest(&dir)?, subjects);
         let (with, left_out) = split(&[registered(Perfect::exact())])?;
-        // Exactly the ids with an `@f32` stratum: the coefficient ids (`0016`) and the routines'
-        // (`0056`, `0061`).
+        // Exactly the ids with an `@f32` stratum: the coefficient ids (`0016`), the routines'
+        // (`0056`, `0061`) and `so3_gamma2` (`0064`).
         let entries = corpus::manifest(&dir)?;
         let mut with_f32 = Vec::new();
         for e in &entries {
@@ -571,9 +572,17 @@ mod tests {
             with_f32
         );
         let of_0056 = |id: &str| {
-            ["solve_cubic", "eig3", "chol", "quat_", "real_", "mat2_"]
-                .iter()
-                .any(|p| id.starts_with(p))
+            [
+                "solve_cubic",
+                "eig3",
+                "chol",
+                "quat_",
+                "real_",
+                "mat2_",
+                "so3_gamma2",
+            ]
+            .iter()
+            .any(|p| id.starts_with(p))
         };
         assert!(with
             .iter()
