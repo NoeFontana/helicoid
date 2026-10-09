@@ -15,8 +15,8 @@ stated side; and consumer migrations onto `helicoid` without unrecorded regressi
 | SE(3) charts `Screw`, `Decoupled`, `WorldTranslation` (§1.3) | Done (`0060`, #120, #123): `TwistBlockJac`, `Se3Chart`, `SE3::chart_transition` (all nine pairs against `Dual`); corpus ids `se3_{screw,decoupled,world}_{retract,local}` |
 | S² and its chart (§2) | Not started |
 | Sim(3) (§3) | Not started |
-| Γ₁, Γ₂, directional Jacobians (§4) | Not started |
-| `Gaussian<S, G, Sd, D>` (§5) | Not started |
+| Γ₁, Γ₂, directional Jacobians (§4) | Done ([`0064`](./decisions/0064-the-integrated-exponentials-reuse-the-swept-switches.md), #127, #128): `so3::{gamma1, gamma2, gamma_apply_jacobian::<M>}`, `M` 1 or 2; the twin `reference::gamma_apply`; corpus id `so3_gamma2` at both precisions; the seeded defect Γ₂ from Γ₁'s coefficients |
+| `Gaussian<S, G, Sd, D>` (§5) | Done ([`0065`](./decisions/0065-a-gaussian-names-its-side-and-is-stored-symmetric.md), #129, #130): `to_left`, `to_right`, `propagate`, `mahalanobis_sq`; the round-trip bound and the twins on SE(3), SE₂(3), SO(3), SO(3)×ℝ³; corpus ids `gaussian_mahalanobis_{se3,se23}` |
 | Consumer migrations (§6) | Not started |
 
 ## 0. Non-goals and guardrails — read first
