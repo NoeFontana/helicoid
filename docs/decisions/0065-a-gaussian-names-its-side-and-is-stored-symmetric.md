@@ -6,6 +6,11 @@
 
 ## Context
 
+> **Amended by [`0066`](./0066-gamma-shares-its-coefficients-and-a-gaussian-factors-once.md), 2026-10-09.** `cov` is private, read through `cov()`, so
+> the exact symmetry of decision 2 holds for every value and the methods no longer copy the
+> mirror on each call. "A caller that writes `cov` directly stays correct" no longer applies: no
+> caller can. The factored form of *Further work* is `Gaussian::whitener` and `Whitener`.
+
 `PHASE5.md` §5 specifies `Gaussian<S, G, Sd, D>` with `to_left`/`to_right`
 (`Σ_L = Ad_μ Σ_R Ad_μᵀ` by `Jac::sandwich`), `propagate(&self, j: &G::Jac, mean: G)` and
 `mahalanobis_sq(&self, x) -> (S, S::Mask)`. Its maths is GG.7–GG.14
