@@ -79,6 +79,8 @@ fn required() -> Vec<String> {
         ]
         .map(String::from),
     );
+    // `0061`'s, with its corpus file in the same step.
+    ids.push("mat2_inverse_adj".to_string());
     ids
 }
 
@@ -217,7 +219,7 @@ mod tests {
             .collect();
         let c = check(&have, &rows(&[]));
         assert!(c.failures.is_empty(), "{:?}", messages(&c));
-        assert_eq!((c.required, c.excused), (61, 11));
+        assert_eq!((c.required, c.excused), (62, 11));
         Ok(())
     }
 

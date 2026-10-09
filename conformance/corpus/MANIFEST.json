@@ -91,6 +91,12 @@
       "records": 1920,
       "sha256": "a949fc14983496e95915e17d0942be11fd14a68dbec4d0d391bd621269da0ed8"
     },
+    "mat2_inverse_adj.jsonl": {
+      "kind": "corpus",
+      "rechecked": 7,
+      "records": 42,
+      "sha256": "4015480c178d18f91c1460cb919d40cd985391d1e4fde9d14a743418f9c1069a"
+    },
     "quat_renormalize.jsonl": {
       "kind": "corpus",
       "rechecked": 10,
@@ -380,7 +386,7 @@
       "sha256": "3780fb0bfac76491d5c03b5ebbeb52fc333c95edaf3784bf6e805add3f219f2b"
     }
   },
-  "generator": "sha256:c260a462ba03ca93195079e9f77bcd55f580a96817b9347ff91deacfbcaa1848",
+  "generator": "sha256:10f5f5b34e18a2461a312651aef6fe8a5bea478a49235e3cb5bc6c5f27a504a6",
   "mpmath": "1.4.1",
   "python": "3.12",
   "recheck": {

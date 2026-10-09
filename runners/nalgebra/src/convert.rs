@@ -14,6 +14,8 @@
 //! - `solve_cubic`: the real Schur form of the monic companion matrix, `numpy.roots`' route without
 //!   its balancing.
 //! - `quat_renormalize`: `Unit::renormalize_fast`, the Newton step `q (3 − ‖q‖²)/2`.
+//! - `mat2_inverse_adj` (`docs/decisions/0061`): `Matrix2::try_inverse`, what locus-tag calls, and
+//!   `determinant`; `None` (a zero determinant) answers a NaN inverse, the singular answer.
 //!
 //! The corpus's matrices are exactly symmetric, so the triangle read changes nothing; the corpus
 //! test asserts it. Every record is answered in binary64, `@f32` strata included: the protocol
@@ -31,7 +33,7 @@ type Evaluate = fn(&Fields) -> Result<Fields, String>;
 
 /// The function ids this runner answers, each with its evaluation: the one list, so an id cannot
 /// be advertised without an answer or answered without being advertised.
-const TABLE: [(&str, Evaluate); 7] = [
+const TABLE: [(&str, Evaluate); 8] = [
     ("eig3", eig3),
     ("chol_n3", chol::<3>),
     ("chol_n6", chol::<6>),
@@ -39,6 +41,7 @@ const TABLE: [(&str, Evaluate); 7] = [
     ("chol_solve_n6", chol_solve::<6>),
     ("solve_cubic", solve_cubic),
     ("quat_renormalize", quat_renormalize),
+    ("mat2_inverse_adj", mat2_inverse_adj),
 ];
 
 /// The iterations `SymmetricEigen` and `Schur` get. Their `new` is `try_new(m, f64::EPSILON, 0)`,
@@ -154,6 +157,15 @@ fn eig3(input: &Fields) -> Result<Fields, String> {
         })
         .collect();
     Ok(fields([("V", v), ("lambda", lambda)]))
+}
+
+/// `A.try_inverse()` and `A.determinant()`; `None`: a NaN inverse.
+fn mat2_inverse_adj(input: &Fields) -> Result<Fields, String> {
+    let a = helicoid_to_nalgebra_matrix::<2, 2>(take_square::<2>(input)?)?;
+    let inv = a
+        .try_inverse()
+        .map_or(vec![f64::NAN; 4], |m| nalgebra_to_helicoid_matrix(&m));
+    Ok(fields([("det", vec![a.determinant()]), ("inv", inv)]))
 }
 
 /// `Cholesky::new(A)`: `valid = 1` and its `L` (zero above the diagonal), or `valid = 0` and zeros.

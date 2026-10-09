@@ -111,6 +111,7 @@ const RUNNERS: &[Runner] = &[
             "chol_solve_n6",
             "solve_cubic",
             "quat_renormalize",
+            "mat2_inverse_adj",
         ],
     },
 ];

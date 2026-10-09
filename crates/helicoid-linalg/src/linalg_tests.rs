@@ -16,7 +16,7 @@
 //! Each figure is that single run's maximum, not a bound: the derivative lanes never exceeded the
 //! value lane's ratio, so `D` reads as `f64`.
 
-use crate::{hat, vee, Blend, Dual, Mat3, Matrix, Point, Precision, Real, Vec3, Vector};
+use crate::{hat, vee, Blend, Dual, Mat2, Mat3, Matrix, Point, Precision, Real, Vec3, Vector};
 use core::array;
 use proptest::prelude::*;
 use std::vec::Vec;
@@ -392,6 +392,101 @@ fn adj_identity<S: Lane>(p: &mut Pool) -> Result<(), TestCaseError> {
     Ok(())
 }
 
+fn small_ints2() -> impl Strategy<Value = [i32; 4]> {
+    prop::array::uniform4(-9_i32..=9)
+}
+
+/// `Mat2::inverse_adj` on integer matrices: `det` is an exact integer and the adjugate is a
+/// permutation with signs, so the result is the correctly rounded quotient, to the bit (`0061`).
+fn adj2_exact<S: Lane>(m: [i32; 4]) -> Result<(), TestCaseError> {
+    let e = |r: usize, c: usize| i64::from(m[2 * c + r]);
+    let det = e(0, 0) * e(1, 1) - e(0, 1) * e(1, 0);
+    let a = Mat2::from_cols(array::from_fn(|c| {
+        Vector(array::from_fn(|r| S::make(e(r, c) as f64, [0.0; 2])))
+    }));
+    let (inv, d) = a.inverse_adj();
+    prop_assert!(same(&[d], &[S::make(det as f64, [0.0; 2])], true));
+    prop_assume!(det != 0);
+    let adj = [[e(1, 1), -e(0, 1)], [-e(1, 0), e(0, 0)]];
+    for (r, row) in adj.iter().enumerate() {
+        for (c, &x) in row.iter().enumerate() {
+            let want = S::make(x as f64, [0.0; 2]) / S::make(det as f64, [0.0; 2]);
+            prop_assert!(same(&[inv.get(r, c)], &[want], true), "({r}, {c})");
+        }
+    }
+    Ok(())
+}
+
+/// `(s, t)` with `s = |A| |adj A|` and `t = |m00 m11| + |m01 m10|`, which bounds the rounding
+/// error of `det` (`gamma_2` of it).
+fn adj2_shadow<S: Lane>(a: &Mat2<S>) -> (Mat2<D>, D) {
+    let sa = shadow_m(a);
+    let (p, q, r, w) = (sa.get(0, 0), sa.get(0, 1), sa.get(1, 0), sa.get(1, 1));
+    let adjabs = Mat2::from_rows([Vector([w, q]), Vector([r, p])]);
+    (sa * adjabs, p * w + q * r)
+}
+
+/// `A * inv - I` on a matrix with `|det| >= t / 16` (not nearly singular). The adjugate is exact,
+/// so the errors are `det`'s (`gamma_2` of `t`), the division (`gamma_1`) and the two-term product
+/// (`gamma_2`): `gamma_5` of `(|A| |adj| + t I) / |det|`, the quotient taken lane-wise as the
+/// shadow of `x / y`. Measured worst: 0.40 (f64, D), 0.40 (f32).
+fn adj2_residual<S: Lane>(p: &mut Pool) -> Result<(), TestCaseError> {
+    let a = p.mat::<S, 2, 2>();
+    let (inv, det) = a.inverse_adj();
+    let (s, t) = adj2_shadow(&a);
+    let sd = shadow(det);
+    prop_assume!(sd.v * 16.0 >= t.v);
+    let quot = |x: D| D {
+        v: x.v / sd.v,
+        d: array::from_fn(|i| x.d[i] / sd.v + x.v * sd.d[i] / (sd.v * sd.v)),
+    };
+    let scale: Mat2<D> = Matrix::from_cols(array::from_fn(|c| {
+        Vector(array::from_fn(|r| {
+            quot(s.get(r, c) + if r == c { t } else { D::constant(0.0) })
+        }))
+    }));
+    let bound = |k| gamma::<S>(5 + extra(k, 5));
+    within(
+        "adjugate 2x2",
+        ratio(
+            &flat(&(a * inv)),
+            &flat(&Mat2::<S>::identity()),
+            &flat(&scale),
+            &bound,
+        ),
+    )
+}
+
+/// `A adj(A) = det I` without a division, on singular and nearly singular `A`: the second column
+/// is `alpha c0 + eps n` with `eps` of `sqrt(u)`, `u` and `0`. `adj` is read back as `inv det`
+/// (two more roundings) and an exactly zero `det` is skipped. `gamma_6` of `s + t I`. Value lanes
+/// only, as `adj_identity`. Measured worst: 0.42 (f64), 0.40 (f32).
+fn adj2_identity<S: Lane>(p: &mut Pool) -> Result<(), TestCaseError> {
+    let c0 = p.vec::<S, 2>();
+    let (alpha, noise) = (p.next::<S>(), p.vec::<S, 2>());
+    for eps in [unit::<S>().sqrt(), unit::<S>(), 0.0] {
+        let c1 = c0.scale(alpha) + noise.scale(S::make(eps, [0.0; 2]));
+        let a = Mat2::from_cols([c0, c1]);
+        let (inv, det) = a.inverse_adj();
+        if det.lane(0).abs().to_bits() == 0 {
+            continue;
+        }
+        let residual = a * inv.scale(det) - Mat2::identity().scale(det);
+        let (s, t) = adj2_shadow(&a);
+        let scale: Mat2<D> = Matrix::from_cols(array::from_fn(|c| {
+            Vector(array::from_fn(|r| {
+                s.get(r, c) + if r == c { t } else { D::constant(0.0) }
+            }))
+        }));
+        let bound = |_| gamma::<S>(6);
+        within(
+            "adjugate identity 2x2",
+            ratio(&flat(&residual), &[S::zero(); 4], &flat(&scale), &bound),
+        )?;
+    }
+    Ok(())
+}
+
 /// `(s A) x` against `s (A x)` and `(s u) . v` against `s (u . v)`: each side has one more product
 /// than the plain reduction, so `gamma_{n+1}` of the shadow on each, and two multiplication levels
 /// in a derivative lane. Measured worst: 0.60 (f64, D) and 0.62 (f32) for the matrix
@@ -555,10 +650,24 @@ fn documented_range<S: Lane>(norm_exp: i32, inv_exp: i32) -> Result<(), TestCase
     Ok(())
 }
 
+/// `Mat2::inverse_adj`'s range (`det` quadratic): the last exponents at which `det` stays normal.
+fn documented_range2<S: Lane>(inv_exp: i32) -> Result<(), TestCaseError> {
+    let pow = |e: i32| S::make(libm::ldexp(1.0, e), [0.0; 2]);
+    for e in [inv_exp, -inv_exp] {
+        let (inv, det) = Mat2::<S>::identity().scale(pow(e)).inverse_adj();
+        prop_assert!(same(&[det], &[pow(2 * e)], false), "det 2^{e}");
+        prop_assert!(same(&[inv.get(1, 1)], &[pow(-e)], false), "inverse 2^{e}");
+        prop_assert!(same(&[inv.get(0, 1)], &[S::zero()], true), "inverse 2^{e}");
+    }
+    Ok(())
+}
+
 #[test]
 fn documented_ranges_hold() -> Result<(), TestCaseError> {
     documented_range::<f64>(500, 330)?;
-    documented_range::<f32>(60, 40)
+    documented_range::<f32>(60, 40)?;
+    documented_range2::<f64>(510)?;
+    documented_range2::<f32>(63)
 }
 
 #[test]
@@ -671,6 +780,26 @@ proptest! {
         adj_exact::<f64>(m)?;
         adj_exact::<f32>(m)?;
         adj_exact::<D>(m)?;
+    }
+
+    #[test]
+    fn inverse_adj2_is_exact_on_integers(m in small_ints2()) {
+        adj2_exact::<f64>(m)?;
+        adj2_exact::<f32>(m)?;
+        adj2_exact::<D>(m)?;
+    }
+
+    #[test]
+    fn matrix2_times_inverse_adj_is_identity(pl in pool()) {
+        adj2_residual::<f64>(&mut Pool(pl.iter()))?;
+        adj2_residual::<f32>(&mut Pool(pl.iter()))?;
+        adj2_residual::<D>(&mut Pool(pl.iter()))?;
+    }
+
+    #[test]
+    fn adjugate2_identity_holds_near_singular(pl in pool()) {
+        adj2_identity::<f64>(&mut Pool(pl.iter()))?;
+        adj2_identity::<f32>(&mut Pool(pl.iter()))?;
     }
 
     #[test]

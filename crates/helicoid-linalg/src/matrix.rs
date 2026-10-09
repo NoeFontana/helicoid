@@ -133,6 +133,38 @@ impl<S: Real, const N: usize> Matrix<S, N, N> {
     }
 }
 
+impl<S: Real> Mat2<S> {
+    /// `(adj(self) / det, det)`, with `det = m00 m11 - m01 m10` (two products and a subtraction,
+    /// unfused: D16) and `adj = [[m11, -m01], [-m10, m00]]`, so `self * adj = det I`. The adjugate
+    /// is exact; `det` and the four divisions are the only roundings, so the error is `det`'s,
+    /// `u` times the cancellation ratio `(|m00 m11| + |m01 m10|) / |det|`: the matrix's
+    /// conditioning, not the algorithm's (`0061`). Each entry is one division by `det`, no
+    /// reciprocal.
+    ///
+    /// # Domain
+    ///
+    /// The caller decides what `det` means: for `det = 0` the entries are non-finite, and nothing
+    /// is asserted, since a singular matrix is legal input.
+    ///
+    /// `det` is quadratic in the entries and is not scaled, so it must be a normal finite number.
+    /// For a well-conditioned matrix of entries of magnitude `m` that is about
+    /// `1e-154 < m < 1e154` (`f64`) and `1e-19 < m < 1e19` (`f32`); beyond it `det` overflows to
+    /// `inf` and the quotient is a finite, wrong `0`, or `det` underflows to `0` and the quotient
+    /// is `inf`, or digits are lost.
+    #[inline]
+    pub fn inverse_adj(&self) -> (Self, S) {
+        let (a, b, c, d) = (
+            self.get(0, 0),
+            self.get(0, 1),
+            self.get(1, 0),
+            self.get(1, 1),
+        );
+        let det = a * d - b * c;
+        let row = |r: [S; 2]| Vector(r.map(|x| x / det));
+        (Self::from_rows([row([d, -b]), row([-c, a])]), det)
+    }
+}
+
 impl<S: Real> Mat3<S> {
     /// `(adj(self) / det, det)`, with `det = c0 . (c1 x c2)` and `adj` the transpose of the
     /// cofactor matrix, whose rows are `c1 x c2`, `c2 x c0`, `c0 x c1` (`c_i` the columns), so

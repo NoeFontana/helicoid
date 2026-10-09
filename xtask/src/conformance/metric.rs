@@ -80,6 +80,9 @@ pub(crate) enum Rule {
         mask: &'static str,
         fields: &'static [FieldRule],
     },
+    /// `mat2_inverse_adj` (`0061` decision 3): forward error on `inv` and `det`, except where the
+    /// reference `det` is exactly 0, [`adjugate`].
+    Adjugate,
 }
 
 impl Rule {
@@ -96,6 +99,7 @@ impl Rule {
             Rule::Eigen => eigen(rec, out, precision),
             Rule::Roots => roots(rec, out, precision),
             Rule::Masked { mask, fields } => masked(mask, fields, rec, out, precision),
+            Rule::Adjugate => adjugate(rec, out, precision),
         }
     }
 
@@ -108,6 +112,7 @@ impl Rule {
             Rule::BackwardOnly => return None,
             Rule::Eigen => vec!["lambda", "V"],
             Rule::Roots => vec!["re", "im"],
+            Rule::Adjugate => ADJUGATE.iter().map(|f| f.field).collect(),
             Rule::Masked { mask, fields } => {
                 let mut v: Vec<&str> = fields.iter().map(|f| f.field).collect();
                 v.push(mask);
@@ -188,6 +193,10 @@ const SE2_EXP: &[FieldRule] = &[
 /// `0056` decision 3: relative, as a tangent's is (`Floor::Tiny`), for the factor, the solution,
 /// the projected quaternion and every value and derivative of `Dual`.
 const CHOL: &[FieldRule] = &[field("L", Floor::Tiny, SignRule::Fixed)];
+const ADJUGATE: &[FieldRule] = &[
+    field("inv", Floor::Tiny, SignRule::Fixed),
+    field("det", Floor::Tiny, SignRule::Fixed),
+];
 const CHOL_SOLVE: &[FieldRule] = &[field("x", Floor::Tiny, SignRule::Fixed)];
 const RENORMALIZE: &[FieldRule] = &[field("q", Floor::Tiny, SignRule::Fixed)];
 const REAL_UNARY: &[FieldRule] = &[
@@ -259,6 +268,7 @@ const TABLE: &[(&str, Rule)] = &[
         },
     ),
     ("chol_solve", Forward(CHOL_SOLVE)),
+    ("mat2_inverse_adj", Rule::Adjugate),
     ("quat_renormalize", Forward(RENORMALIZE)),
     ("real_sqrt", Forward(REAL_UNARY)),
     ("real_cbrt", Forward(REAL_UNARY)),
@@ -674,6 +684,36 @@ fn masked(
         return Ok(Score::Finite(0.0));
     }
     score(fields, rec, out, precision)
+}
+
+/// `NUMERICS.md` §11's expected non-finite rule (`0061` decision 3). Where the reference `det` is
+/// exactly 0 the inverse does not exist: a non-finite `inv` (every entry) is the answer and a
+/// finite entry reads `1/u`, and `det` is scored absolutely, `|det̂| / (‖A‖_F² u)`. Elsewhere `inv`
+/// and `det` are scored by forward error.
+fn adjugate(rec: &Record, out: &Output, precision: Precision) -> Result<Score, String> {
+    if reference(rec, "det", 1)?[0].mant != 0 {
+        return score(ADJUGATE, rec, out, precision);
+    }
+    let (_, inv) = pair(rec, out, "inv")?;
+    let (_, det) = pair(rec, out, "det")?;
+    let bits = unit_bits(precision);
+    if inv.iter().any(|x| x.is_finite()) {
+        return Ok(Score::Finite(2f64.powi(bits as i32)));
+    }
+    let &[d] = det else {
+        return Err("`det` holds one value".to_string());
+    };
+    if precision == Precision::F32 && exact_f32(d).is_none() {
+        return Err("`det` is not exactly binary32".to_string());
+    }
+    if d.to_bits() << 1 == 0 {
+        return Ok(Score::Finite(0.0));
+    }
+    let a = rec
+        .input("A")
+        .ok_or_else(|| "the record has no input `A`".to_string())?;
+    let size: f64 = a.iter().map(|x| x * x).sum();
+    Ok(finite_or_nonfinite(d.abs() / size * 2f64.powi(bits as i32)))
 }
 
 /// A shift or power that is non-negative by construction.
@@ -1110,7 +1150,7 @@ mod tests {
             };
             let own_test = matches!(
                 r,
-                BackwardOnly | Rule::Eigen | Rule::Roots | Rule::Masked { .. }
+                BackwardOnly | Rule::Eigen | Rule::Roots | Rule::Masked { .. } | Rule::Adjugate
             );
             assert!(own_test || wanted.iter().any(listed), "{family}");
         }
@@ -1361,6 +1401,42 @@ mod tests {
         assert_eq!(fields("solve_cubic"), Some(vec!["im", "re"]));
         assert_eq!(fields("chol_n6"), Some(vec!["L", "valid"]));
         assert_eq!(fields("chol_solve_n3"), Some(vec!["x"]));
+        assert_eq!(fields("mat2_inverse_adj"), Some(vec!["det", "inv"]));
         assert!(rule("chol_n4").is_none() && fields("so3_from_matrix").is_none());
+    }
+
+    /// `0061` decision 3: a singular reference expects a non-finite inverse and scores `det`
+    /// absolutely; a regular one is plain forward error on both fields.
+    #[test]
+    fn the_adjugate_rule_expects_a_non_finite_inverse_where_det_is_zero() -> Result<(), String> {
+        let a: &[f64] = &[1.0, 2.0, 2.0, 4.0];
+        let at = |det_ref: &str, inv: [f64; 4], det: f64| {
+            let rec = record(
+                &[("A", a)],
+                &[("det", &[det_ref]), ("inv", &["1e0", "0e0", "0e0", "1e0"])],
+            )?;
+            let out = Output::from([
+                ("inv".to_string(), inv.to_vec()),
+                ("det".to_string(), vec![det]),
+            ]);
+            Rule::Adjugate.score(&rec, &out, Precision::F64)
+        };
+        let (inf, nan) = (f64::INFINITY, f64::NAN);
+        let gone = [inf, -inf, nan, inf];
+        assert_eq!(at("0e0", gone, 0.0)?, Score::Finite(0.0));
+        assert_eq!(at("0e0", gone, -0.0)?, Score::Finite(0.0));
+        assert_eq!(
+            at("0e0", [inf, inf, inf, 1.0], 0.0)?,
+            Score::Finite(1.0 / U)
+        );
+        // |det^| / (‖A‖_F² u): 25 u of det against ‖A‖_F² = 25 reads 1.
+        assert_eq!(at("0e0", gone, 25.0 * U)?, Score::Finite(1.0));
+        assert_eq!(at("1e0", [1.0, 0.0, 0.0, 1.0], 1.0)?, Score::Finite(0.0));
+        assert_eq!(at("1e0", gone, 1.0)?, Score::NonFinite);
+        assert_eq!(
+            at("1e0", [1.0 + 2.0 * f64::EPSILON, 0.0, 0.0, 1.0], 1.0)?,
+            Score::Finite(2.0 * 2.0f64.sqrt()) // 4 u of an entry over ‖I‖_F = √2
+        );
+        Ok(())
     }
 }
