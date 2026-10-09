@@ -4,7 +4,7 @@
 //! The bounds are recorded as described at [`ChartBounds`], from `measure_charts`.
 
 use crate::chart_tests::chart_laws_for;
-use crate::laws::{self, ChartBounds, CHART_LEGS};
+use crate::laws::{self, ChartBounds, ChartLegs, CHART_LEGS};
 use crate::{
     Chart, Decoupled, Jac, LieGroup, ProductJac, SO3Tangent, Screw, Se3Chart, Tangent, Twist,
     TwistBlockJac, WorldTranslation, SE3,
@@ -28,10 +28,7 @@ const DECOUPLED_F64: ChartBounds = ChartBounds {
     transition: 4.0,
     change: 16.0,
 };
-const DECOUPLED_F32: ChartBounds = ChartBounds {
-    legs: [3.0, 13.0, 17.0, 3.0],
-    ..DECOUPLED_F64
-};
+const DECOUPLED_F32: ChartLegs = [3.0, 13.0, 17.0, 3.0];
 
 // `screw`, worst of `measure_charts`: legs `f64` [1.116, 6.212, 9.106, 1.118], `f32` [1.068, 6.183, 7.984, 1.118]; `Dual` 4.849, transition 2.219,
 // change of chart 9.906.
@@ -41,10 +38,7 @@ const SCREW_F64: ChartBounds = ChartBounds {
     transition: 5.0,
     change: 20.0,
 };
-const SCREW_F32: ChartBounds = ChartBounds {
-    legs: [3.0, 13.0, 16.0, 3.0],
-    ..SCREW_F64
-};
+const SCREW_F32: ChartLegs = [3.0, 13.0, 16.0, 3.0];
 
 // `world_translation`, worst of `measure_charts`: legs `f64` [1.116, 6.06, 8.013, 1.118], `f32` [1.068, 6.102, 7.794, 1.118]; `Dual` 3.489, transition 1.658,
 // change of chart 7.543.
@@ -54,10 +48,7 @@ const WORLD_TRANSLATION_F64: ChartBounds = ChartBounds {
     transition: 4.0,
     change: 16.0,
 };
-const WORLD_TRANSLATION_F32: ChartBounds = ChartBounds {
-    legs: [3.0, 13.0, 16.0, 3.0],
-    ..WORLD_TRANSLATION_F64
-};
+const WORLD_TRANSLATION_F32: ChartLegs = [3.0, 13.0, 16.0, 3.0];
 
 chart_laws_for!(
     decoupled,
@@ -183,6 +174,33 @@ fn chart_transition_screw_decoupled_is_identity() {
             x.chart_transition::<WorldTranslation<f64>, WorldTranslation<f64>>(),
         ] {
             assert_eq!(laws::dense_bits::<Twist<f64>, _, 6>(&j), id);
+        }
+    }
+}
+
+/// `chart_transition::<B, A>` inverts `chart_transition::<A, B>`: the product is `I` within one
+/// rounding of a `3 x 3` product of orthonormal factors, and the back transition's rotation block
+/// is the forward one's transpose exactly, which `TwistBlockJac::inverse`'s adjugate is not.
+#[test]
+fn chart_transition_back_is_the_inverse() {
+    let mut rng = laws::Rng(0x6368_6172_7473_0006);
+    for _ in 0..10_000 {
+        let x = G::<f64>::exp(&laws::tangent::<f64, G<f64>, 6>(&rng.shaped::<6>()));
+        let to = x.chart_transition::<Decoupled<f64>, WorldTranslation<f64>>();
+        let back = x.chart_transition::<WorldTranslation<f64>, Decoupled<f64>>();
+        assert_eq!(
+            back.translation_block().transpose().get(1, 2).to_bits(),
+            to.translation_block().get(1, 2).to_bits()
+        );
+        let id = laws::dense_bits::<Twist<f64>, _, 6>(&back.mul(&to));
+        for (c, col) in id.iter().enumerate() {
+            for (r, b) in col.iter().enumerate() {
+                let want = if r == c { 1.0 } else { 0.0 };
+                assert!(
+                    (f64::from_bits(*b) - want).abs() <= 4.0 * f64::EPSILON,
+                    "({r}, {c})"
+                );
+            }
         }
     }
 }

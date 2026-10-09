@@ -66,6 +66,15 @@ impl<S: Real> Jac<S, Twist<S>> for TwistBlockJac<S> {
         Self(Jac::<S, Pair<S>>::mul(&self.0, &o.0))
     }
     /// Each block by `Mat3::inverse_adj`, with `Mat3`'s `Jac` domain: both blocks invertible.
+    ///
+    /// The exact algebraic inverse of any blocks (`0005`), not a transpose: [`from_blocks`] takes
+    /// arbitrary ones. A chart never needs it. `local_jacobian` *is* the inverse of
+    /// `retract_jacobian` (CH.2(b)), and `chart_transition::<B, A>` is that of
+    /// `chart_transition::<A, B>` with the rotation transposed exactly rather than divided by a
+    /// determinant (`chart_transition_back_is_the_inverse`). Both are cheaper, and closer to exact,
+    /// than this.
+    ///
+    /// [`from_blocks`]: TwistBlockJac::from_blocks
     #[inline]
     fn inverse(&self) -> Self {
         Self(Jac::<S, Pair<S>>::inverse(&self.0))
@@ -135,7 +144,8 @@ pub struct Decoupled<S: Real>(SE3<S>);
 #[derive(Clone, Copy, Debug)]
 pub struct WorldTranslation<S: Real>(SE3<S>);
 
-/// `φ` and `Rᵀ R_Y`, the rotation part both decoupled charts share.
+/// `WorldTranslation`'s `φ` and `Rᵀ R_Y`: its translation is a plain difference, so it takes the
+/// rotation alone rather than `inv_mul`'s rotated difference.
 #[inline]
 fn rotation_local<S: Real>(x: &SE3<S>, y: &SE3<S>) -> (SO3Tangent<S>, SO3<S>) {
     let rel = x.rotation().inverse() * y.rotation();
@@ -159,13 +169,14 @@ impl<S: Real> Chart<S, SE3<S>> for Decoupled<S> {
         let phi = SO3Tangent { phi: delta.phi };
         SE3::from_rt(r.rplus(&phi), self.0.translation() + r.act(delta.rho[0]))
     }
+    /// `X⁻¹ Y` by `SEn3::inv_mul`, one conjugate and the difference rotated once, read as
+    /// `(Log R_rel, t_rel)`.
     #[inline]
     fn local(&self, other: &SE3<S>) -> Twist<S> {
-        let (phi, _) = rotation_local(&self.0, other);
-        let back = self.0.rotation().inverse();
+        let rel = other.inv_mul(&self.0);
         Twist {
-            phi: phi.phi,
-            rho: [back.act(other.translation() - self.0.translation())],
+            phi: rel.rotation().log().phi,
+            rho: [rel.translation()],
         }
     }
     #[inline]
@@ -175,11 +186,26 @@ impl<S: Real> Chart<S, SE3<S>> for Decoupled<S> {
         let back = SO3::exp(&phi).to_matrix().transpose();
         TwistBlockJac::from_blocks(SO3::jr(&phi), back)
     }
+    /// The fused body's Jacobian, so the two cannot differ by a bit; the translation it also forms
+    /// is one rotation, against the `Log` and `jr_inv` both pay.
     #[inline]
     fn local_jacobian(&self, other: &SE3<S>) -> TwistBlockJac<S> {
-        // `Exp(φ_Y)` is `Rᵀ R_Y` itself, not `Exp` of its `Log`.
-        let (phi, rel) = rotation_local(&self.0, other);
-        TwistBlockJac::from_blocks(SO3::jr_inv(&phi), rel.to_matrix())
+        self.local_with_jacobian(other).1
+    }
+    /// `local`'s relative element once: `Exp(φ_Y)` is `R_rel` itself, not `Exp` of its `Log`.
+    #[inline]
+    fn local_with_jacobian(&self, other: &SE3<S>) -> (Twist<S>, TwistBlockJac<S>) {
+        let rel = other.inv_mul(&self.0);
+        let r = rel.rotation();
+        let phi = r.log();
+        let tangent = Twist {
+            phi: phi.phi,
+            rho: [rel.translation()],
+        };
+        (
+            tangent,
+            TwistBlockJac::from_blocks(SO3::jr_inv(&phi), r.to_matrix()),
+        )
     }
 }
 
@@ -219,6 +245,18 @@ impl<S: Real> Chart<S, SE3<S>> for WorldTranslation<S> {
     fn local_jacobian(&self, other: &SE3<S>) -> TwistBlockJac<S> {
         let (phi, _) = rotation_local(&self.0, other);
         TwistBlockJac::from_blocks(SO3::jr_inv(&phi), Matrix::identity())
+    }
+    #[inline]
+    fn local_with_jacobian(&self, other: &SE3<S>) -> (Twist<S>, TwistBlockJac<S>) {
+        let (phi, _) = rotation_local(&self.0, other);
+        let tangent = Twist {
+            phi: phi.phi,
+            rho: [other.translation() - self.0.translation()],
+        };
+        (
+            tangent,
+            TwistBlockJac::from_blocks(SO3::jr_inv(&phi), Matrix::identity()),
+        )
     }
 }
 
