@@ -19,8 +19,8 @@
 
 use helicoid::__sweep as k;
 use helicoid::{
-    Chart, Decoupled, Jac, LieGroup, Quat, SEn3, SEn3Jac, SEn3Tangent, Screw, Tangent, Twist,
-    WorldTranslation, SE3, SO3,
+    Chart, Decoupled, Gaussian, Jac, Left, LieGroup, Quat, Right, SEn3, SEn3Jac, SEn3Tangent,
+    Screw, Tangent, Twist, WorldTranslation, SE3, SO3,
 };
 use helicoid_linalg::{
     chol, chol_solve, eig3, solve_cubic, Dual, Mat3, Matrix, Precision, Real, StridedMut, Vec3,
@@ -683,6 +683,74 @@ fn chol_solve_answer<S: Real<Mask = bool> + Into<f64>, const N: usize>(record: &
     Output::from([("x".to_string(), x.0.map(Into::into).to_vec())])
 }
 
+/// A `Gaussian` id of `0065` this subject answers, at both precisions: `mahalanobis_sq` of a
+/// right or a left Gaussian on SE(3) or SE_2(3), as a consumer's gate calls it.
+///
+/// An enum with an exhaustive `answer`, for the reason the [`So3`] note gives. `Helicoid` and
+/// `HostStd` both dispatch through it.
+#[derive(Clone, Copy)]
+enum GaussianId {
+    Se3,
+    Se23,
+}
+
+impl GaussianId {
+    const ALL: [(&'static str, GaussianId); 2] = [
+        ("gaussian_mahalanobis_se3", GaussianId::Se3),
+        ("gaussian_mahalanobis_se23", GaussianId::Se23),
+    ];
+
+    fn of_fn(fn_id: &str) -> Option<Self> {
+        Self::ALL
+            .iter()
+            .find(|(name, _)| *name == fn_id)
+            .map(|&(_, id)| id)
+    }
+
+    /// The shipped answer at `S`; nothing when the record holds no usable input (an `@f32` record
+    /// whose input is not exactly a binary32 included).
+    fn answer<S: Real<Mask = bool> + Into<f64>>(self, record: &Record) -> Output {
+        match self {
+            GaussianId::Se3 => mahalanobis_answer::<S, 1, 6>(record),
+            GaussianId::Se23 => mahalanobis_answer::<S, 2, 9>(record),
+        }
+    }
+}
+
+/// The pose `(q, x)` a record holds, exactly at `S`, through `from_quat_unchecked` as
+/// [`sen3_of`]'s is.
+fn sen3_exact<S: Real, const N: usize>(record: &Record, qk: &str, xk: &str) -> Option<SEn3<S, N>> {
+    let &[w, x, y, z] = scalars::<S>(record, qk)?.first_chunk::<4>()?;
+    let t = scalars::<S>(record, xk).filter(|t| t.len() == 3 * N)?;
+    let cols = core::array::from_fn(|i| Vector(core::array::from_fn(|r| t[3 * i + r])));
+    Some(SEn3::from_parts(
+        SO3::from_quat_unchecked(Quat { w, x, y, z }),
+        cols,
+    ))
+}
+
+fn mahalanobis_answer<S: Real<Mask = bool> + Into<f64>, const N: usize, const D: usize>(
+    record: &Record,
+) -> Output {
+    let (Some(mean), Some(x), Some(cov), Some(&[side])) = (
+        sen3_exact::<S, N>(record, "q0", "x0"),
+        sen3_exact::<S, N>(record, "q1", "x1"),
+        matrix::<S, D>(record, "Sigma"),
+        record.input("side"),
+    ) else {
+        return Output::new();
+    };
+    let (d2, ok) = if side == 0.0 {
+        Gaussian::<S, SEn3<S, N>, Right, D>::new(mean, cov).mahalanobis_sq(&x)
+    } else {
+        Gaussian::<S, SEn3<S, N>, Left, D>::new(mean, cov).mahalanobis_sq(&x)
+    };
+    Output::from([
+        ("d2".to_string(), vec![d2.into()]),
+        ("valid".to_string(), vec![if ok { 1.0 } else { 0.0 }]),
+    ])
+}
+
 pub(crate) struct Helicoid;
 
 impl Subject for Helicoid {
@@ -699,6 +767,7 @@ impl Subject for Helicoid {
             || Geodesic::of_fn(fn_id).is_some()
             || ChartId::of_fn(fn_id).is_some()
             || Linalg::of_fn(fn_id).is_some()
+            || GaussianId::of_fn(fn_id).is_some()
     }
 
     fn eval(&self, fn_id: &str, record: &Record, precision: Precision) -> Output {
@@ -709,6 +778,12 @@ impl Subject for Helicoid {
             };
         }
         if let Some(id) = Gamma::of_fn(fn_id) {
+            return match precision {
+                Precision::F64 => id.answer::<f64>(record),
+                Precision::F32 => id.answer::<f32>(record),
+            };
+        }
+        if let Some(id) = GaussianId::of_fn(fn_id) {
             return match precision {
                 Precision::F64 => id.answer::<f64>(record),
                 Precision::F32 => id.answer::<f32>(record),
@@ -870,6 +945,9 @@ impl Subject for HostStd {
         if let Some(id) = Linalg::of_fn(fn_id) {
             return id.answer::<Host>(record);
         }
+        if let Some(id) = GaussianId::of_fn(fn_id) {
+            return id.answer::<Host>(record);
+        }
         if let Some(id) = Unswept::of_fn(fn_id) {
             return id.answer::<Host>(record);
         }
@@ -1028,6 +1106,30 @@ mod tests {
         assert!(twin
             .eval("coeff_alpha", &alpha, Precision::F64)
             .contains_key("value"));
+        // `GaussianId`'s too: answered, not only claimed, at a pose one unit from the mean.
+        let sigma: Vec<f64> = (0..36)
+            .map(|i| if i % 7 == 0 { 1.0 } else { 0.0 })
+            .collect();
+        let at = [1.0, 0.0, 0.0, 0.0];
+        let gauss = record(
+            &[
+                ("q0", &at),
+                ("x0", &[0.0; 3]),
+                ("q1", &at),
+                ("x1", &[1.0, 0.0, 0.0]),
+                ("side", &[0.0]),
+                ("Sigma", &sigma),
+            ],
+            &[],
+        )?;
+        for (id, _) in GaussianId::ALL {
+            assert!(twin.supports(id), "{id}");
+        }
+        let d2 = twin.eval("gaussian_mahalanobis_se3", &gauss, Precision::F64);
+        assert_eq!(
+            (d2.get("d2"), d2.get("valid")),
+            (Some(&vec![1.0]), Some(&vec![1.0]))
+        );
         // Sampled, not one point: two libms agreeing to the bit at a given argument is ordinary,
         // so a single quaternion would make this test a property of the host's libc. The claim is
         // that *some* `θ` differs, which is what `host::the_scalar_differs_from_the_libm_crate_

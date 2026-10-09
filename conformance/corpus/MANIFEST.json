@@ -97,6 +97,18 @@
       "records": 1920,
       "sha256": "a949fc14983496e95915e17d0942be11fd14a68dbec4d0d391bd621269da0ed8"
     },
+    "gaussian_mahalanobis_se23.jsonl": {
+      "kind": "corpus",
+      "rechecked": 13,
+      "records": 416,
+      "sha256": "e2a74431dd586fe85c9b162927a32b89af92589167c98215054580a7f10b1296"
+    },
+    "gaussian_mahalanobis_se3.jsonl": {
+      "kind": "corpus",
+      "rechecked": 13,
+      "records": 416,
+      "sha256": "c7ada54d5f005ee305b7923876d1b644de740dfc5a100ecf225fec3facb902f8"
+    },
     "mat2_inverse_adj.jsonl": {
       "kind": "corpus",
       "rechecked": 7,
@@ -434,7 +446,7 @@
       "sha256": "3780fb0bfac76491d5c03b5ebbeb52fc333c95edaf3784bf6e805add3f219f2b"
     }
   },
-  "generator": "sha256:6727763f27ada0a2bf2ee3568517358f4a5116089c3d2561e02a604c3599c131",
+  "generator": "sha256:a7e5d26bfb139b66ae7e2ece35d064d7b54666d97acc546d6dd77169ef950f25",
   "mpmath": "1.4.1",
   "python": "3.12",
   "recheck": {

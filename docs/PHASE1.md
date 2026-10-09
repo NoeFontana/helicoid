@@ -177,6 +177,7 @@ side of `docs/maths/coefficients.md` CO.12.
 | `chol_solve_n{3,6}` | $(A, b)$ | `mp.lu_solve` of the equilibrated system $DAD$, $D = \mathrm{diag}(A)^{-1/2}$ |
 | `quat_renormalize` | $q$ | $q/\lVert q\rVert$, the projection `NUMERICS.md` §3.6 claims inside its band |
 | `mat2_inverse_adj` | $A$, $2\times2$ | `det` and `inv` $= \mathrm{adj}(A)/\det$ of the stored entries in rationals, exactly; `inv` zeros where $\det = 0$ ([`0061`](./decisions/0061-mat2-keeps-its-adjugate.md)) |
+| `gaussian_mahalanobis_se3`, `gaussian_mahalanobis_se23` | $(\mu, x, \text{side}, \Sigma)$ | `valid` as `chol`'s, exactly; $d^2 = \delta^\top\Sigma^{-1}\delta$ by `mp.lu_solve`, $\delta = x \ominus_{\text{side}} \mu$ by the geometric $\mathrm{Log}$ ([`0065`](./decisions/0065-a-gaussian-names-its-side-and-is-stored-symmetric.md)) |
 | `real_sqrt`, `real_cbrt`, `real_acos`, `real_sin_cos`, `real_atan2`, `real_div` | $x$; $(y, x)$; $(n, d)$ | the value and its calculus derivative(s), what `Dual` carries; `mp.diff` at a relative step is the cross-check |
 
 A `coeff_k`…`coeff_e`, `coeff_cos_half` or `coeff_r` record's outputs are `value` and `d_branch`:

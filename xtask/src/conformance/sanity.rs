@@ -32,8 +32,13 @@ fn rows_at(
 }
 
 /// Ids whose every output field is one number: the ones where the score of a rounding is bounded
-/// by `u` per record whatever the floor (a vector of subnormals can read up to `√n`).
+/// by `u` per record whatever the floor (a vector of subnormals can read up to `√n`). Scored by a
+/// `Forward` rule, too: a `Masked` one (`gaussian_mahalanobis_*`) scores nothing on a stratum whose
+/// mask is clear, so no ulp can move it.
 fn scalar_output(fn_id: &str) -> Result<bool, String> {
+    if !matches!(metric::rule(fn_id), Some(metric::Rule::Forward(_))) {
+        return Ok(false);
+    }
     let dir = corpus_dir()?;
     let text =
         std::fs::read_to_string(dir.join(format!("{fn_id}.jsonl"))).map_err(|e| e.to_string())?;
