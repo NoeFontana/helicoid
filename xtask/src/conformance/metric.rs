@@ -139,6 +139,8 @@ pub(crate) static COEFF_VALUE: Rule = Forward(&[field("value", Floor::Tiny, Sign
 pub(crate) static COEFF_D_BRANCH: Rule =
     Forward(&[field("d_branch", Floor::Tiny, SignRule::Fixed)]);
 const JAC: &[FieldRule] = &[field("J", Floor::Unit, SignRule::Fixed)];
+/// `so3_gamma2` (`0064`): a `Γ` matrix is scored as a Jacobian is, against a floor of 1.
+const GAMMA: &[FieldRule] = &[field("G", Floor::Unit, SignRule::Fixed)];
 const AD: &[FieldRule] = &[field("Ad", Floor::Unit, SignRule::Fixed)];
 const TANGENT: &[FieldRule] = &[field("tau", Floor::Tiny, SignRule::Fixed)];
 const SO3_EXP: &[FieldRule] = &[field("q", Floor::Unit, SignRule::Align)];
@@ -255,6 +257,7 @@ const TABLE: &[(&str, Rule)] = &[
     ("so3_jl", Forward(JAC)),
     ("so3_jr_inv", Forward(JAC)),
     ("so3_jl_inv", Forward(JAC)),
+    ("so3_gamma2", Forward(GAMMA)),
     ("so3_geodesic", Forward(SO3_GEODESIC)),
     ("se3_geodesic", Forward(SE3_GEODESIC)),
     // `0060` decision 8: a `retract` is a pose, scored as the geodesic's is (the translation's
@@ -1119,6 +1122,7 @@ mod tests {
                 false,
             );
         }
+        add(&["so3_gamma2"], "G", Want::Unit, false);
         add(&["sen3_ad", "se2_ad"], "Ad", Want::Unit, false);
         add(&["so2_exp", "se2_exp"], "z", Want::Unit, false);
         add(&["so2_log"], "theta", Want::Tiny, false);
