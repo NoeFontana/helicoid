@@ -121,7 +121,7 @@ fn f32_ids() -> Result<Vec<String>, String> {
     let count = |p: &str| ids.iter().filter(|i| i.starts_with(p)).count();
     assert_eq!(
         (ids.len(), count("coeff_"), count("real_")),
-        (14, 8, 6),
+        (15, 9, 6),
         "{ids:?}"
     );
     Ok(ids)
@@ -137,12 +137,13 @@ fn a_perfectly_rounded_f32_subject_scores_at_most_one_on_every_f32_stratum() -> 
         |id| ids.iter().any(|i| i == id),
         Precision::F32,
     )?;
-    // 28 `theta:*@f32` strata in each of 8 coefficient ids, and `q:w0@f32` in `coeff_r`.
+    // 28 `theta:*@f32` strata in each of 9 coefficient ids (`coeff_alpha` the ninth, `0062`), and
+    // `q:w0@f32` in `coeff_r`.
     let coeff = rows
         .iter()
         .filter(|r| r.fn_id.starts_with("coeff_"))
         .count();
-    assert_eq!(coeff, 8 * 28 + 1);
+    assert_eq!(coeff, 9 * 28 + 1);
     for r in &rows {
         assert!(
             r.stratum.ends_with("@f32") && r.precision == Precision::F32,
@@ -174,7 +175,7 @@ fn the_neighbouring_f32_ulp_scores_above_one_half_and_at_most_three_on_every_f32
         .iter()
         .filter(|r| r.fn_id.starts_with("coeff_"))
         .count();
-    assert_eq!(coeff, 8 * 28 + 1);
+    assert_eq!(coeff, 9 * 28 + 1);
     for r in &rows {
         assert!(
             r.max_u > 0.5 && r.max_u <= 3.0,

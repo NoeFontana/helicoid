@@ -58,7 +58,7 @@ FUNCTIONS: dict[str, FunctionSpec] = {
                 coeff.evaluator(c),
                 check.coefficient(c),
             )
-            for c in ("k", "a", "b", "c", "d", "e", "cos_half")
+            for c in ("k", "a", "b", "c", "d", "e", "cos_half", "alpha")
         ),
         FunctionSpec("coeff_r", COEFF_R_STRATA, coeff.r_inputs, coeff.r, check.coefficient("r")),
         FunctionSpec("so3_exp", SCALAR_THETA_STRATA, so3.phi_inputs, so3.exp, check.so3_exp),

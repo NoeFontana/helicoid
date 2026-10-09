@@ -15,7 +15,7 @@ def record(name: str, inputs: dict) -> dict:
 class CrossCheckTest(unittest.TestCase):
     def test_correct_records_pass(self):
         thetas = (0.0, 1e-310, 1e-9, 1e-5, 0.7, 2.0, 3.141592653589793 - 1e-9)
-        for name in ("k", "a", "b", "c", "d", "e", "cos_half"):
+        for name in ("k", "a", "b", "c", "d", "e", "cos_half", "alpha"):
             for theta in thetas:
                 check.coefficient(name)({"theta": theta}, record(name, {"theta": theta}))
         for inputs in (
@@ -34,6 +34,8 @@ class CrossCheckTest(unittest.TestCase):
             ("c", {"theta": 3.1}),
             ("cos_half", {"theta": 0.7}),
             ("cos_half", {"theta": 1e-5}),
+            ("alpha", {"theta": 0.7}),
+            ("alpha", {"theta": 3.1}),
             ("r", {"n": 0.6, "w": 0.8}),
             ("r", {"n": 1e-9, "w": 1.0}),
         ]

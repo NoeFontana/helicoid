@@ -146,6 +146,7 @@ side of `docs/maths/coefficients.md` CO.12.
 | `coeff_k`, `coeff_a`, `coeff_b`, `coeff_c`, `coeff_d`, `coeff_e` | $\theta$ | the definition at 120 digits; derivative by `mp.diff` |
 | `coeff_cos_half` | $\theta$ | $\cos(\theta/2)$, the other half of `Exp`'s quaternion (`NUMERICS.md` §3.1), at 120 digits; derivative by `mp.diff` |
 | `coeff_r` | $(n, w)$ | $2\,\mathrm{atan2}(n, w)/n$ at 120 digits |
+| `coeff_alpha` | $\theta$ | $\sin\theta/\theta$ at 120 digits; derivative by `mp.diff`; no series and no switch of its own ([`0062`](./decisions/0062-sin-theta-over-theta-is-public-and-differentiates-its-branch.md)) |
 | `coeff_series` | — | the exact series of [`0004`](./decisions/0004-switch-points-are-generated-not-typed.md): `mp.taylor` of each definition at 120 digits, rationalized, equal term by term to an independent exact derivation |
 | `so3_exp` | $\varphi$ | quaternion power series $\sum p^n/n!$, $p = (0, \varphi/2)$ |
 | `so3_log` | $q$ | the $\varphi$ with $\|\varphi\| \le \pi$ and $\mathrm{Exp}(\varphi) = q/\|q\|$ ($w \ge 0$ after the flip), by Newton's method on the `so3_exp` series; `mp.logm` of $R(q/\|q\|)$ is a test cross-check only, since it returns complex results near $\pi$; stratum `q:w0` uses the sign rule of `NUMERICS.md` §3.2 |

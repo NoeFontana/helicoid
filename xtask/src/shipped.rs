@@ -606,6 +606,7 @@ impl Subject for Helicoid {
 
     fn supports(&self, fn_id: &str) -> bool {
         Swept::of_fn(fn_id).is_some()
+            || fn_id == "coeff_alpha"
             || So3::of_fn(fn_id).is_some()
             || Sen3::of_fn(fn_id).is_some()
             || Geodesic::of_fn(fn_id).is_some()
@@ -642,6 +643,12 @@ impl Subject for Helicoid {
                 Precision::F32 => Output::new(),
             };
         }
+        if fn_id == "coeff_alpha" {
+            return match precision {
+                Precision::F64 => alpha_answer::<f64>(record),
+                Precision::F32 => alpha_answer::<f32>(record),
+            };
+        }
         let Some(id) = Swept::of_fn(fn_id) else {
             return Output::new();
         };
@@ -650,6 +657,20 @@ impl Subject for Helicoid {
             Precision::F32 => answer::<f32>(id, record),
         }
     }
+}
+
+/// `coeff_alpha` through the public `helicoid::sinc` (`0062`): no `Swept` member, since `α` has no
+/// switch of its own and the sweep must not see it. Its input is `coeff_k`'s, `z = fl(θ·θ)` at the
+/// precision, and `sinc` returns `d/dz` already, the `d_branch` the corpus holds.
+fn alpha_answer<S: Real + Into<f64>>(record: &Record) -> Output {
+    let Some(x) = input::<S>(Swept::Coeff(Coeff::K), record) else {
+        return Output::new();
+    };
+    let (value, d) = helicoid::sinc(x.z);
+    Output::from([
+        ("value".to_string(), vec![value.into()]),
+        ("d_branch".to_string(), vec![d.into()]),
+    ])
 }
 
 /// The library's own host-`std` twin: this subject's program at [`Host`], whose transcendentals

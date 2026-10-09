@@ -483,12 +483,13 @@ mod tests {
             .skip(1)
             .map(|l| l.split(',').collect())
             .collect();
-        // The 8 coefficient ids' 28 each and `coeff_r`'s `q:w0@f32`, then `0056`'s: `solve_cubic`
+        // The 9 coefficient ids' 28 each (`coeff_alpha`, `0062`, the ninth) and `coeff_r`'s
+        // `q:w0@f32`, then `0056`'s: `solve_cubic`
         // 12, `eig3` 19, `chol_n*` 6 each, `chol_solve_n*` 5 each, `quat_renormalize` 5, `real_sqrt`
         // and `real_cbrt` 8 each, `real_sin_cos` 5, `real_acos` 4, `real_atan2` 7, `real_div` 2;
         // `0061`'s `mat2_inverse_adj` 3.
         let new = 12 + 19 + 2 * 6 + 2 * 5 + 5 + 2 * 8 + 5 + 4 + 7 + 2 + 3;
-        assert_eq!(rows.len(), 8 * 28 + 1 + new);
+        assert_eq!(rows.len(), 9 * 28 + 1 + new);
         assert!(rows.iter().all(|c| c[1].ends_with("@f32") && c[2] == "f32"));
         // An id named without any is an error, not an empty run.
         let named = ["--precision", "f32", "--fn", "so3_exp"];
@@ -558,8 +559,8 @@ mod tests {
         let dir = corpus_dir()?;
         let split = |subjects: &[Registered]| split_f32(&dir, corpus::manifest(&dir)?, subjects);
         let (with, left_out) = split(&[registered(Perfect::exact())])?;
-        // The 8 coefficient ids (`0016`), `0056`'s 13 and `0061`'s one.
-        assert_eq!(with.len(), 8 + 13 + 1);
+        // The 9 coefficient ids (`0016`, `coeff_alpha` of `0062`), `0056`'s 13 and `0061`'s one.
+        assert_eq!(with.len(), 9 + 13 + 1);
         let of_0056 = |id: &str| {
             ["solve_cubic", "eig3", "chol", "quat_", "real_", "mat2_"]
                 .iter()
@@ -569,7 +570,7 @@ mod tests {
             .iter()
             .all(|e| e.fn_id.starts_with("coeff_") || of_0056(&e.fn_id)));
         let total = corpus::manifest(&dir)?.len();
-        assert_eq!(left_out.len(), total - 8 - 13 - 1);
+        assert_eq!(left_out.len(), total - 9 - 13 - 1);
         assert!(["so3_exp", "sen3_exp_n1", "so2_exp"]
             .iter()
             .all(|id| left_out.iter().any(|l| l == id)));

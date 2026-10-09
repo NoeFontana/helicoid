@@ -59,7 +59,7 @@ One JSONL file per function id, one record per line, compact JSON with sorted ke
 | `<S>@f32`, S each of the above | S's values rounded to nearest-even binary32 (`theta:subnormal@f32`: below) | as S |
 
 `@f32` strata (`docs/decisions/0016`) belong to the coefficient ids (`coeff_k`, `a`…`e`, `cos_half`,
-`r`), and to the ids of `docs/decisions/0056` (their own section), and follow every stratum of the ids they belong to, in the order of the strata they twin: no
+`r`, `alpha`), and to the ids of `docs/decisions/0056` (their own section), and follow every stratum of the ids they belong to, in the order of the strata they twin: no
 id, stratum name or record of the binary64 corpus moves. Each input is exactly a binary32, so a
 binary32 subject receives it by a lossless cast, and the reference is the function at that rounded
 input, at 120 digits (`to_f32` is integer arithmetic, and `corpus.require_binary32` asserts every
@@ -299,14 +299,17 @@ record's decision 1 fixes their fields and references, decision 2 their strata. 
 
 ## Coefficients
 
-`coeff_k`, `coeff_a`…`coeff_e`, `coeff_cos_half` take θ; `coeff_r` takes `(n, w)`. Each is the
+`coeff_k`, `coeff_a`…`coeff_e`, `coeff_cos_half`, `coeff_alpha` take θ; `coeff_r` takes `(n, w)`. Each is the
 **raw** definition of `docs/NUMERICS.md` §4, never a rewrite (`a = (1 − cos θ)/θ²`,
 `b = (θ − sin θ)/θ³`, `c = 1/θ² − (1 + cos θ)/(2θ sin θ)`, `d = (θ² + 2 cos θ − 2)/(2θ⁴)`,
 `e = (2θ − 3 sin θ + θ cos θ)/(2θ⁵)`, `r = 2 atan2(n, w)/n`), extended analytically at its
 removable singularity. `cos_half = cos(θ/2)`, the other half of `Exp`'s quaternion, is in no table
 of `NUMERICS.md`; §3.1 has the series arm generate it alongside `k`, and `docs/decisions/0016`
 item 1 names the id. It is the one of the three ids `docs/decisions/0015` (draft) P1.5 recommends
-that is added (α and β are not). `out.value` is the coefficient at the exact input (binary64; binary32
+that is added first; α (`coeff_alpha`, `sin θ/θ`) follows with `docs/decisions/0062`, which makes it
+public as `helicoid::sinc`. It has no committed series and no switch of its own (the kernel
+evaluates it as `2k cos(θ/2)`), so it is in neither `coeff_series` nor `coeff_switch_ref`, and its
+cross-check's second formulation is its own alternating series. β is not added. `out.value` is the coefficient at the exact input (binary64; binary32
 in an `@f32` stratum). `out.d_branch` is its derivative with respect to the **branch variable** by
 `mp.diff` at 120 digits, taken at the exact real θ² (not fl(θ·θ); the subject's own rounding of θ²
 is part of what is measured), or n² at fixed w for `r`. The threshold sweep (`docs/PHASE1.md` §6)

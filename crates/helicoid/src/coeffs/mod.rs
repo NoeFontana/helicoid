@@ -63,6 +63,8 @@
 //! `jr_inv_coeff` and `log_ratio` from `SO3`, and `q_coeffs` — Barfoot's `Q` — from `SEn3`, which
 //! is `PHASE3.md` §5 and the last of the five to arrive.
 
+use helicoid_linalg::Real;
+
 mod generated;
 mod kernel;
 pub(crate) use kernel::{
@@ -73,6 +75,31 @@ pub(crate) use kernel::{
 pub mod sweep;
 #[cfg(test)]
 mod tests;
+
+/// `(sin θ/θ, d(sin θ/θ)/d(θ²))` at `theta_sq = θ²`: the only item of `coeffs` outside the crate
+/// (`docs/decisions/0062`).
+///
+/// The value is `2k cos(θ/2)` of the group `Exp` uses (`docs/NUMERICS.md` §4), so it adds no
+/// switch point and no series; the derivative is the `Dual` lane of that same evaluation, the
+/// derivative of the arm taken at `theta_sq`. Taking `θ²` spares a camera or bearing model the
+/// `sqrt` and the hand-chosen guard at `θ = 0`: at `theta_sq = 0` it returns `(1, -1/6)`.
+///
+/// ```
+/// let (alpha, d) = helicoid::sinc(0.25_f64); // θ = 0.5
+/// assert!((alpha - 0.5_f64.sin() / 0.5).abs() < 1e-16);
+/// assert!((d - (0.5 * 0.5_f64.cos() - 0.5_f64.sin()) / (2.0 * 0.125)).abs() < 1e-16);
+/// ```
+///
+/// # Domain
+///
+/// Every `theta_sq >= 0`. The value and the derivative are each within `5u` times their own
+/// condition number in `θ²` (measured: 2.3u and 3.7u at `f64`, 2.5u and 4.1u at `f32`, for
+/// `θ <= 6.2`). The derivative is zero at `θ = 4.4934` (`tan θ = θ`), where only its absolute
+/// error, about `u`, is meaningful. NaN returns NaN; a negative `theta_sq` is a sign error upstream
+/// and fails a `debug_assert!`.
+pub fn sinc<S: Real>(theta_sq: S) -> (S, S) {
+    kernel::alpha(theta_sq)
+}
 
 /// `M` series terms, in the branch variable, below the switch `below`, and the first
 /// `short_terms` of them alone below `short_below`.

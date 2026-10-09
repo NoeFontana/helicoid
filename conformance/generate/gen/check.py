@@ -3,7 +3,8 @@
 Every coefficient record's value and d_branch must agree to 100 digits with two computations that
 share nothing with `mp.diff` on the definition: the committed rational Taylor series where the
 branch variable is small, and a second formulation at 240 digits everywhere: the exact series of
-`series.exact` (`k`, `a`...`e`), a closed form and its calculus derivative (`r`).
+`series.exact` (`k`, `a`...`e`), a closed form and its calculus derivative (`r`), and for `alpha`
+(0062), which has no committed series, its own alternating series.
 
 Every SO(3) record is checked to 100 digits by a property that pins its output down without the
 algorithm that produced it: `mp.expm` of the hat matrix, uniqueness of the polar decomposition,
@@ -64,6 +65,18 @@ def _r_closed(n, w) -> tuple:
     return 2 * angle() / n, coeff.stable(derivative, n * n)
 
 
+@cache
+def _alpha_series() -> tuple:
+    """sin(theta) / theta = sum_j (-x)^j / (2j + 1)!, x = theta^2, to 232 terms at 240 digits
+    (0062): alpha has no committed series, so its second formulation is this one everywhere."""
+    with mp.workdps(2 * DPS):
+        return tuple(mpf(-1) ** j / mp.factorial(2 * j + 1) for j in range(232))
+
+
+def _check_alpha(inputs: dict, out: dict) -> None:
+    _compare("alpha", inputs, out, _sum(_alpha_series(), mpf(inputs["theta"]) ** 2), "series")
+
+
 def _check_r(inputs: dict, out: dict) -> None:
     n, w = mpf(inputs["n"]), mpf(inputs["w"])
     if w > 0 and (n / w) ** 2 <= SMALL:  # value (2/w) S(s), d/d(n^2) (2/w^3) S'(s), s = n^2/w^2
@@ -80,6 +93,8 @@ def coefficient(name: str) -> Callable[[dict, dict], None]:
         with mp.workdps(2 * DPS):
             if name == "r":
                 return _check_r(inputs, out)
+            if name == "alpha":
+                return _check_alpha(inputs, out)
             x = mpf(inputs["theta"]) ** 2
             if x <= SMALL:
                 _compare(name, inputs, out, _sum(_mp(name, False), x), "Taylor")

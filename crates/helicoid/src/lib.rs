@@ -5,7 +5,8 @@
 //! compile generically, the quaternion [`Quat`], the SE_N(3) tangent [`SEn3Tangent`] with its
 //! [`Twist`] converters, and the dual-matrix Jacobian [`SEn3Jac`] with its dense twins in
 //! [`mod@reference`], the rotation group [`SO3`] with its tangent [`SO3Tangent`] and `Mat3`
-//! Jacobian, and the products [`Product`] with the block-diagonal [`ProductJac`]. Every
+//! Jacobian, the products [`Product`] with the block-diagonal [`ProductJac`], and [`sinc`], the
+//! one coefficient of the kernel that is public (`docs/decisions/0062`). Every
 //! group is written against the traits and generic over the scalar `S: Real` of
 //! `helicoid-linalg`.
 //!
@@ -46,6 +47,7 @@ mod so3;
 mod so3_tests;
 mod traits;
 
+pub use coeffs::sinc;
 #[cfg(feature = "__sweep")]
 #[doc(hidden)]
 pub use coeffs::sweep as __sweep;
