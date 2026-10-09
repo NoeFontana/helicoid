@@ -18,7 +18,10 @@
 //! `subject_version` is the workspace version: there is no other version of the shipped kernel.
 
 use helicoid::__sweep as k;
-use helicoid::{Jac, LieGroup, Quat, SEn3, SEn3Jac, SEn3Tangent, Tangent, SO3};
+use helicoid::{
+    Chart, Decoupled, Jac, LieGroup, Quat, SEn3, SEn3Jac, SEn3Tangent, Screw, Tangent, Twist,
+    WorldTranslation, SE3, SO3,
+};
 use helicoid_linalg::{
     chol, chol_solve, eig3, solve_cubic, Dual, Mat3, Matrix, Precision, Real, StridedMut, Vec3,
     Vector,
@@ -401,6 +404,89 @@ impl Geodesic {
     }
 }
 
+/// An SE(3) chart id this subject answers (`0060` decision 8): `se3_<chart>_{retract,local}`,
+/// through the chart types a consumer calls.
+///
+/// An enum with an exhaustive `answer`, for the reason the [`So3`] note gives.
+#[derive(Clone, Copy)]
+enum ChartId {
+    ScrewRetract,
+    ScrewLocal,
+    DecoupledRetract,
+    DecoupledLocal,
+    WorldRetract,
+    WorldLocal,
+}
+
+impl ChartId {
+    const ALL: [(&'static str, ChartId); 6] = [
+        ("se3_screw_retract", ChartId::ScrewRetract),
+        ("se3_screw_local", ChartId::ScrewLocal),
+        ("se3_decoupled_retract", ChartId::DecoupledRetract),
+        ("se3_decoupled_local", ChartId::DecoupledLocal),
+        ("se3_world_retract", ChartId::WorldRetract),
+        ("se3_world_local", ChartId::WorldLocal),
+    ];
+
+    fn of_fn(fn_id: &str) -> Option<Self> {
+        Self::ALL
+            .iter()
+            .find(|(name, _)| *name == fn_id)
+            .map(|&(_, id)| id)
+    }
+
+    /// The shipped answer at `S`; nothing when the record holds no usable input. The poses reach
+    /// the group through `from_quat_unchecked`, as the geodesic's do.
+    fn answer<S: Real + Into<f64> + From<f64>>(self, record: &Record) -> Output {
+        match self {
+            ChartId::ScrewRetract => chart_retract::<S, Screw<S>>(record),
+            ChartId::ScrewLocal => chart_local::<S, Screw<S>>(record),
+            ChartId::DecoupledRetract => chart_retract::<S, Decoupled<S>>(record),
+            ChartId::DecoupledLocal => chart_local::<S, Decoupled<S>>(record),
+            ChartId::WorldRetract => chart_retract::<S, WorldTranslation<S>>(record),
+            ChartId::WorldLocal => chart_local::<S, WorldTranslation<S>>(record),
+        }
+    }
+}
+
+fn chart_retract<S, C>(record: &Record) -> Output
+where
+    S: Real + Into<f64> + From<f64>,
+    C: Chart<S, SE3<S>, Tangent = Twist<S>>,
+{
+    let (Some(x), Some(tau)) = (
+        sen3_of::<S, 1>(record, "q0", "x0"),
+        record.input("tau").filter(|t| t.len() == 6),
+    ) else {
+        return Output::new();
+    };
+    let tau: Vec<S> = tau.iter().map(|&t| S::from(t)).collect();
+    let (r, cols) = C::at(&x).retract(&Twist::read_dense(&tau)).parts();
+    let mut out = quat_out(&r.quat());
+    out.insert("x".to_string(), cols[0].0.map(Into::into).to_vec());
+    out
+}
+
+fn chart_local<S, C>(record: &Record) -> Output
+where
+    S: Real + Into<f64> + From<f64>,
+    C: Chart<S, SE3<S>, Tangent = Twist<S>>,
+{
+    let (Some(x), Some(y)) = (
+        sen3_of::<S, 1>(record, "q0", "x0"),
+        sen3_of::<S, 1>(record, "q1", "x1"),
+    ) else {
+        return Output::new();
+    };
+    let mut tau = [S::zero(); 6];
+    C::at(&x).local(&y).write_dense(&mut tau);
+    let tau = tau.map(Into::into);
+    Output::from([
+        ("phi".to_string(), tau[..3].to_vec()),
+        ("rho".to_string(), tau[3..].to_vec()),
+    ])
+}
+
 /// An id of `0056` this subject answers: the routines D7 did not reach, at both precisions.
 ///
 /// An enum with an exhaustive `answer`, for the reason the [`So3`] note gives.
@@ -610,6 +696,7 @@ impl Subject for Helicoid {
             || So3::of_fn(fn_id).is_some()
             || Sen3::of_fn(fn_id).is_some()
             || Geodesic::of_fn(fn_id).is_some()
+            || ChartId::of_fn(fn_id).is_some()
             || Linalg::of_fn(fn_id).is_some()
     }
 
@@ -630,6 +717,13 @@ impl Subject for Helicoid {
         }
         if let Some(id) = Geodesic::of_fn(fn_id) {
             // `f64` as for the other vector ids: the geodesic strata have no `@f32` twin.
+            return match precision {
+                Precision::F64 => id.answer::<f64>(record),
+                Precision::F32 => Output::new(),
+            };
+        }
+        if let Some(id) = ChartId::of_fn(fn_id) {
+            // `f64`, as `0060` decision 8 states: no vector id has an `@f32` stratum.
             return match precision {
                 Precision::F64 => id.answer::<f64>(record),
                 Precision::F32 => Output::new(),
@@ -738,6 +832,9 @@ impl Subject for HostStd {
             return id.answer::<Host>(record);
         }
         if let Some(id) = Geodesic::of_fn(fn_id) {
+            return id.answer::<Host>(record);
+        }
+        if let Some(id) = ChartId::of_fn(fn_id) {
             return id.answer::<Host>(record);
         }
         if let Some((op, n)) = Sen3::of_fn(fn_id) {
