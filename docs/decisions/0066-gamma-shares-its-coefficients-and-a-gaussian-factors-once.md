@@ -2,7 +2,7 @@
 
 **Status:** ready
 **Owner:** @NoeFontana
-**Implementation:** PR_NUMBER
+**Implementation:** #132
 
 ## Context
 
