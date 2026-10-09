@@ -446,6 +446,59 @@ fn the_structured_product_is_the_generic_one_to_the_bit() {
     );
 }
 
+/// `HatSq::poly` against the three-matrix sum `(I s0 + W s1) + mul_hat(W, φ) s2` it replaces in `jr`,
+/// `jr_inv` and `gamma2` (`0066`): finite entries exactly, a zero's sign the only finite difference,
+/// and a non-finite `s1` kept off the diagonal that `0 · s1` would have reached.
+#[test]
+fn hat_poly_is_the_three_matrix_sum() {
+    use crate::so3::{mul_hat, HatSq};
+    let hat_poly = |s0: f64, s1: f64, s2: f64, v: Vector<f64, 3>| HatSq::of(v).poly(s0, s1, s2);
+    let sum = |s0: f64, s1: f64, s2: f64, v: Vector<f64, 3>| {
+        let w = hat(v);
+        (Matrix::identity().scale(s0) + w.scale(s1)) + mul_hat(&w, v).scale(s2)
+    };
+    let mut st = 0x9E37_79B9_7F4A_7C15_u64;
+    let mut next = || {
+        st ^= st << 13;
+        st ^= st >> 7;
+        st ^= st << 17;
+        (st >> 11) as f64 / (1u64 << 53) as f64 * 4.0 - 2.0
+    };
+    for k in 0..20_000 {
+        let s0 = if k % 2 == 0 { 1.0 } else { 0.5 };
+        let (s1, s2) = (next(), next());
+        let v = Vector([next(), next(), next()]);
+        let (got, want) = (hat_poly(s0, s1, s2, v), sum(s0, s1, s2, v));
+        assert!(
+            (0..9).all(|i| same(got.get(i / 3, i % 3), want.get(i / 3, i % 3))),
+            "generic"
+        );
+    }
+    let odd = [0.0, -0.0, 1.0, -1.5];
+    for &a in &odd {
+        for &b in &odd {
+            for &c in &odd {
+                for &d in &odd {
+                    let v = Vector([a, b, -c]);
+                    let (got, want) = (hat_poly(1.0, d, c, v), sum(1.0, d, c, v));
+                    for i in 0..9 {
+                        let (g, w) = (got.get(i / 3, i % 3), want.get(i / 3, i % 3));
+                        assert!(
+                            same(g, w) || (g == 0.0 && w == 0.0),
+                            "{v:?} {d} {c}: {g} vs {w}"
+                        );
+                    }
+                }
+            }
+        }
+    }
+    let got = hat_poly(1.0, f64::INFINITY, 0.25, Vector([0.5, -1.0, 2.0]));
+    assert!(
+        (0..3).all(|i| got.get(i, i).is_finite()),
+        "the diagonal reads no s1"
+    );
+}
+
 /// `hat_mul` against the generic `hat(v) * Mat3`, the mirror of
 /// `the_structured_product_is_the_generic_one_to_the_bit` and held to the same licence: finite
 /// entries exactly, and the degenerate cases counted.

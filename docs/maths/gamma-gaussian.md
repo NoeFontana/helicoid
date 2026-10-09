@@ -1,7 +1,7 @@
 # Integrated exponentials Γ and Gaussians on Lie groups
 
 > Non-normative companion to [`NUMERICS.md`](../NUMERICS.md) §7 (all), §2.3 (the rows the sides use), §12 (`chol`), §14 (the
-> `gamma_apply_jacobian` and `Gaussian::to_left`/`to_right` rows), §15 and [`PHASE5.md`](../PHASE5.md) §4–§5. **`NUMERICS.md` wins on any
+> `gamma_apply_jacobians` and `Gaussian::to_left`/`to_right` rows), §15 and [`PHASE5.md`](../PHASE5.md) §4–§5. **`NUMERICS.md` wins on any
 > conflict; a disagreement is an open item in the [maths index](./index.md)**, which holds the notation and the `Checked:` convention.
 > $\mathrm{Exp}$, $J_l$, $\mathrm{Ad}$ and the sides table: [`lie-groups.md`](./lie-groups.md); SO(3): [`so3.md`](./so3.md); the coefficients
 > $b, d, e$, their series and derivatives: [`coefficients.md`](./coefficients.md); the block $Q$: [`se3.md`](./se3.md); `Dual`:
@@ -21,8 +21,8 @@ $H = D^{-1}\Sigma D^{-1}$ its correlation matrix. $\gamma_k = ku/(1 - ku)$ as in
 | GG.1–GG.2 | $\Gamma_m = \sum W^n/(n+m)!$ is entire; $\Gamma_m = \frac{I}{m!} + \sigma_{m+1}W + \sigma_{m+2}W^2$, so $\Gamma_0 = \mathrm{Exp}$, $\Gamma_1 = J_l$, $\Gamma_2 = \frac12I + bW + dW^2$, $\Gamma_3$ from $d, e$; $\Gamma_m = \frac{I}{m!} + \Gamma_{m+1}W$; the integral form | §7, §4; P5 §4 | `so3::{gamma1, gamma2}`, `gamma2_coeffs` |
 | GG.3 | what the exact arms cost, absolute error in the spectral norm: $\Gamma_1$ $O(u)$, $\Gamma_2$ $\approx 1.0\,u/\theta$, $\Gamma_3$ $\approx 2\,u/\theta^2$ | §4, §7 | `gamma2_coeffs` |
 | GG.4 | piecewise-constant kinematics from the ODE: $\Delta R = \mathrm{Exp}(\omega\Delta t)$, $\Delta v = \Delta t\,\Gamma_1 f$, $\Delta p = \Delta t^2\Gamma_2 f$; assumptions; the $5\times5$ exponential; composition | §7 | (the use of $\Gamma$; preintegration is not `helicoid`'s, `0009`) |
-| GG.5 | $\mathcal J_m$ in closed form; $m = 1$ is SE.9(c); $m = 2$ needs a coefficient outside §4 | §7, §4; P5 §4 | reference for `so3::gamma_apply_jacobian` |
-| GG.6 | the `Dual<S, 3>` path: what it returns, finite at $\varphi = 0$, where it is exact and where not (series truncation, exact-arm cancellation), measured | §7, §14; P5 §4 | `so3::gamma_apply_jacobian` |
+| GG.5 | $\mathcal J_m$ in closed form; $m = 1$ is SE.9(c); $m = 2$ needs a coefficient outside §4 | §7, §4; P5 §4 | reference for `so3::gamma_apply_jacobians` |
+| GG.6 | the `Dual<S, 3>` path: what it returns, finite at $\varphi = 0$, where it is exact and where not (series truncation, exact-arm cancellation), measured | §7, §14; P5 §4 | `so3::gamma_apply_jacobians` |
 | GG.7–GG.8 | `Gaussian` as $(\mu, \Sigma, \text{side})$; $\Sigma_L = \mathrm{Ad}_\mu\Sigma_R\mathrm{Ad}_\mu^\top$ **exactly**, not to first order | §2.3, §14; P5 §5 | `Gaussian::{to_left, to_right}` |
 | GG.9 | propagation $J\Sigma J^\top$ and composition: first order; mean bias $O(\Sigma)$ ($O(\Sigma^2)$ for a composition), covariance error $O(\Sigma^2)$; what a wrong-side Jacobian converts | §2.3; P5 §5 | `Gaussian::propagate` |
 | GG.10 | Mahalanobis distance: side-consistent, $\chi^2_n$, forward substitution | §15; P5 §5 | `Gaussian::mahalanobis_sq` |
@@ -148,7 +148,7 @@ $\lVert\hat{\mathcal J} - \mathcal J\rVert_F/\lVert\mathcal J\rVert_F$ in $u$, m
 
 The third row's $[0.1, 0.5)$ cell holds both effects and is the maximum over 400 samples in each of $[0.10, 0.12)$, $[0.12, 0.15)$, $[0.15, 0.2)$, $[0.2, 0.3)$, $[0.3, 0.5)$ (300-sample runs gave $348$ and $429$: the maximum sits just above the switch, where about $22$ of $300$ samples fall). Just below the switch the series arm errs by $\approx 370u$ ($369u$ at $\theta = 0.1199$; (c) predicts $8z^4/11!/\lVert\mathcal J_2\rVert_F = 330u$ at $z = 0.12^2$, leading term only); just above it the exact arm by $\approx 620u$ ($622u$ on $[0.12, 0.15)$, $640u$ for the exact arm alone), which is (d)'s $6$ to $10\,u/\theta^2$, $417$ to $694u$ at $0.12$. The other cells of a second run with another seed agree within $1.6\times$. The fourth and fifth rows are (d) with the exact arm used down to the folklore switch, where $b$ itself evaluates to $0$ below $2.6\times10^{-8}$ (CO.7). At
 $\varphi = 0$, $10^{-310}$ and $5\times10^{-324}$ (all three components) the result is finite and equals $-\hat v/(m+1)!$ to the rounding of the literal $1/(m+1)!$. Script not committed. **Permanent:** planned, the twin row of §14
-(`gamma_apply_jacobian`, proptest `<name>_matches_reference`: `Dual` through the dense reference series); its tolerance has to be per stratum (CO.14(ii)).
+(`gamma_apply_jacobians`, proptest `<name>_matches_reference`: `Dual` through the dense reference series); its tolerance has to be per stratum (CO.14(ii)).
 
 ## 4. Gaussians on a Lie group
 

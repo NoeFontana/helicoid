@@ -11,11 +11,11 @@
 //! type is the matrix itself.
 //!
 //! The module is public for the integrated exponentials [`gamma1`], [`gamma2`] and
-//! [`gamma_apply_jacobian`] (`docs/PHASE5.md` §4, `0064`); the group and its tangent are also at the
+//! [`gamma_apply_jacobians`] (`docs/PHASE5.md` §4, `0064`); the group and its tangent are also at the
 //! crate root.
 
 mod gamma;
-pub use gamma::{gamma1, gamma2, gamma_apply_jacobian};
+pub use gamma::{gamma1, gamma2, gamma_apply_jacobians};
 
 use crate::coeffs::{
     exp_coeffs, jr_coeffs, jr_inv_coeff, log_ratio, log_ratio_short, log_ratio_takes_short_arm,
@@ -99,6 +99,57 @@ pub(crate) fn hat_mul<S: Real>(v: Vec3<S>, b: &Mat3<S>) -> Mat3<S> {
         let (b0, b1, b2) = col(c);
         Vector([-z * b1 + y * b2, z * b0 + -x * b2, -y * b0 + x * b1])
     }))
+}
+
+/// `W²` of `W = φ^`, its six distinct entries as `mul_hat(&hat(φ), φ)` rounds them, for
+/// [`HatSq::poly`]'s `s0 I + s1 W + s2 W²`: `J_r`, `J_r⁻¹` and `Γ₂` (`0066`).
+///
+/// Formed **before** the coefficients, by its callers: it does not depend on them, so the
+/// out-of-order core can overlap it with the out-of-line coefficient `branch` instead of running
+/// it after, on the result's critical path. A scheduling argument, not a measurement: no bench row
+/// moved either way (`0066`).
+#[derive(Clone, Copy)]
+pub(crate) struct HatSq<S: Real> {
+    phi: Vec3<S>,
+    /// `W²ᵢᵢ`: `−(z² + y²)`, `−(z² + x²)`, `−(y² + x²)`.
+    diag: [S; 3],
+    /// `W²₀₁ = xy`, `W²₀₂ = xz`, `W²₁₂ = yz`, each equal to its transpose.
+    off: [S; 3],
+}
+
+impl<S: Real> HatSq<S> {
+    #[inline]
+    pub(crate) fn of(phi: Vec3<S>) -> Self {
+        let [x, y, z] = phi.0;
+        Self {
+            phi,
+            diag: [-(z * z + y * y), -(z * z + x * x), -(y * y + x * x)],
+            off: [x * y, x * z, y * z],
+        }
+    }
+
+    /// `s0 I + s1 W + s2 W²`, entry by entry: **15 multiplications and 12 additions** with
+    /// [`HatSq::of`], against 36 and 27 for the three-matrix sum `(I s0 + W s1) + mul_hat(W, φ) s2`,
+    /// which pays for `W`'s and `I`'s structural zeros (LLVM may not fold `0 · x` or `x + 0`, D16)
+    /// and for `W²`'s symmetric half twice.
+    ///
+    /// Each entry is that sum's to the bit for finite operands: `mul_hat`'s diagonal `(−z)z + y(−y)`
+    /// is `−(z² + y²)` exactly, its off-diagonal pair `0·(−z) + yx` and `0·z + (−x)(−y)` is `xy`, and
+    /// the dropped terms are exact zeros. They differ only where a dropped `±0` would have set the
+    /// sign of a zero result, and where a non-finite `s1` would have reached the diagonal through
+    /// `0 · s1`; `hat_poly_is_the_three_matrix_sum` pins both.
+    #[inline]
+    pub(crate) fn poly(&self, s0: S, s1: S, s2: S) -> Mat3<S> {
+        let [x, y, z] = self.phi.0;
+        let [d0, d1, d2] = self.diag;
+        let (wx, wy, wz) = (s1 * x, s1 * y, s1 * z);
+        let [qxy, qxz, qyz] = self.off.map(|o| s2 * o);
+        Matrix::from_rows([
+            Vector([s0 + s2 * d0, -wz + qxy, wy + qxz]),
+            Vector([wz + qxy, s0 + s2 * d1, -wx + qyz]),
+            Vector([-wy + qxz, wx + qyz, s0 + s2 * d2]),
+        ])
+    }
 }
 
 /// `m` applied to a `D`-vector, for the `sandwich` whose `D` is `3` by its own assertion. Written
@@ -760,18 +811,15 @@ impl<S: Real> LieGroup<S> for SO3<S> {
     /// provided one.
     #[inline]
     fn jr(tau: &SO3Tangent<S>) -> Mat3<S> {
-        let w = hat(tau.phi);
+        let w2 = HatSq::of(tau.phi);
         let (a, b) = jr_coeffs(norm_sq(tau.phi));
-        // `W²` through `mul_hat`, which is the generic product with `hat`'s three structural zeros
-        // skipped -- bit-identical for finite entries, 18 multiplications against 27 -- and *not*
-        // the closed `φφᵗ − θ²I`. The closed form costs 6
-        // multiplies against 27 and lowers `so3_jr`'s worst row from 4.097 to 3.439 `u`, but it is
-        // a different rounding (13.8% of entries differ over 20 000 samples) and the corpus says
-        // it is worse where it is not better: 6 of 28 `so3_jr` strata regress, up to 1.34x, and
-        // `so3_jr_inv` keeps its 2.112 maximum while **12 of 28** strata regress, up to 1.39x.
-        // Nothing has asked for the arithmetic yet — `PHASE3.md` §11's benches are owed — so the
-        // trade is not taken, and `0006` says the bar is the max, per stratum, never a mean.
-        (Matrix::identity() + w.scale(-a)) + mul_hat(&w, tau.phi).scale(b)
+        // `W²` is `mul_hat`'s rounding, through `HatSq`, and *not* the closed `φφᵗ − θ²I`. The
+        // closed form lowers `so3_jr`'s worst row from 4.097 to 3.439 `u`, but it is a different
+        // rounding (13.8% of entries differ over 20 000 samples) and the corpus says it is worse
+        // where it is not better: 6 of 28 `so3_jr` strata regress, up to 1.34x, and `so3_jr_inv`
+        // keeps its 2.112 maximum while **12 of 28** strata regress, up to 1.39x. `0006` says the
+        // bar is the max, per stratum, never a mean.
+        w2.poly(S::one(), -a, b)
     }
     /// `J_r⁻¹ = I + W/2 + cW²` (`NUMERICS.md` §3.5).
     ///
@@ -781,9 +829,8 @@ impl<S: Real> LieGroup<S> for SO3<S> {
     /// is asserted — `θ` is not a stored field and the check would cost a norm on every call.
     #[inline]
     fn jr_inv(tau: &SO3Tangent<S>) -> Mat3<S> {
-        let w = hat(tau.phi);
-        let c = jr_inv_coeff(norm_sq(tau.phi));
-        (Matrix::identity() + w.scale(S::lit(0.5))) + mul_hat(&w, tau.phi).scale(c)
+        let w2 = HatSq::of(tau.phi);
+        w2.poly(S::one(), S::lit(0.5), jr_inv_coeff(norm_sq(tau.phi)))
     }
     /// `(Ad_Exp(τ)⁻¹, J_r(τ))` (`NUMERICS.md` §2.3). `Ad` is a rotation here, so its inverse is
     /// the transpose, not `Jac::inverse`'s adjugate.
