@@ -137,6 +137,14 @@ pub struct Gaussian<S: Real, G: LieGroup<S>, Sd: Side, const D: usize> {
 - `mahalanobis_sq(&self, x: &G) -> (S, S::Mask)`: $\|L^{-1}(x \ominus_{Sd} \mu)\|^2$ with `chol` mask.
 - Side is encoded in the type for invariant safety.
 
+[`0065`](./decisions/0065-a-gaussian-names-its-side-and-is-stored-symmetric.md) fixes what this leaves open:
+- `new` is the only constructor. Only `cov`'s lower triangle is read, and every value a method
+  returns has its upper triangle copied from its lower one.
+- `to_right` uses the adjoint of the computed inverse.
+- `propagate`'s `j` is documented as the `Sd`-side Jacobian, which the type cannot check.
+- The round trip `to_right ∘ to_left` stays within `γ_{4D+42}(|B||A|)|Σ|(|B||A|)ᵀ` componentwise.
+- Corpus ids `gaussian_mahalanobis_se3` and `_se23`, at both precisions.
+
 ## 6. Consumer migrations
 
 **NORMATIVE gates.** Tracked in downstream consumer repositories.
