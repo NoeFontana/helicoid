@@ -2,10 +2,10 @@
 //! evaluates a cancelling coefficient.
 //!
 //! Each call site takes its coefficients as one group: `exp_coeffs`, `jr_coeffs`, `jr_inv_coeff`,
-//! `q_coeffs`, `log_ratio`. A group is one `S::branch` on "every member is on its series arm", the
-//! series by Horner in the branch variable; off it the members' exact arms run once, at the safe
-//! argument, and each member selects its own. Not here: `se2_coeffs` (`docs/decisions/0015` (draft)
-//! PH.3) and `gamma2_coeffs` (Phase 5).
+//! `q_coeffs`, `gamma2_coeffs`, `log_ratio`. A group is one `S::branch` on "every member is on its
+//! series arm", the series by Horner in the branch variable; off it the members' exact arms run
+//! once, at the safe argument, and each member selects its own. Not here: `se2_coeffs`
+//! (`docs/decisions/0015` (draft) PH.3).
 //!
 //! **Grouping is a cost and never a value.** A member takes the arm its own switches select,
 //! whatever it is grouped with: the group's one branch decides only whether the shared exact
@@ -68,8 +68,8 @@ use helicoid_linalg::Real;
 mod generated;
 mod kernel;
 pub(crate) use kernel::{
-    exp_coeffs, jr_coeffs, jr_inv_coeff, log_ratio, log_ratio_short, log_ratio_takes_short_arm,
-    q_coeffs,
+    exp_coeffs, gamma2_coeffs, jr_coeffs, jr_inv_coeff, log_ratio, log_ratio_short,
+    log_ratio_takes_short_arm, q_coeffs,
 };
 #[cfg(feature = "__sweep")]
 pub mod sweep;
