@@ -180,6 +180,14 @@ pub(crate) fn alpha<S: Real>(z: S) -> (S, S) {
     (a.v, a.d[0])
 }
 
+/// [`alpha`]'s value alone, on plain `S`: the same `2k cos(θ/2)` in the same order, so the same
+/// bits, without the `Dual` evaluation a value-only caller would otherwise pay for (`0062`
+/// decision 1).
+pub(crate) fn alpha_value<S: Real>(z: S) -> S {
+    let (k, cos_half) = exp_coeffs(z);
+    S::lit(2.0) * k * cos_half
+}
+
 /// `(a, b)` at `θ² = z`: `J = I ∓ aW + bW²` (`NUMERICS.md` §3.5).
 pub(crate) fn jr_coeffs<S: Real>(z: S) -> (S, S) {
     let arms = table::<S, _>([A_F64.arm(), B_F64.arm()], [A_F32.arm(), B_F32.arm()]);

@@ -136,16 +136,21 @@ impl<S: Real> Arm<Dual<S, 1>> {
     }
 }
 
+/// The scalar input `key` of `record` at `S`: at `f32` only if it is exactly binary32 (a lossless
+/// cast), so a corpus `@f32` stratum reaches the subject unrounded. Every coefficient id's input
+/// goes through this, swept or not.
+pub(crate) fn exact_input<S: Real>(record: &Record, key: &str) -> Option<S> {
+    let x = *record.input(key)?.first()?;
+    match S::PRECISION {
+        Precision::F64 => Some(S::lit(x)),
+        Precision::F32 => exact_f32(x).map(|x| S::lit(f64::from(x))),
+    }
+}
+
 /// The arguments of `id` in `record` at `S`: `z = fl(θ·θ)` (`n²` for `r`) formed at `S`, as the
-/// sweep forms it; at `f32` only from inputs that are exactly binary32 (a lossless cast).
+/// sweep forms it, from [`exact_input`].
 pub(crate) fn input<S: Real>(id: Swept, record: &Record) -> Option<Input<S>> {
-    let get = |key: &str| {
-        let x = *record.input(key)?.first()?;
-        match S::PRECISION {
-            Precision::F64 => Some(S::lit(x)),
-            Precision::F32 => exact_f32(x).map(|x| S::lit(f64::from(x))),
-        }
-    };
+    let get = |key: &str| exact_input::<S>(record, key);
     Some(match id {
         Swept::R => {
             let n = get("n")?;
