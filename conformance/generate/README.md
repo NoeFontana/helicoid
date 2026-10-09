@@ -169,6 +169,18 @@ e_j, m = 3 + 3N, `"shape":[m,m]`.
   imaginary part of order 1e4, 7e3 to 1.5e4 across the records of θ = π − 10⁻⁶, ρ = 10⁴), so it is
   a test cross-check only, as for `so3_log`.
 
+## SE(3) charts (`docs/decisions/0060` decision 8)
+
+`se3_<chart>_retract` and `se3_<chart>_local`, `<chart>` each of `screw`, `decoupled`, `world`
+(`gen/charts.py`, `docs/maths/charts.md` §3): binary64 only, over `SEN3_STRATA`. A `retract` record
+is `{q0, x0, tau}` with the stratum's twist and a base drawn from the stratum's own stream (a
+Haar-random rotation, a unit-norm translation); `out` is the pose `{q, x}`. A `local` record is
+`{q0, x0, q1, x1}`, `Y` the chart's own retract of the same twist rounded to binary64; `out` is
+`{phi, rho}`, scored apart: `phi` with floor 1, `rho` with floor `‖x0‖`, since a nearby pair of poses
+cancels and the answer's own size is the wrong denominator. No `mp.logm`: the rotation's `Log` is `gen.so3`'s geometric one. Cross-checks: a
+`retract`'s answer goes back to its twist through the chart's `local` (and `screw`'s translation
+matches `mp.expm` of the 4x4 hat), a `local`'s answer back to `Y` through the chart's `retract`.
+
 ## SO(2) and SE(2)
 
 Ids `so2_exp`, `so2_log`, `se2_<f>`. A rotation is the unit complex `z = [c, s]`, an SO(2) tangent

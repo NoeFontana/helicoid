@@ -176,6 +176,20 @@ const SE3_GEODESIC: &[FieldRule] = &[
         SignRule::Fixed,
     ),
 ];
+/// A chart's `local` (`0060` decision 8): two absolute poses in, so a nearby pair cancels and the
+/// answer's own size is the wrong denominator, the reason [`SE3_GEODESIC`] floors at `‖x₀‖`. The
+/// rotation part floors at 1, the translation part at the base's `‖x₀‖`.
+const SE3_LOCAL: &[FieldRule] = &[
+    field("phi", Floor::Unit, SignRule::Fixed),
+    field(
+        "rho",
+        Floor::Scale {
+            input: "x0",
+            skip: 0,
+        },
+        SignRule::Fixed,
+    ),
+];
 const SO2_EXP: &[FieldRule] = &[field("z", Floor::Unit, SignRule::Fixed)];
 const SO2_LOG: &[FieldRule] = &[field("theta", Floor::Tiny, SignRule::Fixed)];
 const SE2_EXP: &[FieldRule] = &[
@@ -243,6 +257,14 @@ const TABLE: &[(&str, Rule)] = &[
     ("so3_jl_inv", Forward(JAC)),
     ("so3_geodesic", Forward(SO3_GEODESIC)),
     ("se3_geodesic", Forward(SE3_GEODESIC)),
+    // `0060` decision 8: a `retract` is a pose, scored as the geodesic's is (the translation's
+    // floor `‖x₀‖`, the base's); a `local` is [`SE3_LOCAL`].
+    ("se3_screw_retract", Forward(SE3_GEODESIC)),
+    ("se3_decoupled_retract", Forward(SE3_GEODESIC)),
+    ("se3_world_retract", Forward(SE3_GEODESIC)),
+    ("se3_screw_local", Forward(SE3_LOCAL)),
+    ("se3_decoupled_local", Forward(SE3_LOCAL)),
+    ("se3_world_local", Forward(SE3_LOCAL)),
     ("sen3_exp", Forward(SEN3_EXP)),
     ("sen3_log", Forward(TANGENT)),
     ("sen3_ad", Forward(AD)),
@@ -1103,6 +1125,16 @@ mod tests {
         add(&["se2_exp"], "t", Want::Scale, false);
         add(&["so3_geodesic", "se3_geodesic"], "q", Want::Unit, true);
         add(&["se3_geodesic"], "x", Want::Scale, false);
+        let retracts = [
+            "se3_screw_retract",
+            "se3_decoupled_retract",
+            "se3_world_retract",
+        ];
+        add(&retracts, "q", Want::Unit, true);
+        add(&retracts, "x", Want::Scale, false);
+        let locals = ["se3_screw_local", "se3_decoupled_local", "se3_world_local"];
+        add(&locals, "phi", Want::Unit, false);
+        add(&locals, "rho", Want::Scale, false);
         add(&["chol_solve_n3", "chol_solve_n6"], "x", Want::Tiny, false);
         add(&["quat_renormalize"], "q", Want::Tiny, false);
         for name in ["real_sqrt", "real_cbrt", "real_acos"] {

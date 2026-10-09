@@ -4,7 +4,9 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 from . import (
+    charts,
     check,
+    check_charts,
     check_geodesic,
     check_linalg,
     check_real,
@@ -144,6 +146,27 @@ FUNCTIONS: dict[str, FunctionSpec] = {
                         check_sen3.jacobian(n, name),
                     )
                     for name in ("jr", "jl", "jr_inv", "jl_inv")
+                ),
+            )
+        ),
+        # docs/decisions/0060 decision 8: the three SE(3) charts, binary64, over the SE(3) strata.
+        *(
+            spec
+            for chart in charts.CHARTS
+            for spec in (
+                FunctionSpec(
+                    f"se3_{chart}_retract",
+                    SEN3_STRATA,
+                    charts.retract_inputs,
+                    charts.retract(chart),
+                    check_charts.retract(chart),
+                ),
+                FunctionSpec(
+                    f"se3_{chart}_local",
+                    SEN3_STRATA,
+                    charts.local_inputs(chart),
+                    charts.local(chart),
+                    check_charts.local(chart),
                 ),
             )
         ),

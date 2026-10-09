@@ -586,8 +586,15 @@ mod tests {
             .filter(|r| !r.planted)
             .collect();
         let want = [
+            // The SE(3) chart ids (`0060` decision 8), binary64 only like every vector id.
+            "se3_decoupled_local",
+            "se3_decoupled_retract",
             // The geodesic ids, `PHASE4.md` §4's, which the `helicoid` subject answers at `f64`.
             "se3_geodesic",
+            "se3_screw_local",
+            "se3_screw_retract",
+            "se3_world_local",
+            "se3_world_retract",
             "sen3_ad_n1",
             "sen3_ad_n2",
             "sen3_ad_n3",

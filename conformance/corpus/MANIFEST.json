@@ -187,11 +187,47 @@
       "records": 416,
       "sha256": "98b7631fd8b42014293e0eb26232ddf5eefec696111b9f19ba9c26c3a8f6d902"
     },
+    "se3_decoupled_local.jsonl": {
+      "kind": "corpus",
+      "rechecked": 52,
+      "records": 312,
+      "sha256": "fdae728eef79e6f46626812c88ca0b3a437206e57050781d9e88a18266f9ea4c"
+    },
+    "se3_decoupled_retract.jsonl": {
+      "kind": "corpus",
+      "rechecked": 52,
+      "records": 312,
+      "sha256": "357346db28ccf5f52856a106cac86d31d8111fbad3cdd2aa73a43852331f1d5f"
+    },
     "se3_geodesic.jsonl": {
       "kind": "corpus",
       "rechecked": 3,
       "records": 180,
       "sha256": "9540e36ebf453906a4d89a7f74b8452338ad41e466e95521868763a899085535"
+    },
+    "se3_screw_local.jsonl": {
+      "kind": "corpus",
+      "rechecked": 52,
+      "records": 312,
+      "sha256": "252ba48cf3f2ac5c585f4133beca02d12fb726da15ee184b611f1e65ee0ff09c"
+    },
+    "se3_screw_retract.jsonl": {
+      "kind": "corpus",
+      "rechecked": 52,
+      "records": 312,
+      "sha256": "2371822eb2933b20d2e7efab5a5b1ce4fa58a8c6d86b63d8b7920a1d883f6506"
+    },
+    "se3_world_local.jsonl": {
+      "kind": "corpus",
+      "rechecked": 52,
+      "records": 312,
+      "sha256": "d5a85c47d62332539f19b1cde5154bb668a588d2bb51950e5d7150f213a959f6"
+    },
+    "se3_world_retract.jsonl": {
+      "kind": "corpus",
+      "rechecked": 52,
+      "records": 312,
+      "sha256": "d886c439da8815da5da567c9b70366abd2b09144e1567b49a28695e621c510db"
     },
     "sen3_ad_n1.jsonl": {
       "kind": "corpus",
@@ -392,7 +428,7 @@
       "sha256": "3780fb0bfac76491d5c03b5ebbeb52fc333c95edaf3784bf6e805add3f219f2b"
     }
   },
-  "generator": "sha256:a3b0781291d918e077658d9143a9e15a8f695724f628c6ab4023ddaebb209b46",
+  "generator": "sha256:54df234aa988de0c8cc8a78b52d6a261398cbcd2fae656eb1bbd749c6197bd2c",
   "mpmath": "1.4.1",
   "python": "3.12",
   "recheck": {
