@@ -31,6 +31,12 @@
       "records": 3420,
       "sha256": "cdfd1fa6ebb1c3606a3d0e7b00d2272153bc3c294f0993f5e29ece0e1de5512d"
     },
+    "coeff_alpha.jsonl": {
+      "kind": "corpus",
+      "rechecked": 72,
+      "records": 3420,
+      "sha256": "87c10de192801b83229bb52270fcee8b25b5d503f5d97e3e148f2c3c880a0f7b"
+    },
     "coeff_b.jsonl": {
       "kind": "corpus",
       "rechecked": 72,
@@ -386,7 +392,7 @@
       "sha256": "3780fb0bfac76491d5c03b5ebbeb52fc333c95edaf3784bf6e805add3f219f2b"
     }
   },
-  "generator": "sha256:10f5f5b34e18a2461a312651aef6fe8a5bea478a49235e3cb5bc6c5f27a504a6",
+  "generator": "sha256:a3b0781291d918e077658d9143a9e15a8f695724f628c6ab4023ddaebb209b46",
   "mpmath": "1.4.1",
   "python": "3.12",
   "recheck": {

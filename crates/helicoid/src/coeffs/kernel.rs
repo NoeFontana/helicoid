@@ -7,7 +7,7 @@
 //! CO.15(c), open. A lane evaluates the series arm it does not select at the raw `z`, so that arm is
 //! not finite once its Horner form overflows, far beyond any rotation.
 
-use helicoid_linalg::{Mask, Precision, Real};
+use helicoid_linalg::{Dual, Mask, Precision, Real};
 
 use super::generated::{
     A_F32, A_F64, B_F32, B_F64, COS_HALF_F32, COS_HALF_F64, C_F32, C_F64, D_F32, D_F64, E_F32,
@@ -168,6 +168,16 @@ pub(crate) fn exp_coeffs<S: Real>(z: S) -> (S, S) {
     );
     let [k, cos_half] = grouped(arms, exact_k_cos_half, z);
     (k, cos_half)
+}
+
+/// `(α, dα/dz)` at `θ² = z`, `α = sin θ/θ` (`NUMERICS.md` §4, `0062`): `2k cos(θ/2)` from
+/// `exp_coeffs`, evaluated once on `Dual<S, 1>` seeded at `z`, so the derivative is that of the arm
+/// `exp_coeffs` takes there and no switch of its own exists. The closed form `(b − a)/2` from
+/// `jr_coeffs` measured up to 2.3x worse on `[1, π]` (`0062`, *Measured*).
+pub(crate) fn alpha<S: Real>(z: S) -> (S, S) {
+    let (k, cos_half) = exp_coeffs(Dual::<S, 1>::variable(z, 0));
+    let a = Dual::lit(2.0) * k * cos_half;
+    (a.v, a.d[0])
 }
 
 /// `(a, b)` at `θ² = z`: `J = I ∓ aW + bW²` (`NUMERICS.md` §3.5).

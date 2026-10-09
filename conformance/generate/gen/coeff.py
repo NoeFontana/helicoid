@@ -107,6 +107,9 @@ DEFINITIONS = {
     "c": lambda t: 1 / t**2 - (1 + mp.cos(t)) / (2 * t * mp.sin(t)),
     "d": lambda t: (t**2 + 2 * mp.cos(t) - 2) / (2 * t**4),
     "e": lambda t: (2 * t - 3 * mp.sin(t) + t * mp.cos(t)) / (2 * t**5),
+    # 0062: sin(theta) / theta, which the kernel evaluates as 2 k cos(theta / 2) and sweeps nothing
+    # for; it is in no `series.NAMES` and no `switchref.NAMES`.
+    "alpha": lambda t: mp.sin(t) / t,
 }
 BRANCH = {
     "k": _k,

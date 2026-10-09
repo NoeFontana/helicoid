@@ -45,8 +45,9 @@ fn required() -> Vec<String> {
         all.map(|f| format!("{prefix}_{f}{suffix}")).collect()
     };
     // `cos_half` is §4.3's eighth coefficient id (`NUMERICS.md` §3.1), added after this module
-    // was written; `the_required_ids_are_the_ids_of_the_definitions_table` is what notices.
-    let mut ids: Vec<String> = ["k", "a", "b", "c", "d", "e", "r", "cos_half"]
+    // was written, and `alpha` (`0062`) its ninth; `the_required_ids_are_the_ids_of_the_definitions_table`
+    // is what notices.
+    let mut ids: Vec<String> = ["k", "a", "b", "c", "d", "e", "r", "cos_half", "alpha"]
         .iter()
         .map(|c| format!("coeff_{c}"))
         .collect();
@@ -219,7 +220,7 @@ mod tests {
             .collect();
         let c = check(&have, &rows(&[]));
         assert!(c.failures.is_empty(), "{:?}", messages(&c));
-        assert_eq!((c.required, c.excused), (62, 11));
+        assert_eq!((c.required, c.excused), (63, 11));
         Ok(())
     }
 

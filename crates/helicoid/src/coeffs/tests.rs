@@ -1150,3 +1150,59 @@ fn a_nan_branch_variable_is_answered_with_nan_not_a_panic() {
     assert!(jr_inv_coeff(f64::NAN).is_nan());
     assert!(log_ratio(f64::NAN, 1.0).is_nan());
 }
+
+/// `sinc`'s value is the group's `2k cos(θ/2)` to the bit (`0062` decision 2): the `Dual`
+/// evaluation changes no value lane.
+fn sinc_is_two_k_cos_half_at<S: Real>() {
+    for z in samples::<S>() {
+        let (k, cos_half) = exp_coeffs(z);
+        let want = S::lit(2.0) * k * cos_half;
+        assert_eq!(bits(super::sinc(z).0), bits(want), "z = {}", z.value_f64());
+    }
+}
+
+#[test]
+fn sinc_is_two_k_cos_half() {
+    sinc_is_two_k_cos_half_at::<f64>();
+    sinc_is_two_k_cos_half_at::<f32>();
+}
+
+/// The derivative is lane 0 of `exp_coeffs` on `Dual<S, 1>` seeded at `z` (`0062` decision 3), and
+/// it agrees with the closed form `(b − a)/2` of `jr_coeffs` within `16u` relative on
+/// `θ² ∈ [1e-6, 9.8)`, where `b − a` is in `[-1/3, -0.1014]` and neither form cancels.
+fn sinc_derivative_is_the_dual_lane_at<S: Real>() {
+    let u = match S::PRECISION {
+        Precision::F64 => f64::EPSILON / 2.0,
+        Precision::F32 => f64::from(f32::EPSILON) / 2.0,
+    };
+    for z in samples::<S>() {
+        let (k, cos_half) = exp_coeffs(D::<S>::variable(z, 0));
+        let want = (D::lit(2.0) * k * cos_half).d[0];
+        let d = super::sinc(z).1;
+        assert_eq!(bits(d), bits(want), "z = {}", z.value_f64());
+        let zf = z.value_f64();
+        if (1e-6..9.8).contains(&zf) {
+            let (a, b) = jr_coeffs(z);
+            let closed = ((b - a) / S::lit(2.0)).value_f64();
+            let rel = (d.value_f64() - closed).abs() / closed.abs();
+            assert!(rel <= 16.0 * u, "z = {zf}: {} vs {closed}", d.value_f64());
+        }
+    }
+}
+
+#[test]
+fn sinc_derivative_is_the_dual_lane() {
+    sinc_derivative_is_the_dual_lane_at::<f64>();
+    sinc_derivative_is_the_dual_lane_at::<f32>();
+}
+
+/// At `θ = 0` both outputs are the series' leading terms: `α = 1` exactly, `dα/dz = -1/6`.
+#[test]
+fn sinc_at_zero_is_one_and_minus_a_sixth() {
+    let (v, d) = super::sinc(0.0_f64);
+    assert_eq!(v.to_bits(), 1.0_f64.to_bits());
+    assert_eq!(d.to_bits(), (-1.0_f64 / 6.0).to_bits());
+    let (v, d) = super::sinc(0.0_f32);
+    assert_eq!(v.to_bits(), 1.0_f32.to_bits());
+    assert_eq!(d.to_bits(), (-1.0_f32 / 6.0).to_bits());
+}

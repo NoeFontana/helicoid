@@ -9,6 +9,8 @@ defined by the status tables in `docs/`; they win over this file.
 
 ### Added
 
+- **`helicoid::sinc(θ²) -> (sin θ/θ, d/dθ²)`** (`0062`): the value `2k cos(θ/2)` of `exp_coeffs`, the derivative the `Dual` lane of the same evaluation; no new switch, `coeffs/generated.rs` unchanged. Corpus id `coeff_alpha` (the `theta:*` strata at both precisions): at most 2.59 `u` (`f64`) and 2.30 `u` (`f32`).
+
 - **`Mat2::inverse_adj`** (`0061`): `(adj/det, det)` with `Mat3::inverse_adj`'s contract; the adjugate is exact, so `det` is the only rounding. Corpus id `mat2_inverse_adj` (`cond:1`, `1e4`, `1e8`, an exactly singular stratum; `cond:1e8` at binary64 only), scored with `NUMERICS.md` §11's expected-non-finite rule; nalgebra's `Matrix2::try_inverse` answers it in the nalgebra runner, equal on every stratum.
 
 ## [0.0.2] - 2026-10-09

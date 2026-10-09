@@ -363,8 +363,8 @@ mod tests {
         }
         assert_eq!(
             twins,
-            8 * 28 + 1,
-            "28 theta strata in each of 8 ids, and `q:w0@f32`"
+            9 * 28 + 1,
+            "28 theta strata in each of 9 ids (`coeff_alpha`, `0062`, the ninth), and `q:w0@f32`"
         );
         Ok(())
     }

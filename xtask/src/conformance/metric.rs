@@ -231,6 +231,7 @@ const TABLE: &[(&str, Rule)] = &[
     ("coeff_d", Forward(COEFF)),
     ("coeff_e", Forward(COEFF)),
     ("coeff_cos_half", Forward(COEFF)),
+    ("coeff_alpha", Forward(COEFF)),
     ("coeff_r", Forward(COEFF)),
     ("so3_exp", Forward(SO3_EXP)),
     ("so3_log", Forward(SO3_LOG)),
@@ -1077,6 +1078,7 @@ mod tests {
             "coeff_e",
             "coeff_cos_half",
             "coeff_r",
+            "coeff_alpha",
         ];
         add(&coeffs, "value", Want::Tiny, false);
         add(&coeffs, "d_branch", Want::Tiny, false);
