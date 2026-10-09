@@ -88,12 +88,15 @@ impl Arm<'_> {
 }
 
 /// `Σ terms[j] zʲ` as `p_j = t_j + z p_{j+1}` from the last term (CO.9); no `mul_add`. Under `Dual`
-/// it is exactly the derivative of the polynomial.
+/// it is exactly the derivative of the polynomial. The fold starts at the last term, not at zero:
+/// `t + z · 0` is the same bits for every finite `z` and one multiply-add of latency (`0059`).
 fn horner<S: Real, T: Copy + Into<f64>>(terms: &[T], z: S) -> S {
-    terms
-        .iter()
+    let Some((&last, rest)) = terms.split_last() else {
+        return S::zero();
+    };
+    rest.iter()
         .rev()
-        .fold(S::zero(), |p, &t| S::lit(t.into()) + z * p)
+        .fold(S::lit(last.into()), |p, &t| S::lit(t.into()) + z * p)
 }
 
 /// The table of `S`'s precision, chosen at monomorphization.
@@ -248,6 +251,16 @@ pub(crate) fn log_ratio_takes_short_arm<S: Real>(n2: S, w: S) -> S::Mask {
     // slack either side. `w * w` cannot overflow for a quaternion within a factor of two of unit,
     // and where it does the comparison is false, which is the arm that assumes nothing.
     positive.and(n2.lt(r.short_below::<S>() * w * w))
+}
+
+/// [`log_ratio`]'s short arm alone, at the safe argument `short` selects, for a caller that already
+/// holds [`log_ratio_takes_short_arm`]'s mask and so has chosen the arm (`0059`). Where the two
+/// predicates part by an ulp at the boundary, this arm is still the series below its own switch.
+#[inline]
+pub(crate) fn log_ratio_short<S: Real>(n2: S, w: S, short: S::Mask) -> S {
+    let r = table::<S, _>(R_F64.arm(), R_F32.arm());
+    let w = S::select(short, w, S::one());
+    S::lit(2.0) / w * r.short(n2 / (w * w))
 }
 
 /// `r = 2 atan2(n, w)/n` at `n² = n2` (`NUMERICS.md` §3.2). The series arm is taken iff `w > 0` and

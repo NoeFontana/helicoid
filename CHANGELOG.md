@@ -10,6 +10,7 @@ defined by the status tables in `docs/`; they win over this file.
 ### Changed
 
 - **`SO3::from_quat_unchecked`'s stated domain is the drift band** (`0058`): a struct literal moved into it is the *carried* path, `|‖q‖² − 1| ≤ 2^-26.29`, nothing asserted. `NUMERICS.md` §12 states each SO(3) operation's first-order error there, and §3.6 states the drift budget. No code changes.
+- **`SO3::geodesic` and `SE3::geodesic` below `r`'s second switch are faster and more accurate** (`0059`): the provided body is written out so that its two series no longer wait on its products, and `horner` no longer starts from `0 · z`. `so3_geodesic` and `se3_geodesic` at `geo:consecutive` go from 1.572 to 0.993 `u`; every other conformance row is byte-identical.
 
 ## [0.0.1] - 2026-10-08
 

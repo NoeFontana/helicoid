@@ -303,7 +303,11 @@ $X(t) = X_0\,\mathrm{Exp}(t\,d)$ with $d = X_1 \ominus_R X_0$ and $\Delta = X_0^
   has none of its own.
 - **Below `r`'s second switch the provided body is taken instead** ([`0051`](./decisions/0051-two-arms-on-the-switch-the-sweep-already-chose.md)), because it is
   both cheaper there — its coefficients are on their series arms, polynomials with no transcendental
-  — and *more* accurate, 1.572 against 1.644 `u` at `geo:consecutive`. The boundary is
+  — and *more* accurate, 1.572 against 1.644 `u` at `geo:consecutive`. It is written out
+  ([`0059`](./decisions/0059-the-short-arm-is-written-out.md)) by two identities exact in
+  $\mathbb R$, $\theta^2 = r^2\,(t^2 n^2)$ and
+  $q_0\,(c, k\,t r\,\mathbf v) = c\,q_0 + k\,t r\,(q_0 \otimes (0, \mathbf v))$, so the
+  product waits for neither series; it reads 0.993 `u` there. The boundary is
   `s = \tan^2\alpha <` `short_below`, `r`'s own generated number and not a new one, and **exactly**
   $t = 1$ takes the blend on both sides of it, since only the blend is exact there. Not $t \ge 1$:
   extrapolation below the switch belongs to the provided body, whose error does not grow with $t$
