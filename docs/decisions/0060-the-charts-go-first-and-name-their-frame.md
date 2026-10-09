@@ -57,8 +57,12 @@ as declared, not committed) settles what the language allows.
    charts, `Decoupled` for locus-tag. `docs/maths/index.md`'s open item is marked answered by
    `0060`, and CH.5(c)'s parenthetical points here.
 3. **Chart types carry `S`.** In `crates/helicoid/src/chart.rs`:
-   - `Chart<S, M>`, `Manifold<S>` and `WithChart<M, C>` exactly as `PHASE5.md` §1.1, plus
-     `WithChart::new(m)`. `Clone`, `Copy` and `Debug` are written on `M` alone, so `C` need not be
+   - `Chart<S, M>`, `Manifold<S>` and `WithChart<M, C>` as `PHASE5.md` §1.1, plus
+     `WithChart::new(m)`, and one provided method on `Chart`,
+     `local_with_jacobian(&self, other) -> (Tangent, Jac)`: a residual and its Jacobian, the pair
+     every Gauss–Newton residual in a chart needs. The default calls the two methods. Every chart
+     here overrides it so that the relative element and its `Log`, the most expensive part, are
+     formed once, and the result is bit-identical to the two calls. `Clone`, `Copy` and `Debug` are written on `M` alone, so `C` need not be
      `Copy`.
    - `RightChart<G>(G)` and `LeftChart<G>(G)`, the frozen base. `RightChart`: `retract = X Exp(δ)`,
      `local = Y ⊖_R X`, `rj = J_r(δ)`, `lj = J_r⁻¹(Y ⊖_R X)`. `LeftChart`: `Exp(δ) X`, `Y ⊖_L X`,
@@ -67,7 +71,8 @@ as declared, not committed) settles what the language allows.
    In `crates/helicoid/src/se3_charts.rs`: `Screw<S> = RightChart<SE3<S>>`, and
    `Decoupled<S>(SE3<S>)` and `WorldTranslation<S>(SE3<S>)`, newtypes over the frozen base. Their
    `retract`, `local`, `rj` and `lj` are the table and CH.5's matrices, built from `SO3::{rplus,
-   rminus, act, jr, jr_inv, to_matrix}`. Like the CH.5 note, they use `exp_coeffs`, `log_ratio`,
+   rminus, act, jr, jr_inv, to_matrix}`. `Decoupled::local` is `SEn3::inv_mul`'s `X⁻¹Y` read as
+   `(Log R_rel, t_rel)`: one conjugate, and the routine's own reference twin. Like the CH.5 note, they use `exp_coeffs`, `log_ratio`,
    `jr_coeffs` and `jr_inv_coeff` through those methods and evaluate no coefficient themselves.
    §1.2's example becomes `WithChart<SE3<f64>, Decoupled<f64>>`.
 4. **One `Manifold` impl per group.** `SO3<S>`, `SEn3<S, N>`, `Rn<S, N>` and
