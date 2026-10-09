@@ -41,7 +41,10 @@ about `2u (|a d| + |b c|)`. That is a relative error of `u` times the cancellati
    overflows or underflows as in `Mat3`'s text.
 3. **Corpus id `mat2_inverse_adj`**, binary64 and binary32, 6 records per stratum:
    - `cond:1`, `cond:1e4` and `cond:1e8`. `M = s · R(α) diag(1, 1/κ) R(β)ᵀ`, with `α` and `β`
-     uniform, `s = 10^U(−3, 3)` and `κ` the stratum's, rounded to binary64. The reference is the
+     uniform, `s = 10^U(−3, 3)` and `κ` the stratum's, rounded to binary64.
+     `cond:1e8` is binary64 only: `κ = 1e8` exceeds `1/u` at binary32 (about `1.7e7`), so those
+     matrices are singular in that precision and `det` rounds to `0` (4 of 6 records when
+     generated), which is `cond:singular`'s question, not this stratum's. The reference is the
      inverse of the **rounded** entries at 60 digits, so the stratum names the draw's conditioning
      and the reference is exact for the input actually given.
    - `cond:singular`. `M = [[x, 2^j x], [y, 2^j y]]` with `x`, `y` drawn as above and
