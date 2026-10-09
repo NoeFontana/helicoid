@@ -104,10 +104,10 @@ pub(crate) fn hat_mul<S: Real>(v: Vec3<S>, b: &Mat3<S>) -> Mat3<S> {
 /// `W²` of `W = φ^`, its six distinct entries as `mul_hat(&hat(φ), φ)` rounds them, for
 /// [`HatSq::poly`]'s `s0 I + s1 W + s2 W²`: `J_r`, `J_r⁻¹` and `Γ₂` (`0066`).
 ///
-/// Formed **before** the coefficients, by its callers: it does not depend on them, and computed
-/// after the out-of-line coefficient `branch` it sits on the result's critical path, where before
-/// it the out-of-order core overlaps it with the `branch` (measured: `so3/gamma2/near-identity`
-/// read 1.19x at `f32` with the products after the call).
+/// Formed **before** the coefficients, by its callers: it does not depend on them, so the
+/// out-of-order core can overlap it with the out-of-line coefficient `branch` instead of running
+/// it after, on the result's critical path. A scheduling argument, not a measurement: no bench row
+/// moved either way (`0066`).
 #[derive(Clone, Copy)]
 pub(crate) struct HatSq<S: Real> {
     phi: Vec3<S>,
