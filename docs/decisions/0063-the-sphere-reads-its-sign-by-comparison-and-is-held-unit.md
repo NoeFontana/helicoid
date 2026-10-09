@@ -2,7 +2,7 @@
 
 **Status:** ready
 **Owner:** @NoeFontana
-**Implementation:** —
+**Implementation:** #118 (the record; its code is the S² PR, `PHASE5.md` §2)
 
 ## Context
 
