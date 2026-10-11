@@ -141,6 +141,16 @@ the value, near `r_×`). `Sim3Jac` against its dense twins at most 4.15, `jr_inv
 2.68; at `σ = 0`, SE(3)'s translation and `J_r` within 3.41; `Log(Exp τ) = τ` finite and within
 0.58 of `max(‖τ‖, 1)` for `σ ∈ {±10, ±100, ±300, ±700}`.
 
+## Measured (plan step 4, #139)
+
+The eight ids, 1182 records each at four per cell ([`0071`](./0071-the-corpus-budget-is-64-mib.md)),
+no non-finite output at either precision. Worst `max_u` per id, `f64` / `f32`: `exp` 8.17 / 5.01,
+`log` 4.88 / 4.03, `ad` 2.46 / 1.96, `act` 6.66 / 4.83; the four Jacobians 3.64 / 4.86 on the
+joint-limit rays down to `r_Δ = 10⁻¹²` (where the closed forms alone read `2e12 u`), 10.5 / 9.1 on
+the `|σ| ≤ 3` grid, and 320 / 53 at `|σ| = 700` / `80`, three orders under SM.7(g)'s `0.6σ² u`. The
+plantings fire on every judged stratum; the envelope's 148 domination failures are unchanged and
+none is Sim(3)'s.
+
 ## Rationale
 
 - **`Sim3Jac`.** Every Jacobian a solver forms is a product or an inverse of `Ad` and `J`; at `343`

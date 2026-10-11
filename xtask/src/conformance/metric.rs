@@ -201,6 +201,22 @@ const SE3_LOCAL: &[FieldRule] = &[
 /// [`SE3_LOCAL`]'s rotation is: two absolute unit vectors in, so a nearby pair cancels to a `δ` whose
 /// own size is the wrong denominator.
 const S2_LOCAL: &[FieldRule] = &[field("delta", Floor::Unit, SignRule::Fixed)];
+/// `sim3_exp` (`0070`): the quaternion as `so3_exp`'s, the translation floored at the input's
+/// `‖[ρ; σ]‖` as `sen3_exp`'s is at `‖ρ‖`, and `σ`, which `Exp` passes through, on a floor of 1.
+const SIM3_EXP: &[FieldRule] = &[
+    field("q", Floor::Unit, SignRule::Align),
+    field(
+        "x",
+        Floor::Scale {
+            input: "tau",
+            skip: 3,
+        },
+        SignRule::Fixed,
+    ),
+    field("sigma", Floor::Unit, SignRule::Fixed),
+];
+/// `sim3_act`: the moved point, as `so3_act`'s.
+const SIM3_ACT: &[FieldRule] = &[field("Xp", Floor::Unit, SignRule::Fixed)];
 const SO2_EXP: &[FieldRule] = &[field("z", Floor::Unit, SignRule::Fixed)];
 const SO2_LOG: &[FieldRule] = &[field("theta", Floor::Tiny, SignRule::Fixed)];
 const SE2_EXP: &[FieldRule] = &[
@@ -282,6 +298,15 @@ const TABLE: &[(&str, Rule)] = &[
     // `0063` decision 5: a point of S² is a direction; its chart coordinates are a tangent.
     ("s2_retract", Rule::Direction("m")),
     ("s2_local", Forward(S2_LOCAL)),
+    // `0070`: Sim(3); its tangent and Jacobians scored as SE_N(3)'s are.
+    ("sim3_exp", Forward(SIM3_EXP)),
+    ("sim3_log", Forward(TANGENT)),
+    ("sim3_jr", Forward(JAC)),
+    ("sim3_jl", Forward(JAC)),
+    ("sim3_jr_inv", Forward(JAC)),
+    ("sim3_jl_inv", Forward(JAC)),
+    ("sim3_ad", Forward(AD)),
+    ("sim3_act", Forward(SIM3_ACT)),
     ("sen3_exp", Forward(SEN3_EXP)),
     ("sen3_log", Forward(TANGENT)),
     ("sen3_ad", Forward(AD)),
@@ -1278,6 +1303,14 @@ mod tests {
         add(&locals, "phi", Want::Unit, false);
         add(&locals, "rho", Want::Scale, false);
         add(&["s2_local"], "delta", Want::Unit, false);
+        let sim3_jac = ["sim3_jr", "sim3_jl", "sim3_jr_inv", "sim3_jl_inv"];
+        add(&sim3_jac, "J", Want::Unit, false);
+        add(&["sim3_ad"], "Ad", Want::Unit, false);
+        add(&["sim3_exp"], "q", Want::Unit, true);
+        add(&["sim3_exp"], "x", Want::Scale, false);
+        add(&["sim3_exp"], "sigma", Want::Unit, false);
+        add(&["sim3_log"], "tau", Want::Tiny, false);
+        add(&["sim3_act"], "Xp", Want::Unit, false);
         add(&["chol_solve_n3", "chol_solve_n6"], "x", Want::Tiny, false);
         add(&["quat_renormalize"], "q", Want::Tiny, false);
         for name in [

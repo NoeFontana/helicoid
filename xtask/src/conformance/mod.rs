@@ -48,6 +48,7 @@ mod selftest_gamma;
 mod selftest_linalg;
 mod selftest_s2;
 mod selftest_se3;
+mod selftest_sim3;
 mod selftest_so3;
 pub(crate) mod subject;
 
@@ -583,6 +584,7 @@ mod tests {
                 "so3_gamma2",
                 "gaussian_",
                 "s2_",
+                "sim3_",
             ]
             .iter()
             .any(|p| id.starts_with(p))

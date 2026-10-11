@@ -24,6 +24,8 @@ uv run --frozen python -m gen list
 | `gen/cubic.py`, `gen/eig.py`, `gen/chol.py`, `gen/quat.py`, `gen/real.py`, `gen/dense.py`, `gen/gaussian.py` | the ids of `docs/decisions/0056`, each with its strata (`strata.Drawn`); n×n helpers and exact rational LDLᵀ |
 | `gen/check_linalg.py`, `gen/check_real.py`, `gen/check_gaussian.py` | their cross-checks |
 | `gen/charts.py`, `gen/s2.py`, `gen/check_charts.py` | the chart ids (`docs/decisions/0060` decision 8, `0063`) and their cross-checks |
+| `gen/sim3.py`, `gen/check_sim3.py` | the Sim(3) ids (`docs/decisions/0070`) and their cross-checks |
+| `gen/sim3coeff.py` | `sim3_series.jsonl` (`1/n!` per precision) and `sim3_ref.jsonl` (the Sim(3) coefficients on rays, for `cargo xtask thresholds`) |
 | `gen/fmt.py`, `gen/corpus.py`, `gen/manifest.py` | text formats and `Mat`, assembly (parallel by stratum) and recheck, `MANIFEST.json` |
 
 ## Record schema

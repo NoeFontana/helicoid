@@ -391,6 +391,54 @@
       "records": 642,
       "sha256": "acbeed03edc43d97515e75a5f7c9ca32d4591735d074d639b95cee6c5f96d2f2"
     },
+    "sim3_act.jsonl": {
+      "kind": "corpus",
+      "rechecked": 238,
+      "records": 1008,
+      "sha256": "66bdef193cef1355c662c791cae153d98303d9888e42c0c29889eaeff8f00c1c"
+    },
+    "sim3_ad.jsonl": {
+      "kind": "corpus",
+      "rechecked": 238,
+      "records": 1008,
+      "sha256": "207b67df44e9017c538289e16b4d896cdb1156a6c658bc919461fdb39d9161e2"
+    },
+    "sim3_exp.jsonl": {
+      "kind": "corpus",
+      "rechecked": 238,
+      "records": 1008,
+      "sha256": "d218551b9233c55a6c86bee87fe852e49612a5f1f7c87fea35581be5bb566aac"
+    },
+    "sim3_jl.jsonl": {
+      "kind": "corpus",
+      "rechecked": 238,
+      "records": 1008,
+      "sha256": "37e7c41718b20742d24d1f89bda0ad8f3f61e51f585ddd3e7fa0ae6d6c71811c"
+    },
+    "sim3_jl_inv.jsonl": {
+      "kind": "corpus",
+      "rechecked": 238,
+      "records": 1008,
+      "sha256": "2a839e03ccbcb7460a33140819ff428896091800a74027b4b2eb40c0db8de23e"
+    },
+    "sim3_jr.jsonl": {
+      "kind": "corpus",
+      "rechecked": 238,
+      "records": 1008,
+      "sha256": "246ec8d4ea7749d1fabe71905a94960cfe3cad175b2549209b4bc9fd32da6957"
+    },
+    "sim3_jr_inv.jsonl": {
+      "kind": "corpus",
+      "rechecked": 238,
+      "records": 1008,
+      "sha256": "0f76a337a59084c467130e0b89f6b18b73439a7ec8d402943a481adbf9a77fd6"
+    },
+    "sim3_log.jsonl": {
+      "kind": "corpus",
+      "rechecked": 238,
+      "records": 1008,
+      "sha256": "c2d515efc5fd934f9a050d750f1a7483f7a5a9a1abeb4f76d09448ace5fcd3ca"
+    },
     "sim3_ref.jsonl": {
       "kind": "switch-ref",
       "rechecked": 5460,
@@ -482,7 +530,7 @@
       "sha256": "3780fb0bfac76491d5c03b5ebbeb52fc333c95edaf3784bf6e805add3f219f2b"
     }
   },
-  "generator": "sha256:c8c7b1d3f9295b4b194924a5c0993f1ae76a87457044135591fcef564e1019e3",
+  "generator": "sha256:f4c039cca12d2ff463e380dca9f8921f4f5f6893158ac52e1e59e63b62342ba0",
   "mpmath": "1.4.1",
   "python": "3.12",
   "recheck": {

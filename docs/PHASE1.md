@@ -161,6 +161,12 @@ side of `docs/maths/coefficients.md` CO.12.
 | `se3_screw_local`, `se3_decoupled_local`, `se3_world_local` | $(q_0, x_0, q_1, x_1)$ | the chart's `local` of $Y = (\hat q_1, x_1)$: $\mathrm{Log}(X^{-1}Y)$ through `sen3_log_n1`; $(\mathrm{Log}(\hat q_0^*\hat q_1),\ R^\top(x_1 - x_0))$; $(\mathrm{Log}(\hat q_0^*\hat q_1),\ x_1 - x_0)$, the geometric `Log`, never `mp.logm`. $Y$ is the chart's own `retract` of the same record's twist, rounded. Held as `phi` and `rho`, scored with floors 1 and $\lVert x_0\rVert$ (two absolute poses cancel). Cross-check: the chart's `retract` of the answer returns $Y$ |
 | `s2_retract` | $(n, \delta)$, $\delta \in \mathbb R^2$ | $\mathrm{Exp}(B\delta)\,\hat n$ by Rodrigues, $\hat n = n/\lVert n\rVert$, $B$ the Householder frame of `NUMERICS.md` §8 at $\hat n$ with $\varsigma = -1$ iff the stored $n_z < 0$ ([`0063`](./decisions/0063-the-sphere-reads-its-sign-by-comparison-and-is-held-unit.md) decision 1). Strata `s2:nz0` ($n_z = \pm0$ alternately), `s2:near-antipode` ($\theta = \pi - 10^{-k}$), `s2:generic`, and their `@f32` twins; scored by §11's direction metric. Cross-checks: `docs/maths/charts.md` CH.9(a)'s closed form, $\lVert m\rVert = 1$, the `local` round trip |
 | `s2_local` | $(n, m)$ | $B^\top(\alpha\,v/s)$, $v = \hat n \times \hat m$, $s = \lVert v\rVert$, $\alpha = \mathrm{atan2}(s, \hat n\cdot\hat m)$: the geometric $\mathrm{Log}$ of the minimal rotation, **never `mp.logm`**, complex and non-principal from $\alpha \approx 3.03$ (`0063` decision 4). $m$ is the reference `retract` of the same record's $(n, \delta)$, rounded. The strata of `s2_retract`. Cross-checks: the `retract` round trip; the quaternion $(\cos\frac\alpha2, \sin\frac\alpha2\,v/s)$ through `so3_log`'s geometric route |
+| `sim3_exp` | $\tau = [\varphi; \rho; \sigma]$ | $(\mathrm{Exp}\,\varphi,\ \mathsf V\rho,\ \sigma)$ ([`0070`](./decisions/0070-sim3-a-structured-jacobian-and-a-series-on-delta.md)): the quaternion series, $\mathsf V$'s scalars by the total-degree series to convergence for $\lvert\sigma\rvert \le 3$ and the closed forms beyond. Cross-checks: `mp.expm` of the $4\times4$ hat to $\lvert\sigma\rvert = 30$, SM.5(a)'s identities beyond |
+| `sim3_log` | $(q, x, \sigma)$ | the geometric SO(3) logarithm of $q/\lVert q\rVert$ and $\rho = \mathsf V^{-1}x$ by `mp.lu_solve`, **never `mp.logm`**, non-principal from $\theta \approx 3.03$ at $\sigma = 0$ and earlier as $\lvert\sigma\rvert$ grows. Cross-check: $\mathrm{Exp}$ of the answer |
+| `sim3_jr`, `sim3_jl` | $\tau$ | $\sum(\mp\mathrm{ad}_\tau)^k/(k+1)!$, dense $7\times7$, for $\lvert\sigma\rvert \le 3$; beyond, SM.10's blocks at $\lvert\sigma\rvert$ more digits. Cross-checks: the other route, `mp.expm` of $[\mathrm{ad}\ I; 0\ 0]$ to $\lvert\sigma\rvert = 30$, $J_l = \mathrm{Ad}\,J_r$ beyond |
+| `sim3_jr_inv`, `sim3_jl_inv` | $\tau$ | `mp.inverse` of the above, the zeros of $[A\ 0\ 0; B\ C\ f; 0\ 0\ e]$ exact |
+| `sim3_ad` | $(q, x, \sigma)$ | images of the basis under $\psi \mapsto (X\psi^\wedge X^{-1})^\vee$; cross-check SM.9's closed form |
+| `sim3_act` | $(q, x, \sigma, p)$ | $sRp + t$; cross-check the quaternion sandwich. The eight ids see the $\sigma\times\theta$ grid `sigma:<σ>/theta:<θ>`, the rays `ray:<r>` and the large-$\sigma$ strata, four records each (eight per ray), with `@f32` twins ([`0070`](./decisions/0070-sim3-a-structured-jacobian-and-a-series-on-delta.md), [`0071`](./decisions/0071-the-corpus-budget-is-64-mib.md)) |
 | `sen3_exp_n{1,2,3}` | $\tau$ | `mp.expm` of the $(3+N)$-square hat matrix; the rotation as `so3_exp`'s quaternion series, asserted equal to the matrix's block |
 | `sen3_log_n{1,2,3}` | $X$ | the $\tau$ with $\|\varphi\| \le \pi$ and $\mathrm{Exp}(\tau) = X$: `so3_log`'s $\varphi$, then $\rho_i$ solving $J_l(\varphi)\rho_i = x_i$ with $J_l$ the series of the same exponential's translation block; `mp.logm` of the $(3+N)$-square matrix is a test cross-check only, since it is wrong near $\pi$ |
 | `sen3_ad_n{1,2,3}` | $X$ | images of the basis under $\sigma \mapsto (X\sigma^\wedge X^{-1})^\vee$ |
@@ -248,8 +254,8 @@ Series are summed until the term's norm is below $10^{-110}$ relative. Phase 2's
   singular neighbourhoods, each with its `@f32` counterpart after every binary64 stratum, drawn
   from its own stream wherever binary32's range differs.
 
-Corpus v1 stays under 50 MB uncompressed; a family that would exceed it reduces its sample count
-by an edit to this list, never silently.
+Corpus v1 stays under 64 MiB uncompressed ([`0071`](./decisions/0071-the-corpus-budget-is-64-mib.md)); a family that would exceed it reduces its
+sample count by an edit to this list, never silently.
 
 ## 5. The conformance harness
 
@@ -427,6 +433,8 @@ any is not detected** by its named mechanism.
 | $\Gamma_2$ built from $\Gamma_1$'s coefficients, $\tfrac12 I + aW + bW^2$ ([`0064`](./decisions/0064-the-integrated-exponentials-reuse-the-swept-switches.md)) | every `so3_gamma2` stratum whose smallest $\theta$ is at least $12\,288\,u$ reads more than $1024\times$ the clean max, at `f64` and `f32` (`xtask/src/conformance/selftest_gamma.rs`) |
 | S²'s $\varsigma$ by the sign bit, `copysign(1, n_z)` ([`0063`](./decisions/0063-the-sphere-reads-its-sign-by-comparison-and-is-held-unit.md) decision 1) | both `s2:nz0` strata of `s2_retract` and `s2_local` read more than $1024\times$ the clean max, at `f64` and `f32`, and every other S² stratum reads the clean max to the bit (`xtask/src/conformance/selftest_s2.rs`) |
 | `NUMERICS.md` §8's ratio as first worded, $r(s^2, w)$ for $\tfrac12 r(s^2, w)$ (`0063` decision 3) | every `s2_local` stratum where $1024\times$ the clean max is below $1/u$ reads more than that ([`0067`](./decisions/0067-the-sphere-takes-plane-coordinates-and-both-precisions.md)) |
+| Sim(3)'s scale ignored in $\mathsf V$, $\mathrm{Exp}$'s translation as SE(3)'s $J_l(\varphi)\rho$ ([`0070`](./decisions/0070-sim3-a-structured-jacobian-and-a-series-on-delta.md)) | every `sim3_exp` stratum whose smallest $\lvert\sigma\rvert$ puts $\lvert\sigma\rvert/4$ above $1024\times$ the clean max reads more than that, at `f64` and `f32` (`xtask/src/conformance/selftest_sim3.rs`) |
+| $J_r$'s scale column with its sign flipped ([`0070`](./decisions/0070-sim3-a-structured-jacobian-and-a-series-on-delta.md)) | every `sim3_jr` stratum where $1024\times$ the clean max is below $1/u$ reads more than that |
 
 ## 11. Definition of done
 
