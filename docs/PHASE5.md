@@ -13,7 +13,7 @@ stated side; and consumer migrations onto `helicoid` without unrecorded regressi
 |---|---|
 | `Chart`, `Manifold`, `WithChart`; group charts (§1) | Done ([`0060`](./decisions/0060-the-charts-go-first-and-name-their-frame.md), #119): `RightChart`, `LeftChart` on every group, one `Manifold` impl per group, `Lifted`; the chart laws, `Dual` Jacobians and CH.6 on SO(3), SE(3), SE₂(3), SE₃(3), ℝ³, SO(3)×ℝ³ |
 | SE(3) charts `Screw`, `Decoupled`, `WorldTranslation` (§1.3) | Done (`0060`, #120, #123): `TwistBlockJac`, `Se3Chart`, `SE3::chart_transition` (all nine pairs against `Dual`); corpus ids `se3_{screw,decoupled,world}_{retract,local}` |
-| S² and its chart (§2) | Not started |
+| S² and its chart (§2) | Done ([`0063`](./decisions/0063-the-sphere-reads-its-sign-by-comparison-and-is-held-unit.md), [`0067`](./decisions/0067-the-sphere-takes-plane-coordinates-and-both-precisions.md), #133): `S2`, `S2Chart` (`Chart<S, S2<S>>` on `RnTangent<S, 2>`, `Jac = Mat2<S>`), `Manifold for S2`; the chart laws, `Dual` Jacobians and the twin `reference::s2_local`; corpus ids `s2_retract`, `s2_local` at both precisions, scored by §11's direction metric |
 | Sim(3) (§3) | Not started |
 | Γ₁, Γ₂, directional Jacobians (§4) | Done ([`0064`](./decisions/0064-the-integrated-exponentials-reuse-the-swept-switches.md), #127, #128): `so3::{gamma1, gamma2, gamma_apply_jacobians::<M>}`, `M` 1 or 2 (one coefficient evaluation, [`0066`](./decisions/0066-gamma-shares-its-coefficients-and-a-gaussian-factors-once.md)); the twin `reference::gamma_apply`; corpus id `so3_gamma2` at both precisions; the seeded defect Γ₂ from Γ₁'s coefficients |
 | `Gaussian<S, G, Sd, D>` (§5) | Done ([`0065`](./decisions/0065-a-gaussian-names-its-side-and-is-stored-symmetric.md), #129, #130): `to_left`, `to_right`, `propagate`, `mahalanobis_sq`, and `whitener` for many-point gating ([`0066`](./decisions/0066-gamma-shares-its-coefficients-and-a-gaussian-factors-once.md)); the round-trip bound and the twins on SE(3), SE₂(3), SO(3), SO(3)×ℝ³; corpus ids `gaussian_mahalanobis_{se3,se23}` |
@@ -95,8 +95,9 @@ blocks differ (a second `Jac` impl on `ProductJac` itself is E0283 at every conc
 Householder basis computed once in `Chart::at`, with $\varsigma = +1$ unless $n_z < 0$. `S2` is held
 unit: `from_vec_unchecked`, `from_vec_normalized` and `renormalize` with the quaternion's bounds
 (`NUMERICS.md` §12). Domain: `local(m)` requires $m \ne -n$.
+Coordinates `RnTangent<S, 2>`, Jacobians `Mat2<S>` (§1.4, [`0067`](./decisions/0067-the-sphere-takes-plane-coordinates-and-both-precisions.md)).
 Corpus ids: `s2_retract`, `s2_local`. Strata: `s2:nz0` (records at $n_z = +0$ and $-0$),
-`s2:near-antipode`, `s2:generic`. `s2_local`'s reference is the geometric logarithm (Rodrigues, then
+`s2:near-antipode`, `s2:generic`, each with its `@f32` twin ([`0067`](./decisions/0067-the-sphere-takes-plane-coordinates-and-both-precisions.md)). `s2_local`'s reference is the geometric logarithm (Rodrigues, then
 the quaternion `atan2`), never `mp.logm`. `s2_retract` is scored by `NUMERICS.md` §11's direction
 metric ([`0063`](./decisions/0063-the-sphere-reads-its-sign-by-comparison-and-is-held-unit.md)).
 

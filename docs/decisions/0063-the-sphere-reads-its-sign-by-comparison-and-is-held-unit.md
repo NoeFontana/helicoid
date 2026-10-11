@@ -2,7 +2,7 @@
 
 **Status:** ready
 **Owner:** @NoeFontana
-**Implementation:** #118 (the record; its code is the S² PR, `PHASE5.md` §2)
+**Implementation:** #118 (the record); #133, the S² PR (`PHASE5.md` §2), with the readings of [`0067`](./0067-the-sphere-takes-plane-coordinates-and-both-precisions.md)
 
 ## Context
 
