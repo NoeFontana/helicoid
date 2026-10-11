@@ -136,6 +136,12 @@ impl Real for Host {
     fn acos(self) -> Self {
         Host(self.0.acos())
     }
+    fn exp(self) -> Self {
+        Host(self.0.exp())
+    }
+    fn exp_m1(self) -> Self {
+        Host(self.0.exp_m1())
+    }
     fn atan2(self, x: Self) -> Self {
         Host(self.0.atan2(x.0))
     }

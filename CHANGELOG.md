@@ -30,6 +30,8 @@ defined by the status tables in `docs/`; they win over this file.
 
 - **S² and its chart** (`PHASE5.md` §2, `0063`, `0067`): `S2<S>`, held unit by `from_vec_unchecked`, `from_vec_normalized` and `renormalize`, and `S2Chart<S>`, its Householder basis frozen per linearization, on `RnTangent<S, 2>` coordinates with `Mat2<S>` Jacobians (`Mat2<S>: Jac<S, RnTangent<S, 2>>`); `S2` is a `Manifold`. `ς` is read by comparison, so `n_z = ±0` give one basis. `local` takes `α/s` from `log_ratio`, and its Jacobian forms `Exp` of the rotation vector rather than dividing by `1 + n·m`. The twin `reference::s2_local`. Corpus ids `s2_retract` and `s2_local` over `s2:nz0`, `s2:near-antipode` and `s2:generic` at both precisions, `s2_retract` scored by `NUMERICS.md` §11's new direction metric: at most 5.96 `u` and 1.89 `u` off the antipode.
 
+- **`Real::exp` and `Real::exp_m1`** (`0068`), through `libm`, with `Dual` rules (`exp_m1`'s derivative from `exp`, so it keeps its digits past `-37.4`). Corpus ids `real_exp` and `real_expm1` at both precisions: at most 1.22 `u`. Sim(3)'s first prerequisite.
+
 ### Changed
 
 - **`Vector::dot` is a plain loop** (`0067`): the same left-to-right sum, so every output is bit-identical, but `f32` callers no longer reload each lane through an `array::IntoIter` on the stack. `f32` `S2Chart::local` takes 0.13–0.21 of its former time and the SE₂(3) Gaussian gate 0.87; a few `f64` rows move by ±5% with register allocation.

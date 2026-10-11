@@ -470,6 +470,7 @@ $X(t) = X_0\,\mathrm{Exp}(t\,d)$ with $d = X_1 \ominus_R X_0$ and $\Delta = X_0^
 | `Dual::cbrt` derivative | $v \ne 0$ | $\pm\infty$ ($d \ne 0$), NaN ($d = 0$); value unaffected |
 | `Dual::atan2` derivative | $x_v^2 + y_v^2$ normal (larger argument in $\approx 10^{\pm154}$ `f64`, $10^{\pm19}$ `f32`) | $\pm\infty$, NaN at the origin, or $0$; value unaffected |
 | `Dual::acos` derivative | $\lvert v\rvert < 1$ | $\mp\infty$ ($d \ne 0$), NaN ($d = 0$) at $v = \pm1$; outside $[-1, 1]$ the value is NaN |
+| `Real::exp`, `Real::exp_m1` | every $x$; finite below $\ln\mathrm{MAX}$ ($709.78$ `f64`, $88.72$ `f32`); `exp` subnormal below $-708.40$ ($-87.34$) and $+0$ below $-745.13$ ($-103.97$); `exp_m1` is $-1$ exactly below $-37.4$ ($-17.3$) ([`0068`](./decisions/0068-real-owes-exp-and-exp-m1.md)) | $+\infty$ above $\ln\mathrm{MAX}$; the `Dual` derivative is $e^v$ for both, the same overflow |
 | `Dual` quotient derivative | $q = a_v/b_v$ finite | NaN (value $\pm\infty$) |
 | `chol` | positive definite | `(L, mask = false)`; `L` finite for every input, nothing asserted (§15.3) |
 | `solve_lower`, `solve_upper`, `chol_solve` | every diagonal entry nonzero and not NaN (`debug_assert!`) | $\pm\infty$ or NaN (§15.3) |

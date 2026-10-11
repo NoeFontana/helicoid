@@ -1,7 +1,7 @@
 """The `real_*` ids (docs/decisions/0056): a `Dual<S, N>` method's value and its derivative, at
 the working precision. The derivative is the calculus one (1/(2 sqrt x), 1/(3 cbrt(x)^2),
--1/sqrt(1 - x^2), (cos, -sin), (x, -y)/(x^2 + y^2), (1/d, -n/d^2)): textbook, not a closed form
-of docs/NUMERICS.md. `check_real` holds it against `mp.diff`.
+-1/sqrt(1 - x^2), (cos, -sin), (x, -y)/(x^2 + y^2), (1/d, -n/d^2), e^x for both `exp` and `expm1`):
+textbook, not a closed form of docs/NUMERICS.md. `check_real` holds it against `mp.diff`.
 """
 
 from mpmath import mp, mpf
@@ -257,3 +257,72 @@ DIV_STRATA = _div_strata()
 def div(inputs: dict) -> dict:
     n, d = mpf(inputs["n"]), mpf(inputs["d"])
     return {"value": n / d, "d_n": 1 / d, "d_d": -n / (d * d)}
+
+
+# --- real_exp, real_expm1 (0068) ---------------------------------------------------------------
+#
+# x:tiny      |x| log-uniform in [1e-300, 1e-8], both signs: expm1 must not cancel there
+# x:unit      x uniform in [-1, 1]
+# x:moderate  |x| uniform in [1, 30], both signs (binary32: [1, 15])
+# x:large     x uniform in [30, ln MAX), the overflow onset (binary32: [15, ln MAX))
+# x:negative  x uniform in (ln of the smallest normal, -30]: a normal e^x far below 1 (`exp` only)
+# x:subnormal x uniform in (ln of half the smallest subnormal, ln of the smallest normal): e^x
+#             subnormal, where `exp` is judged by its quantization (`exp` only)
+# x:saturated x uniform in [-700, -40] (binary32: [-80, -20]): expm1 is -1 exactly and its
+#             derivative e^x a normal number (`expm1` only)
+
+EXP_RANGES = {
+    "x:moderate": {False: ("1", "30"), True: ("1", "15")},
+    "x:large": {False: ("30", "709.78"), True: ("15", "88.72")},
+    "x:negative": {False: ("-708.39", "-30"), True: ("-87.33", "-15")},
+    "x:subnormal": {False: ("-745.13", "-708.40"), True: ("-103.97", "-87.34")},
+    "x:saturated": {False: ("-700", "-40"), True: ("-80", "-20")},
+}
+
+
+def _uniform_in(name: str, alternate: bool):
+    def make(draw: Draw, n: int) -> list[dict]:
+        rng = draw.stream("x")
+        lo, hi = (mpf(b) for b in EXP_RANGES[name][draw.f32])
+        out = []
+        for i in range(n):
+            x = draw.round(lo + (hi - lo) * mpf(rng.uniform()))
+            out.append({"x": (_sign(i) if alternate else 1) * x})
+        return out
+
+    return make
+
+
+def _unit(draw: Draw, n: int) -> list[dict]:
+    rng = draw.stream("x")
+    return [{"x": draw.round(2 * mpf(rng.uniform()) - 1)} for _ in range(n)]
+
+
+def _exp_strata(names: tuple[str, ...]):
+    def catalogue(f32: bool) -> list:
+        out = [
+            ("x:tiny", _decades(*ACOS_TINY[f32], alternate=True), False),
+            ("x:unit", _unit, True),
+        ]
+        for name in names:
+            out.append((name, _uniform_in(name, name == "x:moderate"), False))
+        return out
+
+    return drawn_strata(
+        [(name, make, N_RANDOM) for name, make, _ in catalogue(False)],
+        [(name, make, N_RANDOM, shared) for name, make, shared in catalogue(True)],
+    )
+
+
+EXP_STRATA = _exp_strata(("x:moderate", "x:large", "x:negative", "x:subnormal"))
+EXPM1_STRATA = _exp_strata(("x:moderate", "x:large", "x:saturated"))
+
+
+def exp(inputs: dict) -> dict:
+    v = mp.exp(mpf(inputs["x"]))
+    return {"value": v, "d": v}
+
+
+def expm1(inputs: dict) -> dict:
+    x = mpf(inputs["x"])
+    return {"value": mp.expm1(x), "d": mp.exp(x)}
