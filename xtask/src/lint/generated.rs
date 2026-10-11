@@ -11,6 +11,7 @@ use super::{File, Violation};
 const REGISTRY: &[(&str, &str)] = &[
     ("xtask/src/seeded/generated.rs", "thresholds"),
     ("crates/helicoid/src/coeffs/generated.rs", "thresholds"),
+    ("crates/helicoid/src/coeffs/generated_sim3.rs", "thresholds"),
     ("docs/evidence/ENVELOPE.md", "envelope"),
     ("baseline/HOST.md", "bench-gate"),
 ];
@@ -123,6 +124,7 @@ mod tests {
             [
                 ("xtask/src/seeded/generated.rs", "thresholds"),
                 ("crates/helicoid/src/coeffs/generated.rs", "thresholds"),
+                ("crates/helicoid/src/coeffs/generated_sim3.rs", "thresholds"),
                 ("docs/evidence/ENVELOPE.md", "envelope"),
                 ("baseline/HOST.md", "bench-gate"),
             ]

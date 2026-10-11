@@ -391,6 +391,18 @@
       "records": 642,
       "sha256": "acbeed03edc43d97515e75a5f7c9ca32d4591735d074d639b95cee6c5f96d2f2"
     },
+    "sim3_ref.jsonl": {
+      "kind": "switch-ref",
+      "rechecked": 5460,
+      "records": 7098,
+      "sha256": "bc136483adc3634ba0397fb845a25ebb7013c712a11c646cb3d34f07a8d3f7d2"
+    },
+    "sim3_series.jsonl": {
+      "kind": "series",
+      "records": 33,
+      "sha256": "4492336a6c5b7d90997d5fa50f0a326f83ad6b5fa853a93bcec67e9aa3a188a4",
+      "verified": 33
+    },
     "so2_exp.jsonl": {
       "kind": "corpus",
       "rechecked": 58,
@@ -470,7 +482,7 @@
       "sha256": "3780fb0bfac76491d5c03b5ebbeb52fc333c95edaf3784bf6e805add3f219f2b"
     }
   },
-  "generator": "sha256:da86c67b1845d68f3f7e5cac64648553359199af4ee36d95cb9baf40647625f8",
+  "generator": "sha256:c8c7b1d3f9295b4b194924a5c0993f1ae76a87457044135591fcef564e1019e3",
   "mpmath": "1.4.1",
   "python": "3.12",
   "recheck": {

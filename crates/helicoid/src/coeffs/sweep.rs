@@ -108,3 +108,41 @@ pub fn swept_f32(coeff: &str) -> Option<&'static [f32]> {
         _ => return None,
     })
 }
+
+/// The Sim(3) group's arms (`0070`), as `[v₀, v₁, v₂, w₀, w₁, w₂, ∂_z v₁, ∂_z v₂]`: the total-degree
+/// series at depth `k`.
+pub fn sim3_series<S: Real>(sigma: S, z: S, k: usize) -> [S; 8] {
+    flat(super::sim3::series::<S, true>(sigma, z, k))
+}
+
+/// The closed arm with its three choices handed in: `v₁` by form b, `w₀` by `w0_terms` terms of its
+/// series (`0` for the exact form). `Δ > 0`.
+pub fn sim3_closed<S: Real<Mask = bool>>(sigma: S, z: S, form_b: bool, w0_terms: usize) -> [S; 8] {
+    flat(super::sim3::closed::<S, true>(
+        sigma,
+        z,
+        form_b,
+        w0_terms > 0,
+        w0_terms,
+    ))
+}
+
+/// The group at its generated parameters.
+pub fn sim3_coeffs<S: Real>(sigma: S, z: S) -> [S; 8] {
+    flat(super::sim3::sim3_coeffs(sigma, z))
+}
+
+/// `1/n!` as the kernel holds it, at binary64 and binary32, for the tool to check against
+/// `sim3_series.jsonl`.
+pub fn sim3_recip_fact() -> (&'static [f64], &'static [f32]) {
+    (
+        &super::generated_sim3::RECIP_FACT_F64,
+        &super::generated_sim3::RECIP_FACT_F32,
+    )
+}
+
+fn flat<S: Real>(c: super::sim3::Sim3Coeffs<S>) -> [S; 8] {
+    [
+        c.v[0], c.v[1], c.v[2], c.w[0], c.w[1], c.w[2], c.dv[0], c.dv[1],
+    ]
+}

@@ -56,7 +56,7 @@ const SHORT_ELEMENT: usize = 10;
 const MAX_WIDTH: usize = 100;
 
 /// The lower-case hexadecimal SHA-256 of `data`.
-fn sha256_hex(data: &[u8]) -> String {
+pub(super) fn sha256_hex(data: &[u8]) -> String {
     Sha256::digest(data)
         .iter()
         .map(|b| format!("{b:02x}"))
