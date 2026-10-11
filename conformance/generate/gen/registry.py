@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from . import (
     charts,
     check,
+    check_sim3,
     check_charts,
     check_gaussian,
     check_geodesic,
@@ -25,6 +26,7 @@ from . import (
     s2,
     se2,
     sen3,
+    sim3,
     so2,
     so3,
 )
@@ -232,6 +234,21 @@ FUNCTIONS: dict[str, FunctionSpec] = {
             "real_sin_cos", real.SIN_COS_STRATA, drawn_inputs, real.sin_cos, check_real.real_sin_cos
         ),
         FunctionSpec("real_acos", real.ACOS_STRATA, drawn_inputs, real.acos, check_real.real_acos),
+        # 0070: Sim(3), both precisions, the sigma x theta grid, the joint-limit rays, large sigma.
+        FunctionSpec("sim3_exp", sim3.TAU_STRATA, drawn_inputs, sim3.exp, check_sim3.exp),
+        FunctionSpec("sim3_log", sim3.X_STRATA, drawn_inputs, sim3.log, check_sim3.log),
+        *(
+            FunctionSpec(
+                f"sim3_{name}",
+                sim3.TAU_STRATA,
+                drawn_inputs,
+                sim3.jacobian(name),
+                check_sim3.jacobian(name),
+            )
+            for name in ("jr", "jl", "jr_inv", "jl_inv")
+        ),
+        FunctionSpec("sim3_ad", sim3.X_STRATA, drawn_inputs, sim3.ad_of, check_sim3.ad),
+        FunctionSpec("sim3_act", sim3.ACT_STRATA, drawn_inputs, sim3.act, check_sim3.act),
         # 0068: `Real::exp` and `Real::exp_m1`, which Sim(3) needs (docs/maths/sim3.md SM.4, SM.7(g)).
         FunctionSpec("real_exp", real.EXP_STRATA, drawn_inputs, real.exp, check_real.real_exp),
         FunctionSpec(

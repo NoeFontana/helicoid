@@ -32,7 +32,7 @@ defined by the status tables in `docs/`; they win over this file.
 
 - **`Real::exp` and `Real::exp_m1`** (`0068`), through `libm`, with `Dual` rules (`exp_m1`'s derivative from `exp`, so it keeps its digits past `-37.4`). Corpus ids `real_exp` and `real_expm1` at both precisions: at most 1.22 `u`. Sim(3)'s first prerequisite.
 
-- **Sim(3)** (`PHASE5.md` §3, `0070`): `Sim3<S>`, `Sim3Tangent<S>` and the structured `Sim3Jac<S>` (`[A 0 0; B C f; 0 0 e]`, closed under product and inverse, `117` multiplications against `343` dense), with dense twins `reference::sim3jac_*`. `Exp`, `Log` (no `mp.logm`), `Ad`, `ad`, the Jacobians and their inverses by blocks, finite to `σ = ±700` by the scaled arrangement. Its coefficients are one group: the total-degree series below a generated `r_×²`, closed forms above, both switched by a new ray sweep in `cargo xtask thresholds` (`f64` 4.72 `u`, `f32` 2.93 `u` on the Jacobian blocks).
+- **Sim(3)** (`PHASE5.md` §3, `0070`): `Sim3<S>`, `Sim3Tangent<S>` and the structured `Sim3Jac<S>` (`[A 0 0; B C f; 0 0 e]`, closed under product and inverse, `117` multiplications against `343` dense), with dense twins `reference::sim3jac_*`. `Exp`, `Log` (no `mp.logm`), `Ad`, `ad`, the Jacobians and their inverses by blocks, finite to `σ = ±700` by the scaled arrangement. Its coefficients are one group: the total-degree series below a generated `r_×²`, closed forms above, both switched by a new ray sweep in `cargo xtask thresholds` (`f64` 4.72 `u`, `f32` 2.93 `u` on the Jacobian blocks). Corpus ids `sim3_{exp, log, jr, jl, jr_inv, jl_inv, ad, act}` at both precisions: the Jacobians within 3.64 `u` on the joint-limit rays to `r_Δ = 10⁻¹²`, every value finite to `σ = ±700`. The corpus budget is 64 MiB (`0071`).
 
 ### Changed
 
