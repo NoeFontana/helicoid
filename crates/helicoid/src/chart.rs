@@ -12,7 +12,7 @@
 //! and no blanket over `LieGroup`: beside [`WithChart`]'s impl a blanket is E0119, since a
 //! downstream crate may implement `LieGroup<ItsReal>` for a `WithChart` (`0060` decision 4).
 
-use crate::{LieGroup, Product, Rn, SEn3, Tangent, SO3};
+use crate::{LieGroup, Product, Rn, SEn3, Sim3, Tangent, SO3};
 use core::{fmt, marker::PhantomData};
 use helicoid_linalg::{Blend, Real};
 
@@ -276,6 +276,12 @@ impl<S: Real, const N: usize> Manifold<S> for Rn<S, N> {
 }
 
 impl<S: Real, A: LieGroup<S>, B: LieGroup<S>> Manifold<S> for Product<A, B> {
+    type Tangent = <Self as LieGroup<S>>::Tangent;
+    type Chart = RightChart<Self>;
+    const DOF: usize = <Self as LieGroup<S>>::DOF;
+}
+
+impl<S: Real> Manifold<S> for Sim3<S> {
     type Tangent = <Self as LieGroup<S>>::Tangent;
     type Chart = RightChart<Self>;
     const DOF: usize = <Self as LieGroup<S>>::DOF;

@@ -8,7 +8,8 @@
 //! Jacobian, the products [`Product`] with the block-diagonal [`ProductJac`], the side-typed
 //! [`Gaussian`], [`sinc`], the one coefficient of the kernel that is public
 //! (`docs/decisions/0062`), the integrated exponentials of [`so3`] (`docs/decisions/0064`), and the
-//! sphere [`S2`] with its frozen chart [`S2Chart`] (`docs/decisions/0063`, `0067`). Every group is
+//! sphere [`S2`] with its frozen chart [`S2Chart`] (`docs/decisions/0063`, `0067`), and Sim(3),
+//! [`Sim3`] with the structured [`Sim3Jac`] (`docs/decisions/0070`). Every group is
 //! written against the traits and generic over the scalar `S: Real` of `helicoid-linalg`.
 //!
 //! # Conventions
@@ -47,6 +48,7 @@ mod s2;
 mod se3_charts;
 mod sen3;
 mod side;
+mod sim3;
 pub mod so3;
 #[cfg(test)]
 mod so3_tests;
@@ -66,6 +68,7 @@ pub use s2::{S2Chart, S2};
 pub use se3_charts::{Decoupled, Screw, Se3Chart, TwistBlockJac, WorldTranslation};
 pub use sen3::{SEn3, SEn3Tangent, Twist, SE23, SE3};
 pub use side::{Left, Right, Side};
+pub use sim3::{Sim3, Sim3Jac, Sim3Tangent};
 pub use so3::{SO3Tangent, SO3};
 pub use traits::{Jac, LieGroup, Tangent};
 
@@ -105,3 +108,5 @@ mod s2_tests;
 mod se3_charts_tests;
 #[cfg(test)]
 mod sen3_tests;
+#[cfg(test)]
+mod sim3_tests;

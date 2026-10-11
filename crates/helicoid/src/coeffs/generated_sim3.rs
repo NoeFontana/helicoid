@@ -77,7 +77,7 @@ pub(crate) const RECIP_FACT_F32: [f32; 33] = [
     f32::from_bits(0x04a1a697),
 ];
 
-// Objective (max u, the blocks' weighted error over 3549 points): 4.718650350131173e0; series 4.718650350131173e0, closed 3.043974723498002e0, w0 1.6330197614208808e0.
+// Objective (max u, the blocks' weighted error over 3549 points): 4.718650350131173e0; series 4.718650350131173e0, closed 4.025612047510283e0, w0 1.6330197614208808e0.
 pub(crate) const SIM3_F64: Sim3Switch<f64> = Sim3Switch {
     // Δ < 2.3713737056616552e-1
     series_below: f64::from_bits(0x3fce5a84719edcd2),
@@ -91,11 +91,11 @@ pub(crate) const SIM3_F64: Sim3Switch<f64> = Sim3Switch {
 
 // Objective (max u, the blocks' weighted error over 3549 points): 2.9296364376011055e0; series 2.8273490725051067e0, closed 2.9296364376011055e0, w0 1.626639304937477e0.
 pub(crate) const SIM3_F32: Sim3Switch<f32> = Sim3Switch {
-    // Δ < 4.216965138912201e-1
-    series_below: f32::from_bits(0x3ed7e89b),
-    series_terms: 8,
-    // Δ ≥ 4.216965138912201e-1
-    form_b_below: f32::from_bits(0x3ed7e89b),
+    // Δ < 8.353625535964966e-1
+    series_below: f32::from_bits(0x3f55da52),
+    series_terms: 9,
+    // Δ ≥ 8.353625535964966e-1
+    form_b_below: f32::from_bits(0x3f55da52),
     // σ² < 5.829415321350098e-1
     w0_below: f32::from_bits(0x3f153ba8),
     w0_terms: 8,

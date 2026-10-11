@@ -48,9 +48,10 @@ assert!(mid.rminus(&a).dot(&delta) > 0.0);
 `LieGroup`/`Side` traits, the coefficient kernel, side and action Jacobians, geodesics, charts as
 types (`Chart`, `Manifold`, `WithChart`, the SE(3) charts), the sphere `S2` with its frozen
 Householder chart, the integrated exponentials `so3::{gamma1, gamma2, gamma_apply_jacobians}`,
-`Gaussian` with its side in the type, and the reference twins.
+`Gaussian` with its side in the type, Sim(3) (`Sim3`, with the structured `Sim3Jac`), and the
+reference twins.
 
-**Not yet:** `SO2`/`SE2`, `Sim(3)`. Each is specified in
+**Not yet:** `SO2`/`SE2`. Each is specified in
 [`docs/`](https://github.com/NoeFontana/helicoid/tree/main/docs); a spec's §0.0 table is the source
 of truth over any prose, this file included.
 

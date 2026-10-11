@@ -6,8 +6,8 @@
 //! the recurrences of SM.3 and SM.11(c) at per-sequence depths, so every scalar is truncated at
 //! total degree `< K` and the tail is a function of `r_Δ` alone; it covers `Δ = 0`, where it is the
 //! limits, without a division. Above, the **closed forms** of SM.5(b), SM.11(b)–(c) on `a, b, d`
-//! and `sin θ/θ` from the kernel's swept arms, `v₁` by form b from `Δ_b`, `w₀ = g₂(σ)` by its series
-//! in `σ` below `σ_w`, and for `σ > 0` the **scaled arrangement** of SM.7(g): every scalar is formed
+//! and `sin θ/θ` from the kernel's swept arms, `v₁` by form b from `Δ_b`, `w₀ = g₂(σ)` and
+//! `v₀ = g₁(σ)` by their series in `σ` below `σ_w`, and for `σ > 0` the **scaled arrangement** of SM.7(g): every scalar is formed
 //! as `e^{-σ} c` from `expm1(-σ)` and `e^{-σ}`, then multiplied by `e^σ`, so nothing overflows
 //! before the answer does. `K`, `r_×²`, `Δ_b`, `σ_w²` and `g₂`'s terms are generated
 //! (`generated_sim3`, `0004`).
@@ -131,16 +131,16 @@ pub(crate) fn series<S: Real, const FULL: bool>(sigma: S, z: S, k: usize) -> Sim
     c
 }
 
-/// `g₂(σ) = Σ σⁱ/(i + 2)!` by Horner from the last of `terms` terms.
+/// `g_ℓ(σ) = Σ σⁱ/(i + ℓ)!` by Horner from the last of `terms` terms.
 #[inline]
-pub(crate) fn g2_series<S: Real>(sigma: S, terms: usize) -> S {
+pub(crate) fn g_series<S: Real>(sigma: S, l: usize, terms: usize) -> S {
     (0..terms)
         .rev()
-        .fold(S::zero(), |acc, i| recip_fact::<S>(i + 2) + sigma * acc)
+        .fold(S::zero(), |acc, i| recip_fact::<S>(i + l) + sigma * acc)
 }
 
-/// The closed forms at a safe argument (`Δ > 0`), scaled for `σ > 0`; `form_b` is `Δ ≥ Δ_b`,
-/// `w0_small` is `σ² < σ_w²`.
+/// The closed forms at a safe argument (`Δ > 0`) and **scaled** for `σ > 0`: every scalar is
+/// `e^{-σ} c` there, and [`unscale`] forms `c`; `form_b` is `Δ ≥ Δ_b`, `w0_small` is `σ² < σ_w²`.
 #[inline]
 pub(crate) fn closed<S: Real, const FULL: bool>(
     sigma: S,
@@ -162,7 +162,15 @@ pub(crate) fn closed<S: Real, const FULL: bool>(
     let m1 = S::select(pos, -mt, mt);
     let f = S::select(pos, et, one);
     let ss = S::select(at_zero, one, sigma);
-    let v0 = S::select(at_zero, one, m1 / ss);
+    // Below `σ_w`, `v₀ = g₁(σ)` by its series too (SM.6(a)), with one term more than `w₀`'s, so
+    // its tail is at most `|σ|` times the one the sweep measured for `w₀`. The value `expm1 σ/σ`
+    // is accurate there, but its `Dual` derivative `(σe^σ − expm1 σ)/σ²` cancels to `u/σ`
+    // (SM.7(f)): `jacobians_match_dual` read 6720 `u` at `σ = 9e-7` before (`0070`).
+    let v0 = S::select(
+        w0_small,
+        f * g_series(sigma, 1, w0_terms + 1),
+        S::select(at_zero, one, m1 / ss),
+    );
     let v2 = ((v0 + sigma * e * a) - e * sinc) / delta;
     let v1a = e * a - sigma * v2;
     let v1b = ((sigma * e * sinc - m1) + e * z * a) / delta;
@@ -175,7 +183,7 @@ pub(crate) fn closed<S: Real, const FULL: bool>(
     if FULL {
         let w0 = S::select(
             w0_small,
-            f * g2_series(sigma, w0_terms),
+            f * g_series(sigma, 2, w0_terms),
             (m1 - sigma * f) / (ss * ss),
         );
         let w2 = ((w0 + sigma * v2) - v1) / delta;
@@ -187,7 +195,13 @@ pub(crate) fn closed<S: Real, const FULL: bool>(
         c.w = [w0, w1, w2];
         c.dv = [dv1, dv2];
     }
-    let scale = S::branch(pos, || sigma.exp(), || one);
+    c
+}
+
+/// `c = e^σ ĉ` where `scaled`, `ĉ` itself elsewhere: the last step of the scaled arrangement.
+#[inline]
+pub(crate) fn unscale<S: Real>(c: Sim3Coeffs<S>, sigma: S, scaled: S::Mask) -> Sim3Coeffs<S> {
+    let scale = S::branch(scaled, || sigma.exp(), S::one);
     Sim3Coeffs {
         v: c.v.map(|x| scale * x),
         w: c.w.map(|x| scale * x),
@@ -198,11 +212,12 @@ pub(crate) fn closed<S: Real, const FULL: bool>(
 /// The group at the generated parameters: the series below `r_×²`, else the closed forms at the
 /// safe argument `(1, 1)` for a lane that is not on them (`0003` item 3).
 #[inline]
-fn group<S: Real, const FULL: bool>(sigma: S, z: S) -> Sim3Coeffs<S> {
+fn group<S: Real, const FULL: bool>(sigma: S, z: S) -> (Sim3Coeffs<S>, S::Mask) {
     let sw = switch::<S>();
     let delta = sigma * sigma + z;
     let small = delta.lt(S::lit(sw.series_below));
-    S::branch(
+    let scaled = small.not().and(S::zero().lt(sigma));
+    let c = S::branch(
         small,
         || series::<S, FULL>(sigma, z, sw.series_terms),
         || {
@@ -217,7 +232,8 @@ fn group<S: Real, const FULL: bool>(sigma: S, z: S) -> Sim3Coeffs<S> {
                 sw.w0_terms,
             )
         },
-    )
+    );
+    (c, scaled)
 }
 
 /// All eight scalars at `(σ, z = θ²)`.
@@ -227,7 +243,23 @@ fn group<S: Real, const FULL: bool>(sigma: S, z: S) -> Sim3Coeffs<S> {
 /// `z ≥ 0`; `|σ| < ln MAX` for a finite answer (`NUMERICS.md` §12).
 #[inline]
 pub(crate) fn sim3_coeffs<S: Real>(sigma: S, z: S) -> Sim3Coeffs<S> {
+    let (c, scaled) = group::<S, true>(sigma, z);
+    unscale(c, sigma, scaled)
+}
+
+/// `(ĉ, scaled)`: the eight scalars as the arm forms them, `ĉ = e^{-σ} c` where `scaled` (the closed
+/// arm at `σ > 0`) and `c` elsewhere. For a caller that would square or invert `c` and overflow
+/// first: `Log`'s `V⁻¹ = e^{-σ} V̂⁻¹` (SM.7(g)).
+#[inline]
+pub(crate) fn sim3_coeffs_scaled<S: Real>(sigma: S, z: S) -> (Sim3Coeffs<S>, S::Mask) {
     group::<S, true>(sigma, z)
+}
+
+/// [`sim3_coeffs_scaled`]'s `v` alone: the same bits.
+#[inline]
+pub(crate) fn sim3_v_scaled<S: Real>(sigma: S, z: S) -> ([S; 3], S::Mask) {
+    let (c, scaled) = group::<S, false>(sigma, z);
+    (c.v, scaled)
 }
 
 /// `[v₀, v₁, v₂]` alone, for `Exp` and `Log`: [`sim3_coeffs`]'s `v` to the bit.
@@ -235,11 +267,8 @@ pub(crate) fn sim3_coeffs<S: Real>(sigma: S, z: S) -> Sim3Coeffs<S> {
 /// # Domain
 ///
 /// [`sim3_coeffs`]'s.
-#[cfg_attr(
-    not(test),
-    allow(dead_code, reason = "Sim3, 0070 plan step 3, is the consumer")
-)]
 #[inline]
 pub(crate) fn sim3_v<S: Real>(sigma: S, z: S) -> [S; 3] {
-    group::<S, false>(sigma, z).v
+    let (c, scaled) = group::<S, false>(sigma, z);
+    unscale(c, sigma, scaled).v
 }
