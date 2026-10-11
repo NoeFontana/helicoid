@@ -1,0 +1,245 @@
+//! The Sim(3) coefficient group (`NUMERICS.md` §9, `0070`, `docs/maths/sim3.md` SM.5–SM.11):
+//! `v₀, v₁, v₂` of `V`, `w₀, w₁, w₂` of `Γ₂(M)` and `∂_z v₁, ∂_z v₂` of `Q`, as functions of
+//! `(σ, z = θ²)`, one call per site.
+//!
+//! Two arms, chosen by one mask on `Δ = σ² + z`. Below `r_×²` the **total-degree series** of SM.6(b):
+//! the recurrences of SM.3 and SM.11(c) at per-sequence depths, so every scalar is truncated at
+//! total degree `< K` and the tail is a function of `r_Δ` alone; it covers `Δ = 0`, where it is the
+//! limits, without a division. Above, the **closed forms** of SM.5(b), SM.11(b)–(c) on `a, b, d`
+//! and `sin θ/θ` from the kernel's swept arms, `v₁` by form b from `Δ_b`, `w₀ = g₂(σ)` by its series
+//! in `σ` below `σ_w`, and for `σ > 0` the **scaled arrangement** of SM.7(g): every scalar is formed
+//! as `e^{-σ} c` from `expm1(-σ)` and `e^{-σ}`, then multiplied by `e^σ`, so nothing overflows
+//! before the answer does. `K`, `r_×²`, `Δ_b`, `σ_w²` and `g₂`'s terms are generated
+//! (`generated_sim3`, `0004`).
+
+use helicoid_linalg::{Blend, Mask, Precision, Real};
+
+use super::generated_sim3::{RECIP_FACT_F32, RECIP_FACT_F64, SIM3_F32, SIM3_F64};
+use super::kernel::sinc_a_b_d;
+
+/// The generated parameters of the group at one precision (`0070` decision 4).
+#[derive(Clone, Copy)]
+pub(crate) struct Sim3Switch<T> {
+    /// `r_×²`: the series arm below it, in `Δ = σ² + z`.
+    pub(crate) series_below: T,
+    /// `K`: the series' total degree is `< K`.
+    pub(crate) series_terms: usize,
+    /// `Δ_b`: `v₁` by form a below it, form b at and above.
+    pub(crate) form_b_below: T,
+    /// `σ_w²`: `w₀ = g₂(σ)` by its series below it, in `σ²`.
+    pub(crate) w0_below: T,
+    /// The terms of `g₂`'s series, `Σ σⁱ/(i + 2)!`.
+    pub(crate) w0_terms: usize,
+}
+
+/// The eight scalars: `v = [v₀, v₁, v₂]`, `w = [w₀, w₁, w₂]`, `dv = [∂_z v₁, ∂_z v₂]`.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct Sim3Coeffs<S> {
+    pub(crate) v: [S; 3],
+    pub(crate) w: [S; 3],
+    pub(crate) dv: [S; 2],
+}
+
+impl<S: Real> Blend<S> for Sim3Coeffs<S> {
+    #[inline]
+    fn blend(m: S::Mask, t: Self, f: Self) -> Self {
+        Self {
+            v: <[S; 3]>::blend(m, t.v, f.v),
+            w: <[S; 3]>::blend(m, t.w, f.w),
+            dv: <[S; 2]>::blend(m, t.dv, f.dv),
+        }
+    }
+}
+
+#[inline]
+fn switch<S: Real>() -> Sim3Switch<f64> {
+    match S::PRECISION {
+        Precision::F64 => SIM3_F64,
+        Precision::F32 => {
+            let s = SIM3_F32;
+            Sim3Switch {
+                series_below: f64::from(s.series_below),
+                series_terms: s.series_terms,
+                form_b_below: f64::from(s.form_b_below),
+                w0_below: f64::from(s.w0_below),
+                w0_terms: s.w0_terms,
+            }
+        }
+    }
+}
+
+/// `1/n!`, correctly rounded at `S`'s precision (`sim3_series.jsonl`); `NaN` past the table.
+#[inline]
+fn recip_fact<S: Real>(n: usize) -> S {
+    let x = match S::PRECISION {
+        Precision::F64 => RECIP_FACT_F64.get(n).copied(),
+        Precision::F32 => RECIP_FACT_F32.get(n).map(|&x| f64::from(x)),
+    };
+    x.map_or_else(|| S::zero() / S::zero(), S::lit)
+}
+
+/// The total-degree series at depth `k` (SM.6(b), SM.11(c)). `FULL` adds `w` and `dv`; without it
+/// the recurrence stops at what `v` needs, and `v` is the same bits either way.
+///
+/// Level `j` holds `p = σʲ`, `ξ_j`, `ζ_j`, `ξ'_j`, `ζ'_j`, of total degrees `j`, `j - 1`, `j - 2`,
+/// `j - 3`, `j - 4`, so `v₀, w₀` sum `j < k`, `v₁, w₁` `j ≤ k`, `v₂, w₂` `j ≤ k + 1`, `∂_z v₁`
+/// `j ≤ k + 2` and `∂_z v₂` `j ≤ k + 3`: every scalar to total degree `k - 1` (SM.7(d)(ii)).
+#[inline]
+pub(crate) fn series<S: Real, const FULL: bool>(sigma: S, z: S, k: usize) -> Sim3Coeffs<S> {
+    let zero = S::zero();
+    let (mut p, mut xi, mut zeta, mut dxi, mut dzeta) = (S::one(), zero, zero, zero, zero);
+    let mut c = Sim3Coeffs {
+        v: [zero; 3],
+        w: [zero; 3],
+        dv: [zero; 2],
+    };
+    let last = if FULL { k + 3 } else { k + 1 };
+    for j in 0..=last {
+        let (r1, r2) = (recip_fact::<S>(j + 1), recip_fact::<S>(j + 2));
+        if j < k {
+            c.v[0] = c.v[0] + p * r1;
+            if FULL {
+                c.w[0] = c.w[0] + p * r2;
+            }
+        }
+        if j <= k {
+            c.v[1] = c.v[1] + xi * r1;
+            if FULL {
+                c.w[1] = c.w[1] + xi * r2;
+            }
+        }
+        if j <= k + 1 {
+            c.v[2] = c.v[2] + zeta * r1;
+            if FULL {
+                c.w[2] = c.w[2] + zeta * r2;
+            }
+        }
+        if FULL {
+            if j <= k + 2 {
+                c.dv[0] = c.dv[0] + dxi * r1;
+            }
+            c.dv[1] = c.dv[1] + dzeta * r1;
+        }
+        // SM.3, SM.11(c): ξ_{j+1} = σξ + σʲ - zζ, ζ_{j+1} = σζ + ξ,
+        // ξ'_{j+1} = σξ' - ζ - zζ', ζ'_{j+1} = σζ' + ξ'.
+        let (nxi, nzeta) = ((sigma * xi + p) - z * zeta, sigma * zeta + xi);
+        if FULL {
+            (dxi, dzeta) = ((sigma * dxi - zeta) - z * dzeta, sigma * dzeta + dxi);
+        }
+        (xi, zeta, p) = (nxi, nzeta, p * sigma);
+    }
+    c
+}
+
+/// `g₂(σ) = Σ σⁱ/(i + 2)!` by Horner from the last of `terms` terms.
+#[inline]
+pub(crate) fn g2_series<S: Real>(sigma: S, terms: usize) -> S {
+    (0..terms)
+        .rev()
+        .fold(S::zero(), |acc, i| recip_fact::<S>(i + 2) + sigma * acc)
+}
+
+/// The closed forms at a safe argument (`Δ > 0`), scaled for `σ > 0`; `form_b` is `Δ ≥ Δ_b`,
+/// `w0_small` is `σ² < σ_w²`.
+#[inline]
+pub(crate) fn closed<S: Real, const FULL: bool>(
+    sigma: S,
+    z: S,
+    form_b: S::Mask,
+    w0_small: S::Mask,
+    w0_terms: usize,
+) -> Sim3Coeffs<S> {
+    let (zero, one) = (S::zero(), S::one());
+    let (sinc, a, b, d) = sinc_a_b_d(z);
+    let delta = sigma * sigma + z;
+    let pos = zero.lt(sigma);
+    let at_zero = sigma.le(zero).and(zero.le(sigma));
+    // `t = -|σ|`: `e^t` and `expm1 t` are `E` and `m₁` for `σ ≤ 0`; for `σ > 0` the scaled
+    // arrangement has `E = 1`, `m₁ = -expm1(-σ)` and `e^σ` applied last (SM.7(g)).
+    let t = S::select(pos, -sigma, sigma);
+    let (et, mt) = (t.exp(), t.exp_m1());
+    let e = S::select(pos, one, et);
+    let m1 = S::select(pos, -mt, mt);
+    let f = S::select(pos, et, one);
+    let ss = S::select(at_zero, one, sigma);
+    let v0 = S::select(at_zero, one, m1 / ss);
+    let v2 = ((v0 + sigma * e * a) - e * sinc) / delta;
+    let v1a = e * a - sigma * v2;
+    let v1b = ((sigma * e * sinc - m1) + e * z * a) / delta;
+    let v1 = S::select(form_b, v1b, v1a);
+    let mut c = Sim3Coeffs {
+        v: [v0, v1, v2],
+        w: [zero; 3],
+        dv: [zero; 2],
+    };
+    if FULL {
+        let w0 = S::select(
+            w0_small,
+            f * g2_series(sigma, w0_terms),
+            (m1 - sigma * f) / (ss * ss),
+        );
+        let w2 = ((w0 + sigma * v2) - v1) / delta;
+        let w1 = v2 - sigma * w2;
+        let half = S::lit(0.5);
+        let (da, dsinc) = (-(half * (b - S::lit(2.0) * d)), -(half * (a - b)));
+        let dv2 = ((sigma * e * da - e * dsinc) - v2) / delta;
+        let dv1 = e * da - sigma * dv2;
+        c.w = [w0, w1, w2];
+        c.dv = [dv1, dv2];
+    }
+    let scale = S::branch(pos, || sigma.exp(), || one);
+    Sim3Coeffs {
+        v: c.v.map(|x| scale * x),
+        w: c.w.map(|x| scale * x),
+        dv: c.dv.map(|x| scale * x),
+    }
+}
+
+/// The group at the generated parameters: the series below `r_×²`, else the closed forms at the
+/// safe argument `(1, 1)` for a lane that is not on them (`0003` item 3).
+#[inline]
+fn group<S: Real, const FULL: bool>(sigma: S, z: S) -> Sim3Coeffs<S> {
+    let sw = switch::<S>();
+    let delta = sigma * sigma + z;
+    let small = delta.lt(S::lit(sw.series_below));
+    S::branch(
+        small,
+        || series::<S, FULL>(sigma, z, sw.series_terms),
+        || {
+            let one = S::one();
+            let (s, zz) = (S::select(small, one, sigma), S::select(small, one, z));
+            let d = s * s + zz;
+            closed::<S, FULL>(
+                s,
+                zz,
+                S::lit(sw.form_b_below).le(d),
+                (s * s).lt(S::lit(sw.w0_below)),
+                sw.w0_terms,
+            )
+        },
+    )
+}
+
+/// All eight scalars at `(σ, z = θ²)`.
+///
+/// # Domain
+///
+/// `z ≥ 0`; `|σ| < ln MAX` for a finite answer (`NUMERICS.md` §12).
+#[inline]
+pub(crate) fn sim3_coeffs<S: Real>(sigma: S, z: S) -> Sim3Coeffs<S> {
+    group::<S, true>(sigma, z)
+}
+
+/// `[v₀, v₁, v₂]` alone, for `Exp` and `Log`: [`sim3_coeffs`]'s `v` to the bit.
+///
+/// # Domain
+///
+/// [`sim3_coeffs`]'s.
+#[cfg_attr(
+    not(test),
+    allow(dead_code, reason = "Sim3, 0070 plan step 3, is the consumer")
+)]
+#[inline]
+pub(crate) fn sim3_v<S: Real>(sigma: S, z: S) -> [S; 3] {
+    group::<S, false>(sigma, z).v
+}

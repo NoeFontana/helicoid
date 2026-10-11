@@ -6,7 +6,7 @@ from pathlib import Path
 
 from mpmath import mp, mpf
 
-from . import fmt, manifest, series, switchref
+from . import fmt, manifest, series, sim3coeff, switchref
 from .fmt import Mat
 from .manifest import Built
 from .precision import RECHECK_DIGITS, RECHECK_DPS, is_binary32, setup
@@ -145,6 +145,8 @@ def write(out_dir: Path, jobs: int | None = None) -> dict[str, Built]:
     files = {f"{name}.jsonl": Built(*built) for name, built in build_all(jobs).items()}
     files["coeff_series.jsonl"] = Built(*series.build(), kind="series")
     files["coeff_switch_ref.jsonl"] = Built(*switchref.build(), kind="switch-ref")
+    files["sim3_series.jsonl"] = Built(*sim3coeff.build_series(), kind="series")
+    files["sim3_ref.jsonl"] = Built(*sim3coeff.build_ref(), kind="switch-ref")
     for stale in out_dir.glob("*.jsonl"):
         if stale.name not in files:
             stale.unlink()

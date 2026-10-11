@@ -81,6 +81,7 @@ mod emit;
 mod grid;
 mod measure;
 mod search;
+mod sim3;
 
 use std::path::Path;
 
@@ -506,6 +507,33 @@ fn run_at(root: &Path, corpus: &Path, args: &[String]) -> Result<(), String> {
         ));
     }
     let mut files = Vec::new();
+    // The Sim(3) group (`0070`) is the `helicoid` target's too: its series from the corpus, its
+    // switches from a sweep of its own, its two files beside the per-coefficient ones.
+    if targets.contains(&Target::Helicoid) && !sim3::series_is_current(corpus)? {
+        let stale = format!(
+            "{} holds 1/n! that are not the corpus's {}",
+            sim3::GENERATED,
+            sim3::SERIES_FILE
+        );
+        if check {
+            return Err(format!("{stale}; run `just thresholds`, twice"));
+        }
+        finish_all(root, &sim3::render(corpus, None)?, false)?;
+        return Err(format!(
+            "{stale}: wrote them beside placeholder switches; run it again"
+        ));
+    }
+    let sim3 = if targets.contains(&Target::Helicoid) {
+        let (sim3_files, choices) = sim3::files(corpus)?;
+        if !check {
+            for c in &choices {
+                println!("helicoid sim3: {c:?}");
+            }
+        }
+        sim3_files
+    } else {
+        Vec::new()
+    };
     for target in targets {
         let rows = sweep(corpus, target, &Swept::ALL)?;
         files.extend(self::files(corpus, target, &rows)?);
@@ -525,6 +553,7 @@ fn run_at(root: &Path, corpus: &Path, args: &[String]) -> Result<(), String> {
             }
         }
     }
+    files.extend(sim3);
     finish_all(root, &files, check)?;
     if !check {
         for (path, _) in &files {

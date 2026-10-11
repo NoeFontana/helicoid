@@ -78,10 +78,13 @@ reference from `mp.logm`, complex and non-principal from `θ ≈ 3.03` at `σ = 
 4. **Generated, not typed** (`0004`): `K` and `r_×²`, `Δ_b`, `σ_w` and `g₂`'s series, per
    precision, written by `cargo xtask thresholds` from a sweep over rays `σ = r_Δ cos λ`,
    `θ = r_Δ sin λ` (`λ` over `[0, π]`, so both signs of `σ`) and, for `σ_w`, over `|σ|` at fixed `θ`.
-   **The objective is the consumer's** (choice 4): each scalar's error weighted by the power of `θ`
-   that multiplies it in `V`, `Q` and `Γ₂(M)ρ` (`θ` for `v₁`, `w₁`; `θ²` for `v₂`, `w₂`, `∂_z v₁`;
-   `θ³` for `∂_z v₂`; `1` for `v₀`, `w₀`), over the block's scale, the maximum over the rays — the
-   quantity SM.7(c)–(d) measured. A coefficient's own error is reported beside it and not minimized.
+   **The objective is the consumer's** (choice 4): each scalar's error weighted by the smallest
+   power of `θ` that multiplies it in `V`, `Q` and `Γ₂(M)ρ` — `θ⁰` for `v₀`, `w₀` and `v₁` (`Q`'s
+   `-v₁Ξ`, which nothing suppresses), `θ¹` for `v₂` (`ΞW`) and `w₁`, `θ²` for `w₂` and `∂_z v₁`, `θ³`
+   for `∂_z v₂` — over `u` times the block's scale `max(1, v₀)`, the maximum over the rays: the
+   quantity SM.7(c)–(d) measured. Candidates within `max(0.25, 2%)` of the best are equal and the
+   cheapest wins: fewer terms, then the larger series region (`w₀`: the smaller, since its exact
+   form reuses `expm1 σ`).
 5. **Domains, `NUMERICS.md` §12**, SM.13's rows replacing "`σ` finite":
    - `exp`, `adjoint`, `ad`, `jr`, `jl`, `act`, `act_jacobians`: every `τ`, `X` with
      `|σ| < ln MAX` (`709.78`, `88.72`), by the scaled arrangement.
@@ -106,6 +109,24 @@ reference from `mp.logm`, complex and non-principal from `θ ≈ 3.03` at `σ = 
    `sim3_jr` wherever `θ ≥ 10⁻⁴`.
 8. **`Dual`** (`jacobians_match_dual_*`): the derivative of a Δ-series scalar loses one power of
    `Δ` through the closed arm (SM.7(f)); the tolerance is per stratum, recorded from a measurement.
+
+## Measured (plan step 2, #137)
+
+The sweep (`xtask/src/thresholds/sim3.rs`) over 3549 points per precision, 16 radii per decade of
+`Δ ∈ [10⁻¹⁶, 10]` × 13 angles, references by the total-degree recurrence summed to convergence and
+cross-checked against the closed forms at 250 digits to `10⁻⁹⁰` (`sim3_ref.jsonl`):
+
+| precision | `K` | `r_×²` | `Δ_b` | `σ_w²`, terms | objective | series | closed | `w₀` |
+|---|---|---|---|---|---|---|---|---|
+| `f64` | 13 | 0.2371 | `= r_×²` | 0.5829, 15 | 4.72 u | 4.72 | 3.04 | 1.63 |
+| `f32` | 8 | 0.4217 | `= r_×²` | 0.5829, 8 | 2.93 u | 2.83 | 2.93 | 1.63 |
+
+`Δ_b = r_×²`: form b of `v₁` wins wherever the closed arm runs. Past the rays, the scaled
+arrangement keeps every scalar finite to `σ = 700`; six are within `2.5u`, and `w₁ = v₂ - σw₂`,
+`∂_z v₁ = e^σ a' - σ ∂_z v₂` grow as they subtract `σ` times their own size, to `1620u` and `183u`
+at `σ = 700` (`2.3σ u`). A rearrangement would remove it at a generated `|σ|` switch, but the `Q`
+block's own assembly already loses `0.6σ² u` there (SM.7(g)(iii)), so no consumer would see it;
+*Further work*.
 
 ## Rationale
 
@@ -152,4 +173,7 @@ None.
 ## Further work
 
 - A Sophus `Sim3` runner, for a domination bar.
+- `w₁` and `∂_z v₁` for `σ ≫ 1` from the other rows of SM.5(a), SM.11's systems
+  (`w₁ = (v₁ - w₀ + z w₂)/σ`), behind a generated `|σ|` switch, if a consumer at large positive `σ`
+  ever needs the coefficient and not the block.
 - `sim3_geodesic`, and the Sim(3) charts, as `PHASE4.md` and `PHASE5.md` §1 extend.

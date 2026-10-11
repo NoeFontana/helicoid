@@ -66,7 +66,17 @@
 use helicoid_linalg::Real;
 
 mod generated;
+mod generated_sim3;
 mod kernel;
+// `Sim3` (`0070` plan step 3) is the group's consumer; until it lands only the sweep and the tests
+// reach it.
+#[cfg_attr(
+    not(any(test, feature = "__sweep")),
+    allow(dead_code, reason = "Sim3, 0070 plan step 3, is the consumer")
+)]
+mod sim3;
+#[cfg(test)]
+mod sim3_tests;
 pub(crate) use kernel::{
     exp_coeffs, gamma2_coeffs, jr_coeffs, jr_inv_coeff, log_ratio, log_ratio_short,
     log_ratio_takes_short_arm, q_coeffs,
