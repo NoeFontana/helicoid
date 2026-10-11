@@ -32,7 +32,7 @@ defined by the status tables in `docs/`; they win over this file.
 
 ### Changed
 
-- **`Vector::dot` sums by index** (`0067`): the same left-to-right sum, so every output is bit-identical, but `f32` callers no longer reload each lane through an `array::IntoIter` on the stack. `S2Chart::local` at `f32` went from 46–61 to 7.4–13.9 ns.
+- **`Vector::dot` is a plain loop** (`0067`): the same left-to-right sum, so every output is bit-identical, but `f32` callers no longer reload each lane through an `array::IntoIter` on the stack. `f32` `S2Chart::local` takes 0.13–0.21 of its former time and the SE₂(3) Gaussian gate 0.87; a few `f64` rows move by ±5% with register allocation.
 
 ## [0.0.2] - 2026-10-09
 

@@ -79,8 +79,9 @@ it left seven choices that none of them fixes, and its benchmarks found one defe
    `s2:nz0` strata of both ids and leave every other S² stratum's maximum unchanged to the bit;
    `§8`'s ratio as first worded, `r` for `½ r`, must fail every `s2_local` stratum where `1024`
    times the clean maximum is below `1/u`.
-8. **`Vector::dot` sums by index**, `sum((0..N).map(|i| self.0[i] * o.0[i]))`: the same terms in the
-   same order, so every output of the workspace is unchanged to the bit.
+8. **`Vector::dot` is a loop over the index**: the first product, then `acc + a[i] * b[i]` for
+   `i = 1..N` (`+0` at `N = 0`), the same terms in the same order as `sum`, so every output of the
+   workspace is unchanged to the bit.
 
 ## Measured
 
@@ -132,8 +133,29 @@ criterion rows `s2/*` time each method behind a call):
 At `f32` before decision 8, `local` read 46.4 / 61.0 / 47.9 ns and `local_with_jacobian` 132.8 /
 159.5 / 159.2. `reference::s2_local` reads 1.3–1.6 times `local` at `f64` (criterion rows).
 
-**`Vector::dot`**, the bench gate (`cargo xtask bench-gate --bench groups`, baseline the `main`
-binary, one pinned core): GATE.
+**`Vector::dot`**, the bench gate (`cargo xtask bench-gate --bench groups`, one pinned core, the
+baseline this PR with `Vector::dot` reverted, so every row exists on both sides), over the rows that
+call it (`--only gamma_apply_jacobians`, `s2/local`, `gaussian_`; the whole target is 262 rows and
+six hours), 50 rows, concurrent A/A floor median 0.83%:
+
+| rows | candidate / baseline |
+|---|---|
+| `f32` `s2/local` | 0.13–0.21 |
+| `f32` `s2/local_with_jacobian`, `s2/local_twin` | 0.21–0.31 |
+| `f32` `se23/gaussian_gate_16`, `mahalanobis_sq` | 0.87, 0.91 |
+| `f64` `s2/local` | 0.92–0.97 |
+| `f64` `gamma_apply_jacobians` at `θ = 1` | 0.93–0.95 |
+| every other Gaussian row | within its floor |
+| `f64` `s2/local_with_jacobian` at `θ = 1`, `π - 10⁻⁶` | 1.044, 1.034 (past the floor) |
+| `f64` `s2/local_twin` | 1.024–1.036 (past the floor) |
+| `f32` `gamma_apply_jacobians_1` near identity | 1.028 (past the floor) |
+
+The first form tried, `sum((0..N).map(|i| a[i] * b[i]))`, fixed `f32` alike but left a dead stack
+store per term and read `f64` `gamma_apply_jacobians_2` near identity at 1.056. Neither form changes
+an output bit and both change the surrounding `f64` register allocation, so the `f64` rows move by
+a few percent either way, as `0059` found for its two-arm functions; the shipped form is the plain
+loop, which has no iterator at all. In the consumer loop above, which is the plain loop's, `f64`
+`local_with_jacobian` reads 49.3 ns before and after: its criterion row is the wrapper's layout.
 
 ## Rationale
 
@@ -148,8 +170,8 @@ binary, one pinned core): GATE.
   not.
 - **`@f32` twins.** Bearings in a camera pipeline are `f32` as often as not, and the precision
   that differs is the one with the switch points and the conditioning: the twins are 384 records.
-- **`dot` by index, not a hand-written sum per arity.** The index form is `Matrix`'s, already
-  measured clean, and fixes every `N` and every caller at once.
+- **`dot` as a loop, not a hand-written sum per arity.** It fixes every `N` and every caller at
+  once, and with no iterator there is nothing for LLVM to leave on the stack.
 
 ## Consequences
 
