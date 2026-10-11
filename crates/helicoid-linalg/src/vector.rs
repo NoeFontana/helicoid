@@ -52,7 +52,10 @@ impl<S: Real, const N: usize> Vector<S, N> {
     /// `sum_i self_i o_i`, accumulated in index order.
     #[inline]
     pub fn dot(self, o: Self) -> S {
-        sum(self.0.into_iter().zip(o.0).map(|(a, b)| a * b))
+        // By index, as `Matrix`'s `Mul` sums: `into_iter().zip` is the same sum, but at `f32`
+        // LLVM kept the two `array::IntoIter`s on the stack and reloaded each lane through its
+        // alive range, a store-forwarding chain per call (`0067`).
+        sum((0..N).map(|i| self.0[i] * o.0[i]))
     }
 
     /// `self . self`, the form every squared norm in the workspace takes (`NUMERICS.md` §2.1).
