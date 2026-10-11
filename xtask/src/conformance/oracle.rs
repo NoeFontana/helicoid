@@ -1,7 +1,8 @@
-//! `cargo xtask conformance --oracle NAME` (`docs/PHASE1.md` §7): runs the oracle runner
-//! `runners/<NAME>` (a workspace-excluded crate with its own lockfile, run by
-//! `cargo run --release --locked`) over the corpus and scores what it wrote with the exact metric
-//! of an in-process subject, as a [`FileSubject`]. The file protocol, the smallest reading of §7
+//! `cargo xtask conformance --oracle NAME` (`docs/PHASE1.md` §7): runs the oracle runner `NAME`
+//! over the corpus and scores what it wrote with the exact metric of an in-process subject, as a
+//! [`FileSubject`]. A runner is a workspace-excluded crate under `runners/` with its own lockfile,
+//! run by `cargo run --release --locked`, or an image built from `docker/oracles/<NAME>/Dockerfile`
+//! and run offline ([`Launch`], `0072`). The file protocol, the smallest reading of §7
 //! (0014 (draft) question 26):
 //!
 //! - `<runner> --version` prints the pin on one line: the `subject_version` of every row.
@@ -32,10 +33,10 @@ use super::corpus::{self, Entry, Object, Record};
 use super::number::parse_hex;
 use super::subject::{Output, Registered, Subject};
 
-/// A runner crate under `runners/`; `name` is the subject's name in the result rows.
+/// An oracle runner; `name` is the subject's name in the result rows.
 struct Runner {
     name: &'static str,
-    dir: &'static str,
+    launch: Launch,
     /// The function ids it must answer: the list its own `--out` advertises, held again here so
     /// that an id it stops answering fails the run instead of dropping out of the results.
     answers: &'static [&'static str],
@@ -60,10 +61,32 @@ pub(crate) enum Backend {
     HostStd,
 }
 
+/// How a runner is built and started; either way the protocol's arguments follow.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Launch {
+    /// A workspace-excluded crate in this directory: `cargo run --release --locked`.
+    Crate(&'static str),
+    /// The image of this directory's `Dockerfile`, run with no network and a read-only root, the
+    /// corpus mounted read-only and the answers' directory writable, each at its host path so the
+    /// protocol's paths need no translation, as the owner of that directory (`0072`).
+    Container(&'static str),
+}
+
+#[cfg(test)]
+impl Launch {
+    /// The file whose presence says the runner exists.
+    fn manifest(self) -> String {
+        match self {
+            Launch::Crate(dir) => format!("{dir}/Cargo.toml"),
+            Launch::Container(dir) => format!("{dir}/Dockerfile"),
+        }
+    }
+}
+
 const RUNNERS: &[Runner] = &[
     Runner {
         name: "tf_tree_math",
-        dir: "runners/tf_tree_math",
+        launch: Launch::Crate("runners/tf_tree_math"),
         // `tf_tree_math`'s manifest declares `libm.workspace = true`.
         backend: Backend::LibmCrate,
         answers: &[
@@ -80,7 +103,7 @@ const RUNNERS: &[Runner] = &[
     },
     Runner {
         name: "sophus_rs",
-        dir: "runners/sophus_rs",
+        launch: Launch::Crate("runners/sophus_rs"),
         // sophus-rs is Rust `std`, so the host's library.
         backend: Backend::HostStd,
         answers: &[
@@ -100,7 +123,7 @@ const RUNNERS: &[Runner] = &[
     },
     Runner {
         name: "nalgebra",
-        dir: "runners/nalgebra",
+        launch: Launch::Crate("runners/nalgebra"),
         // nalgebra is Rust `std`, so the host's library (`0056` decision 4).
         backend: Backend::HostStd,
         answers: &[
@@ -112,6 +135,40 @@ const RUNNERS: &[Runner] = &[
             "solve_cubic",
             "quat_renormalize",
             "mat2_inverse_adj",
+        ],
+    },
+    Runner {
+        name: "sophus",
+        launch: Launch::Container("docker/oracles/sophus"),
+        // C++ on the image's glibc (`0072`).
+        backend: Backend::HostStd,
+        answers: &[
+            "so2_exp",
+            "so2_log",
+            "se2_exp",
+            "se2_log",
+            "se2_ad",
+            "so3_exp",
+            "so3_log",
+            "so3_act",
+            "so3_from_matrix",
+            "so3_jl",
+            "so3_jr",
+            "so3_jl_inv",
+            "so3_jr_inv",
+            "so3_geodesic",
+            "se3_geodesic",
+            "sen3_exp_n1",
+            "sen3_log_n1",
+            "sen3_ad_n1",
+            "sen3_jl_n1",
+            "sen3_jr_n1",
+            "sen3_jl_inv_n1",
+            "sen3_jr_inv_n1",
+            "sim3_exp",
+            "sim3_log",
+            "sim3_ad",
+            "sim3_act",
         ],
     },
 ];
@@ -233,8 +290,8 @@ impl FileSubject {
     }
 }
 
-/// `cargo run --release --locked` on the runner, arguments after `--` still to add.
-fn runner_command(root: &Path, runner: &Runner, quiet: bool) -> Command {
+/// `cargo run --release --locked` on the crate in `dir`, arguments after `--` still to add.
+fn crate_command(root: &Path, dir: &str, quiet: bool) -> Command {
     let cargo = std::env::var_os("CARGO").unwrap_or_else(|| OsString::from("cargo"));
     let mut command = Command::new(cargo);
     command
@@ -242,9 +299,84 @@ fn runner_command(root: &Path, runner: &Runner, quiet: bool) -> Command {
         .args(["run", "--release", "--locked"])
         .args(quiet.then_some("--quiet"))
         .arg("--manifest-path")
-        .arg(root.join(runner.dir).join("Cargo.toml"))
+        .arg(root.join(dir).join("Cargo.toml"))
         .arg("--");
     command
+}
+
+/// The tag a container runner's image is built under, for a reader of `docker images`. It is run
+/// by the id its build printed, which a later build cannot move.
+fn image_tag(name: &str) -> String {
+    format!("helicoid-oracle-{name}")
+}
+
+/// `docker build --quiet` of `dir`'s `Dockerfile`, which prints the image id alone.
+fn build_command(root: &Path, name: &str, dir: &str) -> Command {
+    let mut command = Command::new("docker");
+    command
+        .args(["build", "--quiet", "--tag", &image_tag(name)])
+        .arg(root.join(dir));
+    command
+}
+
+/// The image id `docker build --quiet` printed: its last line, `sha256:` and hex digits.
+fn image_id(stdout: &[u8]) -> Result<String, String> {
+    let text = std::str::from_utf8(stdout).map_err(|e| format!("image id is not UTF-8: {e}"))?;
+    let id = text.lines().map(str::trim).rfind(|l| !l.is_empty());
+    let id = id.unwrap_or_default();
+    let hex = id.strip_prefix("sha256:").unwrap_or_default();
+    match !hex.is_empty() && hex.bytes().all(|b| b.is_ascii_hexdigit()) {
+        true => Ok(id.to_string()),
+        false => Err(format!("`docker build` printed no image id: {text:?}")),
+    }
+}
+
+/// A bind mount of `path` at the same path, which `--mount`'s comma-separated syntax can spell
+/// only for an absolute path without a comma.
+fn bind(path: &Path, readonly: bool) -> Result<String, String> {
+    let text = path
+        .to_str()
+        .filter(|t| path.is_absolute() && !t.contains(','))
+        .ok_or_else(|| format!("{}: not an absolute path without a comma", path.display()))?;
+    let ro = if readonly { ",readonly" } else { "" };
+    Ok(format!("--mount=type=bind,src={text},dst={text}{ro}"))
+}
+
+/// `docker run` of `image` with `mounts` (from [`bind`]), as `user` (`uid:gid`) when given; the
+/// protocol's arguments still to add.
+fn container_command(image: &str, mounts: &[String], user: Option<(u32, u32)>) -> Command {
+    let mut command = Command::new("docker");
+    command
+        .args(["run", "--rm", "--network=none", "--read-only"])
+        .args(user.map(|(uid, gid)| format!("--user={uid}:{gid}")))
+        .args(mounts)
+        .arg(image);
+    command
+}
+
+/// The owner of `dir`, whom a container must run as for the files it writes there to be theirs.
+#[cfg(unix)]
+fn owner(dir: &Path) -> Result<Option<(u32, u32)>, String> {
+    use std::os::unix::fs::MetadataExt;
+    let meta = std::fs::metadata(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+    Ok(Some((meta.uid(), meta.gid())))
+}
+
+#[cfg(not(unix))]
+fn owner(_dir: &Path) -> Result<Option<(u32, u32)>, String> {
+    Ok(None)
+}
+
+/// Builds a container runner's image, which docker caches after the first build, and returns its
+/// id.
+fn build_image(root: &Path, name: &str, dir: &str) -> Result<String, String> {
+    eprintln!("conformance: building {dir}/Dockerfile");
+    let out = build_command(root, name, dir)
+        .stderr(Stdio::inherit())
+        .output()
+        .map_err(|e| format!("`docker build` of {dir}: {e}"))?;
+    succeeded(&format!("`docker build` of {dir}"), out.status)?;
+    image_id(&out.stdout)
 }
 
 fn succeeded(what: &str, status: ExitStatus) -> Result<(), String> {
@@ -277,8 +409,23 @@ pub(crate) fn run(
         let known: Vec<&str> = RUNNERS.iter().map(|r| r.name).collect();
         format!("no oracle runner `{name}`; have {known:?}")
     })?;
-    let launch = |quiet| runner_command(root, runner, quiet);
-    execute(runner, &launch, corpus_dir, results, fn_id)
+    match runner.launch {
+        Launch::Crate(dir) => {
+            let launch = |quiet| crate_command(root, dir, quiet);
+            execute(runner, &launch, corpus_dir, results, fn_id)
+        }
+        Launch::Container(dir) => {
+            // Every answer directory is under `oracle/`, so it is the one writable mount. It must
+            // exist first: docker would create a missing one as root.
+            let out = results.join("oracle");
+            std::fs::create_dir_all(&out).map_err(|e| format!("{}: {e}", out.display()))?;
+            let mounts = [bind(corpus_dir, true)?, bind(&out, false)?];
+            let user = owner(&out)?;
+            let image = build_image(root, runner.name, dir)?;
+            let launch = |_| container_command(&image, &mounts, user);
+            execute(runner, &launch, corpus_dir, results, fn_id)
+        }
+    }
 }
 
 /// `dir`, empty: whatever an earlier run left there is not an answer of this one.
@@ -508,7 +655,7 @@ mod tests {
                 .unwrap_or_default()
         };
         assert!(go("nope", None).contains(
-            "no oracle runner `nope`; have [\"tf_tree_math\", \"sophus_rs\", \"nalgebra\"]"
+            "no oracle runner `nope`; have [\"tf_tree_math\", \"sophus_rs\", \"nalgebra\", \"sophus\"]"
         ));
         assert!(go("tf_tree_math", Some("nope")).contains("no corpus file for `--fn nope`"));
         assert!(!scratch.0.exists());
@@ -522,7 +669,7 @@ mod tests {
         let (root, entries) = (super::super::root()?, corpus::manifest(&corpus_dir()?)?);
         for runner in RUNNERS {
             assert!(
-                root.join(runner.dir).join("Cargo.toml").is_file(),
+                root.join(runner.launch.manifest()).is_file(),
                 "{}",
                 runner.name
             );
@@ -565,7 +712,7 @@ mod tests {
 
     #[test]
     fn the_runner_is_a_locked_release_run_of_its_own_manifest() {
-        let command = runner_command(Path::new("/r"), &RUNNERS[0], true);
+        let command = crate_command(Path::new("/r"), "runners/tf_tree_math", true);
         let args: Vec<_> = command.get_args().map(|a| a.to_string_lossy()).collect();
         assert_eq!(
             args,
@@ -582,15 +729,106 @@ mod tests {
         assert_eq!(command.get_current_dir(), Some(Path::new("/r")));
     }
 
+    fn args_of(command: &Command) -> Vec<String> {
+        command
+            .get_args()
+            .map(|a| a.to_string_lossy().into_owned())
+            .collect()
+    }
+
+    #[test]
+    fn a_container_runner_is_built_from_its_dockerfile_and_run_offline_by_image_id(
+    ) -> Result<(), String> {
+        let build = build_command(Path::new("/r"), "sophus", "docker/oracles/sophus");
+        assert_eq!(build.get_program(), "docker");
+        assert_eq!(
+            args_of(&build),
+            [
+                "build",
+                "--quiet",
+                "--tag",
+                "helicoid-oracle-sophus",
+                "/r/docker/oracles/sophus"
+            ]
+        );
+        let mounts = [
+            bind(Path::new("/r/corpus"), true)?,
+            bind(Path::new("/r/results/oracle"), false)?,
+        ];
+        let run = container_command("sha256:ab12", &mounts, Some((1000, 100)));
+        assert_eq!(run.get_program(), "docker");
+        assert_eq!(
+            args_of(&run),
+            [
+                "run",
+                "--rm",
+                "--network=none",
+                "--read-only",
+                "--user=1000:100",
+                "--mount=type=bind,src=/r/corpus,dst=/r/corpus,readonly",
+                "--mount=type=bind,src=/r/results/oracle,dst=/r/results/oracle",
+                "sha256:ab12"
+            ]
+        );
+        let anyone = container_command("sha256:ab12", &mounts, None);
+        assert!(!args_of(&anyone).iter().any(|a| a.starts_with("--user")));
+        Ok(())
+    }
+
+    #[test]
+    fn a_mount_is_an_absolute_path_without_a_comma() {
+        for bad in ["relative/dir", "/a,b"] {
+            let e = bind(Path::new(bad), true).err().unwrap_or_default();
+            assert!(
+                e.contains("not an absolute path without a comma"),
+                "{bad}: {e}"
+            );
+        }
+    }
+
+    #[test]
+    fn the_image_id_is_the_last_line_docker_build_prints() -> Result<(), String> {
+        let hex = "0123456789abcdef".repeat(4);
+        let id = format!("sha256:{hex}");
+        assert_eq!(image_id(format!("{id}\n").as_bytes())?, id);
+        assert_eq!(image_id(format!("noise\n{id}\n\n").as_bytes())?, id);
+        for bad in [
+            &b""[..],
+            b"\n",
+            b"sha256:\n",
+            b"sha256:xyz\n",
+            b"Successfully built 1\n",
+        ] {
+            assert!(image_id(bad).is_err(), "{bad:?}");
+        }
+        Ok(())
+    }
+
+    /// The owner of a directory this process created is this process's user, whom the container
+    /// runs as.
+    #[cfg(unix)]
+    #[test]
+    fn the_container_runs_as_the_owner_of_the_answers_directory() -> Result<(), String> {
+        use std::os::unix::fs::MetadataExt;
+        let scratch = Scratch::new("owner");
+        std::fs::create_dir_all(&scratch.0).map_err(|e| e.to_string())?;
+        let meta = std::fs::metadata(&scratch.0).map_err(|e| e.to_string())?;
+        assert_eq!(owner(&scratch.0)?, Some((meta.uid(), meta.gid())));
+        assert!(owner(&scratch.0.join("missing")).is_err());
+        Ok(())
+    }
+
     /// Each registered runner's backend, and an unregistered name answering `None`.
     ///
-    /// `tf_tree_math` declares `libm.workspace = true`; sophus-rs and nalgebra are Rust `std`. The domination
-    /// split reads this, so a wrong entry would silently mislabel a failure (`0036`, draft).
+    /// `tf_tree_math` declares `libm.workspace = true`; sophus-rs and nalgebra are Rust `std`, and
+    /// the Sophus image is C++ on its glibc. The domination split reads this, so a wrong entry
+    /// would silently mislabel a failure (`0036`, draft).
     #[test]
     fn every_runner_declares_where_its_transcendentals_come_from() {
         assert_eq!(backend("tf_tree_math"), Some(Backend::LibmCrate));
         assert_eq!(backend("sophus_rs"), Some(Backend::HostStd));
         assert_eq!(backend("nalgebra"), Some(Backend::HostStd));
+        assert_eq!(backend("sophus"), Some(Backend::HostStd));
         assert_eq!(backend("not_a_runner"), None);
         assert_eq!(names().len(), RUNNERS.len());
     }
@@ -598,7 +836,7 @@ mod tests {
     /// The runner `stub`, answering `so2_exp`; `script` is the `sh` that stands in for it.
     const STUB: Runner = Runner {
         name: "stub",
-        dir: "",
+        launch: Launch::Crate(""),
         backend: Backend::HostStd,
         answers: &["so2_exp"],
     };
