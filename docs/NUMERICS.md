@@ -301,17 +301,26 @@ Storage: unit $n \in \mathbb{R}^3$. The chart at $n$ is frozen at construction:
   discontinuous somewhere. The chart is therefore computed once per linearization and reused; it is
   never recomputed inside $\oplus$ ([`0012`](./decisions/0012-a-retraction-is-a-chart.md)).
 
-## 9. Sim(3) — owed
+## 9. Sim(3)
 
-Storage $(q, t, \sigma)$ with scale $s = e^\sigma$ (so the inverse negates $\sigma$ exactly).
-$X = \begin{bmatrix} sR & t \\ 0 & 1\end{bmatrix}$; $XY = (R_X R_Y,\ s_X R_X t_Y + t_X,\ \sigma_X + \sigma_Y)$.
-Tangent $[\varphi; \rho; \sigma]$, hat $\begin{bmatrix} \varphi^\wedge + \sigma I & \rho \\ 0 & 0\end{bmatrix}$.
-$\mathrm{Ad}_X[\varphi; \rho; \sigma] = [R\varphi;\ sR\rho + [t]_\times R\varphi - \sigma t;\ \sigma]$.
+Stated by [`0070`](./decisions/0070-sim3-a-structured-jacobian-and-a-series-on-delta.md) from `docs/maths/sim3.md` (SM.1–SM.13, checked there). Storage $(q, t, \sigma)$
+with scale $s = e^\sigma$ (so the inverse negates $\sigma$ exactly). $X = \begin{bmatrix} sR & t \\ 0 & 1\end{bmatrix}$;
+$XY = (R_X R_Y,\ s_X R_X t_Y + t_X,\ \sigma_X + \sigma_Y)$, $X^{-1} = (R^\top,\ -s^{-1}R^\top t,\ -\sigma)$, $Xp = sRp + t$.
+Tangent $[\varphi; \rho; \sigma]$, hat $\begin{bmatrix} \varphi^\wedge + \sigma I & \rho \\ 0 & 0\end{bmatrix}$; $W = \varphi^\wedge$,
+$\Xi = \rho^\wedge$, $z = \theta^2$, $\Delta = \sigma^2 + z$, $M = W + \sigma I$.
 
-**Owed before `PHASE5.md` §3 starts**, as an edit to this section plus a record: $\mathrm{Exp}$'s
-$W(\varphi, \sigma)$ block, $\mathrm{Log}$, $J_r$, their coefficients as functions of $(\sigma, \theta)$,
-and the two-dimensional series at the joint limit $\sigma^2 + \theta^2 \to 0$ (Eade 2014; Strasdat
-2012). Jacobians are dense $7 \times 7$ ([`0005`](./decisions/0005-the-jacobian-is-a-dual-matrix.md)).
+- **Exp.** $\mathrm{Exp}\,\tau = (\mathrm{Exp}\,\varphi,\ \mathsf V\rho,\ \sigma)$, $\mathsf V = \sum_k M^k/(k+1)! = v_0I + v_1W + v_2W^2$ (SM.4), and for $\Delta > 0$
+  $$v_0 = \frac{\mathrm{expm1}\,\sigma}\sigma,\quad v_2 = \frac{v_0 + \sigma e^\sigma a - e^\sigma\,\mathrm{sinc}\,\theta}\Delta,\quad v_1 = e^\sigma a - \sigma v_2 \ \text{(form a)} = \frac{\sigma e^\sigma\mathrm{sinc}\,\theta - \mathrm{expm1}\,\sigma + e^\sigma za}\Delta \ \text{(form b)}$$
+  (SM.5(b)), $a$, $b$, $d$ of §4 and $\mathrm{sinc}\,\theta = 1 - zb$.
+- **Log.** $\mathrm{Log}\,X = (\varphi,\ \mathsf V^{-1}t,\ \sigma)$, $\varphi$ by §3.2, $\mathsf V^{-1} = i_0I + i_1W + i_2W^2$ with $\chi = v_0 - zv_2$,
+  $\Lambda = \chi^2 + zv_1^2$, $i_0 = 1/v_0$, $i_1 = -v_1/\Lambda$, $i_2 = (v_1^2 - v_2\chi)/(v_0\Lambda)$ (SM.8). No `mp.logm`: the geometric $\mathrm{SO}(3)$ logarithm and a $\mathsf V$ solve are the reference.
+- **Ad, ad** (SM.9): $\mathrm{Ad}_X = \begin{bmatrix}R & 0 & 0\\ [t]_\times R & sR & -t\\ 0 & 0 & 1\end{bmatrix}$, $\mathrm{ad}_\tau = \begin{bmatrix}W & 0 & 0\\ \Xi & M & -\rho\\ 0 & 0 & 0\end{bmatrix}$.
+- **Jacobians** (SM.10, SM.11): $J_l = \begin{bmatrix}J_l(\varphi) & 0 & 0\\ \mathsf Q & \mathsf V & -\Gamma_2(M)\rho\\ 0 & 0 & 1\end{bmatrix}$, $J_r(\tau) = J_l(-\tau)$, with $y = \mathsf V\rho$,
+  $\mathsf Q = [y]_\times J_l(\varphi) + 2(\partial_zv_1\,W\rho + \partial_zv_2\,W^2\rho)\varphi^\top - v_1\Xi + v_2(\Xi W - 2W\Xi)$, $\Gamma_2(M) = w_0I + w_1W + w_2W^2$,
+  $w_0 = (\mathrm{expm1}\,\sigma - \sigma)/\sigma^2$, $w_2 = (w_0 + \sigma v_2 - v_1)/\Delta$, $w_1 = v_2 - \sigma w_2$, $\partial_zv_2 = (\sigma e^\sigma a' - e^\sigma\mathrm{sinc}' - v_2)/\Delta$, $\partial_zv_1 = e^\sigma a' - \sigma\partial_zv_2$,
+  $a' = -\frac12(b - 2d)$, $\mathrm{sinc}' = -\frac12(a - b)$. The inverses by blocks (SM.10(c)): $J_l^{-1} = \begin{bmatrix}J_l^{-1}(\varphi) & 0 & 0\\ -\mathsf V^{-1}\mathsf QJ_l^{-1}(\varphi) & \mathsf V^{-1} & \mathsf V^{-1}\Gamma_2(M)\rho\\ 0 & 0 & 1\end{bmatrix}$.
+- **Structure.** Every Jacobian above, and every §2.3 row built from them, is $\begin{bmatrix}A & 0 & 0\\ B & C & f\\ 0 & 0 & e\end{bmatrix}$, closed under product and inverse: `Sim3Jac`, not a dense $7\times7$ ([`0070`](./decisions/0070-sim3-a-structured-jacobian-and-a-series-on-delta.md)).
+- **The coefficients** $v_0, v_1, v_2, w_0, w_1, w_2, \partial_zv_1, \partial_zv_2$ are one group: the limits $1, \frac12, \frac16, \frac12, \frac16, \frac1{24}, -\frac1{24}, -\frac1{120}$ at $\Delta = 0$; below $\Delta < r_\times^2$ the total-degree series of SM.6(b) by the recurrences of SM.3 and SM.11(c) at per-sequence depths ($\xi_k$ to $K$, $\zeta_k$ to $K+1$, $\xi'_k$ to $K+2$, $\zeta'_k$ to $K+3$), one mask on $\Delta$ for every direction; above it the closed forms, $v_1$ by form b for $\Delta \ge \Delta_b$, $w_0$ by its series in $\sigma$ below $\lvert\sigma\rvert < \sigma_w$, $v_0 = 1$ and $w_0 = \frac12$ at $\sigma = 0$; for $\sigma > 0$ the scaled arrangement of SM.7(g) ($e^\sigma \to 1$, $\mathrm{expm1}\,\sigma \to -\mathrm{expm1}(-\sigma)$, $e^\sigma$ applied last; `Log` applies $e^{-\sigma/2}(e^{-\sigma/2}t)$). $K$, $r_\times^2$, $\Delta_b$, $\sigma_w$ are generated (`0004`) by a sweep over rays in $(\sigma, \theta)$ whose objective is the blocks' error, each scalar weighted by the power of $\theta$ that multiplies it.
 
 ## 10. Geodesics
 
@@ -464,7 +473,9 @@ $X(t) = X_0\,\mathrm{Exp}(t\,d)$ with $d = X_1 \ominus_R X_0$ and $\Delta = X_0^
 | `sinc`, `sinc_value` | every $z \ge 0$; for $\theta \le \pi$, value and derivative within $5u$ times their condition number (the range `coeff_alpha` scores; beyond it nothing is promised, `0062`) | NaN for NaN; a negative $z$ fails `coeffs`' `debug_assert!` |
 | `Mat2::inverse_adj` | entries of magnitude $m$, $10^{-154} < m < 10^{154}$ (`f64`), $10^{-19} < m < 10^{19}$ (`f32`); the caller decides what `det` means (`0061`) | non-finite at $\det = 0$; outside the range, $\det$ overflows or underflows |
 | `geodesic` | $\theta(d) < \pi$ | §10 |
-| `Sim3` | $\sigma$ finite | — |
+| `Sim3::{exp, adjoint, ad, jr, jl, act, act_jacobians}` | $\lvert\sigma\rvert < \ln\mathrm{MAX}$ ($709.78$ `f64`, $88.72$ `f32`), by the scaled arrangement of §9 ([`0070`](./decisions/0070-sim3-a-structured-jacobian-and-a-series-on-delta.md)) | $e^{\pm\sigma}$ overflows beyond; the unscaled closed forms would fail silently from $\sigma \approx 703$ ($84$) |
+| `Sim3::log` | $\theta(X) \le \pi$, $\lvert\sigma\rvert < \ln\mathrm{MAX}$; a function of $q$'s sign at $\theta = \pi$ (§3.2) | unscaled, $i_2$ would vanish silently from $\sigma \approx 242$ ($33$) |
+| `Sim3::{jr_inv, jl_inv}` | $\theta < 2\pi$, $\lvert\sigma\rvert < \ln\mathrm{MAX}$ | singular at $\theta \in 2\pi\mathbb Z_{>0}$ |
 | `Dual::sqrt` derivative | $v > 0$ | $\pm\infty$ ($d \ne 0$), NaN ($d = 0$); value unaffected (0020) |
 | `Real::cbrt` | every $x$ (odd; signed zeros and infinities are their own cube roots) | — |
 | `Dual::cbrt` derivative | $v \ne 0$ | $\pm\infty$ ($d \ne 0$), NaN ($d = 0$); value unaffected |
@@ -521,6 +532,8 @@ row spells the composition and the proptest writes it inline
 | `geodesic_jacobians` | `Dual` through the reference geodesic | 4 |
 | `Gaussian::to_left` / `to_right` | dense $\mathrm{Ad}\,\Sigma\,\mathrm{Ad}^\top$: `reference::sen3jac_sandwich` with $J = \mathrm{Ad}$, componentwise within $2\gamma_{2D}\lvert A\rvert\lvert\Sigma\rvert\lvert A\rvert^\top$ (`to_left_and_to_right_match_reference_*`, [`0065`](./decisions/0065-a-gaussian-names-its-side-and-is-stored-symmetric.md)) | 5 |
 | `gamma_apply_jacobians` | `Dual` through `reference::gamma_apply`: the first 40 terms of $\sum W^n v/(n+m)!$, left to right, for $\theta \le \pi$ and $m!$ exact at `S`; tolerance per $\theta$ band (`gamma_apply_jacobians_matches_reference_*`, [`0064`](./decisions/0064-the-integrated-exponentials-reuse-the-swept-switches.md), [`0066`](./decisions/0066-gamma-shares-its-coefficients-and-a-gaussian-factors-once.md)) | 5 |
+| `Sim3Jac::mul`, `inverse`, `apply`, `apply_transpose`, `sandwich` | dense product / Gauss–Jordan / $Jx$ / $J^\top x$ / $J\Sigma J^\top$: `reference::sim3jac_*` ([`0070`](./decisions/0070-sim3-a-structured-jacobian-and-a-series-on-delta.md)) | 5 |
+| `Sim3::jr_inv`, `jl_inv` (block algebra) | dense Gauss–Jordan inverse of `jr`, `jl` | 5 |
 | `S2Chart::local` | $\mathrm{Log}$ of the minimal rotation taking $n$ to $m$, projected on $B$: `reference::s2_local`, the quaternion $(1 + n\cdot m,\ n \times m)$ normalized through `SO3::log`; `s2_local_matches_reference` scores the difference over `local`'s conditioning $\alpha/\sin\alpha$, 5.870 `u` at binary64 and 6.034 at binary32 ([`0067`](./decisions/0067-the-sphere-takes-plane-coordinates-and-both-precisions.md)) | 5 |
 | `chol_solve` (`helicoid-linalg`) | composition of public fns, no `reference` item: `solve_upper(&l.transpose(), solve_lower(&l, b))` | 2 |
 
