@@ -13,11 +13,11 @@ defects and `tf_tree_math`, which becomes oracle #1 ([`0010`](./decisions/0010-s
 
 | Area | Status |
 |---|---|
-| Workspace, lints, `justfile`, CI matrix (§3) | Partial: workspace, lints, `justfile` and CI for `build`/`test`/`lint`/`audit`/`msrv`/`no-std`/`wasm`/`doc`/`corpus-check`/`conformance --self-test`/`thresholds-check`/`envelope`. Determinism and container oracles pending. |
+| Workspace, lints, `justfile`, CI matrix (§3) | Partial: workspace, lints, `justfile` and CI for `build`/`test`/`lint`/`audit`/`msrv`/`no-std`/`wasm`/`doc`/`corpus-check`/`conformance --self-test`/`thresholds-check`/`envelope`. Determinism, the manif and GTSAM containers and the nightly `oracles` job pending. |
 | Reference generator and committed corpus v1 (§4) | Partial: generator skeleton and committed corpus v1 with 150-digit mpmath reference generation across scalar and group strata. SE(2) coefficients pending. |
 | Conformance harness and result schema (§5) | Partial: `cargo xtask conformance` runner, result CSV generation, and seeded defect checks. Backward error and f32 vector strata pending. |
 | Threshold sweep and generated-file format (§6) | Partial: two-stage threshold sweep over full domain generating `coeffs` and series tables (`0039`, `0047`). |
-| Oracle runners: `tf_tree_math`, sophus-rs (excluded crates); Sophus, manif, GTSAM (containers) (§7) | Partial: runners implemented for `tf_tree_math` and `sophus_rs` over file protocol. Containerized oracles pending. |
+| Oracle runners: `tf_tree_math`, sophus-rs (excluded crates); Sophus, manif, GTSAM (containers) (§7) | Partial: runners implemented for `tf_tree_math`, `sophus_rs` and `nalgebra` (`0056`) over file protocol; the Sophus container done (`0072`). manif and GTSAM containers pending. |
 | Envelope and bars (§8) | Partial: domination and no-regression gating over baseline and oracles (`0006`). Baseline blessing awaiting Phase 3 candidate rows. |
 | Bench harness and gate (§9) | Partial: criterion benchmarks and replicate-outermost gate (`0033` draft). Bench-check CI job pending. |
 | Seeded-defect validation (§10) | Partial: `just conformance --self-test` runs defect injection for coefficient, SO(3), and SE(3) defects. |
