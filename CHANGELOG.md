@@ -34,6 +34,7 @@ defined by the status tables in `docs/`; they win over this file.
 
 ### Changed
 
+- **`Matrix × Matrix` is a plain loop** (`0069`): the nested `array::from_fn` built the product through the stack, 87 stores for a `3 x 3`; the same sums in the same order, so every output is bit-identical. `Jac::mul` on SO(3), SE(3) and SE₂(3) takes 0.09–0.11 of its former time, SE_N(3) `jr_inv` and `rminus_jacobians` 0.40–0.60.
 - **`Vector::dot` is a plain loop** (`0067`): the same left-to-right sum, so every output is bit-identical, but `f32` callers no longer reload each lane through an `array::IntoIter` on the stack. `f32` `S2Chart::local` takes 0.13–0.21 of its former time and the SE₂(3) Gaussian gate 0.87; a few `f64` rows move by ±5% with register allocation.
 
 ## [0.0.2] - 2026-10-09

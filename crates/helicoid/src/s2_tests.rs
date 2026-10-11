@@ -480,3 +480,67 @@ fn s2_is_a_manifold_of_dimension_two() {
     assert_eq!(<S2<f64> as Manifold<f64>>::DOF, 2);
     assert_eq!(<RnTangent<f64, 2> as Tangent<f64>>::DOF, 2);
 }
+
+/// The cases the Jacobian forms were chosen for, which the random draws (`θ < √2`) never reach:
+/// `(base, δ, other)` with `δ` within `10⁻ᵏ` of `π` (`retract_jacobian` near singular, `other`
+/// `retract(δ)` near `-n`, where `local_jacobian`'s norm is `α/sin α`), and a base and a step on the
+/// equator, where `m_z` is a rounded zero and the frame at `m` is read from its sign (CH.11).
+fn edge_cases() -> std::vec::Vec<([f64; 3], [f64; 2], f64)> {
+    let mut out = std::vec::Vec::new();
+    for k in 1..=6 {
+        let theta = core::f64::consts::PI - 10f64.powi(-k);
+        for (n, beta) in [
+            ([0.3, -0.5, 0.8], 0.4),
+            ([0.6, 0.8, -0.0], 2.1),
+            ([0.0, 0.0, 1.0], -1.3),
+        ] {
+            out.push((n, [theta * f64::cos(beta), theta * f64::sin(beta)], theta));
+        }
+    }
+    for lambda in [0.3, 1.9, 4.0] {
+        let (c, s) = (f64::cos(lambda), f64::sin(lambda));
+        for theta in [0.1, 1.0, 3.0] {
+            // `Bᵀ(θ e_z) = -θ (n_x, n_y)` at `n_z = 0`: a rotation about `e_z`, along the equator.
+            out.push(([c, s, 0.0], [-theta * c, -theta * s], theta));
+        }
+    }
+    out
+}
+
+/// At an edge case, `[both Jacobians against Dual, the inverse pair]`, the first over `local`'s
+/// conditioning `κ = α/sin α` at `retract(δ)` and the second over `κ²`: `α/s` itself inherits
+/// `u/(π - α)` from the rounded `s`, and `lj · rj` multiplies it by `‖lj‖ = κ` (CH.11(e)). `Dual`
+/// is the discriminating one: it differentiates the same rounded inputs, so it reads the form and
+/// not the conditioning, where CH.10(c)'s `1/(1 + w)` would read `κ` times higher.
+fn edge_errors(n: &[f64; 3], d: &[f64; 2], theta: f64) -> [f64; 2] {
+    let k = (theta / f64::sin(theta)).max(1.0);
+    let chart = S2Chart::at(&point::<f64>(n));
+    let m = f(chart.retract(&tangent::<f64>(d)).vec());
+    [
+        jacobians_match_dual(n, d, &m) / k,
+        inverse_pair::<f64>(n, d) / (k * k),
+    ]
+}
+
+// `measure_s2_edges`, the worst over `edge_cases`: `Dual` 2.027, inverse pair 2.547.
+const EDGE: [f64; 2] = [5.0, 6.0];
+
+#[test]
+fn jacobians_hold_near_the_antipode_and_on_the_equator() {
+    for (n, d, theta) in edge_cases() {
+        let e = edge_errors(&n, &d, theta);
+        assert!(
+            e[0] <= EDGE[0] && e[1] <= EDGE[1],
+            "{n:?} θ = {theta}: {e:?}"
+        );
+    }
+}
+
+#[test]
+#[ignore = "measurement: prints the figures the edge bounds are recorded from"]
+#[allow(clippy::print_stdout)]
+fn measure_s2_edges() {
+    for (n, d, theta) in edge_cases() {
+        std::println!("{n:?} θ = {theta:.9} {:.3?}", edge_errors(&n, &d, theta));
+    }
+}
