@@ -4,6 +4,10 @@
 **Owner:** @NoeFontana
 **Implementation:** —
 
+> **Amended by [`0070`](./0070-sim3-a-structured-jacobian-and-a-series-on-delta.md) for Sim(3) only:** its Jacobians are not dense
+> `7 × 7` but the structured `Sim3Jac`, `[A 0 0; B C f; 0 0 e]`, closed under product and inverse
+> (`docs/maths/sim3.md` SM.9).
+
 ## Context
 
 Every SE_N(3) Jacobian that matters — $\mathrm{Ad}$, $\mathrm{ad}$, $J_r$, $J_l$ and their

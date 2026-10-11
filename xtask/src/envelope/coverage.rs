@@ -20,7 +20,16 @@ const OWED: &[(u8, &str, &str, &[&str])] = &[
         5,
         "Sim(3)",
         "PHASE5.md §3",
-        &["sim3_exp", "sim3_log", "sim3_jr", "sim3_jr_inv", "sim3_ad"],
+        &[
+            "sim3_exp",
+            "sim3_log",
+            "sim3_jr",
+            "sim3_jl",
+            "sim3_jr_inv",
+            "sim3_jl_inv",
+            "sim3_ad",
+            "sim3_act",
+        ],
     ),
     (
         6,
