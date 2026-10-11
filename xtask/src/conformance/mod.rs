@@ -46,6 +46,7 @@ mod selftest;
 mod selftest_envelope;
 mod selftest_gamma;
 mod selftest_linalg;
+mod selftest_s2;
 mod selftest_se3;
 mod selftest_so3;
 pub(crate) mod subject;
@@ -559,7 +560,7 @@ mod tests {
         let split = |subjects: &[Registered]| split_f32(&dir, corpus::manifest(&dir)?, subjects);
         let (with, left_out) = split(&[registered(Perfect::exact())])?;
         // Exactly the ids with an `@f32` stratum: the coefficient ids (`0016`), the routines'
-        // (`0056`, `0061`), `so3_gamma2` (`0064`) and the Gaussians' (`0065`).
+        // (`0056`, `0061`), `so3_gamma2` (`0064`), the Gaussians' (`0065`) and S²'s (`0067`).
         let entries = corpus::manifest(&dir)?;
         let mut with_f32 = Vec::new();
         for e in &entries {
@@ -581,6 +582,7 @@ mod tests {
                 "mat2_",
                 "so3_gamma2",
                 "gaussian_",
+                "s2_",
             ]
             .iter()
             .any(|p| id.starts_with(p))

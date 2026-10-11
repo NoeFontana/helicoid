@@ -157,6 +157,18 @@
       "records": 1152,
       "sha256": "235a619fd95f89a29541347ca8857047a61a2d58dd2a30ec190f928764bcc8a6"
     },
+    "s2_local.jsonl": {
+      "kind": "corpus",
+      "rechecked": 6,
+      "records": 384,
+      "sha256": "662db4c48c0a76a6ac72c4ab9646704741b9616e4619679ec803af5bc83e01fe"
+    },
+    "s2_retract.jsonl": {
+      "kind": "corpus",
+      "rechecked": 6,
+      "records": 384,
+      "sha256": "c6a6d892d0275d925d302d6b98948ac525257e3b3156c2ac936cd39ad82958c1"
+    },
     "se2_ad.jsonl": {
       "kind": "corpus",
       "rechecked": 52,
@@ -446,7 +458,7 @@
       "sha256": "3780fb0bfac76491d5c03b5ebbeb52fc333c95edaf3784bf6e805add3f219f2b"
     }
   },
-  "generator": "sha256:a7e5d26bfb139b66ae7e2ece35d064d7b54666d97acc546d6dd77169ef950f25",
+  "generator": "sha256:dd404810c342f68371bdeae8a3acdd4507a147dbe15e930db7bf7733ef9c9e08",
   "mpmath": "1.4.1",
   "python": "3.12",
   "recheck": {

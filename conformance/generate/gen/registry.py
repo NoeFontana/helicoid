@@ -22,6 +22,7 @@ from . import (
     mat2,
     quat,
     real,
+    s2,
     se2,
     sen3,
     so2,
@@ -175,6 +176,11 @@ FUNCTIONS: dict[str, FunctionSpec] = {
                 ),
             )
         ),
+        # 0063, docs/PHASE5.md section 2: S2's chart, binary64 strata then their `@f32` twins (0067).
+        FunctionSpec(
+            "s2_retract", s2.RETRACT_STRATA, drawn_inputs, s2.retract, check_charts.s2_retract
+        ),
+        FunctionSpec("s2_local", s2.LOCAL_STRATA, drawn_inputs, s2.local, check_charts.s2_local),
         # docs/decisions/0056: the routines D7 did not reach. Binary64 strata, then `@f32` ones.
         FunctionSpec(
             "solve_cubic", cubic.STRATA, drawn_inputs, cubic.solve_cubic, check_linalg.solve_cubic

@@ -15,8 +15,8 @@ from gen.strata import SCALAR_THETA_STRATA, Stratum
 
 precision.setup()
 COMMITTED = manifest.ROOT.parent / "corpus"
-# 0056, 0061, 0065
-ASKED_FOR_F32 = ("solve_cubic", "eig3", "chol_", "quat_", "real_", "mat2_", "gaussian_")
+# 0056, 0061, 0065, 0067 (S2's two ids)
+ASKED_FOR_F32 = ("solve_cubic", "eig3", "chol_", "quat_", "real_", "mat2_", "gaussian_", "s2_")
 SUBSET_STRATUM = next(s for s in SCALAR_THETA_STRATA if s.name == "theta:exact0")
 
 
@@ -182,7 +182,8 @@ class BuildTest(unittest.TestCase):
         """An `@f32` stratum is named for its binary64 namesake where one exists (0056 decision 2)
         and follows the binary64 order; the others (`x:1e37@f32`) are the binary32 range's own."""
         names = [n for n in FUNCTIONS if n.startswith(ASKED_FOR_F32)]
-        self.assertEqual(len(names), 13 + 1 + 2)  # and 0061's `mat2_inverse_adj`, 0065's two
+        # and 0061's `mat2_inverse_adj`, 0065's two, 0067's two
+        self.assertEqual(len(names), 13 + 1 + 2 + 2)
         for name in names:
             strata = FUNCTIONS[name].strata
             flags = [s.f32 for s in strata]

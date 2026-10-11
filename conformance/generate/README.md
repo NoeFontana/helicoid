@@ -23,6 +23,7 @@ uv run --frozen python -m gen list
 | `gen/series.py`, `gen/check.py`, `gen/check_sen3.py`, `gen/check_se2.py` | the exact Taylor series (`coeff_series`); the per-record cross-checks |
 | `gen/cubic.py`, `gen/eig.py`, `gen/chol.py`, `gen/quat.py`, `gen/real.py`, `gen/dense.py`, `gen/gaussian.py` | the ids of `docs/decisions/0056`, each with its strata (`strata.Drawn`); n×n helpers and exact rational LDLᵀ |
 | `gen/check_linalg.py`, `gen/check_real.py`, `gen/check_gaussian.py` | their cross-checks |
+| `gen/charts.py`, `gen/s2.py`, `gen/check_charts.py` | the chart ids (`docs/decisions/0060` decision 8, `0063`) and their cross-checks |
 | `gen/fmt.py`, `gen/corpus.py`, `gen/manifest.py` | text formats and `Mat`, assembly (parallel by stratum) and recheck, `MANIFEST.json` |
 
 ## Record schema
@@ -180,6 +181,20 @@ Haar-random rotation, a unit-norm translation); `out` is the pose `{q, x}`. A `l
 cancels and the answer's own size is the wrong denominator. No `mp.logm`: the rotation's `Log` is `gen.so3`'s geometric one. Cross-checks: a
 `retract`'s answer goes back to its twist through the chart's `local` (and `screw`'s translation
 matches `mp.expm` of the 4x4 hat), a `local`'s answer back to `Y` through the chart's `retract`.
+
+## S² (`docs/decisions/0063`)
+
+`s2_retract` and `s2_local` (`gen/s2.py`, `docs/maths/charts.md` CH.8–CH.9): a `retract` record is
+`{n, delta}`, `out` the point `{m}`; a `local` record is `{n, m}`, `m` the reference retract of the
+same `(n, delta)` rounded once, `out` the chart coordinates `{delta}`. Both read `n` normalized and
+the frame of CH.8 with `ς = −1` iff the stored `n_z < 0`, so `±0` give one frame (`0063` decision
+1). `local` is the minimal rotation's geometric `Log` projected on `B`, never `mp.logm` (decision 4).
+Strata, 64 records each: `s2:nz0` (`n_z = +0` and `−0` alternately), `s2:near-antipode`
+(`θ = π − 10^-k`, `k` in `1, 2, 3, 6, 9, 12`; `1` to `6` at binary32) and `s2:generic` (`θ`
+log-uniform in `[1e-8, π − 0.1]`), then their `@f32` twins (`0067`), which round the same draws once
+to binary32. Cross-checks: CH.9(a)'s closed form, `‖m‖ = 1` and the `local` round trip for a
+`retract`; the `retract` round trip and decision 4's quaternion route through `gen.so3`'s `log` for a
+`local`.
 
 ## Gaussians (`docs/decisions/0065`)
 

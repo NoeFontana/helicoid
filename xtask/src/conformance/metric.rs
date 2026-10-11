@@ -83,6 +83,9 @@ pub(crate) enum Rule {
     /// `mat2_inverse_adj` (`0061` decision 3): forward error on `inv` and `det`, except where the
     /// reference `det` is exactly 0, [`adjugate`].
     Adjugate,
+    /// A unit-vector output (`0063` decision 5): the angle to the reference and the drift off the
+    /// sphere, [`direction`].
+    Direction(&'static str),
 }
 
 impl Rule {
@@ -100,6 +103,7 @@ impl Rule {
             Rule::Roots => roots(rec, out, precision),
             Rule::Masked { mask, fields } => masked(mask, fields, rec, out, precision),
             Rule::Adjugate => adjugate(rec, out, precision),
+            Rule::Direction(field) => direction(field, rec, out, precision),
         }
     }
 
@@ -113,6 +117,7 @@ impl Rule {
             Rule::Eigen => vec!["lambda", "V"],
             Rule::Roots => vec!["re", "im"],
             Rule::Adjugate => ADJUGATE.iter().map(|f| f.field).collect(),
+            Rule::Direction(field) => vec![*field],
             Rule::Masked { mask, fields } => {
                 let mut v: Vec<&str> = fields.iter().map(|f| f.field).collect();
                 v.push(mask);
@@ -192,6 +197,10 @@ const SE3_LOCAL: &[FieldRule] = &[
         SignRule::Fixed,
     ),
 ];
+/// `s2_local` (`0063` decision 5): a tangent in `ℝ²`, the 2-norm forward error, floored at 1 as
+/// [`SE3_LOCAL`]'s rotation is: two absolute unit vectors in, so a nearby pair cancels to a `δ` whose
+/// own size is the wrong denominator.
+const S2_LOCAL: &[FieldRule] = &[field("delta", Floor::Unit, SignRule::Fixed)];
 const SO2_EXP: &[FieldRule] = &[field("z", Floor::Unit, SignRule::Fixed)];
 const SO2_LOG: &[FieldRule] = &[field("theta", Floor::Tiny, SignRule::Fixed)];
 const SE2_EXP: &[FieldRule] = &[
@@ -270,6 +279,9 @@ const TABLE: &[(&str, Rule)] = &[
     ("se3_screw_local", Forward(SE3_LOCAL)),
     ("se3_decoupled_local", Forward(SE3_LOCAL)),
     ("se3_world_local", Forward(SE3_LOCAL)),
+    // `0063` decision 5: a point of S² is a direction; its chart coordinates are a tangent.
+    ("s2_retract", Rule::Direction("m")),
+    ("s2_local", Forward(S2_LOCAL)),
     ("sen3_exp", Forward(SEN3_EXP)),
     ("sen3_log", Forward(TANGENT)),
     ("sen3_ad", Forward(AD)),
@@ -759,6 +771,58 @@ fn adjugate(rec: &Record, out: &Output, precision: Precision) -> Result<Score, S
     Ok(finite_or_nonfinite(d.abs() / size * 2f64.powi(bits as i32)))
 }
 
+/// `NUMERICS.md` §11's direction metric (`0063` decision 5) on the 3-vector `field`:
+/// `max(atan2(‖ŷ × y‖, ŷ·y)/u, |‖ŷ‖² - 1|/(2u))`, the angle to the reference and the drift off the
+/// sphere, which the angle cannot see.
+///
+/// Formed exactly as [`forward_u`] is: `ŷ × y`, `ŷ·y` and `‖ŷ‖²` are integers over one scale `S²`,
+/// so the tangent `‖ŷ × y‖/(ŷ·y)` and the drift are each rounded once. The angle is the tangent
+/// itself below `2^-26`, where `atan x = x(1 - x²/3 + …)` is `x` to the bit; above it the error is
+/// gross and `f64::atan` of the rounded tangent reads it.
+fn direction(
+    field: &str,
+    rec: &Record,
+    out: &Output,
+    precision: Precision,
+) -> Result<Score, String> {
+    let bits = unit_bits(precision);
+    let y = reference(rec, field, 3)?;
+    let Some(yh) = values(out, field, 3, precision)? else {
+        return Ok(Score::NonFinite);
+    };
+    let yh: Vec<Dyadic> = yh.iter().map(|&x| Dyadic::of(x)).collect();
+    let ex = Exact::of(y, &yh);
+    let a: Vec<BigInt> = yh.iter().map(|d| ex.dyadic(d)).collect();
+    let b: Vec<BigInt> = y.iter().map(|d| ex.decimal(d)).collect();
+    let cross = [
+        &a[1] * &b[2] - &a[2] * &b[1],
+        &a[2] * &b[0] - &a[0] * &b[2],
+        &a[0] * &b[1] - &a[1] * &b[0],
+    ];
+    let c2: BigUint = cross.iter().map(square).sum();
+    let dot: BigInt = a.iter().zip(&b).map(|(p, q)| p * q).sum();
+    let unit = (-(bits as f64)).exp2();
+    let angle = if dot.sign() == Sign::Plus {
+        let t = ratio_u(&c2, &square(&dot), bits);
+        if t * unit < (-26.0f64).exp2() {
+            t
+        } else {
+            (t * unit).atan() / unit
+        }
+    } else {
+        // At or past a right angle, a total loss, read as the angle it is: `π/2 + atan(|ŷ·y| /
+        // ‖ŷ × y‖)`, with an exactly antipodal `ŷ` (`ŷ × y = 0`) at `π`.
+        let t = sqrt_ratio(&square(&dot), &c2.max(BigUint::from(1u32)));
+        (core::f64::consts::FRAC_PI_2 + t.atan()) / unit
+    };
+    let s2 = ex.square();
+    let n2: BigUint = a.iter().map(square).sum();
+    let excess = if n2 >= s2 { &n2 - &s2 } else { &s2 - &n2 };
+    let excess = excess << (bits - 1);
+    let drift = sqrt_ratio(&(&excess * &excess), &(&s2 * &s2));
+    Ok(finite_or_nonfinite(angle.max(drift)))
+}
+
 /// A shift or power that is non-negative by construction.
 fn nonneg(n: i64) -> usize {
     debug_assert!(n >= 0);
@@ -979,6 +1043,61 @@ mod tests {
         Ok(())
     }
 
+    fn direction_u(y: &[&str], yh: &[f64], precision: Precision) -> Result<f64, String> {
+        let rec = record(&[], &[("m", y)])?;
+        let out = Output::from([("m".to_string(), yh.to_vec())]);
+        finite(direction("m", &rec, &out, precision)?)
+    }
+
+    #[test]
+    fn a_direction_scores_its_angle_and_its_drift() -> Result<(), String> {
+        let e = ["0e0", "0e0", "1e0"];
+        assert_eq!(direction_u(&e, &[0.0, 0.0, 1.0], Precision::F64)?, 0.0);
+        // Rotated by 2^-40 about x: the angle is the tangent to the bit, 2^13 u.
+        let t = 2f64.powi(-40);
+        let s = direction_u(&e, &[0.0, t, 1.0], Precision::F64)?;
+        near(s, t / U);
+        // Along the reference, one ulp below 1: no angle, a drift of (1 - (1 - u)²)/2u ≈ 1.
+        let d = direction_u(&e, &[0.0, 0.0, 1.0 - U], Precision::F64)?;
+        near(d, 1.0 - U / 2.0);
+        // Scaled by 2: the angle cannot see it, the drift reads (4 - 1)/2u.
+        assert_eq!(direction_u(&e, &[0.0, 0.0, 2.0], Precision::F64)?, 1.5 / U);
+        // A right angle and the antipode, total losses read as angles.
+        near(
+            direction_u(&e, &[1.0, 0.0, 0.0], Precision::F64)?,
+            core::f64::consts::FRAC_PI_2 / U,
+        );
+        near(
+            direction_u(&e, &[0.0, 0.0, -1.0], Precision::F64)?,
+            core::f64::consts::PI / U,
+        );
+        // At f32, in units of 2^-24: a tangent of 2^-23 is past the cut, so the angle is atan's,
+        // 2 - 9.5e-15 and not 2.
+        let x = f64::from(f32::EPSILON);
+        let s = direction_u(&e, &[0.0, x, 1.0], Precision::F32)?;
+        near(s, x.atan() / (x / 2.0));
+        assert!(s < 2.0);
+        Ok(())
+    }
+
+    #[test]
+    fn a_direction_scores_against_the_exact_reference() -> Result<(), String> {
+        // (0.6, 0.8, 0): the doubles differ from 3/5 and 4/5 by under u/2 each, so the angle and the
+        // drift are both below 1 u, and the reference is never rounded first.
+        let y = ["6e-1", "8e-1", "0e0"];
+        let f = direction_u(&y, &[0.6, 0.8, 0.0], Precision::F64)?;
+        assert!(f > 0.0 && f < 1.0, "{f}");
+        let rec = record(&[], &[("m", &y)])?;
+        let nan = Output::from([("m".to_string(), vec![f64::NAN, 0.8, 0.0])]);
+        assert_eq!(
+            direction("m", &rec, &nan, Precision::F64)?,
+            Score::NonFinite
+        );
+        let short = Output::from([("m".to_string(), vec![0.6, 0.8])]);
+        assert!(direction("m", &rec, &short, Precision::F64).is_err());
+        Ok(())
+    }
+
     /// `field_score` at `f32`, with the floor of a coefficient.
     fn f32_score(y: &str, yh: f64) -> Result<Score, String> {
         let rec = record(&[], &[("v", &[y])])?;
@@ -1156,6 +1275,7 @@ mod tests {
         let locals = ["se3_screw_local", "se3_decoupled_local", "se3_world_local"];
         add(&locals, "phi", Want::Unit, false);
         add(&locals, "rho", Want::Scale, false);
+        add(&["s2_local"], "delta", Want::Unit, false);
         add(&["chol_solve_n3", "chol_solve_n6"], "x", Want::Tiny, false);
         add(&["quat_renormalize"], "q", Want::Tiny, false);
         for name in ["real_sqrt", "real_cbrt", "real_acos"] {
@@ -1205,7 +1325,12 @@ mod tests {
             };
             let own_test = matches!(
                 r,
-                BackwardOnly | Rule::Eigen | Rule::Roots | Rule::Masked { .. } | Rule::Adjugate
+                BackwardOnly
+                    | Rule::Eigen
+                    | Rule::Roots
+                    | Rule::Masked { .. }
+                    | Rule::Adjugate
+                    | Rule::Direction(_)
             );
             assert!(own_test || wanted.iter().any(listed), "{family}");
         }

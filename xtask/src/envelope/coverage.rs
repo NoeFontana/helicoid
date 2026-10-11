@@ -18,12 +18,6 @@ const OWED: &[(u8, &str, &str, &[&str])] = &[
     (2, "corpus ids (§6)", "PHASE2.md §6", &["svd3"]),
     (
         5,
-        "S² and its chart",
-        "PHASE5.md §2",
-        &["s2_retract", "s2_local"],
-    ),
-    (
-        5,
         "Sim(3)",
         "PHASE5.md §3",
         &["sim3_exp", "sim3_log", "sim3_jr", "sim3_jr_inv", "sim3_ad"],
@@ -89,6 +83,8 @@ pub(super) fn required() -> Vec<String> {
     ids.push("so3_gamma2".to_string());
     // `0065`'s, `Gaussian::mahalanobis_sq`, likewise.
     ids.extend(["se3", "se23"].map(|g| format!("gaussian_mahalanobis_{g}")));
+    // `0063`'s, S² and its chart, likewise.
+    ids.extend(["s2_retract", "s2_local"].map(String::from));
     ids
 }
 
@@ -306,13 +302,13 @@ mod tests {
     #[test]
     fn an_owed_id_that_has_a_file_fails() {
         let mut have = required();
-        have.push("s2_retract".into());
+        have.push("sim3_exp".into());
         let c = check(&have, &rows(&[]));
         assert_eq!(c.failures.len(), 1);
         assert!(c.failures[0]
             .text
-            .contains("`s2_retract` has a corpus file and is listed as owed"));
-        have.push("s2_local".into());
+            .contains("`sim3_exp` has a corpus file and is listed as owed"));
+        have.push("sim3_log".into());
         assert_eq!(check(&have, &rows(&[])).failures.len(), 2);
     }
 
