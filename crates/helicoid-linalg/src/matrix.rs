@@ -226,11 +226,23 @@ impl<S: Real, const R: usize, const K: usize, const C: usize> Mul<Matrix<S, K, C
     type Output = Matrix<S, R, C>;
     #[inline]
     fn mul(self, o: Matrix<S, K, C>) -> Matrix<S, R, C> {
-        Matrix {
-            cols: array::from_fn(|c| {
-                array::from_fn(|r| sum((0..K).map(|k| self.cols[k][r] * o.cols[c][k])))
-            }),
+        // `Vector::dot`'s loop, not `array::from_fn` of `sum`: the same sums in the same order, but
+        // the nested `from_fn` built the output through the stack, 87 stores and 39 reloads for a
+        // `3 x 3` at either precision against none (`0069`).
+        let mut cols = [[S::zero(); R]; C];
+        if K == 0 {
+            return Matrix { cols };
         }
+        for (c, out) in cols.iter_mut().enumerate() {
+            for (r, e) in out.iter_mut().enumerate() {
+                let mut acc = self.cols[0][r] * o.cols[c][0];
+                for k in 1..K {
+                    acc = acc + self.cols[k][r] * o.cols[c][k];
+                }
+                *e = acc;
+            }
+        }
+        Matrix { cols }
     }
 }
 

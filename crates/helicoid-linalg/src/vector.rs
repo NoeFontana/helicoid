@@ -56,13 +56,12 @@ impl<S: Real, const N: usize> Vector<S, N> {
         // same order, but at `f32` LLVM kept the two `array::IntoIter`s on the stack and reloaded
         // each lane through its alive range, and `(0..N).map` left a dead stack store per term
         // (`0067`).
-        let (a, b) = (&self.0, &o.0);
-        let Some((a0, b0)) = a.first().zip(b.first()) else {
+        if N == 0 {
             return S::zero();
-        };
-        let mut acc = *a0 * *b0;
+        }
+        let mut acc = self.0[0] * o.0[0];
         for i in 1..N {
-            acc = acc + a[i] * b[i];
+            acc = acc + self.0[i] * o.0[i];
         }
         acc
     }

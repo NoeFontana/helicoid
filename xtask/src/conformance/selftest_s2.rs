@@ -15,7 +15,7 @@
 use std::fmt::Write;
 use std::path::Path;
 
-use helicoid::{Chart, RnTangent, S2Chart, S2};
+use helicoid::{Chart, S2Chart, S2};
 use helicoid_linalg::{Precision, Real, Vector};
 
 use super::corpus::{self, Record};
@@ -23,7 +23,7 @@ use super::evaluate;
 use super::metric::unit_bits;
 use super::selftest::Report;
 use super::subject::{Output, Registered, Subject};
-use crate::shipped::{s2_of, scalars, Helicoid};
+use crate::shipped::{s2_of, Helicoid, Sphere};
 
 /// How far above the clean maximum a planted one must read, as `selftest_gamma`'s.
 const FACTOR: f64 = 1024.0;
@@ -59,35 +59,19 @@ impl Planted {
     }
 
     fn answer<S: Real + Into<f64>>(self, fn_id: &str, record: &Record) -> Output {
-        let Some(n) = s2_of::<S>(record, "n") else {
+        let (Some(id), Some(n)) = (Sphere::of_fn(fn_id), s2_of::<S>(record, "n")) else {
             return Output::new();
         };
-        let chart = match self {
-            Planted::SignBit => S2Chart::at(&sign_bit(n)),
-            Planted::FullRatio => S2Chart::at(&n),
-        };
-        match (self, fn_id) {
-            (Planted::SignBit, "s2_retract") => {
-                let Some(d) =
-                    scalars::<S>(record, "delta").and_then(|d| <[S; 2]>::try_from(d).ok())
-                else {
-                    return Output::new();
-                };
-                let m = chart.retract(&RnTangent { rho: Vector(d) });
-                Output::from([("m".to_string(), m.vec().0.map(Into::into).to_vec())])
+        match self {
+            Planted::SignBit => id.answer_with(&S2Chart::at(&sign_bit(n)), record),
+            Planted::FullRatio => {
+                // `2δ`, exact at both precisions: the clean answer with §8's ratio as worded.
+                let mut out = id.answer_with(&S2Chart::at(&n), record);
+                if let Some(d) = out.get_mut("delta") {
+                    d.iter_mut().for_each(|x| *x *= 2.0);
+                }
+                out
             }
-            (_, "s2_local") => {
-                let Some(m) = s2_of::<S>(record, "m") else {
-                    return Output::new();
-                };
-                let k = match self {
-                    Planted::SignBit => S::one(),
-                    Planted::FullRatio => S::lit(2.0),
-                };
-                let d = chart.local(&m).rho.0.map(|x| k * x);
-                Output::from([("delta".to_string(), d.map(Into::into).to_vec())])
-            }
-            _ => Output::new(),
         }
     }
 }

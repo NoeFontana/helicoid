@@ -304,15 +304,6 @@ impl<S: Real> Manifold<S> for S2<S> {
     const DOF: usize = 2;
 }
 
-/// `B rows · v`, the two rows of `m` against the first two entries of `v`.
-#[inline]
-fn apply_rows<S: Real, const D: usize>(m: &Mat2<S>, v: &Vector<S, D>) -> Vector<S, D> {
-    let rows = [m.row(0).0, m.row(1).0];
-    Vector(array::from_fn(|r| {
-        rows[r][0] * v.0[0] + rows[r][1] * v.0[1]
-    }))
-}
-
 /// The dense Jacobian of [`S2Chart`] (`docs/PHASE5.md` §1.4): S² has no group structure for a
 /// structured type to exploit.
 impl<S: Real> Jac<S, RnTangent<S, 2>> for Mat2<S> {
@@ -370,8 +361,9 @@ impl<S: Real> Jac<S, RnTangent<S, 2>> for Mat2<S> {
     #[inline]
     fn sandwich<const D: usize>(&self, cov: &Matrix<S, D, D>) -> Matrix<S, D, D> {
         const { assert!(D == <RnTangent<S, 2> as Tangent<S>>::DOF) };
-        // `Mat3`'s order: `M = J Σ` by columns, then row `r` of `M Jᵀ` is `J` applied to row `r`.
-        let m = Matrix::from_cols(array::from_fn(|c| apply_rows::<S, D>(self, &cov.col(c))));
-        Matrix::from_rows(array::from_fn(|r| apply_rows::<S, D>(self, &m.row(r))))
+        // `D == 2`, so `cov` is a `Mat2` read entry by entry, and `(J Σ) Jᵀ` is `Mat3`'s order.
+        let c = Matrix::from_cols([0, 1].map(|j| Vector([cov.get(0, j), cov.get(1, j)])));
+        let m = (*self * c) * self.transpose();
+        Matrix::from_cols(array::from_fn(|j| Vector(array::from_fn(|i| m.get(i, j)))))
     }
 }
