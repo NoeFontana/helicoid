@@ -118,15 +118,28 @@ cross-checked against the closed forms at 250 digits to `10⁻⁹⁰` (`sim3_ref
 
 | precision | `K` | `r_×²` | `Δ_b` | `σ_w²`, terms | objective | series | closed | `w₀` |
 |---|---|---|---|---|---|---|---|---|
-| `f64` | 13 | 0.2371 | `= r_×²` | 0.5829, 15 | 4.72 u | 4.72 | 3.04 | 1.63 |
-| `f32` | 8 | 0.4217 | `= r_×²` | 0.5829, 8 | 2.93 u | 2.83 | 2.93 | 1.63 |
+| `f64` | 13 | 0.2371 | `= r_×²` | 0.5829, 15 | 4.72 u | 4.72 | 4.03 | 1.63 |
+| `f32` | 9 | 0.8354 | `= r_×²` | 0.5829, 8 | 2.93 u | 2.83 | 2.93 | 1.63 |
 
-`Δ_b = r_×²`: form b of `v₁` wins wherever the closed arm runs. Past the rays, the scaled
+`Δ_b = r_×²`: form b of `v₁` wins wherever the closed arm runs. Below `σ_w` the closed arm also
+takes `v₀ = g₁(σ)` from its series, with one term more than `w₀`'s, so its tail is at most `|σ|`
+times the one swept for `w₀`: `expm1 σ/σ` is an accurate value there, but its `Dual` derivative
+cancels to `u/σ`, and `jacobians_match_dual` read 6720 `u` at `σ = 9e-7` before (plan step 3). Past the rays, the scaled
 arrangement keeps every scalar finite to `σ = 700`; six are within `2.5u`, and `w₁ = v₂ - σw₂`,
 `∂_z v₁ = e^σ a' - σ ∂_z v₂` grow as they subtract `σ` times their own size, to `1620u` and `183u`
 at `σ = 700` (`2.3σ u`). A rearrangement would remove it at a generated `|σ|` switch, but the `Q`
 block's own assembly already loses `0.6σ² u` there (SM.7(g)(iii)), so no consumer would see it;
 *Further work*.
+
+## Measured (plan step 3, #138)
+
+`Sim3` under `laws_for!` at `f64`, `f32` and `Dual<f64, 7>` (`sim3_tests::measure_sim3`, 2·10⁵
+draws, `|σ| < 1`, `θ < √3`), worst at `f64`: axioms 6.02, `Exp`/`Log` 4.56, `Ad` 8.55,
+`J_l = Ad J_r` 14.70, `⊕`/`⊖` 9.88, the §2.3 rows against their compositions 0 (exact), `ad` 10.38,
+`sandwich` 4.43; the Jacobians against `Dual` 93.8 (SM.7(f): the closed arm's `1/Δ` once more than
+the value, near `r_×`). `Sim3Jac` against its dense twins at most 4.15, `jr_inv`'s block algebra
+2.68; at `σ = 0`, SE(3)'s translation and `J_r` within 3.41; `Log(Exp τ) = τ` finite and within
+0.58 of `max(‖τ‖, 1)` for `σ ∈ {±10, ±100, ±300, ±700}`.
 
 ## Rationale
 

@@ -118,13 +118,8 @@ pub fn sim3_series<S: Real>(sigma: S, z: S, k: usize) -> [S; 8] {
 /// The closed arm with its three choices handed in: `v₁` by form b, `w₀` by `w0_terms` terms of its
 /// series (`0` for the exact form). `Δ > 0`.
 pub fn sim3_closed<S: Real<Mask = bool>>(sigma: S, z: S, form_b: bool, w0_terms: usize) -> [S; 8] {
-    flat(super::sim3::closed::<S, true>(
-        sigma,
-        z,
-        form_b,
-        w0_terms > 0,
-        w0_terms,
-    ))
+    let c = super::sim3::closed::<S, true>(sigma, z, form_b, w0_terms > 0, w0_terms);
+    flat(super::sim3::unscale(c, sigma, S::zero().lt(sigma)))
 }
 
 /// The group at its generated parameters.
