@@ -951,6 +951,16 @@ impl Sphere {
         let Some(chart) = s2_of::<S>(record, "n").map(|n| S2Chart::at(&n)) else {
             return Output::new();
         };
+        self.answer_with(&chart, record)
+    }
+
+    /// The answer in a given chart, which `selftest_s2`'s sign-bit planting supplies: one parser
+    /// and one output shape for the clean and the planted subjects.
+    pub(crate) fn answer_with<S: Real + Into<f64>>(
+        self,
+        chart: &S2Chart<S>,
+        record: &Record,
+    ) -> Output {
         match self {
             Sphere::Retract => {
                 let Some(d) = scalars::<S>(record, "delta").filter(|d| d.len() == 2) else {
