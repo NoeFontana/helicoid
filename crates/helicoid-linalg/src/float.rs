@@ -41,7 +41,7 @@ impl Mask for bool {
 }
 
 macro_rules! impl_real {
-    ($t:ty, $prec:expr, $sqrt:ident, $cbrt:ident, $sincos:ident, $sin:ident, $cos:ident, $acos:ident, $atan2:ident, $fabs:ident, $copysign:ident, $lit:ident) => {
+    ($t:ty, $prec:expr, $sqrt:ident, $cbrt:ident, $sincos:ident, $sin:ident, $cos:ident, $acos:ident, $exp:ident, $expm1:ident, $atan2:ident, $fabs:ident, $copysign:ident, $lit:ident) => {
         impl Real for $t {
             type Mask = bool;
             const PRECISION: Precision = $prec;
@@ -95,6 +95,14 @@ macro_rules! impl_real {
                 libm::$acos(self)
             }
             #[inline]
+            fn exp(self) -> Self {
+                libm::$exp(self)
+            }
+            #[inline]
+            fn exp_m1(self) -> Self {
+                libm::$expm1(self)
+            }
+            #[inline]
             fn atan2(self, x: Self) -> Self {
                 libm::$atan2(self, x)
             }
@@ -136,6 +144,8 @@ impl_real!(
     sin,
     cos,
     acos,
+    exp,
+    expm1,
     atan2,
     fabs,
     copysign,
@@ -150,6 +160,8 @@ impl_real!(
     sinf,
     cosf,
     acosf,
+    expf,
+    expm1f,
     atan2f,
     fabsf,
     copysignf,

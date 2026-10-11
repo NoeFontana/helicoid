@@ -510,6 +510,12 @@ impl Real for L2 {
     fn acos(self) -> Self {
         self.map(Real::acos)
     }
+    fn exp(self) -> Self {
+        self.map(Real::exp)
+    }
+    fn exp_m1(self) -> Self {
+        self.map(Real::exp_m1)
+    }
     fn atan2(self, x: Self) -> Self {
         self.zip(x, atan2)
     }

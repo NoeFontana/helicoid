@@ -503,13 +503,15 @@ enum Linalg {
     Sqrt,
     Cbrt,
     Acos,
+    Exp,
+    ExpM1,
     SinCos,
     Atan2,
     Div,
 }
 
 impl Linalg {
-    const ALL: [(&'static str, Linalg); 14] = [
+    const ALL: [(&'static str, Linalg); 16] = [
         ("solve_cubic", Linalg::SolveCubic),
         ("eig3", Linalg::Eig3),
         ("chol_n3", Linalg::Chol3),
@@ -521,6 +523,8 @@ impl Linalg {
         ("real_sqrt", Linalg::Sqrt),
         ("real_cbrt", Linalg::Cbrt),
         ("real_acos", Linalg::Acos),
+        ("real_exp", Linalg::Exp),
+        ("real_expm1", Linalg::ExpM1),
         ("real_sin_cos", Linalg::SinCos),
         ("real_atan2", Linalg::Atan2),
         ("real_div", Linalg::Div),
@@ -584,7 +588,7 @@ impl Linalg {
                 q.renormalize();
                 quat_out(&q)
             }
-            Linalg::Sqrt | Linalg::Cbrt | Linalg::Acos => {
+            Linalg::Sqrt | Linalg::Cbrt | Linalg::Acos | Linalg::Exp | Linalg::ExpM1 => {
                 let Some(x) = one("x") else {
                     return Output::new();
                 };
@@ -592,6 +596,8 @@ impl Linalg {
                 let r = match self {
                     Linalg::Sqrt => x.sqrt(),
                     Linalg::Cbrt => x.cbrt(),
+                    Linalg::Exp => x.exp(),
+                    Linalg::ExpM1 => x.exp_m1(),
                     _ => x.acos(),
                 };
                 Output::from([

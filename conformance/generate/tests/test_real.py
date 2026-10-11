@@ -5,7 +5,7 @@ import unittest
 from mpmath import mp, mpf
 
 from gen import check_real, precision, real
-from gen.precision import is_binary32
+from gen.precision import is_binary32, to_f32, to_f64
 from gen.registry import FUNCTIONS
 
 precision.setup()
@@ -72,12 +72,32 @@ class StrataTest(unittest.TestCase):
             spec = FUNCTIONS[name]
             for s in spec.strata:
                 top, low = (mpf(2) ** 128, 2.0**-126) if s.f32 else (mpf(2) ** 1024, 2.0**-1022)
+                if name == "real_exp" and s.name.startswith("x:subnormal"):
+                    continue  # its outputs are subnormal by design (0068), held below
                 for r in s.records()[:8]:
                     if s.f32:
                         self.assertTrue(all(is_binary32(x) for x in r.values()), (name, s.name))
                     for v in spec.evaluate(r).values():
                         self.assertTrue(low <= abs(v) < top, (name, s.name, r, v))
 
+
+    def test_the_exp_strata_hold_what_they_are_named_for(self):
+        """0068: `x:subnormal` gives a subnormal e^x, `x:saturated` an expm1 of -1 at the precision
+        with a normal derivative, and `x:large` stays below ln MAX."""
+        for f32 in (False, True):
+            tiny, top = (2.0**-126, mpf(2) ** 128) if f32 else (2.0**-1022, mpf(2) ** 1024)
+            suffix = "@f32" if f32 else ""
+            exp = by_name(real.EXP_STRATA)
+            for r in exp["x:subnormal" + suffix].records():
+                v = real.exp(r)["value"]
+                self.assertTrue(0 < v < tiny, r)
+            for r in exp["x:large" + suffix].records():
+                self.assertLess(real.exp(r)["value"], top)
+            for r in by_name(real.EXPM1_STRATA)["x:saturated" + suffix].records():
+                out = real.expm1(r)
+                rounded = to_f32(out["value"]) if f32 else to_f64(out["value"])
+                self.assertEqual(rounded, -1.0, r)
+                self.assertTrue(tiny <= out["d"], r)
 
 EXAMPLES = {
     "real_sqrt": {"x": 0.7},

@@ -663,6 +663,12 @@ impl Real for Counted {
     fn acos(self) -> Self {
         Self(self.0.acos())
     }
+    fn exp(self) -> Self {
+        Self(self.0.exp())
+    }
+    fn exp_m1(self) -> Self {
+        Self(self.0.exp_m1())
+    }
     fn atan2(self, x: Self) -> Self {
         Self(self.0.atan2(x.0))
     }

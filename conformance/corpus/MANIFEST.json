@@ -145,6 +145,18 @@
       "records": 256,
       "sha256": "81029037f5d179eb6dfa0ab8dd85b856c1aa3b50318131b3d9343e0bc97fa0be"
     },
+    "real_exp.jsonl": {
+      "kind": "corpus",
+      "rechecked": 12,
+      "records": 768,
+      "sha256": "99286f39bbebd0440bdedabfad96cbae890f46de782f8d60dd1ae0c1126623b6"
+    },
+    "real_expm1.jsonl": {
+      "kind": "corpus",
+      "rechecked": 10,
+      "records": 640,
+      "sha256": "7941f139fb6ee22171c07c8366c4b2ce0575bc0b7b6aacfc4ce63a5b79621c4b"
+    },
     "real_sin_cos.jsonl": {
       "kind": "corpus",
       "rechecked": 10,
@@ -458,7 +470,7 @@
       "sha256": "3780fb0bfac76491d5c03b5ebbeb52fc333c95edaf3784bf6e805add3f219f2b"
     }
   },
-  "generator": "sha256:dd404810c342f68371bdeae8a3acdd4507a147dbe15e930db7bf7733ef9c9e08",
+  "generator": "sha256:da86c67b1845d68f3f7e5cac64648553359199af4ee36d95cb9baf40647625f8",
   "mpmath": "1.4.1",
   "python": "3.12",
   "recheck": {

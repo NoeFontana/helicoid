@@ -182,8 +182,8 @@ class BuildTest(unittest.TestCase):
         """An `@f32` stratum is named for its binary64 namesake where one exists (0056 decision 2)
         and follows the binary64 order; the others (`x:1e37@f32`) are the binary32 range's own."""
         names = [n for n in FUNCTIONS if n.startswith(ASKED_FOR_F32)]
-        # and 0061's `mat2_inverse_adj`, 0065's two, 0067's two
-        self.assertEqual(len(names), 13 + 1 + 2 + 2)
+        # and 0061's `mat2_inverse_adj`, 0065's two, 0067's two, 0068's two
+        self.assertEqual(len(names), 13 + 1 + 2 + 2 + 2)
         for name in names:
             strata = FUNCTIONS[name].strata
             flags = [s.f32 for s in strata]

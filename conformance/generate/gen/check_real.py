@@ -9,7 +9,8 @@
   value: v^2 = x and 2 v d = 1 (`sqrt`), v^3 = x and 3 v^2 d = 1 (`cbrt`), sin^2 + cos^2 = 1,
   (d_sin, d_cos) = (cos, -sin) and the Maclaurin series for |x| <= 1 (`sin_cos`), the half-angle
   `atan2` form and d^2 (1 - x^2) = 1, d < 0 (`acos`), `atan` of y/x by quadrant,
-  y d_y + x d_x = 0 and x d_y - y d_x = 1 (`atan2`), v d = n, d d_n = 1, d d_d = -v (`div`).
+  y d_y + x d_x = 0 and x d_y - y d_x = 1 (`atan2`), v d = n, d d_n = 1, d d_d = -v (`div`),
+  v e^-x = 1 and d = v (`exp`), d - v = 1 and d e^-x = 1 (`expm1`).
 """
 
 from collections.abc import Callable
@@ -123,3 +124,21 @@ def real_div(inputs: dict, out: dict) -> None:
         _within("real_div: d d_d + v", d * out["d_d"] + v, v)
     against_diff("real_div: d_n", lambda t: t / d, n, out["d_n"])
     against_diff("real_div: d_d", lambda t: n / t, d, out["d_d"])
+
+
+def real_exp(inputs: dict, out: dict) -> None:
+    x, v, d = mpf(inputs["x"]), out["value"], out["d"]
+    with mp.workdps(2 * DPS):
+        _within("real_exp: v e^-x - 1", v * mp.exp(-x) - 1, 1)
+        _within("real_exp: d - v", d - v, v)
+    against_diff("real_exp: d", mp.exp, x, d)
+
+
+def real_expm1(inputs: dict, out: dict) -> None:
+    x, v, d = mpf(inputs["x"]), out["value"], out["d"]
+    with mp.workdps(2 * DPS):
+        # Against |v| + d: past x ~ -37 the value is -1 to every digit the working precision holds
+        # beside the 1, and `mp.diff` and `d e^-x` hold the derivative on its own.
+        _within("real_expm1: d - v - 1", d - v - 1, abs(v) + d)
+        _within("real_expm1: d e^-x - 1", d * mp.exp(-x) - 1, 1)
+    against_diff("real_expm1: d", mp.expm1, x, d)

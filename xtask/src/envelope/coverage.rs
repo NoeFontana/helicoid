@@ -72,6 +72,8 @@ pub(super) fn required() -> Vec<String> {
             "real_cbrt",
             "real_sin_cos",
             "real_acos",
+            "real_exp",
+            "real_expm1",
             "real_atan2",
             "real_div",
         ]

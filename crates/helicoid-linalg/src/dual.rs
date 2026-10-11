@@ -247,6 +247,28 @@ impl<S: Real, const N: usize> Real for Dual<S, N> {
         self.sin_cos().1
     }
 
+    /// `d e^v`, with the value's own `e^v`.
+    #[inline]
+    fn exp(self) -> Self {
+        let e = self.v.exp();
+        Self {
+            v: e,
+            d: self.d.map(|d| d * e),
+        }
+    }
+
+    /// `d e^v` from [`exp`](Real::exp), not `1 + exp_m1(v)`: that sum rounds to `0` below
+    /// `v = -37.4` (`f64`), where `e^v` is still a normal number, so the derivative would lose
+    /// every digit (`0068`). The value is [`Real::exp_m1`]'s.
+    #[inline]
+    fn exp_m1(self) -> Self {
+        let e = self.v.exp();
+        Self {
+            v: self.v.exp_m1(),
+            d: self.d.map(|d| d * e),
+        }
+    }
+
     /// `-d / sqrt((1 - v)(1 + v))`, the factored denominator and not `sqrt(1 - v^2)`: each factor
     /// is exact near the end of the interval where it is small, so the derivative keeps its
     /// relative accuracy at a double root. The value is [`Real::acos`]'s.

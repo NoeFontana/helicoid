@@ -232,6 +232,11 @@ FUNCTIONS: dict[str, FunctionSpec] = {
             "real_sin_cos", real.SIN_COS_STRATA, drawn_inputs, real.sin_cos, check_real.real_sin_cos
         ),
         FunctionSpec("real_acos", real.ACOS_STRATA, drawn_inputs, real.acos, check_real.real_acos),
+        # 0068: `Real::exp` and `Real::exp_m1`, which Sim(3) needs (docs/maths/sim3.md SM.4, SM.7(g)).
+        FunctionSpec("real_exp", real.EXP_STRATA, drawn_inputs, real.exp, check_real.real_exp),
+        FunctionSpec(
+            "real_expm1", real.EXPM1_STRATA, drawn_inputs, real.expm1, check_real.real_expm1
+        ),
         FunctionSpec(
             "real_atan2", real.ATAN2_STRATA, drawn_inputs, real.atan2, check_real.real_atan2
         ),
