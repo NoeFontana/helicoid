@@ -29,6 +29,7 @@ use crate::dualmat::{dof, SEn3Jac};
 use crate::product::ProductJac;
 use crate::so3::SO3Tangent;
 use crate::traits::{Jac, LieGroup, Tangent};
+use crate::{Chart, Quat, RnTangent, S2Chart, S2, SO3};
 use helicoid_linalg::{Mask, Matrix, Precision, Real, StridedMut, Vec3, Vector};
 
 /// The terms added left to right from the first, `+0` when there are none.
@@ -96,6 +97,25 @@ fn factorial(m: usize) -> f64 {
 /// [`LieGroup::geodesic`]'s.
 pub fn geodesic<S: Real, G: LieGroup<S>>(x0: &G, x1: &G, t: S) -> G {
     x0.rplus(&x1.rminus(x0).scale(t))
+}
+
+/// `S2Chart::local`'s twin, its definition (`NUMERICS.md` §14, `0063` decision 4): the minimal
+/// rotation taking `n` to `m` as the quaternion `(1 + n·m, n × m)`, normalized, its `Log` through
+/// `SO3::log`'s `atan2`, projected on the chart's basis. Not the fast path's `α/s` from
+/// `log_ratio`, nor its `Bᵀ(α/s · n × m)`: this one halves the angle, which is `r(s², 1 + w)`, the
+/// form `0063` decision 3 rejects as 3 to 5 times less accurate near the antipode (CH.9(c)).
+///
+/// # Domain
+///
+/// `S2Chart::local`'s, and `(1 + n·m)² + ‖n × m‖²` normal, for the normalization.
+pub fn s2_local<S: Real>(chart: &S2Chart<S>, m: &S2<S>) -> RnTangent<S, 2> {
+    let (n, m) = (chart.base().vec(), m.vec());
+    let [x, y, z] = n.cross(m).0;
+    let q = Quat::from_wxyz_normalized(S::one() + n.dot(m), x, y, z);
+    let phi = SO3::from_quat_unchecked(q).log().phi;
+    RnTangent {
+        rho: Vector([chart.b1.dot(phi), chart.b2.dot(phi)]),
+    }
 }
 
 /// The dense image of `j` in a `D x D` scratch, through the public [`Jac::write_dense`].

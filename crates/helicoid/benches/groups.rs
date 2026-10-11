@@ -43,9 +43,10 @@ use core::time::Duration;
 use criterion::measurement::WallTime;
 use criterion::{criterion_group, criterion_main, BatchSize, BenchmarkGroup, Criterion};
 use helicoid::{
-    so3, Gaussian, Jac, LieGroup, Right, SEn3, SEn3Tangent, SO3Tangent, Tangent, SE3, SO3,
+    reference, so3, Chart, Gaussian, Jac, LieGroup, Right, RnTangent, S2Chart, SEn3, SEn3Tangent,
+    SO3Tangent, Tangent, S2, SE3, SO3,
 };
-use helicoid_linalg::{Mat3, Matrix, Point, Point3, Real, Vec3, Vector};
+use helicoid_linalg::{Mat2, Mat3, Matrix, Point, Point3, Real, Vec3, Vector};
 
 /// `(name, θ)`: §9's three strata.
 const THETA: &[(&str, f64)] = &[
@@ -79,6 +80,37 @@ fn gamma_apply_jacobians_of<const M: usize, S: Real>(
     v: Vec3<S>,
 ) -> (Vec3<S>, Mat3<S>, Mat3<S>) {
     so3::gamma_apply_jacobians::<M, S>(phi, v)
+}
+
+/// `S2Chart`'s methods behind calls, for `geodesic_of`'s reason.
+#[inline(never)]
+fn s2_at<S: Real>(n: &S2<S>) -> S2Chart<S> {
+    S2Chart::at(n)
+}
+
+#[inline(never)]
+fn s2_retract<S: Real>(c: &S2Chart<S>, d: &RnTangent<S, 2>) -> S2<S> {
+    c.retract(d)
+}
+
+#[inline(never)]
+fn s2_retract_jacobian<S: Real>(c: &S2Chart<S>, d: &RnTangent<S, 2>) -> Mat2<S> {
+    c.retract_jacobian(d)
+}
+
+#[inline(never)]
+fn s2_local<S: Real>(c: &S2Chart<S>, m: &S2<S>) -> RnTangent<S, 2> {
+    c.local(m)
+}
+
+#[inline(never)]
+fn s2_local_with_jacobian<S: Real>(c: &S2Chart<S>, m: &S2<S>) -> (RnTangent<S, 2>, Mat2<S>) {
+    c.local_with_jacobian(m)
+}
+
+#[inline(never)]
+fn s2_local_twin<S: Real>(c: &S2Chart<S>, m: &S2<S>) -> RnTangent<S, 2> {
+    reference::s2_local(c, m)
 }
 
 /// How many candidates a gate tests against one law: a frame's association hypotheses for one
@@ -308,6 +340,36 @@ fn se3_consecutive<S: Fixture>(g: &mut BenchmarkGroup<'_, WallTime>) {
     });
 }
 
+/// S²'s chart (`0063`, `0067`) at a generic base off the equator, the step `θ` of the stratum, and
+/// `m` its retract, so `local`'s angle is `θ` too: `near-pi` is the near-antipode case.
+fn s2<S: Fixture>(g: &mut BenchmarkGroup<'_, WallTime>, name: &str, theta: f64) {
+    let n = S2::from_vec_normalized(Vector([0.48, -0.6, 0.64].map(S::of)));
+    let chart = S2Chart::at(&n);
+    let (c, s) = (0.6_f64, 0.8_f64);
+    let d = RnTangent {
+        rho: Vector([theta * c, theta * s].map(S::of)),
+    };
+    let m = chart.retract(&d);
+    g.bench_function(format!("s2/at/{name}"), |b| {
+        b.iter(|| s2_at(black_box(&n)));
+    });
+    g.bench_function(format!("s2/retract/{name}"), |b| {
+        b.iter(|| s2_retract(black_box(&chart), black_box(&d)));
+    });
+    g.bench_function(format!("s2/retract_jacobian/{name}"), |b| {
+        b.iter(|| s2_retract_jacobian(black_box(&chart), black_box(&d)));
+    });
+    g.bench_function(format!("s2/local/{name}"), |b| {
+        b.iter(|| s2_local(black_box(&chart), black_box(&m)));
+    });
+    g.bench_function(format!("s2/local_with_jacobian/{name}"), |b| {
+        b.iter(|| s2_local_with_jacobian(black_box(&chart), black_box(&m)));
+    });
+    g.bench_function(format!("s2/local_twin/{name}"), |b| {
+        b.iter(|| s2_local_twin(black_box(&chart), black_box(&m)));
+    });
+}
+
 /// `Gaussian`'s rows on SE_N(3) (`0065`, `0066`): a fixed mean at `θ = 1` and a fixed `Σ`, since
 /// neither the side change nor the factorization branches on either.
 fn gaussian<S: Fixture, const N: usize, const D: usize>(
@@ -363,6 +425,7 @@ fn groups(c: &mut Criterion) {
         sen3::<f64, 1>(&mut g, "se3", name, theta);
         se3_action::<f64>(&mut g, name, theta);
         sen3::<f64, 2>(&mut g, "se23", name, theta);
+        s2::<f64>(&mut g, name, theta);
     }
     se3_consecutive::<f64>(&mut g);
     gaussian::<f64, 1, 6>(&mut g, "se3");
@@ -375,6 +438,7 @@ fn groups(c: &mut Criterion) {
         sen3::<f32, 1>(&mut g, "se3", name, theta);
         se3_action::<f32>(&mut g, name, theta);
         sen3::<f32, 2>(&mut g, "se23", name, theta);
+        s2::<f32>(&mut g, name, theta);
     }
     se3_consecutive::<f32>(&mut g);
     gaussian::<f32, 1, 6>(&mut g, "se3");
