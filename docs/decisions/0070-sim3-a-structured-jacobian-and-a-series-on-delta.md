@@ -151,6 +151,13 @@ the `|σ| ≤ 3` grid, and 320 / 53 at `|σ| = 700` / `80`, three orders under S
 plantings fire on every judged stratum; the envelope's 148 domination failures are unchanged and
 none is Sim(3)'s.
 
+## Measured (plan step 5, #140)
+
+`groups/{f64,f32}/sim3/*` (criterion, one pinned core, `σ = 0.5`, the three `θ` strata), ns:
+`exp` 40–65 / 25–53, `log` 55–96 / 39–72, `jr` 80–101 / 74–95, `jr_inv` 116–162 / 118–150,
+`rminus_jacobians` 387–468 / 303–354. The structured product, `Sim3Jac::mul`, 17.5 / 20.2 against
+the dense `7 x 7` product `0005` specified, 52.3 / 39.2: **3.0x and 1.9x**, which decision 1 bought.
+
 ## Rationale
 
 - **`Sim3Jac`.** Every Jacobian a solver forms is a product or an inverse of `Ad` and `J`; at `343`
@@ -196,6 +203,9 @@ None.
 ## Further work
 
 - A Sophus `Sim3` runner, for a domination bar.
+- `rminus_jacobians` forms `J_r⁻¹` and `J_l⁻¹` from two coefficient evaluations (at `σ` and `-σ`).
+  `J_l⁻¹ = J_r⁻¹ Ad_{Exp(-τ)}`, with the relative element `rminus` already holds, would save about
+  100 ns of 390, at the price of the §2.3 rows law reading a measured bound instead of exactly `0`.
 - `w₁` and `∂_z v₁` for `σ ≫ 1` from the other rows of SM.5(a), SM.11's systems
   (`w₁ = (v₁ - w₀ + z w₂)/σ`), behind a generated `|σ|` switch, if a consumer at large positive `σ`
   ever needs the coefficient and not the block.
