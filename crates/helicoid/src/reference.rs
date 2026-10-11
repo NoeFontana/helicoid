@@ -29,7 +29,7 @@ use crate::dualmat::{dof, SEn3Jac};
 use crate::product::ProductJac;
 use crate::so3::SO3Tangent;
 use crate::traits::{Jac, LieGroup, Tangent};
-use crate::{Chart, Quat, RnTangent, S2Chart, S2, SO3};
+use crate::{Chart, Quat, RnTangent, S2Chart, Sim3Jac, S2, SO3};
 use helicoid_linalg::{Mask, Matrix, Precision, Real, StridedMut, Vec3, Vector};
 
 /// The terms added left to right from the first, `+0` when there are none.
@@ -185,6 +185,16 @@ pub fn sen3jac_mul<S: Real, const N: usize, const D: usize>(
         out.rows() == D && out.cols() == D,
         "sen3jac_mul: the view is not D x D"
     );
+    mul_dense::<S, _, _, D>(a, b, out);
+}
+
+/// The dense product of two `Jac`s, row by column, summed left to right: the body of every
+/// `*jac_mul` twin.
+fn mul_dense<S: Real, T: Tangent<S>, J: Jac<S, T>, const D: usize>(
+    a: &J,
+    b: &J,
+    out: &mut StridedMut<'_, S>,
+) {
     let (x, y) = (dense::<S, _, _, D>(a), dense::<S, _, _, D>(b));
     for (r, row) in x.iter().enumerate() {
         for c in 0..D {
@@ -238,6 +248,14 @@ pub fn sen3jac_inverse<S: Real, const N: usize, const D: usize>(
         out.rows() == D && out.cols() == D,
         "sen3jac_inverse: the view is not D x D"
     );
+    inverse_dense::<S, _, _, D>(j, out);
+}
+
+/// Gauss–Jordan with partial pivoting on the dense matrix: the body of every `*jac_inverse` twin.
+fn inverse_dense<S: Real, T: Tangent<S>, J: Jac<S, T>, const D: usize>(
+    j: &J,
+    out: &mut StridedMut<'_, S>,
+) {
     let mut m = dense::<S, _, _, D>(j);
     for r in 0..D {
         for c in 0..D {
@@ -260,7 +278,7 @@ pub fn sen3jac_inverse<S: Real, const N: usize, const D: usize>(
         let pivot = m[k][k];
         debug_assert!(
             S::zero().lt(pivot.abs()).all(),
-            "sen3jac_inverse: a zero or NaN pivot"
+            "reference: a zero or NaN pivot"
         );
         for x in &mut m[k] {
             *x = *x / pivot;
@@ -305,6 +323,15 @@ pub fn sen3jac_apply<S: Real, const N: usize, const D: usize>(
         x.len() == D && out.len() == D,
         "sen3jac_apply: an operand is not D long"
     );
+    apply_dense::<S, _, _, D>(j, x, out);
+}
+
+/// `J x` on the dense matrix, each row summed left to right.
+fn apply_dense<S: Real, T: Tangent<S>, J: Jac<S, T>, const D: usize>(
+    j: &J,
+    x: &[S],
+    out: &mut [S],
+) {
     let m = dense::<S, _, _, D>(j);
     for (o, row) in out.iter_mut().zip(&m) {
         *o = sum(row.iter().zip(x).map(|(a, b)| *a * *b));
@@ -333,6 +360,15 @@ pub fn sen3jac_apply_transpose<S: Real, const N: usize, const D: usize>(
         x.len() == D && out.len() == D,
         "sen3jac_apply_transpose: an operand is not D long"
     );
+    apply_transpose_dense::<S, _, _, D>(j, x, out);
+}
+
+/// `Jᵀ x` on the dense matrix, each column summed top to bottom.
+fn apply_transpose_dense<S: Real, T: Tangent<S>, J: Jac<S, T>, const D: usize>(
+    j: &J,
+    x: &[S],
+    out: &mut [S],
+) {
     let m = dense::<S, _, _, D>(j);
     for (r, o) in (0..D).zip(out.iter_mut()) {
         *o = sum(m.iter().zip(x).map(|(row, b)| row[r] * *b));
@@ -436,4 +472,75 @@ pub fn productjac_sandwich<S, TA, TB, JA, JB, const D: usize>(
         "productjac_sandwich: the view is not D x D"
     );
     sandwich_dense(&dense::<S, (TA, TB), ProductJac<JA, JB>, D>(j), cov, out);
+}
+
+/// [`sen3jac_mul`]'s twin for [`Sim3Jac`]: the dense `7 x 7` product
+/// (`NUMERICS.md` §14, `0070`).
+///
+/// # Domain
+///
+/// `out` is `7 x 7`, checked by `debug_assert!`.
+pub fn sim3jac_mul<S: Real>(a: &Sim3Jac<S>, b: &Sim3Jac<S>, out: &mut StridedMut<'_, S>) {
+    debug_assert!(
+        out.rows() == 7 && out.cols() == 7,
+        "sim3jac_mul: the view is not 7 x 7"
+    );
+    mul_dense::<S, _, _, 7>(a, b, out);
+}
+
+/// The dense Gauss–Jordan inverse of a [`Sim3Jac`], the twin of
+/// `Sim3Jac::inverse` and of `Sim3::jr_inv`'s block algebra (`NUMERICS.md` §14, `0070`).
+///
+/// # Domain
+///
+/// As [`sen3jac_inverse`].
+pub fn sim3jac_inverse<S: Real>(j: &Sim3Jac<S>, out: &mut StridedMut<'_, S>) {
+    debug_assert!(
+        out.rows() == 7 && out.cols() == 7,
+        "sim3jac_inverse: the view is not 7 x 7"
+    );
+    inverse_dense::<S, _, _, 7>(j, out);
+}
+
+/// The dense `J x` of a [`Sim3Jac`] (`NUMERICS.md` §14).
+///
+/// # Domain
+///
+/// `x.len() == out.len() == 7`, checked by `debug_assert!`.
+pub fn sim3jac_apply<S: Real>(j: &Sim3Jac<S>, x: &[S], out: &mut [S]) {
+    debug_assert!(
+        x.len() == 7 && out.len() == 7,
+        "sim3jac_apply: an operand is not 7 long"
+    );
+    apply_dense::<S, _, _, 7>(j, x, out);
+}
+
+/// The dense `Jᵀ x` of a [`Sim3Jac`] (`NUMERICS.md` §14).
+///
+/// # Domain
+///
+/// As [`sim3jac_apply`].
+pub fn sim3jac_apply_transpose<S: Real>(j: &Sim3Jac<S>, x: &[S], out: &mut [S]) {
+    debug_assert!(
+        x.len() == 7 && out.len() == 7,
+        "sim3jac_apply_transpose: an operand is not 7 long"
+    );
+    apply_transpose_dense::<S, _, _, 7>(j, x, out);
+}
+
+/// The dense `J Σ Jᵀ` of a [`Sim3Jac`] (`NUMERICS.md` §14).
+///
+/// # Domain
+///
+/// `out` is `7 x 7`, checked by `debug_assert!`.
+pub fn sim3jac_sandwich<S: Real>(
+    j: &Sim3Jac<S>,
+    cov: &Matrix<S, 7, 7>,
+    out: &mut StridedMut<'_, S>,
+) {
+    debug_assert!(
+        out.rows() == 7 && out.cols() == 7,
+        "sim3jac_sandwich: the view is not 7 x 7"
+    );
+    sandwich_dense(&dense::<S, _, _, 7>(j), cov, out);
 }
