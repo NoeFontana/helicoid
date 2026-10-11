@@ -328,6 +328,8 @@ const TABLE: &[(&str, Rule)] = &[
     ("real_sqrt", Forward(REAL_UNARY)),
     ("real_cbrt", Forward(REAL_UNARY)),
     ("real_acos", Forward(REAL_UNARY)),
+    ("real_exp", Forward(REAL_UNARY)),
+    ("real_expm1", Forward(REAL_UNARY)),
     ("real_sin_cos", Forward(REAL_SIN_COS)),
     ("real_atan2", Forward(REAL_ATAN2)),
     ("real_div", Forward(REAL_DIV)),
@@ -1278,7 +1280,13 @@ mod tests {
         add(&["s2_local"], "delta", Want::Unit, false);
         add(&["chol_solve_n3", "chol_solve_n6"], "x", Want::Tiny, false);
         add(&["quat_renormalize"], "q", Want::Tiny, false);
-        for name in ["real_sqrt", "real_cbrt", "real_acos"] {
+        for name in [
+            "real_sqrt",
+            "real_cbrt",
+            "real_acos",
+            "real_exp",
+            "real_expm1",
+        ] {
             add(&[name], "value", Want::Tiny, false);
             add(&[name], "d", Want::Tiny, false);
         }

@@ -417,6 +417,12 @@ pub(super) mod tests {
         fn acos(self) -> Self {
             note(libm::acos(self.0))
         }
+        fn exp(self) -> Self {
+            note(libm::exp(self.0))
+        }
+        fn exp_m1(self) -> Self {
+            note(libm::expm1(self.0))
+        }
         fn atan2(self, x: Self) -> Self {
             note(libm::atan2(self.0, x.0))
         }

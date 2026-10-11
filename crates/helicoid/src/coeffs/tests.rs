@@ -932,6 +932,13 @@ impl<const F32: bool, M: Mask + From<bool> + 'static> Real for Lane<F32, M> {
         tally(|c| c.acos += 1);
         Self::note(libm::acos(self.0))
     }
+    // Untallied: no coefficient group calls `exp` or `exp_m1` (`0068`).
+    fn exp(self) -> Self {
+        Self::note(libm::exp(self.0))
+    }
+    fn exp_m1(self) -> Self {
+        Self::note(libm::expm1(self.0))
+    }
     fn atan2(self, x: Self) -> Self {
         tally(|c| c.atan2 += 1);
         Self::note(libm::atan2(self.0, x.0))

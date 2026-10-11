@@ -180,7 +180,7 @@ side of `docs/maths/coefficients.md` CO.12.
 | `quat_renormalize` | $q$ | $q/\lVert q\rVert$, the projection `NUMERICS.md` §3.6 claims inside its band |
 | `mat2_inverse_adj` | $A$, $2\times2$ | `det` and `inv` $= \mathrm{adj}(A)/\det$ of the stored entries in rationals, exactly; `inv` zeros where $\det = 0$ ([`0061`](./decisions/0061-mat2-keeps-its-adjugate.md)) |
 | `gaussian_mahalanobis_se3`, `gaussian_mahalanobis_se23` | $(\mu, x, \text{side}, \Sigma)$ | `valid` as `chol`'s, exactly; $d^2 = \delta^\top\Sigma^{-1}\delta$ by `mp.lu_solve`, $\delta = x \ominus_{\text{side}} \mu$ by the geometric $\mathrm{Log}$ ([`0065`](./decisions/0065-a-gaussian-names-its-side-and-is-stored-symmetric.md)) |
-| `real_sqrt`, `real_cbrt`, `real_acos`, `real_sin_cos`, `real_atan2`, `real_div` | $x$; $(y, x)$; $(n, d)$ | the value and its calculus derivative(s), what `Dual` carries; `mp.diff` at a relative step is the cross-check |
+| `real_sqrt`, `real_cbrt`, `real_acos`, `real_sin_cos`, `real_atan2`, `real_div`, `real_exp`, `real_expm1` | $x$; $(y, x)$; $(n, d)$ | the value and its calculus derivative(s), what `Dual` carries; `mp.diff` at a relative step is the cross-check. `real_exp` and `real_expm1` ([`0068`](./decisions/0068-real-owes-exp-and-exp-m1.md)) also hold $ve^{-x} = 1$, $d = v$ and $d - v = 1$, over strata reaching the overflow onset, the subnormal outputs of `exp` and the saturation of `expm1` |
 
 A `coeff_k`…`coeff_e`, `coeff_cos_half` or `coeff_r` record's outputs are `value` and `d_branch`:
 the derivative with respect to the branch variable of `NUMERICS.md` §4 (θ² for `cos_half`), by

@@ -13,7 +13,7 @@ signatures in code blocks are normative.
 | Area | Status |
 |---|---|
 | `Mask`, `Real`, `Blend`, `Precision`; `f64`/`f32` impls (§2) | Partial: traits and scalar impls implemented, including `cbrt` and `sqrt` bit identity with `libm` `arch` (`0017`, `0018`). |
-| `Dual<S, N>` (§3) | Partial: dual numbers generic over `Real` with automatic differentiation; corpus ids `real_sqrt`, `real_cbrt`, `real_sin_cos`, `real_acos`, `real_atan2`, `real_div` at both precisions, ≤ 3.65 `u` ([`0056`](./decisions/0056-the-routines-d7-does-not-reach.md)). |
+| `Dual<S, N>` (§3) | Partial: dual numbers generic over `Real` with automatic differentiation; corpus ids `real_sqrt`, `real_cbrt`, `real_sin_cos`, `real_acos`, `real_atan2`, `real_div` at both precisions, ≤ 3.65 `u` ([`0056`](./decisions/0056-the-routines-d7-does-not-reach.md)); `real_exp`, `real_expm1` ([`0068`](./decisions/0068-real-owes-exp-and-exp-m1.md)). |
 | `Vector`, `Matrix`, `Point`, `hat`/`vee`, `Mat3::inverse_adj`, `chol` (§4) | Partial: fixed-size types, operations, and `chol_solve` implemented (`0019`); corpus ids `chol_n{3,6}`, `chol_solve_n{3,6}` (`0056`). `Mat2::inverse_adj` and its id `mat2_inverse_adj` implemented ([`0061`](./decisions/0061-mat2-keeps-its-adjugate.md), #121). |
 | `Strided`, `StridedMut` (§5) | Done: column-major, row-major, strided slice views. |
 | `eig3`, `svd3`, `solve_cubic` + corpus ids (§6) | Partial: `solve_cubic` and `eig3` implemented with `libm` transcendentals (`0017`, `0022`, `0053`). Corpus ids `solve_cubic` and `eig3` at both precisions, `eig3` against nalgebra (`0056`). `svd3` and its id pending. |
@@ -77,6 +77,10 @@ pub trait Real:
     fn cbrt(self) -> Self;
     fn sin_cos(self) -> (Self, Self);
     fn sin(self) -> Self;
+    fn cos(self) -> Self;
+    fn acos(self) -> Self;
+    fn exp(self) -> Self;
+    fn exp_m1(self) -> Self;
     fn atan2(self, x: Self) -> Self;
     fn abs(self) -> Self;
     fn copysign(self, sign: Self) -> Self;
@@ -90,7 +94,8 @@ pub trait Blend<S: Real>: Sized {
 ```
 
 - **`f64`/`f32` impls** route every transcendental through `libm` (`sqrt`, `cbrt`, `sincos`,
-  `sin`, `atan2`, `fabs`, `copysign`), never `std` (D16). **`sin` is bit-identical to
+  `sin`, `cos`, `acos`, `exp`, `expm1`, `atan2`, `fabs`, `copysign`), never `std` (D16; `cos` and
+  `acos` by [`0022`](./decisions/0022-real-owes-acos-and-cos.md), `exp` and `exp_m1` by [`0068`](./decisions/0068-real-owes-exp-and-exp-m1.md)). **`sin` is bit-identical to
   `sin_cos().0`** and that is a requirement on the impl, not an observation: [`0052`](./decisions/0052-real-owes-sin-and-the-corpus-does-not-move.md) adds it for
   the callers that discard the cosine, every recorded figure of a routine re-spelled from one to the
   other depends on the identity, and `libm` is a caret dependency whose two functions are *not* the

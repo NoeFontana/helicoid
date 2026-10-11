@@ -140,6 +140,20 @@ pub trait Real:
     /// where the slope is infinite -- both better than the `atan2(sqrt((1 - x)(1 + x)), x)`
     /// spelling it replaces, at 1.659 and 1.148, for 2.63x less time (`0022`).
     fn acos(self) -> Self;
+    /// `e^self`, through `libm` (D16, `0068`).
+    ///
+    /// # Domain
+    ///
+    /// Every argument. The result is `+inf` above `ln MAX` (`709.78` at `f64`, `88.72` at `f32`),
+    /// subnormal below `-708.40` (`-87.34`) and `+0` below `-745.13` (`-103.97`); NaN stays NaN.
+    fn exp(self) -> Self;
+    /// `e^self - 1`, through `libm` (D16, `0068`): relative accuracy where `exp(self) - 1` cancels,
+    /// near `0`, and `-1` exactly below `-37.4` (`f64`) and `-17.3` (`f32`).
+    ///
+    /// # Domain
+    ///
+    /// Every argument; `+inf` above `ln MAX`, as [`exp`](Self::exp); NaN stays NaN.
+    fn exp_m1(self) -> Self;
     /// `sin self`, for a caller that discards the cosine.
     ///
     /// **Bit-identical to [`sin_cos`](Self::sin_cos)`.0`**, and that is a requirement on the impl

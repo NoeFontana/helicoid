@@ -800,3 +800,72 @@ fn dual_over_lanes_selects_per_lane() {
     assert_eq!(lanes(c.v), [-2.0, 3.0].map(f64::to_bits));
     assert_eq!(lanes(c.d[0]), [1.0 / 12.0, 1.0 / 27.0].map(f64::to_bits));
 }
+
+/// `(x, e^x)`, mpmath at 50 digits rounded to binary64; the range spans the subnormal-adjacent
+/// `-700` and the near-overflow `709`.
+const EXP: [(f64, f64); 6] = [
+    (0.5, 1.648_721_270_700_128_2),
+    (-3.0, 0.049_787_068_367_863_944),
+    (20.0, 485_165_195.409_790_3),
+    (-700.0, 9.859_676_543_759_77e-305),
+    (1e-10, 1.000_000_000_1),
+    (709.0, 8.218_407_461_554_972e307),
+];
+
+/// `(x, e^x - 1, e^x)`, likewise: `1e-10` and `-1e-300` where `e^x - 1` cancels, `-40` past
+/// `-37.4`, where `e^x - 1` is `-1` exactly and `e^x` still normal.
+const EXPM1: [(f64, f64, f64); 6] = [
+    (1e-10, 1.000_000_000_05e-10, 1.000_000_000_1),
+    (-1e-5, -9.999_950_000_166_666e-6, 0.999_990_000_049_999_8),
+    (0.5, 0.648_721_270_700_128_2, 1.648_721_270_700_128_2),
+    (-40.0, -1.0, 4.248_354_255_291_589e-18),
+    (30.0, 10_686_474_581_523.463, 10_686_474_581_524.463),
+    (-1e-300, -1e-300, 1.0),
+];
+
+const EXPM1_32: [(f32, f32, f32); 4] = [
+    (1e-6, 1.000_000_5e-6, 1.000_001),
+    (-0.25, -0.221_199_21, 0.778_800_8),
+    (10.0, 22_025.465, 22_026.465),
+    (-20.0, -1.0, 2.061_153_7e-9),
+];
+
+/// `Dual::exp` and `Dual::exp_m1` against mpmath (`0068`): the values are `libm`'s to the bit, and
+/// `exp_m1`'s derivative is `e^x` even where `1 + exp_m1(x)` is `0`.
+#[test]
+fn dual_exp_and_exp_m1_match_mpmath() {
+    for (x, want) in EXP {
+        let r = D1::variable(x, 0).exp();
+        assert_eq!(r.v.to_bits(), libm::exp(x).to_bits());
+        near(r.v, want, 1, format_args!("exp at {x:e}"));
+        near(r.d[0], want, 1, format_args!("exp' at {x:e}"));
+    }
+    for (x, want, d) in EXPM1 {
+        let r = D1::variable(x, 0).exp_m1();
+        assert_eq!(r.v.to_bits(), libm::expm1(x).to_bits());
+        near(r.v, want, 1, format_args!("expm1 at {x:e}"));
+        near(r.d[0], d, 1, format_args!("expm1' at {x:e}"));
+    }
+    for (x, want, d) in EXPM1_32 {
+        let r = Dual::<f32, 1>::variable(x, 0).exp_m1();
+        assert_eq!(r.v.to_bits(), libm::expm1f(x).to_bits());
+        near32(r.v, want, 1, format_args!("f32 expm1 at {x:e}"));
+        near32(r.d[0], d, 1, format_args!("f32 expm1' at {x:e}"));
+    }
+    // Past `ln MAX` the value and the seeded lane are `+inf`, and an untouched lane `0 * inf`, NaN.
+    let big = Dual::<f64, 2>::variable(710.0, 0).exp();
+    assert!(big.v == f64::INFINITY && big.d[0] == f64::INFINITY && big.d[1].is_nan());
+    assert!(D1::variable(f64::NAN, 0).exp_m1().v.is_nan());
+}
+
+/// Nesting gives `exp`'s second derivative, `e^x` again, and `exp_m1`'s, the same.
+#[test]
+fn nesting_gives_second_derivatives_of_exp() {
+    type D11 = Dual<Dual<f64, 1>, 1>;
+    for (x, want) in EXP.iter().take(3) {
+        let r = D11::variable(Dual::variable(*x, 0), 0).exp();
+        near(r.d[0].d[0], *want, 1, format_args!("exp'' at {x:e}"));
+        let m = D11::variable(Dual::variable(*x, 0), 0).exp_m1();
+        near(m.d[0].d[0], *want, 1, format_args!("expm1'' at {x:e}"));
+    }
+}
