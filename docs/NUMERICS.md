@@ -460,7 +460,7 @@ $X(t) = X_0\,\mathrm{Exp}(t\,d)$ with $d = X_1 \ominus_R X_0$ and $\Delta = X_0^
 | `S2::from_vec_unchecked` | $\lvert\|v\|^2 - 1\rvert \le 2^{-40}$ (`f64`), $2^{-16}$ (`f32`); `debug_assert!`, NaN fails (`0063`) | garbage in, garbage out |
 | `S2::from_vec_normalized` | $\|v\|^2$ normal (`0027`) | NaN at $v = 0$; zero above the overflow |
 | `S2::renormalize` | none; a normalization only for $\lvert\|n\|^2 - 1\rvert \le 2^{-26.29}$ (`f64`), $2^{-11.79}$ (`f32`), within $5u$ of the sphere (measured, `0063`) | defined everywhere; as the quaternion's |
-| `S2Chart::local` | $m \ne -n$ | unspecified finite value |
+| `S2Chart::local` | $m \ne -n$; where $n \cdot m \le 0$, $\lVert n \times m\rVert^2$ normal ($m$ farther than about $1.5\times10^{-154}$ (`f64`), $1.1\times10^{-19}$ (`f32`) from $-n$) ([`0067`](./decisions/0067-the-sphere-takes-plane-coordinates-and-both-precisions.md)) | unspecified finite value; $0$ at $m = -n$ |
 | `sinc`, `sinc_value` | every $z \ge 0$; for $\theta \le \pi$, value and derivative within $5u$ times their condition number (the range `coeff_alpha` scores; beyond it nothing is promised, `0062`) | NaN for NaN; a negative $z$ fails `coeffs`' `debug_assert!` |
 | `Mat2::inverse_adj` | entries of magnitude $m$, $10^{-154} < m < 10^{154}$ (`f64`), $10^{-19} < m < 10^{19}$ (`f32`); the caller decides what `det` means (`0061`) | non-finite at $\det = 0$; outside the range, $\det$ overflows or underflows |
 | `geodesic` | $\theta(d) < \pi$ | §10 |
@@ -520,7 +520,7 @@ row spells the composition and the proptest writes it inline
 | `geodesic_jacobians` | `Dual` through the reference geodesic | 4 |
 | `Gaussian::to_left` / `to_right` | dense $\mathrm{Ad}\,\Sigma\,\mathrm{Ad}^\top$: `reference::sen3jac_sandwich` with $J = \mathrm{Ad}$, componentwise within $2\gamma_{2D}\lvert A\rvert\lvert\Sigma\rvert\lvert A\rvert^\top$ (`to_left_and_to_right_match_reference_*`, [`0065`](./decisions/0065-a-gaussian-names-its-side-and-is-stored-symmetric.md)) | 5 |
 | `gamma_apply_jacobians` | `Dual` through `reference::gamma_apply`: the first 40 terms of $\sum W^n v/(n+m)!$, left to right, for $\theta \le \pi$ and $m!$ exact at `S`; tolerance per $\theta$ band (`gamma_apply_jacobians_matches_reference_*`, [`0064`](./decisions/0064-the-integrated-exponentials-reuse-the-swept-switches.md), [`0066`](./decisions/0066-gamma-shares-its-coefficients-and-a-gaussian-factors-once.md)) | 5 |
-| `S2Chart::local` | $\mathrm{Log}$ of the minimal rotation taking $n$ to $m$, projected on $B$ | 5 |
+| `S2Chart::local` | $\mathrm{Log}$ of the minimal rotation taking $n$ to $m$, projected on $B$: `reference::s2_local`, the quaternion $(1 + n\cdot m,\ n \times m)$ normalized through `SO3::log`; `s2_local_matches_reference` scores the difference over `local`'s conditioning $\alpha/\sin\alpha$, 5.870 `u` at binary64 and 6.034 at binary32 ([`0067`](./decisions/0067-the-sphere-takes-plane-coordinates-and-both-precisions.md)) | 5 |
 | `chol_solve` (`helicoid-linalg`) | composition of public fns, no `reference` item: `solve_upper(&l.transpose(), solve_lower(&l, b))` | 2 |
 
 ## 15. Cholesky and the triangular solves

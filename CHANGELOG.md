@@ -16,16 +16,23 @@ defined by the status tables in `docs/`; they win over this file.
 - **`Mat2::inverse_adj`** (`0061`): `(adj/det, det)` with `Mat3::inverse_adj`'s contract; the adjugate is exact, so `det` is the only rounding. Corpus id `mat2_inverse_adj` (`cond:1`, `1e4`, `1e8`, an exactly singular stratum; `cond:1e8` at binary64 only), scored with `NUMERICS.md` §11's expected-non-finite rule; nalgebra's `Matrix2::try_inverse` answers it in the nalgebra runner, equal on every stratum.
 
 - **Integrated exponentials** (`PHASE5.md` §4, `0064`):
-  - `helicoid::so3::{gamma1, gamma2, gamma_apply_jacobian::<M>}`. `Γ₁` is `SO3::jl` to the bit; `Γ₂ = ½I + bW + dW²` comes from a new group `gamma2_coeffs` over the swept switches of `b` and `d`, with no new switch.
-  - `gamma_apply_jacobian` returns `(Γ_M v, ∂(Γ_M v)/∂φ)` for `M` 1 or 2, through `Dual<S, 3>`. Its twin is `reference::gamma_apply`.
+  - `helicoid::so3::{gamma1, gamma2, gamma_apply_jacobians::<M>}`. `Γ₁` is `SO3::jl` to the bit; `Γ₂ = ½I + bW + dW²` comes from a new group `gamma2_coeffs` over the swept switches of `b` and `d`, with no new switch.
+  - `gamma_apply_jacobians` returns `(Γ_M v, ∂(Γ_M v)/∂φ, Γ_M)` for `M` 1 or 2 from one coefficient evaluation on `Dual<S, 1>` and the chain rule (`0066`). Its twin is `reference::gamma_apply`, whose `m` is bounded so that `m!` is exact.
   - Corpus id `so3_gamma2` at both precisions: at most 1.46 `u` (`f64`) and 1.68 `u` (`f32`). A planted Γ₂-from-Γ₁ defect is detected.
 
 - **`Gaussian<S, G, Sd, D>`** (`PHASE5.md` §5, `0065`):
   - The side is in the type; `new` is the only constructor, and it asserts `D == G::DOF`.
-  - `cov` is read by its lower triangle and returned exactly symmetric.
+  - `new` reads `Σ` by its lower triangle; the field is private and `cov()` returns it exactly symmetric (`0066`).
+  - `whitener()` factors `Σ` once for many-point gating: `Whitener::mahalanobis_sq` is `mahalanobis_sq` to the bit (`0066`).
   - `to_left`/`to_right` stay within `γ_{4D+42}(|B||A|)|Σ|(|B||A|)ᵀ` on the round trip.
   - `propagate` documents its side contract; `mahalanobis_sq` returns `chol`'s mask.
   - Corpus ids `gaussian_mahalanobis_{se3,se23}`, each stratum within 0.44 of its componentwise condition number.
+
+- **S² and its chart** (`PHASE5.md` §2, `0063`, `0067`): `S2<S>`, held unit by `from_vec_unchecked`, `from_vec_normalized` and `renormalize`, and `S2Chart<S>`, its Householder basis frozen per linearization, on `RnTangent<S, 2>` coordinates with `Mat2<S>` Jacobians (`Mat2<S>: Jac<S, RnTangent<S, 2>>`); `S2` is a `Manifold`. `ς` is read by comparison, so `n_z = ±0` give one basis. `local` takes `α/s` from `log_ratio`, and its Jacobian forms `Exp` of the rotation vector rather than dividing by `1 + n·m`. The twin `reference::s2_local`. Corpus ids `s2_retract` and `s2_local` over `s2:nz0`, `s2:near-antipode` and `s2:generic` at both precisions, `s2_retract` scored by `NUMERICS.md` §11's new direction metric: at most 5.96 `u` and 1.89 `u` off the antipode.
+
+### Changed
+
+- **`Vector::dot` sums by index** (`0067`): the same left-to-right sum, so every output is bit-identical, but `f32` callers no longer reload each lane through an `array::IntoIter` on the stack. `S2Chart::local` at `f32` went from 46–61 to 7.4–13.9 ns.
 
 ## [0.0.2] - 2026-10-09
 
