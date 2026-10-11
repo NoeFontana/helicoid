@@ -7,9 +7,9 @@
 //! [`mod@reference`], the rotation group [`SO3`] with its tangent [`SO3Tangent`] and `Mat3`
 //! Jacobian, the products [`Product`] with the block-diagonal [`ProductJac`], the side-typed
 //! [`Gaussian`], [`sinc`], the one coefficient of the kernel that is public
-//! (`docs/decisions/0062`), and the integrated exponentials of [`so3`] (`docs/decisions/0064`). Every
-//! group is written against the traits and generic over the scalar `S: Real` of
-//! `helicoid-linalg`.
+//! (`docs/decisions/0062`), the integrated exponentials of [`so3`] (`docs/decisions/0064`), and the
+//! sphere [`S2`] with its frozen chart [`S2Chart`] (`docs/decisions/0063`, `0067`). Every group is
+//! written against the traits and generic over the scalar `S: Real` of `helicoid-linalg`.
 //!
 //! # Conventions
 //!
@@ -43,6 +43,7 @@ mod product;
 mod quat;
 pub mod reference;
 mod rn;
+mod s2;
 mod se3_charts;
 mod sen3;
 mod side;
@@ -61,6 +62,7 @@ pub use gaussian::{Gaussian, Whitener};
 pub use product::{Product, ProductJac};
 pub use quat::Quat;
 pub use rn::{Rn, RnJac, RnTangent};
+pub use s2::{S2Chart, S2};
 pub use se3_charts::{Decoupled, Screw, Se3Chart, TwistBlockJac, WorldTranslation};
 pub use sen3::{SEn3, SEn3Tangent, Twist, SE23, SE3};
 pub use side::{Left, Right, Side};
@@ -97,6 +99,8 @@ mod product_tests;
 mod quat_tests;
 #[cfg(test)]
 mod rn_tests;
+#[cfg(test)]
+mod s2_tests;
 #[cfg(test)]
 mod se3_charts_tests;
 #[cfg(test)]

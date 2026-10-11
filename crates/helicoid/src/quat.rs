@@ -53,7 +53,7 @@ pub struct Quat<S> {
 /// `2^-40` (`f64`) or `2^-16` (`f32`): the bound of `NUMERICS.md` §3.6 on `| ‖q‖² - 1 |`.
 ///
 /// Both are exactly representable, so `lit` is exact; the division is exact too.
-fn unit_tolerance<S: Real>() -> S {
+pub(crate) fn unit_tolerance<S: Real>() -> S {
     match S::PRECISION {
         Precision::F64 => S::lit(1.0 / 1_099_511_627_776.0),
         Precision::F32 => S::lit(1.0 / 65_536.0),

@@ -45,12 +45,14 @@ assert!(mid.rminus(&a).dot(&delta) > 0.0);
 ## What ships today
 
 `Quat`, `SO3`, `SEn3<S, N>` (with `SE3` and `SE23`), `Rn`, `Product`, the `Tangent`/`Jac`/
-`LieGroup`/`Side` traits, the coefficient kernel, side and action Jacobians, geodesics and their
-reference twins.
+`LieGroup`/`Side` traits, the coefficient kernel, side and action Jacobians, geodesics, charts as
+types (`Chart`, `Manifold`, `WithChart`, the SE(3) charts), the sphere `S2` with its frozen
+Householder chart, the integrated exponentials `so3::{gamma1, gamma2, gamma_apply_jacobians}`,
+`Gaussian` with its side in the type, and the reference twins.
 
-**Not yet:** `SO2`/`SE2`, `Sim(3)`, `S²`, charts as types, Γ functions, `Gaussian`. Each is
-specified in [`docs/`](https://github.com/NoeFontana/helicoid/tree/main/docs) and none is
-implemented; a spec's §0.0 table is the source of truth over any prose, this file included.
+**Not yet:** `SO2`/`SE2`, `Sim(3)`. Each is specified in
+[`docs/`](https://github.com/NoeFontana/helicoid/tree/main/docs); a spec's §0.0 table is the source
+of truth over any prose, this file included.
 
 ## Stability
 
