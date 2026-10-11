@@ -44,7 +44,7 @@ use criterion::measurement::WallTime;
 use criterion::{criterion_group, criterion_main, BatchSize, BenchmarkGroup, Criterion};
 use helicoid::{
     reference, so3, Chart, Gaussian, Jac, LieGroup, Right, RnTangent, S2Chart, SEn3, SEn3Tangent,
-    SO3Tangent, Tangent, S2, SE3, SO3,
+    SO3Tangent, Sim3, Sim3Jac, Sim3Tangent, Tangent, S2, SE3, SO3,
 };
 use helicoid_linalg::{Mat2, Mat3, Matrix, Point, Point3, Real, Vec3, Vector};
 
@@ -370,6 +370,91 @@ fn s2<S: Fixture>(g: &mut BenchmarkGroup<'_, WallTime>, name: &str, theta: f64) 
     });
 }
 
+/// `Sim3`'s methods behind calls, for `geodesic_of`'s reason.
+#[inline(never)]
+fn sim3_exp<S: Real>(t: &Sim3Tangent<S>) -> Sim3<S> {
+    Sim3::exp(t)
+}
+
+#[inline(never)]
+fn sim3_log<S: Real>(x: &Sim3<S>) -> Sim3Tangent<S> {
+    x.log()
+}
+
+#[inline(never)]
+fn sim3_jr<S: Real>(t: &Sim3Tangent<S>) -> Sim3Jac<S> {
+    Sim3::jr(t)
+}
+
+#[inline(never)]
+fn sim3_jr_inv<S: Real>(t: &Sim3Tangent<S>) -> Sim3Jac<S> {
+    Sim3::jr_inv(t)
+}
+
+#[inline(never)]
+fn sim3_jac_mul<S: Real>(a: &Sim3Jac<S>, b: &Sim3Jac<S>) -> Sim3Jac<S> {
+    Jac::<S, Sim3Tangent<S>>::mul(a, b)
+}
+
+/// The dense `7 x 7` product `0005` specified, for the structure's measured cost against it.
+#[inline(never)]
+fn dense7_mul<S: Real>(a: &Matrix<S, 7, 7>, b: &Matrix<S, 7, 7>) -> Matrix<S, 7, 7> {
+    *a * *b
+}
+
+#[inline(never)]
+fn sim3_rminus_jacobians<S: Real>(x: &Sim3<S>, b: &Sim3<S>) -> (Sim3Jac<S>, Sim3Jac<S>) {
+    x.rminus_jacobians(b)
+}
+
+/// Sim(3) at the stratum's `θ`, `σ = 0.5` (the closed arm off the joint limit, the series near it).
+fn sim3<S: Fixture>(g: &mut BenchmarkGroup<'_, WallTime>, name: &str, theta: f64) {
+    let ta = Sim3Tangent {
+        phi: phi::<S>(theta, false),
+        rho: rho::<S, 1>(false)[0],
+        sigma: S::of(0.5),
+    };
+    let tb = Sim3Tangent {
+        phi: phi::<S>(1.0, true),
+        rho: rho::<S, 1>(true)[0],
+        sigma: S::of(-0.3),
+    };
+    let (x, base) = (Sim3::exp(&ta), Sim3::exp(&tb));
+    let (ja, jb) = (Sim3::jr(&ta), Sim3::exp(&tb).adjoint());
+    let dense = |j: &Sim3Jac<S>| {
+        let mut m = [S::zero(); 49];
+        Jac::<S, Sim3Tangent<S>>::write_dense(
+            j,
+            &mut helicoid_linalg::StridedMut::col_major(&mut m, 7, 7),
+        );
+        Matrix::<S, 7, 7>::from_cols(core::array::from_fn(|c| {
+            Vector(core::array::from_fn(|r| m[7 * c + r]))
+        }))
+    };
+    let (da, db) = (dense(&ja), dense(&jb));
+    g.bench_function(format!("sim3/exp/{name}"), |b| {
+        b.iter(|| sim3_exp(black_box(&ta)))
+    });
+    g.bench_function(format!("sim3/log/{name}"), |b| {
+        b.iter(|| sim3_log(black_box(&x)))
+    });
+    g.bench_function(format!("sim3/jr/{name}"), |b| {
+        b.iter(|| sim3_jr(black_box(&ta)))
+    });
+    g.bench_function(format!("sim3/jr_inv/{name}"), |b| {
+        b.iter(|| sim3_jr_inv(black_box(&ta)))
+    });
+    g.bench_function(format!("sim3/jac_mul/{name}"), |b| {
+        b.iter(|| sim3_jac_mul(black_box(&ja), black_box(&jb)))
+    });
+    g.bench_function(format!("sim3/dense7_mul/{name}"), |b| {
+        b.iter(|| dense7_mul(black_box(&da), black_box(&db)))
+    });
+    g.bench_function(format!("sim3/rminus_jacobians/{name}"), |b| {
+        b.iter(|| sim3_rminus_jacobians(black_box(&x), black_box(&base)))
+    });
+}
+
 /// `Gaussian`'s rows on SE_N(3) (`0065`, `0066`): a fixed mean at `θ = 1` and a fixed `Σ`, since
 /// neither the side change nor the factorization branches on either.
 fn gaussian<S: Fixture, const N: usize, const D: usize>(
@@ -426,6 +511,7 @@ fn groups(c: &mut Criterion) {
         se3_action::<f64>(&mut g, name, theta);
         sen3::<f64, 2>(&mut g, "se23", name, theta);
         s2::<f64>(&mut g, name, theta);
+        sim3::<f64>(&mut g, name, theta);
     }
     se3_consecutive::<f64>(&mut g);
     gaussian::<f64, 1, 6>(&mut g, "se3");
@@ -439,6 +525,7 @@ fn groups(c: &mut Criterion) {
         se3_action::<f32>(&mut g, name, theta);
         sen3::<f32, 2>(&mut g, "se23", name, theta);
         s2::<f32>(&mut g, name, theta);
+        sim3::<f32>(&mut g, name, theta);
     }
     se3_consecutive::<f32>(&mut g);
     gaussian::<f32, 1, 6>(&mut g, "se3");
