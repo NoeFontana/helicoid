@@ -20,7 +20,7 @@
 use helicoid::__sweep as k;
 use helicoid::{
     Chart, Decoupled, Gaussian, Jac, Left, LieGroup, Quat, Right, RnTangent, S2Chart, SEn3,
-    SEn3Jac, SEn3Tangent, Screw, Tangent, Twist, WorldTranslation, S2, SE3, SO3,
+    SEn3Jac, SEn3Tangent, Screw, Sim3, Sim3Tangent, Tangent, Twist, WorldTranslation, S2, SE3, SO3,
 };
 use helicoid_linalg::{
     chol, chol_solve, eig3, solve_cubic, Dual, Mat3, Matrix, Precision, Real, StridedMut, Vec3,
@@ -769,6 +769,7 @@ impl Subject for Helicoid {
             || Unswept::of_fn(fn_id).is_some()
             || Gamma::of_fn(fn_id).is_some()
             || Sphere::of_fn(fn_id).is_some()
+            || Sim3Id::of_fn(fn_id).is_some()
             || So3::of_fn(fn_id).is_some()
             || Sen3::of_fn(fn_id).is_some()
             || Geodesic::of_fn(fn_id).is_some()
@@ -791,6 +792,12 @@ impl Subject for Helicoid {
             };
         }
         if let Some(id) = Sphere::of_fn(fn_id) {
+            return match precision {
+                Precision::F64 => id.answer::<f64>(record),
+                Precision::F32 => id.answer::<f32>(record),
+            };
+        }
+        if let Some(id) = Sim3Id::of_fn(fn_id) {
             return match precision {
                 Precision::F64 => id.answer::<f64>(record),
                 Precision::F32 => id.answer::<f32>(record),
@@ -988,6 +995,112 @@ pub(crate) fn s2_of<S: Real>(record: &Record, key: &str) -> Option<S2<S>> {
     Some(S2::from_vec_unchecked(Vector(v)))
 }
 
+/// The Sim(3) ids (`0070`), with `@f32` strata, so answered at both precisions: a tangent `tau`
+/// (`exp` and the four Jacobians) or an element `(q, x, sigma)` (`log`, `ad`, and `act` with a
+/// point `p`), every input read exactly at `S`.
+///
+/// An enum with an exhaustive `answer`, for the reason the [`So3`] note gives; `Helicoid` and
+/// `HostStd` both dispatch through it (the [`Unswept`] note says why both).
+#[derive(Clone, Copy)]
+pub(crate) enum Sim3Id {
+    Exp,
+    Log,
+    Jr,
+    Jl,
+    JrInv,
+    JlInv,
+    Ad,
+    Act,
+}
+
+impl Sim3Id {
+    const ALL: [(&'static str, Sim3Id); 8] = [
+        ("sim3_exp", Sim3Id::Exp),
+        ("sim3_log", Sim3Id::Log),
+        ("sim3_jr", Sim3Id::Jr),
+        ("sim3_jl", Sim3Id::Jl),
+        ("sim3_jr_inv", Sim3Id::JrInv),
+        ("sim3_jl_inv", Sim3Id::JlInv),
+        ("sim3_ad", Sim3Id::Ad),
+        ("sim3_act", Sim3Id::Act),
+    ];
+
+    pub(crate) fn of_fn(fn_id: &str) -> Option<Self> {
+        Self::ALL
+            .iter()
+            .find(|(name, _)| *name == fn_id)
+            .map(|&(_, id)| id)
+    }
+
+    fn answer<S: Real + Into<f64>>(self, record: &Record) -> Output {
+        let tau = || {
+            scalars::<S>(record, "tau")
+                .filter(|t| t.len() == 7)
+                .map(|t| Sim3Tangent::read_dense(&t))
+        };
+        let jac = |j: <Sim3<S> as LieGroup<S>>::Jac, field: &str| {
+            let mut buf = [S::zero(); 49];
+            j.write_dense(&mut StridedMut::col_major(&mut buf, 7, 7));
+            Output::from([(field.to_string(), buf.map(Into::into).to_vec())])
+        };
+        match self {
+            Sim3Id::Exp => tau().map_or_else(Output::new, |t| sim3_out(&Sim3::<S>::exp(&t))),
+            Sim3Id::Jr => tau().map_or_else(Output::new, |t| jac(Sim3::<S>::jr(&t), "J")),
+            Sim3Id::Jl => tau().map_or_else(Output::new, |t| jac(Sim3::<S>::jl(&t), "J")),
+            Sim3Id::JrInv => tau().map_or_else(Output::new, |t| jac(Sim3::<S>::jr_inv(&t), "J")),
+            Sim3Id::JlInv => tau().map_or_else(Output::new, |t| jac(Sim3::<S>::jl_inv(&t), "J")),
+            Sim3Id::Log | Sim3Id::Ad | Sim3Id::Act => {
+                let Some(x) = sim3_of::<S>(record) else {
+                    return Output::new();
+                };
+                match self {
+                    Sim3Id::Log => {
+                        let mut buf = [S::zero(); 7];
+                        x.log().write_dense(&mut buf);
+                        Output::from([("tau".to_string(), buf.map(Into::into).to_vec())])
+                    }
+                    Sim3Id::Ad => jac(x.adjoint(), "Ad"),
+                    _ => {
+                        let Some(p) = scalars::<S>(record, "p").filter(|p| p.len() == 3) else {
+                            return Output::new();
+                        };
+                        let xp = x * helicoid_linalg::Point([p[0], p[1], p[2]]);
+                        Output::from([("Xp".to_string(), xp.0.map(Into::into).to_vec())])
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// `(q, x, sigma)` of a record, exactly at `S`. The quaternion is a rounded unit one: a struct
+/// literal, as the other subjects move a corpus quaternion in.
+fn sim3_of<S: Real>(record: &Record) -> Option<Sim3<S>> {
+    let q = scalars::<S>(record, "q").filter(|q| q.len() == 4)?;
+    let x = scalars::<S>(record, "x").filter(|x| x.len() == 3)?;
+    let sigma = *scalars::<S>(record, "sigma")?.first()?;
+    let r = SO3::from_quat_unchecked(Quat {
+        w: q[0],
+        x: q[1],
+        y: q[2],
+        z: q[3],
+    });
+    Some(Sim3::from_parts(r, Vector([x[0], x[1], x[2]]), sigma))
+}
+
+fn sim3_out<S: Real + Into<f64>>(x: &Sim3<S>) -> Output {
+    let (r, t, sigma) = x.parts();
+    let q = r.quat();
+    Output::from([
+        (
+            "q".to_string(),
+            [q.w, q.x, q.y, q.z].map(Into::into).to_vec(),
+        ),
+        ("x".to_string(), t.0.map(Into::into).to_vec()),
+        ("sigma".to_string(), vec![sigma.into()]),
+    ])
+}
+
 /// The library's own host-`std` twin: this subject's program at [`Host`], whose transcendentals
 /// are Rust `std`'s — the host's libm, so glibc on Linux — where a default build routes them
 /// through the `libm` crate (D16).
@@ -1032,6 +1145,9 @@ impl Subject for HostStd {
             return id.answer::<Host>(record);
         }
         if let Some(id) = Sphere::of_fn(fn_id) {
+            return id.answer::<Host>(record);
+        }
+        if let Some(id) = Sim3Id::of_fn(fn_id) {
             return id.answer::<Host>(record);
         }
         if let Some(id) = So3::of_fn(fn_id) {
