@@ -250,6 +250,52 @@ pub(crate) fn gamma2_coeffs<S: Real>(z: S) -> (S, S) {
     (b, d)
 }
 
+/// `(sin θ/θ, a, b, d)` at `θ² = z`, the four Sim(3)'s closed arm reads (`NUMERICS.md` §9, `0070`):
+/// one group over the swept arms of `k`, `cos θ/2`, `a`, `b`, `d`, so no switch of its own, and each
+/// member is its own group's to the bit (`groups_are_their_members_own_arm`); `sin θ/θ` is
+/// `alpha_value`'s `2k cos(θ/2)`. The exact arm takes one root, one `sin_cos(θ/2)` for `k`,
+/// `cos θ/2`, `a = 2k²` and `d`, and one `sin θ` for `b`.
+#[cfg_attr(
+    not(any(test, feature = "__sweep")),
+    allow(dead_code, reason = "Sim3, 0070 plan step 3, is the consumer")
+)]
+pub(crate) fn sinc_a_b_d<S: Real>(z: S) -> (S, S, S, S) {
+    let arms = table::<S, _>(
+        [
+            K_F64.arm(),
+            COS_HALF_F64.arm(),
+            A_F64.arm(),
+            B_F64.arm(),
+            D_F64.arm(),
+        ],
+        [
+            K_F32.arm(),
+            COS_HALF_F32.arm(),
+            A_F32.arm(),
+            B_F32.arm(),
+            D_F32.arm(),
+        ],
+    );
+    let [k, cos_half, a, b, d] = grouped(arms, exact_k_cos_half_a_b_d, z);
+    (S::lit(2.0) * k * cos_half, a, b, d)
+}
+
+/// `[k, cos θ/2, a, b, d]` from one `sin_cos(θ/2)` and one `sin θ`: `exact_k_cos_half`'s `k` and
+/// `cos θ/2`, `exact_a_b`'s `2k²` (its `half_angle_sin` is this `sin_cos`'s first half to the bit,
+/// `0052`), `b_from` and `d_from`'s arithmetic on the same half-angle sine.
+#[cfg_attr(
+    not(any(test, feature = "__sweep")),
+    allow(dead_code, reason = "Sim3, 0070 plan step 3, is the consumer")
+)]
+fn exact_k_cos_half_a_b_d<S: Real>(z: S) -> [S; 5] {
+    let th = z.sqrt();
+    let (s, c) = half_angle(th);
+    let k = s / th;
+    let t2 = th * th;
+    let d = (t2 - S::lit(4.0) * s * s) / (S::lit(2.0) * t2 * t2);
+    [k, c, S::lit(2.0) * k * k, b_from(th, th.sin()), d]
+}
+
 /// Whether [`log_ratio`] would take its **short** arm at `(n2, w)`: `w > 0` and
 /// `s = n²/w² < short_below`, `0047`'s second, shortest series arm.
 ///

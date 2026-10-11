@@ -323,7 +323,13 @@ class ManifestTest(unittest.TestCase):
         `series` supplies the generated files' literals and `switch-ref` the right-hand side of
         docs/maths/coefficients.md CO.12 (docs/decisions/0039 plan step 0).
         """
-        kinds = {"coeff_series.jsonl": "series", "coeff_switch_ref.jsonl": "switch-ref"}
+        # 0070: the Sim(3) group's constants and its ray references, of the same two kinds.
+        kinds = {
+            "coeff_series.jsonl": "series",
+            "coeff_switch_ref.jsonl": "switch-ref",
+            "sim3_series.jsonl": "series",
+            "sim3_ref.jsonl": "switch-ref",
+        }
         files = json.loads((COMMITTED / "MANIFEST.json").read_text())["files"]
         for name, entry in files.items():
             kind = kinds.get(name, "corpus")
