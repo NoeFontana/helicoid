@@ -19,8 +19,8 @@
 
 use helicoid::__sweep as k;
 use helicoid::{
-    Chart, Decoupled, Gaussian, Jac, Left, LieGroup, Quat, Right, SEn3, SEn3Jac, SEn3Tangent,
-    Screw, Tangent, Twist, WorldTranslation, SE3, SO3,
+    Chart, Decoupled, Gaussian, Jac, Left, LieGroup, Quat, Right, RnTangent, S2Chart, SEn3,
+    SEn3Jac, SEn3Tangent, Screw, Tangent, Twist, WorldTranslation, S2, SE3, SO3,
 };
 use helicoid_linalg::{
     chol, chol_solve, eig3, solve_cubic, Dual, Mat3, Matrix, Precision, Real, StridedMut, Vec3,
@@ -636,7 +636,7 @@ impl Linalg {
 
 /// The values a record holds under `key` at `S`: binary64 as stored, or at `f32` each exactly a
 /// binary32 (`0016`), else nothing.
-fn scalars<S: Real>(record: &Record, key: &str) -> Option<Vec<S>> {
+pub(crate) fn scalars<S: Real>(record: &Record, key: &str) -> Option<Vec<S>> {
     record
         .input(key)?
         .iter()
@@ -762,6 +762,7 @@ impl Subject for Helicoid {
         Swept::of_fn(fn_id).is_some()
             || Unswept::of_fn(fn_id).is_some()
             || Gamma::of_fn(fn_id).is_some()
+            || Sphere::of_fn(fn_id).is_some()
             || So3::of_fn(fn_id).is_some()
             || Sen3::of_fn(fn_id).is_some()
             || Geodesic::of_fn(fn_id).is_some()
@@ -778,6 +779,12 @@ impl Subject for Helicoid {
             };
         }
         if let Some(id) = Gamma::of_fn(fn_id) {
+            return match precision {
+                Precision::F64 => id.answer::<f64>(record),
+                Precision::F32 => id.answer::<f32>(record),
+            };
+        }
+        if let Some(id) = Sphere::of_fn(fn_id) {
             return match precision {
                 Precision::F64 => id.answer::<f64>(record),
                 Precision::F32 => id.answer::<f32>(record),
@@ -911,6 +918,60 @@ impl Gamma {
     }
 }
 
+/// `s2_retract` and `s2_local` (`0063`, `0067`), with `@f32` strata, so answered at both
+/// precisions: the chart at `n`, then `retract(δ)` as `m` or `local(m)` as `delta`, every input
+/// read exactly at `S`.
+///
+/// An enum with an exhaustive `answer`, for the reason the [`So3`] note gives; `Helicoid` and
+/// `HostStd` both dispatch through it (the [`Unswept`] note says why both).
+#[derive(Clone, Copy)]
+pub(crate) enum Sphere {
+    Retract,
+    Local,
+}
+
+impl Sphere {
+    const ALL: [(&'static str, Sphere); 2] =
+        [("s2_retract", Sphere::Retract), ("s2_local", Sphere::Local)];
+
+    pub(crate) fn of_fn(fn_id: &str) -> Option<Self> {
+        Self::ALL
+            .iter()
+            .find(|(name, _)| *name == fn_id)
+            .map(|&(_, id)| id)
+    }
+
+    fn answer<S: Real + Into<f64>>(self, record: &Record) -> Output {
+        let Some(chart) = s2_of::<S>(record, "n").map(|n| S2Chart::at(&n)) else {
+            return Output::new();
+        };
+        match self {
+            Sphere::Retract => {
+                let Some(d) = scalars::<S>(record, "delta").filter(|d| d.len() == 2) else {
+                    return Output::new();
+                };
+                let m = chart.retract(&RnTangent::read_dense(&d));
+                Output::from([("m".to_string(), m.vec().0.map(Into::into).to_vec())])
+            }
+            Sphere::Local => {
+                let Some(m) = s2_of::<S>(record, "m") else {
+                    return Output::new();
+                };
+                let d = chart.local(&m).rho.0;
+                Output::from([("delta".to_string(), d.map(Into::into).to_vec())])
+            }
+        }
+    }
+}
+
+/// The point `key` of a record, exactly at `S`: a corpus point is a rounded unit vector, inside
+/// what `S2::from_vec_unchecked` vouches for at either precision.
+pub(crate) fn s2_of<S: Real>(record: &Record, key: &str) -> Option<S2<S>> {
+    let v = scalars::<S>(record, key)?;
+    let v: [S; 3] = v.try_into().ok()?;
+    Some(S2::from_vec_unchecked(Vector(v)))
+}
+
 /// The library's own host-`std` twin: this subject's program at [`Host`], whose transcendentals
 /// are Rust `std`'s — the host's libm, so glibc on Linux — where a default build routes them
 /// through the `libm` crate (D16).
@@ -952,6 +1013,9 @@ impl Subject for HostStd {
             return id.answer::<Host>(record);
         }
         if let Some(id) = Gamma::of_fn(fn_id) {
+            return id.answer::<Host>(record);
+        }
+        if let Some(id) = Sphere::of_fn(fn_id) {
             return id.answer::<Host>(record);
         }
         if let Some(id) = So3::of_fn(fn_id) {

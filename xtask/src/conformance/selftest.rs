@@ -52,8 +52,8 @@ use super::metric::{COEFF_D_BRANCH, COEFF_VALUE};
 use super::report::Row;
 use super::subject::Registered;
 use super::{
-    corpus, evaluate_by, selftest_envelope, selftest_gamma, selftest_linalg, selftest_se3,
-    selftest_so3,
+    corpus, evaluate_by, selftest_envelope, selftest_gamma, selftest_linalg, selftest_s2,
+    selftest_se3, selftest_so3,
 };
 use crate::seeded::{Coeff, Defect, Seeded};
 use crate::thresholds::{Ranker, Ranking};
@@ -429,11 +429,19 @@ fn halves(
     let envelope = selftest_envelope::check(dir, envelope)?;
     let linalg = selftest_linalg::check(dir, linalg)?;
     let gamma = selftest_gamma::check(dir)?;
+    let s2 = selftest_s2::check(dir)?;
     let f32 = check(dir, cases_f32(), Precision::F32, WINDOW)?;
     let f32_title = "f32 (the coefficients' @f32 strata, u = 2^-24):";
     let text = format!(
-        "{}\n{}\n{}\n{}\n{}\n{}\n{f32_title}\n{}",
-        coefficients.text, so3.text, se3.text, envelope.text, linalg.text, gamma.text, f32.text
+        "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{f32_title}\n{}",
+        coefficients.text,
+        so3.text,
+        se3.text,
+        envelope.text,
+        linalg.text,
+        gamma.text,
+        s2.text,
+        f32.text
     );
     let mut failures = coefficients.failures;
     failures.extend(so3.failures);
@@ -441,6 +449,7 @@ fn halves(
     failures.extend(envelope.failures);
     failures.extend(linalg.failures);
     failures.extend(gamma.failures);
+    failures.extend(s2.failures);
     failures.extend(f32.failures.into_iter().map(|f| format!("f32: {f}")));
     Ok(Report { text, failures })
 }

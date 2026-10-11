@@ -1,4 +1,5 @@
-"""Generation-time cross-checks of the SE(3) chart records (0060 decision 8), to 100 digits.
+"""Generation-time cross-checks of the SE(3) chart records (0060 decision 8) and the S2 ones (0063),
+to 100 digits.
 
 Each holds a property that fixes the output without the evaluator that produced it:
 
@@ -11,9 +12,9 @@ Each holds a property that fixes the output without the evaluator that produced 
 
 from collections.abc import Callable
 
-from mpmath import mpf
+from mpmath import mp, mpf
 
-from . import charts, check, sen3, so3
+from . import charts, check, s2, sen3, so3
 from .check_geodesic import _agree_pose
 
 
@@ -50,3 +51,44 @@ def local(chart: str) -> Callable[[dict, dict], None]:
         _agree_pose(f"se3_{chart}_local: retract round trip", y, want)
 
     return check_
+
+
+# S2 (0063, docs/maths/charts.md CH.9): each check fixes the output by a route the evaluator does
+# not take.
+
+
+def s2_retract(inputs: dict, out: dict) -> None:
+    """CH.9(a)'s closed form cos(theta) n - sigma sin(theta)/theta B K delta, the unit norm, and
+    `local` of the answer returning delta (CH.9(d): every stratum has theta < pi)."""
+    nh, sg, b1, b2 = s2.basis(inputs["n"])
+    d1, d2 = (mpf(c) for c in inputs["delta"])
+    theta = mp.sqrt(d1 * d1 + d2 * d2)
+    sinc = mp.sin(theta) / theta if theta != 0 else mpf(1)
+    bk = [-d2 * a + d1 * b for a, b in zip(b1, b2, strict=True)]  # B K delta
+    closed = [mp.cos(theta) * x - sg * sinc * y for x, y in zip(nh, bk, strict=True)]
+    m = list(out["m"])
+    check._agree("s2_retract: CH.9(a) closed form", m, closed)
+    check._agree("s2_retract: |m|", [s2.norm(m)], [mpf(1)])
+    back = s2.local({"n": inputs["n"], "m": m})["delta"]
+    check._agree("s2_retract: local round trip", back, [d1, d2])
+
+
+def s2_local(inputs: dict, out: dict) -> None:
+    """`retract` of the answer returning m (CH.9(d), every m != -n), and 0063 decision 4's route:
+    the quaternion (cos(alpha/2), sin(alpha/2) v/s) through `so3.log` gives the rotation vector,
+    and its rotation maps n to m."""
+    delta = list(out["delta"])
+    p, nh, mh = s2.rotation_vector(inputs["n"], inputs["m"])
+    check._agree("s2_local: retract round trip", s2._retract(inputs["n"], delta), mh)
+    alpha = s2.norm(p)
+    if alpha == 0:
+        return
+    axis = [c / alpha for c in p]
+    q = [mp.cos(alpha / 2), *(mp.sin(alpha / 2) * c for c in axis)]
+    check._agree("s2_local: so3.log of the minimal rotation", so3.log({"q": q})["phi"], p)
+    R = so3.rot(q)
+    check._agree(
+        "s2_local: the minimal rotation maps n to m",
+        [sum(R[i][k] * nh[k] for k in range(3)) for i in range(3)],
+        mh,
+    )
