@@ -3,13 +3,13 @@
 //! D5 is "`Log` goes through the quaternion `atan2`; no `acos` of a trace anywhere in the
 //! workspace", and until [`0022`] it held by **absence**: `Real` had no `acos`, so a group routine
 //! that wanted one had to spell `atan2(sqrt(..), x)` and a reviewer would see it. `0022` adds
-//! `Real::acos` for `solve_cubic` and `eig3`, which is where it belongs — the argument there is a
+//! `Real::acos` for `solve_cubic` (and `eig3`, until `0081`), which is where it belongs — the argument there is a
 //! normalized determinant ratio, not a trace — and in doing so opens the hole D5 names.
 //!
 //! So the rule is made explicit instead: **`crates/helicoid` does not name `acos`.** That is the
 //! crate where rotations live, so every `acos` it could want is one of D5's — of a trace, of a
 //! quaternion dot, of anything whose slope is infinite exactly where rotations are interesting.
-//! `helicoid-linalg` is exempt: `cubic` and `eig3` are its callers and `float.rs` is where the
+//! `helicoid-linalg` is exempt: `cubic` is its caller and `float.rs` is where the
 //! `libm` routing lives.
 //!
 //! Test files are exempt for check 5's reason: a test that pins `Real::acos` against `libm::acos`
@@ -49,7 +49,7 @@ pub(crate) fn check(files: &[File]) -> Vec<Violation> {
                     i + 1,
                     "[acos] `acos` in the group crate; D5 routes `Log` through the quaternion \
                      `atan2` and `acos`'s slope is infinite where rotations are interesting. \
-                     `solve_cubic` and `eig3` are its callers (`0022`)"
+                     `solve_cubic` is its caller (`0022`, `0081`)"
                         .to_string(),
                 ));
             }
@@ -83,7 +83,7 @@ mod tests {
             ),
             1
         );
-        // `helicoid-linalg` is exempt -- `cubic` and `eig3` are the sanctioned callers.
+        // `helicoid-linalg` is exempt -- `cubic` is the sanctioned caller.
         assert_eq!(hits("crates/helicoid-linalg/src/cubic.rs", "r.acos()"), 0);
         // Tests are exempt, as check 5's are.
         assert_eq!(hits("crates/helicoid/src/so3_tests.rs", "x.acos()"), 0);

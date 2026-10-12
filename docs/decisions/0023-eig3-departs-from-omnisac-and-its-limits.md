@@ -4,7 +4,7 @@
 **Owner:** @NoeFontana
 **Implementation:** —
 
-> **Open question 2 answered by [`0057`](./0057-eig3-anchors-the-isolated-end.md)**: anchor by mask. Question 3 is answered by [`0056`](./0056-the-routines-d7-does-not-reach.md) (the bar is the committed per-stratum maximum). Questions 1 and 4 stay open.
+> **Open question 2 answered by [`0057`](./0057-eig3-anchors-the-isolated-end.md)**: anchor by mask. Question 3 is answered by [`0056`](./0056-the-routines-d7-does-not-reach.md) (the bar is the committed per-stratum maximum). **Questions 1 and 4 are answered by [`0081`](./0081-eig3-is-four-jacobi-sweeps.md)**, which replaces the closed form with four Jacobi sweeps: no mask, and an exact power-of-two scaling that puts every finite matrix in the domain. The limits of decision 4 no longer describe the code.
 
 ## Context
 
