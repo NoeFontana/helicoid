@@ -63,7 +63,7 @@ S² is unreleased (CHANGELOG `[Unreleased]`), so its coordinates can change now 
   2. Corpus: no new arithmetic. `basis` returns stored values, and `displacement_basis` is a
      negation of them. Both are covered by the `s2_*` strata and by
      `the_basis_is_orthonormal_and_oriented` and
-     `displacement_basis_is_the_derivative_of_the_chart_at_its_base` (against `Dual`, within 4 `ε`).
+     `displacement_basis_is_the_derivative_of_the_chart_at_its_base` (against `Dual`: worst 6.000 `u` over 10⁵ cases, bound 12 `u`).
   3. Domain: `S2Chart::at`'s.
   4. The return is a labelled `Matrix`, not a `bool` or an unlabelled array.
   5. No second spelling.

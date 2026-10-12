@@ -98,7 +98,8 @@ fn legs<S: Sample>(a: &[f64; 3], b: &[f64; 2], c: &[f64; 3]) -> [f64; 4] {
     ]
 }
 
-/// `max(|BᵀB - I|, |Bᵀn|, ‖b₁ × b₂ - n‖)` in `u` (CH.8(c); oriented, `0082`), from the values of `S`.
+/// `max(|BᵀB - I|, |Bᵀn|, ‖b₁ × b₂ - n‖)` in `u` (CH.8(c); oriented, `0082`), from the values
+/// of `S`.
 fn basis_err<S: Sample>(a: &[f64; 3]) -> f64 {
     let n = point::<S>(a);
     let b = S2Chart::at(&n).basis();
@@ -146,7 +147,8 @@ fn jacobians_match_dual(a: &[f64; 3], b: &[f64; 2], c: &[f64; 3]) -> f64 {
 }
 
 /// `displacement_basis()` against `Dual` (`0082`): `T` is `∂retract/∂δ` at `δ = 0`, and `Tᵀ` is
-/// `∂local/∂m` at `m = n`, the ambient `m` carrying three lanes. The largest entry error.
+/// `∂local/∂m` at `m = n`, the ambient `m` carrying three lanes. The largest entry error in `u`
+/// (entries at most `1`).
 fn displacement_basis_matches_dual(a: &[f64; 3]) -> f64 {
     let n = point::<D2>(a);
     let chart = S2Chart::at(&n);
@@ -167,7 +169,7 @@ fn displacement_basis_matches_dual(a: &[f64; 3]) -> f64 {
     let d_local = along.fold(0.0, |w, (i, j)| {
         worst(w, (delta[j].d[i] - t.get(i, j).value_f64()).abs())
     });
-    worst(d_retract, d_local)
+    worst(d_retract, d_local) / unit::<f64>()
 }
 
 /// `local_jacobian(retract(δ)) · retract_jacobian(δ) = I` (CH.2(b)).
@@ -193,18 +195,17 @@ fn twin<S: Sample>(a: &[f64; 3], c: &[f64; 3]) -> f64 {
     e::<S>(&ft(&chart.local(&m)), &ft(&reference::s2_local(&chart, &m))) / cond
 }
 
-// `measure_s2`, 10^6 cases (10^5 for `Dual`): legs `f64` [0, 6.000, 16.521, 0], `f32`
-// [0, 6.083, 17.051, 0]; basis `f64` 6.000, `f32` 5.786; drift 10.877, 8.766; inverse pair 8.834,
-// 9.035; twin 5.870, 6.034; `Dual` 9.833.
-const LEGS_F64: [f64; 4] = [0.0, 12.0, 34.0, 0.0];
+// `measure_s2`, 10^6 cases (10^5 for `Dual`), on the oriented frame (`0082`): legs `f64`
+// [0, 6.646, 16.521, 0], `f32` [0, 5.657, 17.051, 0]; basis `f64` 6.000, `f32` 5.786; drift 8.876,
+// 8.990; inverse pair 8.860, 9.237; twin 5.870, 6.034; `Dual` 9.833; displacement 6.000.
+const LEGS_F64: [f64; 4] = [0.0, 14.0, 34.0, 0.0];
 const LEGS_F32: [f64; 4] = [0.0, 13.0, 35.0, 0.0];
 const BASIS: [f64; 2] = [12.0, 12.0];
 const DRIFT: [f64; 2] = [22.0, 18.0];
 const INVERSE: [f64; 2] = [18.0, 19.0];
 const TWIN: [f64; 2] = [12.0, 13.0];
 const DUAL: f64 = 20.0;
-/// `displacement_basis` against `Dual`, in `ε` of `f64` (entries at most `1`).
-const DISPLACEMENT: f64 = 16.0;
+const DISPLACEMENT: f64 = 12.0;
 
 proptest! {
     #[test]
@@ -224,7 +225,7 @@ proptest! {
 
     #[test]
     fn displacement_basis_is_the_derivative_of_the_chart_at_its_base(a in laws::sample::<3>()) {
-        laws::within(displacement_basis_matches_dual(&a) / f64::EPSILON, DISPLACEMENT)?;
+        laws::within(displacement_basis_matches_dual(&a), DISPLACEMENT)?;
     }
 
     #[test]
@@ -327,13 +328,14 @@ fn measure_s2() {
             *x = worst(*x, y);
         }
     }
-    let mut dual = 0.0_f64;
+    let (mut dual, mut displacement) = (0.0_f64, 0.0_f64);
     for _ in 0..100_000 {
         let (a, b, c) = (rng.shaped::<3>(), rng.shaped::<2>(), rng.shaped::<3>());
         dual = worst(dual, jacobians_match_dual(&a, &b, &c));
+        displacement = worst(displacement, displacement_basis_matches_dual(&a));
     }
     std::println!(
-        "legs f64 {l64:.3?} f32 {l32:.3?}; basis {:.3} {:.3}; drift {:.3} {:.3}; inverse pair {:.3} {:.3}; twin {:.3} {:.3}; dual {dual:.3}",
+        "legs f64 {l64:.3?} f32 {l32:.3?}; basis {:.3} {:.3}; drift {:.3} {:.3}; inverse pair {:.3} {:.3}; twin {:.3} {:.3}; dual {dual:.3}; displacement {displacement:.3}",
         w[0], w[1], w[2], w[3], w[4], w[5], w[6], w[7]
     );
 }
