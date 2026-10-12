@@ -1,5 +1,5 @@
-//! `helicoid-linalg`'s closed forms by stratum (`docs/PHASE1.md` §9): `solve_cubic` and `eig3`, at
-//! `f64` and `f32` (`0053` *Further work* 2).
+//! `helicoid-linalg`'s solvers by stratum (`docs/PHASE1.md` §9): `solve_cubic` (a closed form) and
+//! `eig3` (four Jacobi sweeps, `0081`), at `f64` and `f32` (`0053` *Further work* 2).
 //!
 //! **A third binary**, for the reason `benches/groups.rs` gives: `bench-gate --against <binary>`
 //! takes one bench binary, so a change to a solver pays for these rows alone.

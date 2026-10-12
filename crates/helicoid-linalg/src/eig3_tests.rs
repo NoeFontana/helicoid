@@ -1,59 +1,25 @@
-//! Tests of `eig3`: reference cases, the strata of `docs/PHASE2.md` §6 against mpmath and planted
-//! spectra, the value path of `Dual` and its derivative, two lanes, and the limits, pinned.
+//! Tests of `eig3`: reference cases, planted spectra and the fixture against mpmath, the value path
+//! of `Dual` and its derivative, two lanes, repeated eigenvalues and the magnitude range.
 //!
 //! **Metrics**, in `f64` from the `S` output, `u` the unit roundoff, `|A|` the largest `|l*|`:
-//! `orth = max |V^T V - I|`, `det = |det V - 1|` (bound `16 u` for every input: the frame is built
-//! from cross products of unit vectors); the eigenvalue error `ev = |l_k - l_k*|`; the residual `res
-//! = |A v_k - l_k v_k|`; the angle `ang = |v_k x v_k*|`.
+//! `orth = max |V^T V - I|`, `det = |det V - 1|`; the eigenvalue error `ev = |l_k - l_k*|`; the
+//! residual `res = |A v_k - l_k v_k|`; the angle `ang = |v_k x v_k*|`.
 //!
-//! **The recorded bounds** are `ev, res <= (4 c + 24) u |A|` and `ang_k <= (4 c + 24) u |A| / gap_k`,
-//! `gap_k` the distance of `l_k*` to the nearest other eigenvalue (at least `u |A|`, where the bound
-//! is vacuous), `gap` the smaller adjacent gap, `c = 1 + min(|A| / gap, u^(-1/2))`. They are a fit,
-//! **not the bars of PHASE2 §6**, which name no constant `K` (`0023` (draft)): worst value / bound
-//! 0.52 over 10^6 planted cases per seed (seeds 1 to 4) and **0.206** over the fixture, about ten
-//! times above the measurements on the clustered strata below. The fixture figure was 0.15 until
-//! `0022` routed `acos` through `libm` (`0053`): `ev` and `res` moved 0.150 -> 0.206 on one reference
-//! row, `ang` did not move, and both stay a factor of five inside the bound. It is reproducible —
-//! `EIG3_REPORT=1` prints each new largest ratio — which the clustered table below is not. They are asserted where the top gap is at
-//! least `4 sqrt(u) |A|`; below it (a tie of the top pair, `# Domain`) only the frame and `ev` are,
-//! and the vectors are pinned as wrong in `the_limits_of_the_closed_form_are_pinned`.
-//!
-//! **Measured** worst `ev` (in `u |A|`) and `ang` (in `u |A| / gap`) over 5000 matrices per stratum
-//! against a double-double Jacobi reference, by a scratch harness that is not committed, so the
-//! table cannot be reproduced from this repository. The corpus id `eig3` is the reproducible
-//! instrument that replaces it: its `eig:gap-1e-k/{bottom,top}` strata, scored on the same
-//! `u |A| / gap` scale with gaps relative to `|λ|₂` rather than this table's absolute ones, are
-//! committed rows (`0056` decision 5). `k` is `eig:gap-1e-k`: the pair at gap `10^-k`
-//! at the bottom (`1, 1 + 10^-k, 3`) or `2 10^-k` at the top (`0.5, 2, 2 + 2 10^-k`) of the spectrum:
-//!
-//! ```text
-//!  k | bottom f64    bottom f32    top f64        top f32
-//!  0 | 5.3    4.1    2.8    3.9    5.3    4.4     3.6    5.0
-//!  1 | 10     8.3    10     10     7.8    6.0     5.8    7.0
-//!  2 | 97     85     76     70     52     55      35     41
-//!  3 | 998    910    1.1e3  1.7e3  432    532     364    440
-//!  4 | 1.0e4  9.8e3  1.7e3  560    4.7e3  5.9e3   1.8e3  1.1e7 *
-//!  6 | 9.7e5  9.2e5  2.0e3  6.3    4.6e5  5.1e5   2.6e3  1.3e7 *
-//!  8 | 3.9e7  3.0e7  2.0e3  1.4    4.5e7  6.8e15* 1.7e3  1.3e7 *
-//! 12 | 4.9e7  3.0e3  2.1e3  1.6    6.1e7  6.8e15* 1.9e3  1.3e7 *
-//! ```
-//!
-//! `*`: the top pair inside the tie, `res` of the order of `|A|`. `eig:triple`: the identity, `ev`
-//! 2.5. `eig:rank1` (a rotated `sigma q q^T`): `ev` 5.8e7 (`f64`), 2.5e3 (`f32`), that is `6.4e-9 |A|`
-//! and `1.5e-4 |A|`, `0.6 sqrt(u)`: a double root. Rank 2: 5.2; random symmetric: 23 (`f64`), 39
-//! (`f32`); scatter `B^T B`: 85, 91. `orth` and `det` are at most 4.8 `u` everywhere.
+//! **The recorded bounds** are `orth, det <= 16 u`, `ev, res <= 32 u |A|` and `ang_k <= 32 u |A| /
+//! gap_k`, `gap_k` the distance of `l_k*` to the nearest other eigenvalue (at least `u |A|`, where
+//! the bound is vacuous): one constant at every gap, ties included (`0081`). The worst `value /
+//! bound` over 10^6 cases of each proptest (the config's `cases` raised; `EIG3_REPORT=1` prints
+//! each new largest) and the fixture is 0.50 on `ev`, 0.26 on `res` and `ang`, and 0.48 on the
+//! frame. A planted truth is that of the exact `Q diag(l) Q^T`, so these include the rounding of
+//! the planted matrix and of `Q`, about `10 u |A|`; the corpus id `eig3`, scored against mpmath on
+//! the stored matrix, reads at most 4.76 `u` (`f64`) and 3.24 (`f32`) on every stratum.
 //!
 //! `MP` is the fixture: exact binary64 entries (the rows of `f32` strata rounded to binary32
 //! first, so both precisions solve the matrix mpmath solved), the eigenvalues and unit
 //! eigenvectors of `mp.eigsy` at 120 digits rounded to binary64, the largest entry of each vector
-//! positive. Strata: `gap-1e-k:bottom` and `:top` as above in a random rotation, `triple`, `rank1`,
-//! `near-triple` (`1, 1 + g, 1 + 2g`), `random`, `scatter`, `reference` (test matrices). The
-//! generator is not committed. The planted proptest is run at 10^6 cases with
-//!
-//! ```text
-//! EIG3_REPORT=1 PROPTEST_CASES=1000000 PROPTEST_RNG_SEED=1 cargo nextest run --release \
-//!     --no-capture -p helicoid-linalg eig3_tests
-//! ```
+//! positive. Strata: `gap-1e-k:bottom` (`1, 1 + 10^-k, 3`) and `:top` (`0.5, 2, 2 + 2 10^-k`) in a
+//! random rotation, `triple`, `rank1`, `near-triple` (`1, 1 + g, 1 + 2g`), `random`, `scatter`,
+//! `reference` (test matrices). The generator is not committed.
 
 use crate::linalg_tests::{cfg, unit, Lane, D};
 use crate::tests::L2;
@@ -66,8 +32,10 @@ use std::vec::Vec;
 type M = [[f64; 3]; 3];
 type V3 = [f64; 3];
 
-const K: f64 = 4.0;
-const SLACK: f64 = 24.0;
+/// The recorded bounds of the header: `ev`, `res <= K u |A|` and `ang_k <= K u |A| / gap_k`.
+const K: f64 = 32.0;
+/// The frame's bound, `orth` and `det` at most `FRAME u`.
+const FRAME: f64 = 16.0;
 
 /// The eigenpairs a decomposition is compared with: `vec[k]` is a unit eigenvector of `lam[k]`,
 /// `lam` ascending.
@@ -137,27 +105,29 @@ fn residual(a: &M, l: f64, v: V3) -> f64 {
     norm([0, 1, 2].map(|i| av[i] - l * v[i]))
 }
 
-/// Checks `eig3` at `S` on `a` against `t`: the frame always, the recorded bounds of the header where
-/// the model applies, and `ev` alone where the top pair is a tie (`res` and `ang` stay 0 there). `a`
-/// is rounded to `S` first, so `t` is the truth of `a` to within the slack. Returns the worst
-/// `value / bound` of `ev`, `res`, `ang`.
+/// Checks `eig3` at `S` on `a` against `t`: the frame and the recorded bounds of the header. `a` is
+/// rounded to `S` first, so `t` is the truth of `a` to within the bounds. Returns the worst `value /
+/// bound` of `ev`, `res`, `ang`.
 fn check<S: Lane>(what: &str, a: &M, t: &Truth) -> Worst {
-    let (a, u) = (round::<S>(a), unit::<S>());
-    let (l, v) = run::<S>(&a);
+    let a = round::<S>(a);
+    judge::<S>(what, &a, run::<S>(&a), t)
+}
+
+/// [`check`]'s verdict on the output `(l, v)` for the matrix `a` (already at `S`).
+fn judge<S: Lane>(what: &str, a: &M, (l, v): (V3, M), t: &Truth) -> Worst {
+    let u = unit::<S>();
     let (orth, det) = frame(&v);
     assert!(
-        orth <= 16.0 * u && det <= 16.0 * u,
+        orth <= FRAME * u && det <= FRAME * u,
         "{what}: orth {orth:e} det {det:e}"
     );
+    note_frame(what, orth.max(det) / u);
     let an = t.lam.iter().fold(0.0_f64, |m, x| m.max(x.abs()));
-    let gaps = [t.lam[1] - t.lam[0], t.lam[2] - t.lam[1]];
     let mut w = Worst::default();
     if an == 0.0 {
         return w;
     }
-    let tie = gaps[1] < 4.0 * u.sqrt() * an;
-    let c = 1.0 + (an / gaps[0].min(gaps[1])).min(1.0 / u.sqrt());
-    let bound = (K * c + SLACK) * u * an;
+    let bound = K * u * an;
     for k in 0..3 {
         let vk = col(&v, k);
         let gap = (0..3)
@@ -167,13 +137,10 @@ fn check<S: Lane>(what: &str, a: &M, t: &Truth) -> Worst {
             .max(u * an);
         let got = [
             (l[k] - t.lam[k]).abs() / bound,
-            residual(&a, l[k], vk) / bound,
+            residual(a, l[k], vk) / bound,
             norm(cross(vk, t.vec[k])) * gap / bound,
         ];
         for (i, (g, name)) in got.iter().zip(["ev", "res", "ang"]).enumerate() {
-            if tie && i > 0 {
-                continue;
-            }
             assert!(
                 *g <= 1.0,
                 "{what} at {:?}: {name} {g} of its bound, l {l:?}",
@@ -199,6 +166,18 @@ fn note(what: &str, w: Worst) {
                 seen[1],
                 seen[2]
             );
+        }
+    }
+}
+
+/// Prints each new largest `max(orth, det) / u` and its case when `EIG3_REPORT` is set.
+#[allow(clippy::print_stdout)]
+fn note_frame(what: &str, f: f64) {
+    static SEEN: std::sync::Mutex<f64> = std::sync::Mutex::new(0.0);
+    if let (Some(_), Ok(mut seen)) = (std::env::var_os("EIG3_REPORT"), SEEN.lock()) {
+        if f > *seen {
+            *seen = f;
+            std::println!("{what}: frame {f:.3}");
         }
     }
 }
@@ -400,7 +379,7 @@ fn frame_of_any<S: Lane>(a: &M) -> Result<(), TestCaseError> {
     let (l, v) = run::<S>(&a);
     let (orth, det) = frame(&v);
     prop_assert!(
-        orth <= 16.0 * u && det <= 16.0 * u,
+        orth <= FRAME * u && det <= FRAME * u,
         "{a:?}: {orth:e} {det:e}"
     );
     if a.iter().flatten().any(|x| !x.is_finite()) {
@@ -412,12 +391,9 @@ fn frame_of_any<S: Lane>(a: &M) -> Result<(), TestCaseError> {
         "{a:?}: {l:?}"
     );
     let an = l[0].abs().max(l[2].abs());
-    if an > 0.0 && l[2] - l[1] >= 4.0 * u.sqrt() * an {
-        let c = 1.0 + (an / (l[1] - l[0]).min(l[2] - l[1])).min(1.0 / u.sqrt());
-        for (k, lk) in l.iter().enumerate() {
-            let r = residual(&a, *lk, col(&v, k));
-            prop_assert!(r <= (K * c + SLACK) * u * an, "{a:?}: res {r:e} l {l:?}");
-        }
+    for (k, lk) in l.iter().enumerate() {
+        let r = residual(&a, *lk, col(&v, k));
+        prop_assert!(r <= K * u * an, "{a:?}: res {r:e} l {l:?}");
     }
     Ok(())
 }
@@ -427,8 +403,8 @@ proptest! {
 
     /// Any matrix, the degenerate and the non-finite ones included (a third of the entries are ties,
     /// zeros or non-finite): the frame is orthonormal with `det = +1`; for a non-finite matrix no
-    /// eigenvalue is finite; and for a finite matrix the eigenvalues ascend and are finite, and the
-    /// residual meets the recorded bound wherever the computed top gap is at least `4 sqrt(u) |A|`.
+    /// eigenvalue is finite; and for a finite matrix the eigenvalues ascend and are finite, and every
+    /// residual meets the recorded bound.
     #[test]
     fn any_matrix_gives_an_orthonormal_frame(e in prop::array::uniform6(entry())) {
         frame_of_any::<f64>(&matrix(e))?;
@@ -520,73 +496,6 @@ fn the_upper_triangle_is_ignored() {
         .flatten()
         .zip(b.1.iter().flatten())
         .all(|(x, y)| x.to_bits() == y.to_bits()));
-}
-
-/// The clamp of `r` to `[-1, 1]`: at `f64` and at `f32` a matrix with a near double eigenvalue for
-/// which `det B / (2 p^3)` computes to `-1 - 4e-16` (`f64`; `+1 + 4e-16` for the second) and `-1 -
-/// 2.4e-7`, `+1 + 1.2e-7` (`f32`). Without the clamp `acos` sees `sqrt` of a negative number and
-/// the eigenvalues are `NaN`.
-#[test]
-fn r_outside_the_unit_interval_is_clamped() {
-    let rows: [(bool, [f64; 6]); 4] = [
-        (
-            true,
-            [
-                1.7174322433628428,
-                1.2982684367202966,
-                1.484299339916861,
-                0.44529398039522883,
-                -0.38173338819733166,
-                0.6015674891124853,
-            ],
-        ),
-        (
-            true,
-            [
-                1.031391921732197,
-                1.6462631977219147,
-                2.3223448905458817,
-                -0.14243397670176244,
-                0.20374233287694987,
-                -0.9244364946054826,
-            ],
-        ),
-        (
-            false,
-            [
-                1.926727294921875,
-                1.143691062927246,
-                1.429581880569458,
-                0.25048771500587463,
-                -0.20444104075431824,
-                0.6988950967788696,
-            ],
-        ),
-        (
-            false,
-            [
-                1.1798421144485474,
-                2.582160711288452,
-                1.2380070686340332,
-                0.5334194302558899,
-                -0.20688185095787048,
-                -0.6136382818222046,
-            ],
-        ),
-    ];
-    for (wide, e) in rows {
-        let (l, v) = if wide {
-            run::<f64>(&matrix(e))
-        } else {
-            run::<f32>(&matrix(e))
-        };
-        let u = if wide { unit::<f64>() } else { unit::<f32>() };
-        assert!(
-            l.iter().all(|x| x.is_finite()) && l[0] <= l[1] && l[1] <= l[2],
-            "{e:?}: {l:?}"
-        );
-        assert!(frame(&v).0 <= 16.0 * u, "{e:?}");
-    }
 }
 
 /// A seeded stream of numbers in `[-1, 1]` (splitmix64).
@@ -729,113 +638,103 @@ fn derivative_is_first_order_perturbation_theory() {
     }
 }
 
-/// The worst residual of each column and the worst eigenvalue error, relative to `|A|`, of `eig3`
-/// at `S` over 100 seeded rotations of the planted spectrum `l`.
-fn worst_of<S: Lane>(l: V3) -> ([f64; 3], f64) {
+/// The worst residual and eigenvalue error, relative to `u |A|`, of `eig3` at `S` over 100 seeded
+/// rotations of the planted spectrum `l`.
+fn worst_of<S: Lane>(l: V3) -> f64 {
     let (mut next, an) = (lcg(7), l.iter().fold(0.0_f64, |m, x| m.max(x.abs())));
-    (0..100).fold(([0.0; 3], 0.0_f64), |(res, ev), _| {
+    let u = unit::<S>();
+    (0..100).fold(0.0_f64, |worst, _| {
         let (a, t) = planted([(); 4].map(|()| next()), l);
         let ((got, v), a) = (run::<S>(&a), round::<S>(&a));
-        let r: V3 = array::from_fn(|k| residual(&a, got[k], col(&v, k)) / an);
-        let e = (0..3)
-            .map(|k| (got[k] - t.lam[k]).abs())
-            .fold(0.0, f64::max);
-        (array::from_fn(|k| res[k].max(r[k])), ev.max(e / an))
+        (0..3).fold(worst, |w, k| {
+            let r = residual(&a, got[k], col(&v, k));
+            w.max(r.max((got[k] - t.lam[k]).abs()) / (u * an))
+        })
     })
 }
 
-/// The residual of the vector of the smallest eigenvalue of the diagonal matrix `d` at `S`, relative
-/// to `|A|`.
+/// The worst residual of `eig3` at `S` on the diagonal matrix `d`, relative to `u |A|`.
 fn diagonal_residual<S: Lane>(d: V3) -> f64 {
     let a = round::<S>(&diag(d));
     let (l, v) = run::<S>(&a);
-    residual(&a, l[0], col(&v, 0)) / d.iter().fold(0.0_f64, |m, x| m.max(x.abs()))
+    let an = d.iter().fold(0.0_f64, |m, x| m.max(x.abs()));
+    (0..3).fold(0.0, |w, k| {
+        w.max(residual(&a, l[k], col(&v, k)) / (unit::<S>() * an))
+    })
 }
 
-/// A tie of the top pair, which left every column wrong while the frame was anchored on `l2` alone
-/// (residuals above `0.01 |A|`, `0.4 |A|` on axis-aligned ties), now anchors on the isolated `l0`
-/// (`0057`): its vector is an eigenvector to the eigenvalue error, and so is any vector of the tied
-/// pair's plane. What stays is the eigenvalue error of a double root, a fraction of `sqrt(u) |A|`
-/// (`# Domain`), pinned on a rank-1 matrix: it is where Kopp's hybrid is owed.
+/// A repeated eigenvalue costs no digits. The closed form this replaced (`0081`) lost `sqrt(u) |A|`
+/// to `acos` at a double root (`6e-9 |A|` on a rank-1 matrix at `f64`) and, anchored on the larger
+/// eigenvalue, left every column of a tied top pair wrong (`0.8 |A|` on `diag(5, 1, 5)`); here the
+/// eigenvalue error and every residual stay within the recorded bound at a tie, a near tie, a rank-1
+/// matrix and a diagonal one.
 #[test]
-fn a_tie_of_the_top_pair_anchors_on_the_isolated_end() {
-    let tie = |res: [f64; 3], u: f64| res[0] < 64.0 * u.sqrt() && res[1] < 64.0 * u.sqrt();
+fn a_repeated_eigenvalue_costs_no_digits() {
     for l in [
         [1.0, 5.0, 5.0],
         [1.0, 5.0, 5.0 + 1e-9],
         [0.5, 2.0, 2.0 + 4e-12],
+        [0.0, 0.0, 1.0],
+        [1.0, 1.0, 1.0 + 1e-6],
     ] {
-        let res = worst_of::<f64>(l).0;
-        assert!(tie(res, unit::<f64>()), "{l:?}: {res:?}");
+        assert!(worst_of::<f64>(l) <= K, "{l:?}");
+        assert!(worst_of::<f32>(l) <= K, "{l:?}");
     }
-    let res = worst_of::<f32>([0.5, 2.0, 2.0 + 4e-6]).0;
-    assert!(tie(res, unit::<f32>()), "{res:?}");
     for d in [[5.0, 1.0, 5.0], [5.0, 5.0, 0.1], [100.0, 100.0, 1.0]] {
-        assert!(
-            diagonal_residual::<f64>(d) < 64.0 * unit::<f64>().sqrt(),
-            "{d:?}"
-        );
-        assert!(
-            diagonal_residual::<f32>(d) < 64.0 * unit::<f32>().sqrt(),
-            "{d:?}"
-        );
+        assert!(diagonal_residual::<f64>(d) <= K, "{d:?}");
+        assert!(diagonal_residual::<f32>(d) <= K, "{d:?}");
     }
-    assert!(worst_of::<f64>([0.0, 0.0, 1.0]).1 > 0.05 * unit::<f64>().sqrt());
-    assert!(worst_of::<f32>([0.0, 0.0, 1.0]).1 > 0.05 * unit::<f32>().sqrt());
 }
 
-/// The magnitude range of `# Domain`, for entries of magnitude `m`. The eigenvalues need `p^3`
-/// normal, `1e-100 < m < 1e100` (`f64`) and `1e-12 < m < 1e12` (`f32`), and are accurate at `2^+-330`
-/// and `2^+-38`; beyond it, at `2^+-400` and up, they are `NaN` and never a finite wrong number. The
-/// vectors need the squared length of a cross product, `|A|^4`, normal: `1e-75 < m < 1e75` and
-/// `1e-9 < m < 1e9`, where the recorded bounds hold (`2^+-200`, `2^+-25`); the frame is orthonormal
-/// everywhere.
+/// Every finite magnitude: the matrix is scaled by an exact power of two into the window, so the
+/// recorded bounds hold from `2^-1000` to `2^1000` (`f64`) and `2^-120` to `2^120` (`f32`), where
+/// the closed form this replaced had no finite eigenvalue at `2^+-400` (`f64`), `2^50` or `2^-87`
+/// (`f32`). A subnormal
+/// matrix keeps an orthonormal frame and ascending finite eigenvalues; an eigenvalue beyond the
+/// largest finite number is infinite, the frame still orthonormal.
 #[test]
-fn the_magnitude_range_is_the_documented_one() {
+fn every_finite_magnitude_is_in_the_domain() {
     let (q, l) = ([0.3, -0.5, 0.7, 0.2], [-1.0, 0.3, 1.7]);
     let scaled = |e: i32| planted(q, l.map(|x| x * 2f64.powi(e)));
-    for e in [-200, -100, 100, 200] {
-        let (a, t) = scaled(e);
-        check::<f64>("f64 in range", &a, &t);
-    }
-    for e in [-25, -12, 12, 25] {
-        let (a, t) = scaled(e);
-        check::<f32>("f32 in range", &a, &t);
-    }
-    for (e, e32) in [(330, 38), (-330, -38)] {
-        let ((a, t), (a32, t32)) = (scaled(e), scaled(e32));
-        let ok = |got: V3, t: &Truth, u: f64, e: i32| {
-            let bound = (K * 3.0 + SLACK) * u * 1.7 * 2f64.powi(e);
-            (0..3).all(|k| (got[k] - t.lam[k]).abs() <= bound)
-        };
-        assert!(ok(run::<f64>(&a).0, &t, unit::<f64>(), e), "f64 at 2^{e}");
-        assert!(
-            ok(run::<f32>(&a32).0, &t32, unit::<f32>(), e32),
-            "f32 at 2^{e32}"
+    // The output at `2^e`, scaled back by `2^-e` (exact), judged against the matrix at `2^0`: the
+    // residual of the matrix at `2^e` would overflow the test's own squares.
+    fn at<S: Lane>(e: i32, a: &M, t: &Truth) {
+        let ((l, v), back) = (
+            run::<S>(&a.map(|r| r.map(|x| x * 2f64.powi(e)))),
+            2f64.powi(-e),
         );
+        judge::<S>("scaled", &round::<S>(a), (l.map(|x| x * back), v), t);
     }
-    for (e, e32) in [
-        (-1000, -125),
-        (-700, -87),
-        (-400, -87),
-        (400, 50),
-        (700, 87),
-        (1000, 125),
-    ] {
-        let ((a, _), (a32, _)) = (scaled(e), scaled(e32));
-        let ((l64, v64), (l32, v32)) = (run::<f64>(&a), run::<f32>(&a32));
-        assert!(l64.iter().all(|x| !x.is_finite()), "f64 at 2^{e}: {l64:?}");
-        assert!(
-            l32.iter().all(|x| !x.is_finite()),
-            "f32 at 2^{e32}: {l32:?}"
-        );
-        assert!(frame(&v64).0 <= 16.0 * unit::<f64>() && frame(&v32).0 <= 16.0 * unit::<f32>());
+    let (a, t) = scaled(0);
+    for e in [-1000, -700, -400, -128, -100, 100, 128, 400, 700, 1000] {
+        at::<f64>(e, &a, &t);
     }
+    for e in [-120, -87, -33, -32, -12, 12, 32, 33, 87, 120] {
+        at::<f32>(e, &round::<f32>(&a), &t);
+    }
+    let subnormal = |l: V3, v: &M, u: f64| {
+        l.iter().all(|x| x.is_finite()) && l[0] <= l[1] && l[1] <= l[2] && frame(v).0 <= FRAME * u
+    };
+    let (l64, v64) = run::<f64>(&scaled(-1065).0);
+    assert!(subnormal(l64, &v64, unit::<f64>()), "{l64:?}");
+    let (l32, v32) = run::<f32>(&scaled(-140).0);
+    assert!(subnormal(l32, &v32, unit::<f32>()), "{l32:?}");
+    let (l64, v64) = run::<f64>(&matrix([1e308; 6]));
+    assert!(
+        l64[2] == f64::INFINITY && frame(&v64).0 <= FRAME * unit::<f64>(),
+        "{l64:?}"
+    );
+    let (l32, v32) = run::<f32>(&matrix([3e38; 6]));
+    assert!(
+        l32[2] == f64::INFINITY && frame(&v32).0 <= FRAME * unit::<f32>(),
+        "{l32:?}"
+    );
 }
 
-/// At a multiple of the identity every arm is a constant: each eigenvalue has the derivative of
-/// `trace / 3`, `1/3` in each diagonal entry, and the eigenvectors have none: the `select` that
-/// gives `p = 0` discards the singular `sqrt`, so no lane is `NaN`.
+/// At a multiple of the identity no rotation turns (each sees `d = a_pq = 0` and takes the safe
+/// argument), so the vectors are the axes with no derivative and each eigenvalue has the derivative
+/// of one diagonal entry: one of the one-sided derivatives at a triple eigenvalue, finite in every
+/// lane.
 #[test]
 fn the_derivative_at_a_multiple_of_the_identity_is_finite() {
     type D3 = Dual<f64, 3>;
@@ -851,7 +750,7 @@ fn the_derivative_at_a_multiple_of_the_identity_is_finite() {
     let (l, v) = eig3(&x);
     for k in 0..3 {
         assert!(
-            l.0[k].d.iter().all(|d| (d - 1.0 / 3.0).abs() < 1e-15),
+            (0..3).all(|j| (l.0[k].d[j] - f64::from(u8::from(j == k))).abs() == 0.0),
             "{:?}",
             l.0[k]
         );

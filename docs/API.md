@@ -58,8 +58,8 @@ covariance. Ambient Jacobians (Phase 6) follow the same rule.
 it (`NUMERICS.md` §12) and a `debug_assert!` enforcing it. Release builds never check; out-of-domain
 release behaviour is an unspecified value, never a panic (bar out-of-bounds strided access, D11),
 never UB. The functions that assert nothing are `chol`, `solve_cubic` and `eig3`: each accepts every
-input; the first two report through a mask (R4), `eig3` reads one triangle and reports by non-finite
-eigenvalues (`0023` (draft)).
+input; the first two report through a mask (R4), `eig3` reads one triangle and reports a non-finite
+entry by `NaN` eigenvalues ([`0081`](./decisions/0081-eig3-is-four-jacobi-sweeps.md)).
 Unit-norm inputs are checked by `*_unchecked` constructors in debug only; `*_normalized`
 constructors normalize.
 

@@ -6,6 +6,11 @@
 
 ## Context
 
+> **Amended by [`0081`](./0081-eig3-is-four-jacobi-sweeps.md), 2026-10-12.** The closed form is
+> replaced by four Jacobi sweeps, whose frame has no anchor. The test cited in *Consequences* is
+> renamed for what it now asserts (a tie's eigenvalue and residuals within `32 u |A|`); the
+> Decision describes the code until `0081`.
+
 `eig3`'s eigenvector frame was anchored on the largest eigenvalue, as omnisac's is.
 - `v2` is the longest cross product of the rows of `A − l2 I`;
 - `v1` is that of `A − l1 I`, projected orthogonal to `v2`;
@@ -50,8 +55,8 @@ larger change. Anchoring costs a comparison and a few selects.
 
 ## Consequences
 
-- The test that pinned the failure becomes
-  `eig3_tests::a_tie_of_the_top_pair_anchors_on_the_isolated_end`. Residuals that were above
+- The test that pinned the failure became the anchor's test; since `0081` it is
+  `eig3_tests::a_repeated_eigenvalue_costs_no_digits`. Residuals that were above
   `0.01 |A|` (and `0.4 |A|` on axis-aligned ties) are now below `64 sqrt(u) |A|`.
 - What remains is the eigenvalue error of a close pair, up to `sqrt(u) |A|` from `acos` at
   `r = ±1`. It now dominates every gap stratum, at both ends alike: `5e7`–`1e8 u` at `f64` for gaps
