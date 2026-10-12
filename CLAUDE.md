@@ -101,7 +101,7 @@ Single test: `cargo nextest run -p helicoid -- so3_exp_log_roundtrip`. The gener
 | `just oracle-sophus` | the Sophus C++ container (`docker/oracles/sophus`, needs docker): builds the pinned image, whose build runs the conversions' tests, then its rows over the corpus offline (`0072`) |
 | `just oracle-gtsam` | the same for GTSAM C++ (`docker/oracles/gtsam`), the library built in the image under the runner's flags (`0074`) |
 | `just oracle-manif` | the same for the manif container (`docker/oracles/manif`): SO(2), SE(2), SO(3), SE(3), SE₂(3) and the screw and world charts (`0075`) |
-| `just oracles` | **owed** (`PHASE1.md` §0.0): one recipe for every runner. The six that exist are the `oracle-*` recipes above |
+| `just oracles` | every `oracle-*` recipe above, in order; the nightly `oracles` workflow (`.github/workflows/oracles.yml`) runs it and keeps the rows as an artifact |
 | `just envelope` | merge results, apply the domination and no-regress bars, then coverage; each domination failure says whether it is the program's, D16's or neither (`0037`, draft, via `conformance-twin`); `--check` also fails on a baseline or `docs/evidence/ENVELOPE.md` that `--bless` would change; `--bless` (for `helicoid`) writes both, and nothing while a bar or coverage fails |
 | `just determinism` | **owed** (`PHASE1.md` §0.0): compare output digests across x86_64, aarch64, wasm32 |
 | `just bench` | criterion; `--against <bench-binary>` is the gate, `--aa` logs this host's noise (`PHASE1.md` §9). `bench-check` is **owed** |
