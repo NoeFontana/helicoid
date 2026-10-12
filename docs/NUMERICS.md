@@ -669,7 +669,8 @@ arms and tolerances are the rustdoc's table.
 
 ## 17. The symmetric 3×3 eigendecomposition
 
-`eig3`'s formulas ([`0081`](./decisions/0081-eig3-is-four-jacobi-sweeps.md)). Only the lower
+`eig3`'s formulas ([`0081`](./decisions/0081-eig3-is-four-jacobi-sweeps.md),
+[`0084`](./decisions/0084-eig3-leaves-jacobi-when-it-has-converged.md)). Only the lower
 triangle $a_{ij}$, $i \ge j$, is read.
 
 - **Non-finite input.** If any entry is not finite every entry is replaced by $0$ (the safe
@@ -681,19 +682,32 @@ triangle $a_{ij}$, $i \ge j$, is read.
   $m\,2^k < 2$ (`real::pow2_step`). The largest entry stays normal and scales exactly; an entry
   that falls below the smallest normal rounds, by less than $2^{-1074}\cdot2^k$, far below $u\lvert A\rvert$.
   The eigenvalues are multiplied by $1/f$ at the end.
-- **Sweeps.** Four, each the rotations $(p, q) = (0, 1), (0, 2), (1, 2)$ in that order, $r$ the
-  third index, $V = I$ at the start. No convergence test.
-- **Rotation.** $d = a_{qq} - a_{pp}$, $w = 2a_{pq}\operatorname{copysign}(1, d)$,
-  $\mathrm{den} = \lvert d\rvert + \sqrt{d^2 + w^2}$ (the root of $1$ where $d^2 + w^2$ is below
-  the smallest normal), $g = \sqrt{\mathrm{den}^2 + w^2}$, $t = w/\mathrm{den}$,
-  $c = \mathrm{den}/g$, $s = w/g$. Then $a_{pp} \leftarrow a_{pp} - t\,a_{pq}$,
-  $a_{qq} \leftarrow a_{qq} + t\,a_{pq}$, $a_{pq} \leftarrow 0$,
-  $(a_{rp}, a_{rq}) \leftarrow (c\,a_{rp} - s\,a_{rq},\ s\,a_{rp} + c\,a_{rq})$,
-  $(v_p, v_q) \leftarrow (c\,v_p - s\,v_q,\ s\,v_p + c\,v_q)$ for the columns of $V$. This is
-  $J^\top A J$ with $J$ the rotation $\begin{bmatrix}c & s\\ -s & c\end{bmatrix}$ in the $(p, q)$
-  plane, $\tan\theta = t$, $\lvert t\rvert \le 1$, which annihilates $a_{pq}$; no step divides by
-  $a_{pq}$.
+- **Order of rotations.** The first rotation is $(p, q, r) = (0, 1, 2)$; each rotation is followed
+  by the pair that shares its second index, $(p, q, r) \to (q, r, p)$: $(0, 1), (1, 2), (2, 0),
+  (0, 1), \dots$, at most twelve, $V = I$ at the start. After the first, $a_{rp} = 0$, the entry the
+  previous rotation annihilated.
+- **Rotation.** $d = a_{qq} - a_{pp}$, $w = 2a_{pq}\operatorname{copysign}(1, d)$ and $w_2$ (below) for
+  $w^2$: $h = \sqrt{d^2 + w_2}$ (the root of $1$ where $d^2 + w_2$ is below the smallest normal),
+  $\mathrm{den} = \lvert d\rvert + h$, $t = w/\mathrm{den}$, $c^2 = \mathrm{den}/2h$,
+  $c = \sqrt{c^2}$, $s = c\,t$ ($c^2 = c = 1$ in the safe arm). Then
+  $a_{pp} \leftarrow a_{pp} - \delta$, $a_{qq} \leftarrow a_{qq} + \delta$ with
+  $\delta = \operatorname{copysign}(1, d)\,(w_2/2)/\mathrm{den}$ ($= t\,a_{pq}$, read from $w_2$),
+  $a_{pq} \leftarrow 0$, $(a_{rp}, a_{rq}) \leftarrow (c\,a_{rp} - s\,a_{rq},\ s\,a_{rp} + c\,a_{rq})$,
+  $(v_p, v_q) \leftarrow (c\,v_p - s\,v_q,\ s\,v_p + c\,v_q)$. This is $J^\top A J$ with $J$ the
+  rotation $\begin{bmatrix}c & s\\ -s & c\end{bmatrix}$ in the $(p, q)$ plane, $\tan\theta = t$,
+  $\lvert t\rvert \le 1$, which annihilates $a_{pq}$; no step divides by $a_{pq}$.
+- **The next square.** The next rotation's entry is $a_{rq} \leftarrow c\,z$ with $z = t\,a_{rp} +
+  a_{rq}$ (so $z = a_{rq}$ after the first); its $w_2 = 4z^2c^2$, from $c^2$ rather than $c$. The
+  first rotation's $w_2$ is $w^2$. The next $d$ is recomputed from the stored diagonal.
+- **Exit.** After each rotation, with $\lvert A\rvert$ the largest scaled entry: where both entries
+  left are at most $u\lvert A\rvert$ ($u = 2^{-53}$, $2^{-24}$), no further rotation. Then the
+  **polish**: the rotations of $(p, q)$ (its carried $w_2$) and $(q, r)$ ($w_2 = (2a_{qr})^2$), both
+  computed from that state as above, the
+  first applied to $(v_p, v_q)$, the second to $(v_q, v_r)$, the diagonal moved by both $\delta$s,
+  the entries dropped. The eigenpairs are $(a_{rr}, v_r), (a_{pp}, v_p), (a_{qq}, v_q)$, index order
+  for an exit after the first rotation.
 - **Order and sign.** The diagonal and the columns are sorted ascending by the compare-exchange
   network $(0, 1), (1, 2), (0, 1)$, an exchange where the second is strictly less; each exchange
   negates the first column's sign, so $\det V = +1$.
-- **Normalisation.** Each column is divided by its norm once, after the sort.
+- **Normalisation.** After the sort, each column $v \leftarrow v\,(3/2 - \lVert v\rVert^2/2)$, one Newton
+  step on $1/\lVert v\rVert$; every column is within about $17u$ of unit length before it.
