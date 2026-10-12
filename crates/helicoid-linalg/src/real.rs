@@ -174,6 +174,38 @@ pub trait Real:
     fn value_f64(self) -> f64;
 }
 
+/// `2^e` as an `f64`.
+///
+/// # Domain
+///
+/// `-1022 <= e <= 1023`, asserted; exact at both precisions while `-126 <= e <= 127`. Outside it the
+/// shift would discard the sign-extended high bits and return an arbitrary finite float, so the
+/// assert stands rather than a `debug_assert!` (D11 governs release *checks*, and every caller
+/// evaluates this in a `const` context, where the assert is a compile error and costs nothing at
+/// run time).
+pub(crate) const fn pow2(e: i32) -> f64 {
+    assert!(
+        e >= -1022 && e <= 1023,
+        "pow2: exponent outside the normal range"
+    );
+    f64::from_bits(((1023 + e) as u64) << 52)
+}
+
+/// One two-sided power-of-two step at `K = 2^k` for a magnitude `m`, shared by the scaling ladders
+/// of `cubic` and `eig3`: the factor `f`, `1/K` where `m >= K`, `K` where `m K < 2`, else `1`, and
+/// `1/f`, which undoes it. Both are powers of two, so a product with either is exact while it stays
+/// normal.
+#[inline]
+pub(crate) fn pow2_step<S: Real>(k: f64, m: S) -> (S, S) {
+    let (one, two) = (S::one(), S::lit(2.0));
+    let (big, small) = (S::lit(k), S::lit(1.0 / k));
+    let (down, up) = (big.le(m), (m * big).lt(two));
+    (
+        S::select(down, small, S::select(up, big, one)),
+        S::select(down, big, S::select(up, small, one)),
+    )
+}
+
 /// Set iff `x` is finite: `x * 0` is `+-0` for a finite `x` and NaN for NaN and `+-inf`.
 #[inline]
 pub(crate) fn is_finite<S: Real>(x: S) -> S::Mask {
