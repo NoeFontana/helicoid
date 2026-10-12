@@ -171,9 +171,6 @@ jobs:
       - run: just oracle-tf-tree-math
       - run: just oracle-sophus-rs
       - run: just oracle-nalgebra
-      - run: just oracle-sophus
-      - run: just oracle-gtsam
-      - run: just oracle-manif
       - run: just envelope --check
 
   # The committed corpus must regenerate byte-identically from the pinned generator.

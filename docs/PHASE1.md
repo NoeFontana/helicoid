@@ -13,7 +13,7 @@ defects and `tf_tree_math`, which becomes oracle #1 ([`0010`](./decisions/0010-s
 
 | Area | Status |
 |---|---|
-| Workspace, lints, `justfile`, CI matrix (§3) | Partial: workspace, lints, `justfile` and CI for `build`/`test`/`lint`/`audit`/`msrv`/`no-std`/`wasm`/`doc`/`corpus-check`/`conformance --self-test`/`thresholds-check`/`envelope`. The nightly `oracles` job (`.github/workflows/oracles.yml`, `just oracles`) is wired; determinism pending. |
+| Workspace, lints, `justfile`, CI matrix (§3) | Partial: workspace, lints, `justfile` and CI for `build`/`test`/`lint`/`audit`/`msrv`/`no-std`/`wasm`/`doc`/`corpus-check`/`conformance --self-test`/`thresholds-check`/`envelope`. The oracles run locally (`just oracles`), not in CI: their containers and a source-built GTSAM do not fit hosted runners. Determinism pending. |
 | Reference generator and committed corpus v1 (§4) | Partial: generator skeleton and committed corpus v1 with 150-digit mpmath reference generation across scalar and group strata. SE(2) coefficients pending. |
 | Conformance harness and result schema (§5) | Partial: `cargo xtask conformance` runner, result CSV generation, and seeded defect checks; `cargo xtask compare` (`0038`, `0078`). Backward error and f32 vector strata pending. |
 | Threshold sweep and generated-file format (§6) | Partial: two-stage threshold sweep over full domain generating `coeffs` and series tables (`0039`, `0047`). |
@@ -100,7 +100,8 @@ helicoid/
 - CI jobs are `just` recipes 1:1: `build`/`test` (x86_64-linux, aarch64-linux), `no-std`
   (`thumbv7em-none-eabihf`), `wasm` (`wasm32-wasip1` under wasmtime), `msrv`, `lint`, `doc`,
   `corpus-check`, `conformance --self-test`, `envelope` (Phase 3 onward), `determinism` (wired
-  now, required from Phase 6), `oracles` (nightly, containers), `bench-check` (opt-in label).
+  now, required from Phase 6), `bench-check` (opt-in label). The oracle runners are `just oracles`, run locally: hosted runners
+  fit neither their containers (a source-built GTSAM) nor `envelope`'s noise bars.
 - `cargo xtask lint` checks: no new `path.rs:NNN` citation in docs or comments; every
   `@generated` file matches its generator; the `NUMERICS.md` §14 twin table against
   `helicoid::reference` and proptest names (Phase 3 onward); **the normal-dependency closure of
@@ -450,7 +451,7 @@ any is not detected** by its named mechanism.
 - [ ] Corpus v1 committed; `corpus-check` byte-identical on Linux x86_64 and macOS aarch64.
 - [ ] `conformance --self-test` detects all §10 defects.
 - [ ] `tf_tree_math` and sophus-rs runners produce envelope rows for SO(3)/SE(3) `exp`/`log`; the
-      three containers build and produce rows (nightly).
+      three containers build and produce rows (`just oracles`).
 - [ ] The sweep regenerates a seeded `generated.rs` byte-identically; `thresholds-check` fails on a
       hand edit (test).
 - [x] `bench-gate --aa` noise floor recorded in `baseline/HOST.md`.
