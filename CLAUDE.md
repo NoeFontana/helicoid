@@ -1,6 +1,6 @@
 # CLAUDE.md — agent guidance for helicoid
 
-For AI agents. Humans: `CONTRIBUTING.md` (owed by [`PHASE1.md`](./docs/PHASE1.md) §3). `helicoid`
+For AI agents. Humans: [`CONTRIBUTING.md`](./CONTRIBUTING.md). `helicoid`
 is the one Lie-group layer under `tf_tree` and downstream perception libraries,
 built along the seven-phase roadmap in [`docs/PROJECT.md`](./docs/PROJECT.md) §4.
 
@@ -13,7 +13,7 @@ series coefficient, a switch point, a tangent ordering or a sign.
 
 Each spec's **§0.0 status table is the source of truth**, over its own prose, the README and this
 file. `0.0.2` is published. The workspace is on `0.0.x` (every release may break every other)
-until [`PHASE6.md`](./docs/PHASE6.md) §6's 1.0 criteria hold. MSRV **1.87**, and never above the
+until [`PHASE6.md`](./docs/PHASE6.md) §6's 1.0 criteria hold. MSRV **1.85**, and never above the
 lowest MSRV among consumers (D17).
 
 ## Read before changing X

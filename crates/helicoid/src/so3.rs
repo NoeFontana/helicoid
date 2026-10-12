@@ -209,7 +209,8 @@ impl<S: Real> SO3<S> {
     /// # Domain
     ///
     /// `r` is a rotation matrix. For anything else this returns the nearest quaternion its pivot
-    /// admits, which is not a projection onto SO(3); §3.4 says project with `svd3` first. It does
+    /// admits, which is not a projection onto SO(3); §3.4 projects with `svd3` first, which is
+    /// owed (`PHASE2.md` §6), so until then a caller projects with its own SVD. It does
     /// not panic, in debug or release: an entry large enough to overflow a pivot candidate gives a
     /// non-finite or NaN quaternion, as `Quat::from_wxyz_unchecked` does -- garbage in, garbage
     /// out. That is why the normalization below is written out rather than taken from
@@ -308,8 +309,8 @@ impl<S: Real> SO3<S> {
     /// `so3_act` reference takes the **normalized** one: at the `q:nonunit` stratum
     /// (`η = ‖q‖² − 1 = 2^-45`) this formula scores `510.3 u` against it and `to_matrix() * v`,
     /// the scaled rotation of §1, scores `257.8 u` — which are `2·2^-45/u` and `2^-45/u` exactly.
-    /// Which reading `so3_act` names is an open item of `docs/maths/index.md`; this method is §3.3
-    /// as written and normalizes nothing.
+    /// This method is §3.3 as written and normalizes nothing: `0076` keeps it and excepts that
+    /// stratum, the gap being `0058`'s first-order drift term `Rv + η(Rv − v)`.
     #[inline]
     pub fn act(&self, v: Vec3<S>) -> Vec3<S> {
         let two = S::lit(2.0);

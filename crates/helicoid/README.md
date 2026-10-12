@@ -60,6 +60,6 @@ of truth over any prose, this file included.
 `0.0.x`: **every release may break every other.** Nothing here is a stability promise yet; the
 criteria for 1.0 are in `docs/PHASE6.md` §6.
 
-MSRV 1.87. Dependencies: `helicoid-linalg` and `libm`, and nothing else.
+MSRV 1.85. Dependencies: `helicoid-linalg` and `libm`, and nothing else.
 
 License: MIT OR Apache-2.0.
