@@ -5,20 +5,26 @@
 //! and run offline ([`Launch`], `0072`). The file protocol, the smallest reading of §7
 //! (0014 (draft) question 26):
 //!
-//! - `<runner> --version` prints the pin on one line: the `subject_version` of every row.
+//! - `<runner> --version` prints the pin on one line: the `subject_version` of every row, at
+//!   either precision.
 //! - `<runner> --out DIR FILE.jsonl…` writes `DIR/<fn>.jsonl` for each corpus file whose function
-//!   it answers, and nothing for the others.
+//!   it answers, and nothing for the others, in binary64.
+//! - `<runner> --precision f32 --out DIR FILE.jsonl…` does the same in binary32 for the `@f32`
+//!   records alone (`0077`): it narrows each input losslessly, computes in binary32 and writes
+//!   binary32 values. A runner with no [`Runner::answers_f32`] is never asked, and refuses the
+//!   flag as any unknown argument.
 //! - A line is `{"id":N,"out":{"<field>":["<hex float>",…]}}`: `N` the corpus line's `id`, a field
 //!   flat in the reference's order (a matrix column-major, no `shape`), a value a hex float or
 //!   `nan`, `inf`, `-inf`; a scalar field may be the bare string.
-//! - An answer file holds every record of its corpus file, ids in order. A runner that skipped a
+//! - An answer file holds every record of its corpus file at its precision, ids in order: every
+//!   record in binary64, the `@f32` ones in binary32. A runner that skipped a
 //!   record, answered a function the corpus does not have or wrote a malformed line is an error,
 //!   not a score; so is a function in [`Runner::answers`] with no file, since a missing file
 //!   otherwise reads as "not answered". A wrong answer is a score, and a non-finite one a recorded
 //!   row (`nonfinite`), not a failed run: oracles may be wrong.
 //!
-//! `DIR` is `conformance/results/oracle/<NAME>` (`<NAME>--<fn>` for a `--fn` run, as its CSV),
-//! emptied first and left for inspection.
+//! `DIR` is `conformance/results/oracle/<NAME>` (`<NAME>--<fn>` for a `--fn` run, then `--f32` at
+//! binary32, as its CSV), emptied first and left for inspection.
 
 use std::collections::BTreeMap;
 use std::ffi::OsString;
@@ -40,6 +46,9 @@ struct Runner {
     /// The function ids it must answer: the list its own `--out` advertises, held again here so
     /// that an id it stops answering fails the run instead of dropping out of the results.
     answers: &'static [&'static str],
+    /// Those it must answer in binary32 too, each with `@f32` strata (`0077`). Empty: it answers
+    /// binary64 only, and a run at `f32` launches nothing.
+    answers_f32: &'static [&'static str],
     /// Where its transcendentals come from: see [`Backend`].
     backend: Backend,
 }
@@ -89,6 +98,8 @@ const RUNNERS: &[Runner] = &[
         launch: Launch::Crate("runners/tf_tree_math"),
         // `tf_tree_math`'s manifest declares `libm.workspace = true`.
         backend: Backend::LibmCrate,
+        // Binary64 by construction (`tf_tree` D6).
+        answers_f32: &[],
         answers: &[
             "so3_exp",
             "so3_log",
@@ -106,6 +117,8 @@ const RUNNERS: &[Runner] = &[
         launch: Launch::Crate("runners/sophus_rs"),
         // sophus-rs is Rust `std`, so the host's library.
         backend: Backend::HostStd,
+        // `sophus_autodiff` implements its scalar trait for `f64` alone.
+        answers_f32: &[],
         answers: &[
             "so3_exp",
             "so3_log",
@@ -126,6 +139,17 @@ const RUNNERS: &[Runner] = &[
         launch: Launch::Crate("runners/nalgebra"),
         // nalgebra is Rust `std`, so the host's library (`0056` decision 4).
         backend: Backend::HostStd,
+        // Generic over `RealField`, and every id it answers has `@f32` strata.
+        answers_f32: &[
+            "eig3",
+            "chol_n3",
+            "chol_n6",
+            "chol_solve_n3",
+            "chol_solve_n6",
+            "solve_cubic",
+            "quat_renormalize",
+            "mat2_inverse_adj",
+        ],
         answers: &[
             "eig3",
             "chol_n3",
@@ -142,6 +166,8 @@ const RUNNERS: &[Runner] = &[
         launch: Launch::Container("docker/oracles/sophus"),
         // C++ on the image's glibc (`0072`).
         backend: Backend::HostStd,
+        // `Sophus::Sim3<float>`; no other id it answers has `@f32` strata.
+        answers_f32: &["sim3_exp", "sim3_log", "sim3_ad", "sim3_act"],
         answers: &[
             "so2_exp",
             "so2_log",
@@ -176,6 +202,8 @@ const RUNNERS: &[Runner] = &[
         launch: Launch::Container("docker/oracles/gtsam"),
         // C++ on the image's glibc (`0074`).
         backend: Backend::HostStd,
+        // GTSAM is `double` throughout.
+        answers_f32: &[],
         answers: &[
             "so2_exp",
             "so2_log",
@@ -231,6 +259,8 @@ const RUNNERS: &[Runner] = &[
         launch: Launch::Container("docker/oracles/manif"),
         // C++ on the image's glibc (`0075`).
         backend: Backend::HostStd,
+        // No id it answers has `@f32` strata (`0077`).
+        answers_f32: &[],
         answers: &[
             "so2_exp",
             "so2_log",
@@ -281,11 +311,19 @@ pub(crate) fn backend(name: &str) -> Option<Backend> {
     RUNNERS.iter().find(|r| r.name == name).map(|r| r.backend)
 }
 
-/// A runner's answers, read back from its files.
+/// Whether the runner `name` answers in binary32, and so owes `f32` result rows.
+pub(crate) fn answers_f32(name: &str) -> bool {
+    RUNNERS
+        .iter()
+        .any(|r| r.name == name && !r.answers_f32.is_empty())
+}
+
+/// A runner's answers at one precision, read back from its files.
 pub(crate) struct FileSubject {
     name: String,
-    /// Per function id, the answer to record `i` at index `i` (a record's `id` is its line number).
-    answers: BTreeMap<String, Vec<Output>>,
+    precision: Precision,
+    /// Per function id, the answer to each record of that precision, by record `id`.
+    answers: BTreeMap<String, BTreeMap<u64, Output>>,
 }
 
 impl Subject for FileSubject {
@@ -298,14 +336,13 @@ impl Subject for FileSubject {
     }
 
     /// The runner's answer, or none, which the metric reports as a missing field: ingestion has
-    /// already checked that no record is missing. Its answers are binary64, so at another
-    /// precision there is none.
+    /// already checked that no record is missing. At another precision than its run's there is
+    /// none.
     fn eval(&self, fn_id: &str, record: &Record, precision: Precision) -> Output {
-        if precision != Precision::F64 {
+        if precision != self.precision {
             return Output::new();
         }
-        let at = usize::try_from(record.id).ok();
-        let answer = at.and_then(|i| self.answers.get(fn_id)?.get(i));
+        let answer = self.answers.get(fn_id).and_then(|a| a.get(&record.id));
         answer.cloned().unwrap_or_default()
     }
 }
@@ -340,9 +377,33 @@ fn parse_answer(line: &str) -> Result<(u64, Output), String> {
     Ok((answer.id, out))
 }
 
+/// The ids of an answer file of `entry` at `precision`, in order: every record's in binary64, the
+/// `@f32` records' in binary32, which only the corpus in `corpus_dir` can say.
+fn answered_ids(
+    corpus_dir: &Path,
+    entry: &Entry,
+    precision: Precision,
+) -> Result<Vec<u64>, String> {
+    match precision {
+        Precision::F64 => Ok((0..entry.records as u64).collect()),
+        Precision::F32 => Ok(corpus::read(corpus_dir, entry)?
+            .iter()
+            .filter(|r| r.is_f32_stratum())
+            .map(|r| r.id)
+            .collect()),
+    }
+}
+
 impl FileSubject {
-    /// The answers in `dir`, one `<fn>.jsonl` per function of `entries` the runner answers.
-    pub(crate) fn ingest(name: &str, dir: &Path, entries: &[Entry]) -> Result<Self, String> {
+    /// The answers in `dir` at `precision`, one `<fn>.jsonl` per function of `entries` the runner
+    /// answers.
+    pub(crate) fn ingest(
+        name: &str,
+        dir: &Path,
+        entries: &[Entry],
+        precision: Precision,
+        corpus_dir: &Path,
+    ) -> Result<Self, String> {
         let io = |p: &Path, e: std::io::Error| format!("{}: {e}", p.display());
         let file_of = |e: &Entry| format!("{}.jsonl", e.fn_id);
         for file in std::fs::read_dir(dir).map_err(|e| io(dir, e))? {
@@ -363,27 +424,33 @@ impl FileSubject {
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
                 Err(e) => return Err(io(&path, e)),
             };
-            let mut file = Vec::with_capacity(entry.records);
+            let ids = answered_ids(corpus_dir, entry, precision)?;
+            let (mut file, mut lines) = (BTreeMap::new(), 0);
             for (i, line) in text.lines().enumerate() {
                 let at = |e: String| format!("{}:{}: {e}", path.display(), i + 1);
                 let (id, out) = parse_answer(line).map_err(at)?;
-                if id != i as u64 {
+                if ids.get(i).is_some_and(|&want| want != id) {
                     return Err(at(format!("id {id} on line {}", i + 1)));
                 }
-                file.push(out);
+                file.insert(id, out);
+                lines += 1;
             }
-            if file.len() != entry.records {
+            if lines != ids.len() {
+                let of = match precision {
+                    Precision::F64 => "",
+                    Precision::F32 => "@f32 ",
+                };
                 return Err(format!(
-                    "{}: {} answers, the corpus has {} records",
+                    "{}: {lines} answers, the corpus has {} {of}records",
                     path.display(),
-                    file.len(),
-                    entry.records
+                    ids.len()
                 ));
             }
             answers.insert(entry.fn_id.clone(), file);
         }
         Ok(Self {
             name: name.to_string(),
+            precision,
             answers,
         })
     }
@@ -495,23 +562,34 @@ fn version_line(stdout: &[u8]) -> Result<String, String> {
     }
 }
 
-/// Builds and runs the runner `name` over the corpus (only `fn_id`'s file when given) and reads
-/// its answers: the subject, its `subject_version` the runner's pin.
+/// Builds and runs the runner `name` over the corpus (only `fn_id`'s file when given) at
+/// `precision` and reads its answers: the subject, its `subject_version` the runner's pin. `None`
+/// at `f32` for a runner that answers binary64 only, which is not launched.
 pub(crate) fn run(
     name: &str,
     root: &Path,
     corpus_dir: &Path,
     results: &Path,
     fn_id: Option<&str>,
-) -> Result<Registered, String> {
+    precision: Precision,
+) -> Result<Option<Registered>, String> {
     let runner = RUNNERS.iter().find(|r| r.name == name).ok_or_else(|| {
         let known: Vec<&str> = RUNNERS.iter().map(|r| r.name).collect();
         format!("no oracle runner `{name}`; have {known:?}")
     })?;
-    match runner.launch {
+    if precision == Precision::F32 && runner.answers_f32.is_empty() {
+        return Ok(None);
+    }
+    let at = Run {
+        corpus_dir,
+        results,
+        fn_id,
+        precision,
+    };
+    let registered = match runner.launch {
         Launch::Crate(dir) => {
             let launch = |quiet| crate_command(root, dir, quiet);
-            execute(runner, &launch, corpus_dir, results, fn_id)
+            execute(runner, &launch, &at)
         }
         Launch::Container(dir) => {
             // Every answer directory is under `oracle/`, so it is the one writable mount. It must
@@ -522,9 +600,18 @@ pub(crate) fn run(
             let user = owner(&out)?;
             let image = build_image(root, runner.name, dir)?;
             let launch = |_| container_command(&image, &mounts, user);
-            execute(runner, &launch, corpus_dir, results, fn_id)
+            execute(runner, &launch, &at)
         }
-    }
+    };
+    registered.map(Some)
+}
+
+/// What one run of a runner reads, writes and asks.
+struct Run<'a> {
+    corpus_dir: &'a Path,
+    results: &'a Path,
+    fn_id: Option<&'a str>,
+    precision: Precision,
 }
 
 /// `dir`, empty: whatever an earlier run left there is not an answer of this one.
@@ -542,15 +629,38 @@ fn fresh_dir(dir: &Path) -> Result<(), String> {
 fn execute(
     runner: &Runner,
     launch: &dyn Fn(bool) -> Command,
-    corpus_dir: &Path,
-    results: &Path,
-    fn_id: Option<&str>,
+    at: &Run,
 ) -> Result<Registered, String> {
+    let Run {
+        corpus_dir,
+        results,
+        fn_id,
+        precision,
+    } = *at;
     let mut entries = corpus::manifest(corpus_dir)?;
     if let Some(id) = fn_id {
         entries.retain(|e| e.fn_id == id);
         if entries.is_empty() {
             return Err(format!("no corpus file for `--fn {id}`"));
+        }
+    }
+    let (owed, precision_args) = match precision {
+        Precision::F64 => (runner.answers, &[][..]),
+        Precision::F32 => (runner.answers_f32, &["--precision", "f32"][..]),
+    };
+    if precision == Precision::F32 {
+        // A file with no `@f32` record has nothing to answer in binary32.
+        let mut with = Vec::new();
+        for e in entries {
+            if corpus::mentions_f32(corpus_dir, &e)? {
+                with.push(e);
+            }
+        }
+        entries = with;
+        if let (Some(id), true) = (fn_id, entries.is_empty()) {
+            return Err(format!(
+                "`{id}` has no `@f32` stratum to answer in binary32"
+            ));
         }
     }
     let version = {
@@ -562,24 +672,28 @@ fn execute(
         succeeded(&format!("`{} --version`", runner.name), out.status)?;
         version_line(&out.stdout)?
     };
-    let out_dir = results.join("oracle").join(match fn_id {
+    let mut dir = match fn_id {
         Some(id) => format!("{}--{id}", runner.name),
         None => runner.name.to_string(),
-    });
+    };
+    if precision == Precision::F32 {
+        dir += "--f32";
+    }
+    let out_dir = results.join("oracle").join(dir);
     fresh_dir(&out_dir)?;
     let files = entries
         .iter()
         .map(|e| corpus_dir.join(format!("{}.jsonl", e.fn_id)));
     let status = launch(true)
+        .args(precision_args)
         .arg("--out")
         .arg(&out_dir)
         .args(files)
         .status()
         .map_err(|e| format!("{}: {e}", runner.name))?;
     succeeded(&format!("runner `{}`", runner.name), status)?;
-    let subject = FileSubject::ingest(runner.name, &out_dir, &entries)?;
-    let unanswered = runner
-        .answers
+    let subject = FileSubject::ingest(runner.name, &out_dir, &entries, precision, corpus_dir)?;
+    let unanswered = owed
         .iter()
         .find(|id| entries.iter().any(|e| e.fn_id == **id) && !subject.supports(id));
     if let Some(id) = unanswered {
@@ -590,14 +704,14 @@ fn execute(
     }
     Ok(Registered {
         version: version.clone(),
+        // One pin at both precisions: the row's `precision` column names the instantiation.
         version_f32: version,
-        // Every runner answers in binary64 (`tf_tree_math` has nothing else, `tf_tree` D6), so a
-        // run at `f32` is an error on every id it answers rather than another kernel's answer under
-        // its name (`0016` item 2).
-        no_f32: Some(format!(
-            "the `{}` runner answers binary64 only",
-            runner.name
-        )),
+        // The run's answers are of its precision alone, so a score at the other is an error rather
+        // than another kernel's answer under this name (`0016` item 2).
+        no_f32: match precision {
+            Precision::F64 => Some(format!("the `{}` runner was run in binary64", runner.name)),
+            Precision::F32 => None,
+        },
         subject: Box::new(subject),
         planted: false,
     })
@@ -625,10 +739,10 @@ mod tests {
         }
     }
 
-    fn write_answers(dir: &Path, fn_id: &str, answers: &[Output]) -> Result<(), String> {
+    fn write_answers(dir: &Path, fn_id: &str, answers: &[(u64, Output)]) -> Result<(), String> {
         std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
         let mut text = String::new();
-        for (id, out) in answers.iter().enumerate() {
+        for (id, out) in answers {
             let fields: BTreeMap<&String, Vec<String>> = out
                 .iter()
                 .map(|(k, v)| (k, v.iter().map(|&x| hex(x)).collect()))
@@ -645,32 +759,85 @@ mod tests {
         }
     }
 
-    #[test]
-    fn an_ingested_answer_scores_exactly_like_the_subject_that_wrote_it() -> Result<(), String> {
+    /// An answer file's lines: each record `id` with its answer.
+    type Answers = Vec<(u64, Output)>;
+
+    /// `fn_id`'s corpus entry and the harness's next-up answers to its records at `precision`: every
+    /// record in binary64, the `@f32` ones in binary32, as a runner writes them.
+    fn next_up_answers(fn_id: &str, precision: Precision) -> Result<(Vec<Entry>, Answers), String> {
         let dir = corpus_dir()?;
         let entries: Vec<Entry> = corpus::manifest(&dir)?
             .into_iter()
-            .filter(|e| e.fn_id == "so2_exp")
+            .filter(|e| e.fn_id == fn_id)
             .collect();
         let records = corpus::read(&dir, &entries[0])?;
-        let scratch = Scratch::new("ingest");
         let writer = Perfect::next_up();
-        let answers: Vec<Output> = records
+        let answers = records
             .iter()
-            .map(|r| writer.eval("so2_exp", r, Precision::F64))
+            .filter(|r| precision == Precision::F64 || r.is_f32_stratum())
+            .map(|r| (r.id, writer.eval(fn_id, r, precision)))
             .collect();
-        write_answers(&scratch.0, "so2_exp", &answers)?;
-        let file = FileSubject::ingest("next-up", &scratch.0, &entries)?;
-        assert!(file.supports("so2_exp") && !file.supports("so2_log"));
-        let score = |s: Box<dyn Subject>| {
-            evaluate(&dir, &entries, &[Registered::new("1", s)], Precision::F64)
+        Ok((entries, answers))
+    }
+
+    /// At each precision, a file of the next-up subject's answers scores as that subject does;
+    /// at `f32` the file holds the `@f32` records alone and its values are binary32.
+    #[test]
+    fn an_ingested_answer_scores_exactly_like_the_subject_that_wrote_it() -> Result<(), String> {
+        let dir = corpus_dir()?;
+        for (fn_id, precision) in [
+            ("so2_exp", Precision::F64),
+            ("quat_renormalize", Precision::F64),
+            ("quat_renormalize", Precision::F32),
+        ] {
+            let (entries, answers) = next_up_answers(fn_id, precision)?;
+            let scratch = Scratch::new("ingest");
+            write_answers(&scratch.0, fn_id, &answers)?;
+            let file = FileSubject::ingest("next-up", &scratch.0, &entries, precision, &dir)?;
+            assert!(file.supports(fn_id) && !file.supports("so2_log"));
+            let score = |s: Box<dyn Subject>| {
+                evaluate(&dir, &entries, &[Registered::new("1", s)], precision)
+            };
+            let from_file = score(Box::new(file))?;
+            let direct = score(Box::new(Perfect::next_up()))?;
+            let records = corpus::read(&dir, &entries[0])?;
+            let strata: std::collections::BTreeSet<&str> = records
+                .iter()
+                .filter(|r| r.is_f32_stratum() == (precision == Precision::F32))
+                .map(|r| r.stratum.as_str())
+                .collect();
+            assert_eq!(from_file[0].len(), strata.len(), "{fn_id}");
+            assert!(from_file[0].iter().any(|r| r.max_u > 0.0));
+            assert!(from_file[0].iter().all(|r| r.precision == precision));
+            assert_eq!(from_file, direct, "{fn_id}");
+        }
+        Ok(())
+    }
+
+    /// A binary32 file is the `@f32` records' answers: one answering every record, or skipping
+    /// the first `@f32` one, is an error naming what the corpus has.
+    #[test]
+    fn a_binary32_file_holds_the_f32_records_and_no_other() -> Result<(), String> {
+        let dir = corpus_dir()?;
+        let (entries, all) = next_up_answers("mat2_inverse_adj", Precision::F64)?;
+        let (_, f32s) = next_up_answers("mat2_inverse_adj", Precision::F32)?;
+        assert!(!f32s.is_empty() && f32s.len() < all.len());
+        let error = |answers: &[(u64, Output)]| -> Result<String, String> {
+            let scratch = Scratch::new("f32-ids");
+            write_answers(&scratch.0, "mat2_inverse_adj", answers)?;
+            let e = FileSubject::ingest("x", &scratch.0, &entries, Precision::F32, &dir).err();
+            Ok(e.unwrap_or_default())
         };
-        let (from_file, direct) = (score(Box::new(file))?, score(Box::new(writer))?);
-        let strata: std::collections::BTreeSet<&str> =
-            records.iter().map(|r| r.stratum.as_str()).collect();
-        assert_eq!(from_file[0].len(), strata.len());
-        assert!(from_file[0].iter().any(|r| r.max_u > 0.0));
-        assert_eq!(from_file, direct);
+        let e = error(&all)?;
+        assert!(
+            e.contains("mat2_inverse_adj.jsonl:1: id 0 on line 1"),
+            "{e}"
+        );
+        let e = error(&f32s[1..])?;
+        assert!(e.contains(&format!("id {} on line 1", f32s[1].0)), "{e}");
+        let e = error(&f32s[..1])?;
+        let want = format!("1 answers, the corpus has {} @f32 records", f32s.len());
+        assert!(e.contains(&want), "{e}");
         Ok(())
     }
 
@@ -705,13 +872,19 @@ mod tests {
         bad(r#"{"id":0,"out":{"z":["NaN"]}}"#, "bad hex float");
     }
 
+    /// Binary64 answers in `dir` to `entries`, which are not in the corpus: at binary64 the ids
+    /// are the line numbers, so no corpus file is read.
+    fn ingest64(dir: &Path, entries: &[Entry]) -> Result<FileSubject, String> {
+        FileSubject::ingest("x", dir, entries, Precision::F64, Path::new("/no-corpus"))
+    }
+
     /// The error of ingesting `lines` (as `f.jsonl`) against a corpus file of `records` records.
     fn ingest_error(tag: &str, records: usize, lines: &[&str]) -> Result<String, String> {
         let scratch = Scratch::new(tag);
         std::fs::create_dir_all(&scratch.0).map_err(|e| e.to_string())?;
         let text: String = lines.iter().map(|l| format!("{l}\n")).collect();
         std::fs::write(scratch.0.join("f.jsonl"), text).map_err(|e| e.to_string())?;
-        let e = FileSubject::ingest("x", &scratch.0, &[entry("f", records)]).err();
+        let e = ingest64(&scratch.0, &[entry("f", records)]).err();
         Ok(e.unwrap_or_default())
     }
 
@@ -727,7 +900,7 @@ mod tests {
         let scratch = Scratch::new("stray");
         std::fs::create_dir_all(&scratch.0).map_err(|e| e.to_string())?;
         std::fs::write(scratch.0.join("g.jsonl"), "").map_err(|e| e.to_string())?;
-        let e = FileSubject::ingest("x", &scratch.0, &[entry("f", 0)]).err();
+        let e = ingest64(&scratch.0, &[entry("f", 0)]).err();
         assert!(e
             .unwrap_or_default()
             .contains("`g.jsonl` is not a corpus function"));
@@ -748,24 +921,44 @@ mod tests {
     fn an_unknown_runner_and_an_unknown_function_stop_before_anything_runs() -> Result<(), String> {
         let (root, dir) = (super::super::root()?, corpus_dir()?);
         let scratch = Scratch::new("unknown");
-        let go = |name, fn_id| {
-            run(name, &root, &dir, &scratch.0, fn_id)
+        let go = |name, fn_id, precision| {
+            run(name, &root, &dir, &scratch.0, fn_id, precision)
                 .err()
                 .unwrap_or_default()
         };
-        assert!(go("nope", None).contains(
+        assert!(go("nope", None, Precision::F64).contains(
             "no oracle runner `nope`; have [\"tf_tree_math\", \"sophus_rs\", \"nalgebra\", \"sophus\", \"gtsam\", \"manif\"]"
         ));
-        assert!(go("tf_tree_math", Some("nope")).contains("no corpus file for `--fn nope`"));
+        let e = go("tf_tree_math", Some("nope"), Precision::F64);
+        assert!(e.contains("no corpus file for `--fn nope`"));
+        assert!(!scratch.0.exists());
+        Ok(())
+    }
+
+    /// A runner with no binary32 ids is not launched at `f32` (no cargo, no docker), and the run is
+    /// not a failure: an `f32` pass over every runner skips it (`0077`).
+    #[test]
+    fn a_binary64_runner_is_not_launched_at_f32() -> Result<(), String> {
+        let (root, dir) = (super::super::root()?, corpus_dir()?);
+        let scratch = Scratch::new("f64-only");
+        for name in ["tf_tree_math", "sophus_rs", "gtsam", "manif"] {
+            let none = run(name, &root, &dir, &scratch.0, None, Precision::F32)?;
+            assert!(none.is_none(), "{name}");
+            assert!(!answers_f32(name), "{name}");
+        }
+        assert!(answers_f32("nalgebra") && answers_f32("sophus") && !answers_f32("nope"));
         assert!(!scratch.0.exists());
         Ok(())
     }
 
     /// A misspelled id would otherwise never be looked for: `execute` checks only the owed ids
-    /// that the corpus has.
+    /// that the corpus has. A binary32 id is one the runner answers whose file has `@f32` strata,
+    /// and every id it answers with such strata is one: answering it in binary64 only would leave
+    /// those strata unpaired with no word said.
     #[test]
     fn every_owed_function_is_a_corpus_function_of_a_runner_that_exists() -> Result<(), String> {
-        let (root, entries) = (super::super::root()?, corpus::manifest(&corpus_dir()?)?);
+        let dir = corpus_dir()?;
+        let (root, entries) = (super::super::root()?, corpus::manifest(&dir)?);
         for runner in RUNNERS {
             assert!(
                 root.join(runner.launch.manifest()).is_file(),
@@ -773,11 +966,16 @@ mod tests {
                 runner.name
             );
             for id in runner.answers {
-                assert!(
-                    entries.iter().any(|e| e.fn_id == *id),
-                    "{}: {id}",
-                    runner.name
-                );
+                let entry = entries.iter().find(|e| e.fn_id == *id);
+                let entry = entry.ok_or_else(|| format!("{}: {id}", runner.name))?;
+                let f32 = runner.answers_f32.contains(id);
+                let has_f32 = corpus::mentions_f32(&dir, entry)?;
+                // GTSAM is `double` throughout; every other runner answers every such id.
+                let binary64_library = runner.name == "gtsam";
+                assert_eq!(f32, has_f32 && !binary64_library, "{}: {id}", runner.name);
+            }
+            for id in runner.answers_f32 {
+                assert!(runner.answers.contains(id), "{}: {id}", runner.name);
             }
         }
         Ok(())
@@ -815,8 +1013,9 @@ mod tests {
         Ok(())
     }
 
+    /// A file subject answers at the precision of its run alone.
     #[test]
-    fn a_function_the_runner_does_not_answer_is_not_supported_and_binary64_only(
+    fn a_function_the_runner_does_not_answer_is_not_supported_and_a_run_has_one_precision(
     ) -> Result<(), String> {
         let scratch = Scratch::new("partial");
         std::fs::create_dir_all(&scratch.0).map_err(|e| e.to_string())?;
@@ -824,7 +1023,7 @@ mod tests {
         std::fs::write(scratch.0.join("f.jsonl"), format!("{line}\n"))
             .map_err(|e| e.to_string())?;
         let entries = [entry("f", 1), entry("g", 1)];
-        let file = FileSubject::ingest("x", &scratch.0, &entries)?;
+        let file = ingest64(&scratch.0, &entries)?;
         assert!(file.supports("f") && !file.supports("g"));
         let record = testkit::record(&[], &[])?;
         assert_eq!(file.eval("f", &record, Precision::F64)["z"], [1.0]);
@@ -957,23 +1156,31 @@ mod tests {
         assert_eq!(names().len(), RUNNERS.len());
     }
 
-    /// The runner `stub`, answering `so2_exp`; `script` is the `sh` that stands in for it.
+    /// The runner `stub`, answering `so2_exp` and, at both precisions, `quat_renormalize`;
+    /// `script` is the `sh` that stands in for it.
     const STUB: Runner = Runner {
         name: "stub",
         launch: Launch::Crate(""),
         backend: Backend::HostStd,
-        answers: &["so2_exp"],
+        answers: &["so2_exp", "quat_renormalize"],
+        answers_f32: &["quat_renormalize"],
     };
 
-    /// Answers `--version` with `stub@1` and `--out DIR …` with a copy of the files in `$ANSWERS`.
-    const ANSWERING: &str = "case \"$1\" in
+    /// Answers `--version` with `stub@1`, and `[--precision P] --out DIR FILE…` with a copy of each
+    /// file's answers in `$ANSWERS/P` (`f64` without the flag); logs the arguments of an answering
+    /// run to `$ANSWERS/args`.
+    const ANSWERING: &str = "p=f64
+if [ \"$1\" = --precision ]; then p=$2; shift 2; fi
+case \"$1\" in
   --version) echo stub@1 ;;
-  --out) for f in \"$ANSWERS\"/*.jsonl; do [ -e \"$f\" ] && cp \"$f\" \"$2\"; done ;;
+  --out) echo \"$p $*\" >> \"$ANSWERS/args\"; d=$2; shift 2
+    for f in \"$@\"; do a=\"$ANSWERS/$p/${f##*/}\"; [ -e \"$a\" ] && cp \"$a\" \"$d\"; done ;;
 esac
 exit 0
 ";
 
-    /// A scratch directory with the answers of `so2_exp` the harness's own next-up subject gives.
+    /// A scratch directory with the answers the harness's own next-up subject gives, to `so2_exp`
+    /// and `quat_renormalize` in binary64 and to `quat_renormalize`'s `@f32` records in binary32.
     struct Stub {
         scratch: Scratch,
         script: PathBuf,
@@ -985,18 +1192,14 @@ exit 0
             let dir = scratch.0.join("answers");
             std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
             if answers {
-                let corpus = corpus_dir()?;
-                let entries: Vec<Entry> = corpus::manifest(&corpus)?
-                    .into_iter()
-                    .filter(|e| e.fn_id == "so2_exp")
-                    .collect();
-                let records = corpus::read(&corpus, &entries[0])?;
-                let writer = Perfect::next_up();
-                let out: Vec<Output> = records
-                    .iter()
-                    .map(|r| writer.eval("so2_exp", r, Precision::F64))
-                    .collect();
-                write_answers(&dir, "so2_exp", &out)?;
+                for (fn_id, precision, sub) in [
+                    ("so2_exp", Precision::F64, "f64"),
+                    ("quat_renormalize", Precision::F64, "f64"),
+                    ("quat_renormalize", Precision::F32, "f32"),
+                ] {
+                    let (_, out) = next_up_answers(fn_id, precision)?;
+                    write_answers(&dir.join(sub), fn_id, &out)?;
+                }
             }
             let path = scratch.0.join("stub.sh");
             std::fs::write(&path, script).map_err(|e| e.to_string())?;
@@ -1007,14 +1210,34 @@ exit 0
         }
 
         fn execute(&self, fn_id: Option<&str>) -> Result<Registered, String> {
+            self.execute_at(fn_id, Precision::F64)
+        }
+
+        fn execute_at(
+            &self,
+            fn_id: Option<&str>,
+            precision: Precision,
+        ) -> Result<Registered, String> {
             let launch = |_| {
                 let mut command = Command::new("sh");
                 command.arg(&self.script);
                 command.env("ANSWERS", self.scratch.0.join("answers"));
                 command
             };
-            let results = self.scratch.0.join("results");
-            execute(&STUB, &launch, &corpus_dir()?, &results, fn_id)
+            let (corpus, results) = (corpus_dir()?, self.scratch.0.join("results"));
+            let at = Run {
+                corpus_dir: &corpus,
+                results: &results,
+                fn_id,
+                precision,
+            };
+            execute(&STUB, &launch, &at)
+        }
+
+        /// The arguments of each answering run, after its precision.
+        fn args(&self) -> Result<String, String> {
+            let path = self.scratch.0.join("answers/args");
+            std::fs::read_to_string(&path).map_err(|e| format!("{}: {e}", path.display()))
         }
 
         fn out(&self, dir: &str) -> PathBuf {
@@ -1088,6 +1311,83 @@ exit 0
         // Not selected, not owed: the run is empty, and the harness says nothing was scored.
         let registered = stub.execute(Some("so2_log"))?;
         assert!(!registered.subject.supports("so2_exp"));
+        let e = stub
+            .execute_at(None, Precision::F32)
+            .err()
+            .unwrap_or_default();
+        assert!(
+            e.contains("runner `stub` wrote no answers for `quat_renormalize`"),
+            "{e}"
+        );
+        Ok(())
+    }
+
+    /// At `f32` the runner is asked `--precision f32 --out DIR` with the files that have `@f32`
+    /// strata alone, into a directory of its own, and its answers score at `f32` only and as the
+    /// subject that wrote them.
+    #[test]
+    fn a_binary32_run_asks_for_the_f32_files_and_scores_at_f32() -> Result<(), String> {
+        let stub = Stub::new("f32", ANSWERING, true)?;
+        let registered = stub.execute_at(None, Precision::F32)?;
+        assert!(registered.no_f32.is_none() && stub.execute(None)?.no_f32.is_some());
+        assert_eq!(registered.version_at(Precision::F32), "stub@1");
+        let args = stub.args()?;
+        let f32_run = args
+            .lines()
+            .find(|l| l.starts_with("f32 "))
+            .unwrap_or_default();
+        let out = stub.out("stub--f32");
+        assert!(f32_run.starts_with(&format!("f32 --out {} ", out.display())));
+        let corpus = corpus_dir()?;
+        let files: Vec<&str> = f32_run.split(' ').skip(3).collect();
+        assert!(files.contains(
+            &corpus
+                .join("quat_renormalize.jsonl")
+                .to_string_lossy()
+                .as_ref()
+        ));
+        for file in &files {
+            assert!(std::fs::read_to_string(file)
+                .map_err(|e| e.to_string())?
+                .contains("@f32\""));
+        }
+        assert!(
+            !files.iter().any(|f| f.ends_with("/so2_exp.jsonl")),
+            "{f32_run}"
+        );
+        assert!(out.join("quat_renormalize.jsonl").exists() && stub.out("stub").exists());
+        let subject = registered.subject;
+        assert!(subject.supports("quat_renormalize") && !subject.supports("so2_exp"));
+        let entries: Vec<Entry> = corpus::manifest(&corpus)?
+            .into_iter()
+            .filter(|e| e.fn_id == "quat_renormalize")
+            .collect();
+        let scored = evaluate(
+            &corpus,
+            &entries,
+            &[Registered::new("1", subject)],
+            Precision::F32,
+        )?;
+        let direct = evaluate(
+            &corpus,
+            &entries,
+            &[Registered::new("1", Box::new(Perfect::next_up()))],
+            Precision::F32,
+        )?;
+        assert!(!scored[0].is_empty());
+        assert_eq!(
+            scored[0].iter().map(|r| r.max_u).collect::<Vec<_>>(),
+            direct[0].iter().map(|r| r.max_u).collect::<Vec<_>>()
+        );
+        // A selected id with no `@f32` stratum has nothing to answer in binary32.
+        let e = stub
+            .execute_at(Some("so2_exp"), Precision::F32)
+            .err()
+            .unwrap_or_default();
+        assert!(e.contains("`so2_exp` has no `@f32` stratum"), "{e}");
+        let only = stub.execute_at(Some("quat_renormalize"), Precision::F32)?;
+        assert!(only.subject.supports("quat_renormalize"));
+        assert!(stub.out("stub--quat_renormalize--f32").exists());
         Ok(())
     }
 }
