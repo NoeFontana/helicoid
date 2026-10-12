@@ -768,7 +768,11 @@ fn an_off_diagonal_lane_at_a_multiple_of_the_identity_is_finite() {
         }))
     }));
     let (l, v) = eig3(&x);
-    assert!(l.0.iter().all(|x| x.v == 2.0 && x.d[0] == 0.0), "{l:?}");
+    assert!(
+        l.0.iter()
+            .all(|x| x.v.to_bits() == 2.0_f64.to_bits() && x.d[0] == 0.0),
+        "{l:?}"
+    );
     assert!((0..9).all(|i| v.get(i / 3, i % 3).d[0].is_finite()));
 }
 
