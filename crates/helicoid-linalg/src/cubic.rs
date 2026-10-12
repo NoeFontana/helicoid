@@ -4,25 +4,8 @@
 //! trigonometric form for three, and explicit repeated-root formulas. Branches evaluate
 //! at safe arguments using `Real::branch` and mask decisions. Valid roots report via mask.
 
-use crate::real::{is_finite, Mask, Precision, Real};
+use crate::real::{is_finite, pow2, pow2_step, Mask, Precision, Real};
 use crate::vector::{Vec3, Vector};
-
-/// `2^e` as an `f64`.
-///
-/// # Domain
-///
-/// `-1022 <= e <= 1023`, asserted; exact at both precisions while `-126 <= e <= 127`. Outside it the
-/// shift would discard the sign-extended high bits and return an arbitrary finite float, so the
-/// assert stands rather than a `debug_assert!` (D11 governs release *checks*, and every caller
-/// evaluates this in a `const` context, where the assert is a compile error and costs nothing at
-/// run time).
-pub(crate) const fn pow2(e: i32) -> f64 {
-    assert!(
-        e >= -1022 && e <= 1023,
-        "pow2: exponent outside the normal range"
-    );
-    f64::from_bits(((1023 + e) as u64) << 52)
-}
 
 /// `2^ULPS_LOG2` unit roundoffs: `2^(ULPS_LOG2 - 53)` for `f64`, `2^(ULPS_LOG2 - 24)` for `f32`.
 ///
@@ -149,11 +132,8 @@ fn lead<S: Real>(a: S, b: S, c: S, d: S) -> (S, S, S, S) {
 #[cold]
 #[inline(never)]
 fn lead_ladder<S: Real>(steps: &[f64], start: (S, S, S, S)) -> (S, S, S, S) {
-    let (one, two) = (S::one(), S::lit(2.0));
     steps.iter().fold(start, |(a, b, c, d), &k| {
-        let (big, small) = (S::lit(k), S::lit(1.0 / k));
-        let aa = a.abs();
-        let f = S::select(big.le(aa), small, S::select((aa * big).lt(two), big, one));
+        let (f, _) = pow2_step(k, a.abs());
         (a * f, b * f, c * f, d * f)
     })
 }

@@ -678,7 +678,9 @@ triangle $a_{ij}$, $i \ge j$, is read.
   $f$ that brings $m$ into $[2^{-128}, 2^{128})$ (`f64`), $[2^{-32}, 2^{32})$ (`f32`); $f = 1$
   inside it and at $m = 0$. Outside, two-sided steps at $2^{512}, 2^{256}, 2^{128}, 2^{64}$
   ($2^{64}, 2^{32}, 2^{16}, 2^{8}$): at $2^k$, divide where $m \ge 2^k$, multiply where
-  $m\,2^k < 2$. Every product is exact; the eigenvalues are multiplied by $1/f$ at the end.
+  $m\,2^k < 2$ (`real::pow2_step`). The largest entry stays normal and scales exactly; an entry
+  that falls below the smallest normal rounds, by less than $2^{-1074}\cdot2^k$, far below $u\lvert A\rvert$.
+  The eigenvalues are multiplied by $1/f$ at the end.
 - **Sweeps.** Four, each the rotations $(p, q) = (0, 1), (0, 2), (1, 2)$ in that order, $r$ the
   third index, $V = I$ at the start. No convergence test.
 - **Rotation.** $d = a_{qq} - a_{pp}$, $w = 2a_{pq}\operatorname{copysign}(1, d)$,
