@@ -117,7 +117,8 @@ impl Fixture for Dual<f64, 2> {
 }
 
 /// `B^T B + N I`, `B` entries in `[-1, 1)` from a fixed LCG, so the mask is set; `failing` negates
-/// the middle pivot, so the factorisation runs its failed arm from column `N / 2` on.
+/// the middle pivot, so column `N / 2` runs the failed arm (unit pivot, zeros below) and the later
+/// columns factor the matrix with that row and column removed.
 fn spd<S: Fixture, const N: usize>(failing: bool) -> Matrix<S, N, N> {
     let mut state = 0x9E37_79B9_7F4A_7C15_u64;
     let mut next = || {
