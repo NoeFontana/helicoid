@@ -206,6 +206,7 @@ None.
 - `rminus_jacobians` forms `J_r⁻¹` and `J_l⁻¹` from two coefficient evaluations (at `σ` and `-σ`).
   `J_l⁻¹ = J_r⁻¹ Ad_{Exp(-τ)}`, with the relative element `rminus` already holds, would save about
   100 ns of 390, at the price of the §2.3 rows law reading a measured bound instead of exactly `0`.
+  Done exactly instead by [`0073`](./0073-sim3-two-sides-share-one-coefficient-evaluation.md).
 - `w₁` and `∂_z v₁` for `σ ≫ 1` from the other rows of SM.5(a), SM.11's systems
   (`w₁ = (v₁ - w₀ + z w₂)/σ`), behind a generated `|σ|` switch, if a consumer at large positive `σ`
   ever needs the coefficient and not the block.
