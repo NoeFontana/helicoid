@@ -5,14 +5,17 @@
 //! `orth = max |V^T V - I|`, `det = |det V - 1|`; the eigenvalue error `ev = |l_k - l_k*|`; the
 //! residual `res = |A v_k - l_k v_k|`; the angle `ang = |v_k x v_k*|`.
 //!
-//! **The recorded bounds** are `orth, det <= 16 u`, `ev, res <= 32 u |A|` and `ang_k <= 32 u |A| /
+//! **The recorded bounds** are `orth, det <= 16 u`, `ev, res <= 36 u |A|` and `ang_k <= 36 u |A| /
 //! gap_k`, `gap_k` the distance of `l_k*` to the nearest other eigenvalue (at least `u |A|`, where
-//! the bound is vacuous): one constant at every gap, ties included (`0081`). The worst `value /
-//! bound` over 10^6 cases of each proptest (the config's `cases` raised; `EIG3_REPORT=1` prints
-//! each new largest) and the fixture is 0.50 on `ev`, 0.26 on `res` and `ang`, and 0.48 on the
-//! frame. A planted truth is that of the exact `Q diag(l) Q^T`, so these include the rounding of
-//! the planted matrix and of `Q`, about `10 u |A|`; the corpus id `eig3`, scored against mpmath on
-//! the stored matrix, reads at most 4.76 `u` (`f64`) and 3.24 (`f32`) on every stratum.
+//! the bound is vacuous): one constant at every gap, ties included (`0081`; `0084`, draft), twice
+//! the measured worst. The worst over 10^6 cases of each proptest (the config's `cases` raised;
+//! `EIG3_REPORT=1` prints each new largest), two runs with different seeds, and the fixture is
+//! 18.0 `u |A|` on `ev`, 8.9 on `res`, 8.6 on `ang` and 7.0 `u` on the frame (`#154`'s four
+//! sweeps, one run: 14.7, 8.8, 8.9, 7.7). A planted truth is that of the exact `Q diag(l) Q^T`, so
+//! these include the rounding of the planted matrix and of `Q`, about `10 u |A|`; the corpus id
+//! `eig3`, scored against mpmath on the stored matrix, reads at most 3.06 `u` (`f64`) and 2.67
+//! (`f32`) on every stratum. `measure_eig3` scores against a double-double reference of the stored
+//! matrix instead, per family (the large-sample table of draft `0084`).
 //!
 //! `MP` is the fixture: exact binary64 entries (the rows of `f32` strata rounded to binary32
 //! first, so both precisions solve the matrix mpmath solved), the eigenvalues and unit
@@ -33,7 +36,7 @@ type M = [[f64; 3]; 3];
 type V3 = [f64; 3];
 
 /// The recorded bounds of the header: `ev`, `res <= K u |A|` and `ang_k <= K u |A| / gap_k`.
-const K: f64 = 32.0;
+const K: f64 = 36.0;
 /// The frame's bound, `orth` and `det` at most `FRAME u`.
 const FRAME: f64 = 16.0;
 
@@ -796,4 +799,305 @@ fn the_safe_argument_keeps_the_frame_on_a_tiny_block() {
     }
     at::<f64>(2.0_f64.powi(-540));
     at::<f32>(2.0_f64.powi(-70));
+}
+
+/// A double-double: `hi + lo`, `|lo| <= u |hi|`, from the error-free transformations (Dekker's
+/// split for the product; no fused multiply-add, D16).
+#[derive(Clone, Copy)]
+struct Dd(f64, f64);
+
+impl Dd {
+    fn of(x: f64) -> Self {
+        Self(x, 0.0)
+    }
+    fn fast(a: f64, b: f64) -> Self {
+        let s = a + b;
+        Self(s, b - (s - a))
+    }
+    fn sum(a: f64, b: f64) -> Self {
+        let s = a + b;
+        let bb = s - a;
+        Self(s, (a - (s - bb)) + (b - bb))
+    }
+    fn prod(a: f64, b: f64) -> Self {
+        let split = |x: f64| {
+            let c = 134_217_729.0 * x;
+            let hi = c - (c - x);
+            (hi, x - hi)
+        };
+        let (p, (ah, al), (bh, bl)) = (a * b, split(a), split(b));
+        Self(p, ((ah * bh - p) + ah * bl + al * bh) + al * bl)
+    }
+    fn add(self, o: Self) -> Self {
+        let (s, t) = (Self::sum(self.0, o.0), Self::sum(self.1, o.1));
+        let s = Self::fast(s.0, s.1 + t.0);
+        Self::fast(s.0, s.1 + t.1)
+    }
+    fn neg(self) -> Self {
+        Self(-self.0, -self.1)
+    }
+    fn sub(self, o: Self) -> Self {
+        self.add(o.neg())
+    }
+    fn mul(self, o: Self) -> Self {
+        let p = Self::prod(self.0, o.0);
+        Self::fast(p.0, p.1 + (self.0 * o.1 + self.1 * o.0))
+    }
+    fn div(self, o: Self) -> Self {
+        let q1 = self.0 / o.0;
+        let r = self.sub(o.mul(Self::of(q1)));
+        let q2 = r.0 / o.0;
+        let r = r.sub(o.mul(Self::of(q2)));
+        Self::fast(q1, q2).add(Self::of(r.0 / o.0))
+    }
+    fn sqrt(self) -> Self {
+        if self.0 <= 0.0 {
+            return Self::of(0.0);
+        }
+        let x = self.0.sqrt();
+        let r = self.sub(Self::prod(x, x));
+        Self::fast(x, r.0 / (2.0 * x))
+    }
+}
+
+/// The eigenpairs of `a` by cyclic Jacobi in double-double, to about `1e-32 |A|`: the reference of
+/// [`measure_eig3`], independent of `eig3`'s rotation (the textbook `theta`, `t`, `c` and the full
+/// two-sided update).
+fn reference(a: &M) -> Truth {
+    let mut m = a.map(|r| r.map(Dd::of));
+    let mut v: [[Dd; 3]; 3] =
+        array::from_fn(|i| array::from_fn(|j| Dd::of(f64::from(u8::from(i == j)))));
+    let an = a.iter().flatten().fold(0.0_f64, |s, x| s.max(x.abs()));
+    let (one, two) = (Dd::of(1.0), Dd::of(2.0));
+    for _ in 0..60 {
+        if [m[0][1], m[0][2], m[1][2]]
+            .iter()
+            .all(|x| x.0.abs() <= 1e-34 * an)
+        {
+            break;
+        }
+        for (p, q) in [(0, 1), (0, 2), (1, 2)] {
+            // Below this the rotation would change nothing, and `theta` would leave Dekker's range.
+            if m[p][q].0.abs() <= 1e-40 * an {
+                continue;
+            }
+            let theta = m[q][q].sub(m[p][p]).div(m[p][q].mul(two));
+            let at = if theta.0 < 0.0 { theta.neg() } else { theta };
+            let t = one.div(at.add(theta.mul(theta).add(one).sqrt()));
+            let t = if theta.0 < 0.0 { t.neg() } else { t };
+            let c = one.div(t.mul(t).add(one).sqrt());
+            let s = t.mul(c);
+            let rot = |x: Dd, y: Dd| (c.mul(x).sub(s.mul(y)), s.mul(x).add(c.mul(y)));
+            for row in &mut m {
+                (row[p], row[q]) = rot(row[p], row[q]);
+            }
+            let (mp, mq) = (m[p], m[q]);
+            (m[p], m[q]) = (
+                array::from_fn(|k| rot(mp[k], mq[k]).0),
+                array::from_fn(|k| rot(mp[k], mq[k]).1),
+            );
+            for row in &mut v {
+                (row[p], row[q]) = rot(row[p], row[q]);
+            }
+        }
+    }
+    let mut order = [0, 1, 2];
+    order.sort_by(|&i, &j| {
+        m[i][i]
+            .0
+            .total_cmp(&m[j][j].0)
+            .then(m[i][i].1.total_cmp(&m[j][j].1))
+    });
+    Truth {
+        lam: order.map(|k| m[k][k].0 + m[k][k].1),
+        vec: order.map(|k| {
+            let n = (0..3)
+                .fold(Dd::of(0.0), |s, r| s.add(v[r][k].mul(v[r][k])))
+                .sqrt();
+            array::from_fn(|r| v[r][k].div(n).0)
+        }),
+    }
+}
+
+/// The corpus metric (`eigen`, `xtask/src/conformance/metric.rs`) of `(l, v)` against `t`, in `u`:
+/// the larger of `|l - l*| / |l*|` and, over the columns, `min |v_k -+ v_k*| gap_k / |l*|`.
+fn corpus_metric(t: &Truth, (l, v): &(V3, M), u: f64) -> f64 {
+    let ln = norm(t.lam);
+    if ln == 0.0 {
+        return if l.iter().all(|x| *x == 0.0) {
+            0.0
+        } else {
+            f64::INFINITY
+        };
+    }
+    let ev = norm(array::from_fn(|k| l[k] - t.lam[k])) / (ln * u);
+    (0..3).fold(ev, |w, k| {
+        let gap = (0..3)
+            .filter(|&j| j != k)
+            .map(|j| (t.lam[k] - t.lam[j]).abs())
+            .fold(f64::INFINITY, f64::min);
+        let vk = col(v, k);
+        let d = norm(array::from_fn(|r| vk[r] - t.vec[k][r]))
+            .min(norm(array::from_fn(|r| vk[r] + t.vec[k][r])));
+        w.max(d * gap / (ln * u))
+    })
+}
+
+/// The families of [`measure_eig3`]: the corpus's spectra and more, `(name, generator)`.
+#[allow(clippy::type_complexity)]
+fn families() -> Vec<(
+    std::string::String,
+    std::boxed::Box<dyn Fn(&mut dyn FnMut() -> f64) -> M>,
+)> {
+    use std::boxed::Box;
+    use std::format;
+    let quat = |r: &mut dyn FnMut() -> f64| [r(), r(), r(), r()];
+    let mut f: Vec<(
+        std::string::String,
+        Box<dyn Fn(&mut dyn FnMut() -> f64) -> M>,
+    )> = std::vec![
+        (
+            "random".into(),
+            Box::new(|r: &mut dyn FnMut() -> f64| matrix([(); 6].map(|()| r())))
+        ),
+        (
+            "loguniform".into(),
+            Box::new(|r: &mut dyn FnMut() -> f64| {
+                matrix([(); 6].map(|()| r() * 10f64.powf(-8.0 * r().abs())))
+            }),
+        ),
+    ];
+    for k in [0, 1, 2, 3, 4, 6, 8, 10, 12, 14, 16] {
+        let g = 10f64.powi(-k);
+        for (name, l) in [
+            ("bottom", [1.0, 1.0 + g, 3.0]),
+            ("top", [0.5, 2.0, 2.0 + 2.0 * g]),
+            ("near-triple", [1.0, 1.0 + g, 1.0 + 2.0 * g]),
+        ] {
+            f.push((
+                format!("{name}-1e-{k}"),
+                Box::new(move |r: &mut dyn FnMut() -> f64| planted(quat(r), l).0),
+            ));
+        }
+    }
+    let spectra: [(&str, fn(&mut dyn FnMut() -> f64) -> V3); 4] = [
+        ("triple", |r| [r(); 3]),
+        ("rank1", |r| [0.0, 0.0, r()]),
+        ("rank2", |r| [0.0, r(), r()]),
+        ("graded", |_| [1.0, 1e-8, 1e-16]),
+    ];
+    for (name, l) in spectra {
+        f.push((
+            name.into(),
+            Box::new(move |r: &mut dyn FnMut() -> f64| {
+                let l = l(r);
+                planted(quat(r), l).0
+            }),
+        ));
+    }
+    f.push((
+        "diag+1e-10".into(),
+        Box::new(|r: &mut dyn FnMut() -> f64| {
+            matrix([r(), r(), r(), 1e-10 * r(), 1e-10 * r(), 1e-10 * r()])
+        }),
+    ));
+    f.push((
+        "diag-tie+1e-17".into(),
+        Box::new(|r: &mut dyn FnMut() -> f64| {
+            let x = r();
+            matrix([x, x, r(), 1e-17 * r(), 1e-17 * r(), 1e-17 * r()])
+        }),
+    ));
+    f
+}
+
+/// `(max, p99.9, mean)` of the samples.
+fn summary(mut s: Vec<f64>) -> [f64; 3] {
+    s.sort_by(f64::total_cmp);
+    let n = s.len();
+    let max = s.last().copied().unwrap_or(0.0);
+    [
+        max,
+        s.get(n * 999 / 1000).copied().unwrap_or(max),
+        s.iter().sum::<f64>() / n.max(1) as f64,
+    ]
+}
+
+/// Per family, at `f64` and `f32`, 50 000 matrices each against the double-double [`reference`]
+/// of the matrix rounded to the precision: the max, p99.9 and mean of the corpus metric, and the
+/// worst frame `max(orth, det) / u`. The large-sample table of draft `0084` is these figures; run
+/// with
+/// `cargo nextest run --release -p helicoid-linalg --run-ignored only measure_eig3 --no-capture`.
+#[test]
+#[ignore = "measurement: prints the figures draft `0084` and the bounds are recorded from"]
+#[allow(clippy::print_stdout)]
+fn measure_eig3() {
+    fn at<S: Lane>(a: &M) -> (f64, f64) {
+        let a = round::<S>(a);
+        let out = run::<S>(&a);
+        let (orth, det) = frame(&out.1);
+        let u = unit::<S>();
+        (corpus_metric(&reference(&a), &out, u), orth.max(det) / u)
+    }
+    std::println!("family            f64 max  p99.9   mean  frame | f32 max  p99.9   mean  frame");
+    for (i, (name, make)) in families().into_iter().enumerate() {
+        let mut next = lcg(0x6569_6733 + i as u64);
+        let (mut s64, mut s32, mut f64_, mut f32_) = (Vec::new(), Vec::new(), 0.0_f64, 0.0_f64);
+        for _ in 0..50_000 {
+            let a = make(&mut next);
+            let (m, f) = at::<f64>(&a);
+            s64.push(m);
+            f64_ = f64_.max(f);
+            let (m, f) = at::<f32>(&a);
+            s32.push(m);
+            f32_ = f32_.max(f);
+        }
+        let ([a0, a1, a2], [b0, b1, b2]) = (summary(s64), summary(s32));
+        std::println!(
+            "{name:16} {a0:7.3} {a1:6.3} {a2:6.3} {f64_:6.3} | {b0:7.3} {b1:6.3} {b2:6.3} {f32_:6.3}"
+        );
+    }
+}
+
+/// A diagonal input with off-diagonal lanes: the values are diagonal before any rotation turns, so
+/// only the step after the exit gives the vectors their derivative, `d v_k = sum_{j != k} e_j E_jk /
+/// (l_k - l_j)`, to `1e-12`; the eigenvalues get none (`0084`, draft).
+#[test]
+fn a_diagonal_input_differentiates_its_vectors() {
+    type D3 = Dual<f64, 3>;
+    let l = [1.0, 2.0, 4.0];
+    let lane = |r: usize, c: usize| match (r.min(c), r.max(c)) {
+        (0, 1) => Some(0),
+        (0, 2) => Some(1),
+        (1, 2) => Some(2),
+        _ => None,
+    };
+    let x = Mat3::from_rows([0, 1, 2].map(|r| {
+        Vector([0, 1, 2].map(|c| match lane(r, c) {
+            Some(i) => D3::variable(0.0, i),
+            None => D3::constant(if r == c { l[r] } else { 0.0 }),
+        }))
+    }));
+    let (vals, vecs) = eig3(&x);
+    for k in 0..3 {
+        assert!(
+            vals.0[k].d.iter().all(|d| d.abs() == 0.0),
+            "{:?}",
+            vals.0[k]
+        );
+        for i in 0..3 {
+            let want: [f64; 3] = array::from_fn(|r| match lane(r, k) {
+                Some(j) if j == i && r != k => 1.0 / (l[k] - l[r]),
+                _ => 0.0,
+            });
+            let sign = vecs.get(k, k).v.signum();
+            for (r, w) in want.iter().enumerate() {
+                let got = vecs.get(r, k).d[i] * sign;
+                assert!(
+                    (got - w).abs() <= 1e-12,
+                    "lane {i} column {k} row {r}: {got} {w}"
+                );
+            }
+        }
+    }
 }
