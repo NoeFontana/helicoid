@@ -2,7 +2,7 @@
 
 **Status:** ready
 **Owner:** @NoeFontana
-**Implementation:** the `W²` form twin has landed; `cargo xtask compare` (decision 4) is open.
+**Implementation:** the `W²` form twin has landed; `cargo xtask compare` (decision 4) has landed (branch `feat/xtask-compare`, readings in [`0078`](./0078-a-comparison-drops-ties-and-prints-both-maxima.md)) and reproduces this record's 21 / 104 strata and `0076`'s tally to the stratum.
 
 ## Context
 
@@ -156,8 +156,8 @@ and a worse program would have been as defensible as the current one.
    `the_two_w2_forms_are_one_matrix_to_rounding` and by `just conformance --subject
    seeded:w2-identity`. **Landed.**
 2. A paired comparison of two registered subjects: per-record differences over every shared
-   stratum, a direction and a sign test per id and pooled, printed and never a bar. **Owed, blocked
-   on open question 1.**
+   stratum, a direction and a sign test per id and pooled, printed and never a bar. **Landed**
+   (`0078`), verified by `the_task_reproduces_the_tally_of_0038`.
 3. `0036`'s three application forms re-reported through it, replacing the failure counts.
    **Owed, after 2.**
 4. `Q`'s word association as the next one-variable twin, since it is what is left.
