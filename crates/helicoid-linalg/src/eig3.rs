@@ -78,7 +78,8 @@ fn angle<S: Real>(d: S, apq: S, w2: S) -> (S, S, S, S, S) {
     let den = d.abs() + h;
     let t = two * apq * sgn / den;
     let c2 = den / (h + h);
-    // `c2` is at least 1/2 in both arms, so its root is safe; the select sits after the root.
+    // `c2` is at least 1/2 in both arms, so its root is safe. The select sits after the root:
+    // `select(..).sqrt()` here crashes rustc 1.98.1's LLVM (`0084`).
     let c = S::select(small, one, c2.sqrt());
     (
         sgn * (half * w2) / den,
