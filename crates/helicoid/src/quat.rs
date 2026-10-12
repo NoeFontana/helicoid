@@ -187,6 +187,9 @@ impl<S: Real> Quat<S> {
     /// For a unit `q` it is the rotation `v ↦ q v q*`, orthogonal with determinant `+1`. For any
     /// other `q` it is `‖q‖² R(q / ‖q‖)` (`docs/maths/so3.md` SO.2), a scaled rotation.
     ///
+    /// Not Eigen's `1 - 2(y² + z²)` diagonal: on a rounded unit `q`, `‖q‖² = 1 + η`, this form errs
+    /// by `ηR` and that one by `η(R - I)`, so each wins one end of `θ` (`0076`).
+    ///
     /// # Domain
     ///
     /// None is asserted. The rotation reading needs `q` unit to the tolerance of
