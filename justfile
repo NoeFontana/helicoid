@@ -146,6 +146,13 @@ oracle-sophus:
 oracle-gtsam:
     cargo xtask conformance --oracle gtsam
 
+# The manif oracle (`docs/decisions/0075`): as `oracle-sophus`, for docker/oracles/manif, pinned by
+# base digest, Ubuntu snapshot and manif commit; its build runs the conversions' hand-computed
+# tests. `subject_version` names manif, Eigen, gcc and glibc; it answers in binary64. Rows in
+# conformance/results/manif.csv.
+oracle-manif:
+    cargo xtask conformance --oracle manif
+
 # The one-variable twins (`0037`, draft): a candidate's program at a scalar whose transcendentals
 # are the host's `std` instead of the `libm` crate, into conformance/results/*-host-std.csv. Both
 # are planted subjects, so a plain `conformance` run skips them; `envelope` reads the rows of the
@@ -160,7 +167,7 @@ conformance-twin:
 # The bars of `docs/PHASE1.md` §8 over conformance/results: domination over the best oracle and exact
 # no-regress against conformance/baseline, per (fn, stratum, precision) on the max, then coverage of
 # the corpus. It first reruns the in-process subjects, so the candidate's rows are current; the
-# oracles' rows are what `oracle-tf-tree-math`, `oracle-sophus-rs`, `oracle-nalgebra`, `oracle-sophus`, `oracle-gtsam` last wrote. `--check` also fails on
+# oracles' rows are what `oracle-tf-tree-math`, `oracle-sophus-rs`, `oracle-nalgebra`, `oracle-sophus`, `oracle-gtsam`, `oracle-manif` last wrote. `--check` also fails on
 # a baseline or docs/evidence/ENVELOPE.md (its oracle columns aside) that `--bless` would write
 # differently (an improved max is blessed in its own PR); `--bless` writes both, and nothing while
 # domination, coverage or a dropped stratum fails (`--dry-run`: says what it would write). While the
