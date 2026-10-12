@@ -136,10 +136,14 @@ every group method fails `API.md` §6's checklist and has no consumer.
 ## Implementation plan
 
 1. The `libm::`-containment lint, with a planted-violation test — verified by `cargo xtask lint`.
-   **Owed.**
+   **Done** (`xtask/src/lint/kernel.rs`).
 2. The resolved `libm` version in `baseline/HOST.md` and `docs/evidence/ENVELOPE.md` headers, and
    an envelope message that names a `libm` move — verified by the generators' own `--check`.
-   **Owed.**
+   **In part** (owner's go, 2026-10-12): `xtask/build.rs` reads the resolved version from
+   `Cargo.lock`; the shipped subject's rows carry it as `subject_version` `<version>+libm.<libm>`,
+   and every file `cargo xtask thresholds` generates names it in its header (`// Kernel: libm …`),
+   so `thresholds-check` reports a move against a named version. `HOST.md`, `ENVELOPE.md` and the
+   envelope's message stay owed.
 3. Transcendentals as conformance subjects in their own right: max and p99 ULP per stratum against
    mpmath for `libm` and for bench-only candidates (`std`/glibc, `core-math`). Runner dependencies
    are unrestricted under `0007`, so the budget does not move. `0032` has the `atan2` row already.

@@ -1173,6 +1173,16 @@ impl Subject for HostStd {
     }
 }
 
+/// The shipped kernel's `subject_version`: the workspace version and the `libm` it linked, as
+/// semver build metadata (`0034`, draft, plan step 2).
+pub(crate) fn subject_version() -> String {
+    format!(
+        "{}+libm.{}",
+        env!("CARGO_PKG_VERSION"),
+        env!("HELICOID_LIBM_VERSION")
+    )
+}
+
 pub(crate) fn host_std() -> Registered {
     let version = env!("CARGO_PKG_VERSION");
     Registered {
@@ -1189,7 +1199,7 @@ pub(crate) fn host_std() -> Registered {
 }
 
 pub(crate) fn registered() -> Registered {
-    let version = env!("CARGO_PKG_VERSION").to_string();
+    let version = subject_version();
     Registered {
         version: version.clone(),
         version_f32: version,
@@ -1267,7 +1277,8 @@ mod tests {
         let all = registry();
         let h = &all[0];
         assert_eq!((h.subject.name(), h.planted), ("helicoid", false));
-        assert_eq!(h.version, env!("CARGO_PKG_VERSION"));
+        assert_eq!(h.version, subject_version());
+        assert!(h.version.starts_with(env!("CARGO_PKG_VERSION")) && h.version.contains("+libm.0."));
         assert_eq!(h.version_at(Precision::F32), h.version_at(Precision::F64));
         assert!(h.no_f32.is_none());
         assert_eq!(
