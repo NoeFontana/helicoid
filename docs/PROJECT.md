@@ -163,7 +163,7 @@ Status per phase: the §0.0 table heading each spec is authoritative.
   x86_64, aarch64 and wasm32 (NaN sign and payload apart); `just determinism` checks it. This is what
   makes D8's no-regress bar exact. `libm`'s `arch` feature is on: it routes only exactly rounded
   operations to the target's instruction ([`0018`](./decisions/0018-libm-arch-is-bit-identical-for-exact-operations.md)).
-- **D17 — MSRV never exceeds a consumer's.** Today **1.87** (`tf_tree`). Raising it is a record
+- **D17 — MSRV never exceeds a consumer's.** Today **1.85** (omnisac; `tf_tree` is 1.87). Raising it is a record
   that names every consumer's MSRV.
 - **D18 — Apache-2.0 / MIT dual license**, matching `tf_tree` D20.
 

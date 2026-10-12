@@ -44,6 +44,7 @@ defined by the status tables in `docs/`; they win over this file.
 
 ### Changed
 
+- **MSRV 1.85** (D17): omnisac, a consumer, is on 1.85, and the workspace already built there unchanged. `just msrv` and the CI job read the new floor.
 - **`R(q)` stays homogeneous** (`0076`): the unit form `(1 − 2‖u‖²)I + …` wins `Ad` near the identity and loses it near `π`, and it breaks §12's `to_matrix` contract `(1 + η)R`, so `Quat::to_matrix` is unchanged and its rustdoc says why. `so3_act/q:nonunit/f64` and `sen3_ad_n1/q:nonunit/f64` are excepted as `0058`'s stated drift term.
 - **Sim(3)'s `⊖` and `⊕` Jacobians share their coefficient evaluations** (`0073`): the group at `σ` and `-σ` from one branch and one set of transcendentals, each to the bit, so `rminus_jacobians` and `lminus_jacobians` run one pair where they ran three evaluations, and `rplus_jacobians`, `lplus_jacobians` one where they ran two. No output bit moves. `rminus_jacobians` takes 0.65–0.84 of its time (`f64` 270–294 ns, was 387–468), `rplus_jacobians` 0.73–0.88 and `jr_inv` 0.74–0.84.
 - **`Matrix × Matrix` is a plain loop** (`0069`): the nested `array::from_fn` built the product through the stack, 87 stores for a `3 x 3`; the same sums in the same order, so every output is bit-identical. `Jac::mul` on SO(3), SE(3) and SE₂(3) takes 0.09–0.11 of its former time, SE_N(3) `jr_inv` and `rminus_jacobians` 0.40–0.60.

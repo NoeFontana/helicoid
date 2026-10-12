@@ -87,7 +87,7 @@ helicoid/
 
 **NORMATIVE.**
 
-- `[workspace.package]`: `version = "0.0.0"`, `edition = "2021"`, `rust-version = "1.87"`,
+- `[workspace.package]`: `version = "0.0.0"`, `edition = "2021"`, `rust-version = "1.85"`,
   `license = "MIT OR Apache-2.0"`, `repository`/`homepage` `https://github.com/NoeFontana/helicoid`.
 - `[workspace.lints.clippy]`: `unwrap_used`, `expect_used`, `panic`, `todo`, `unimplemented`,
   `dbg_macro`, `float_cmp` = `deny`; `print_stdout`, `print_stderr`, `redundant_clone`,
