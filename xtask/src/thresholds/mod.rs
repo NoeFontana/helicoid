@@ -832,7 +832,13 @@ mod tests {
         Ok(())
     }
 
+    // Release only: the unoptimised sweep took 133–186 s of hosted CI's 360 s budget and still
+    // grows with each swept group. `just test`'s release pass still runs it.
     #[test]
+    #[cfg_attr(
+        debug_assertions,
+        ignore = "release only: the unoptimised sweep outgrows CI's budget"
+    )]
     fn a_run_writes_both_files_and_its_check_fails_a_hand_edit_and_writes_nothing(
     ) -> Result<(), String> {
         // `run_at` is what `just thresholds` and `just thresholds-check` reach, under a scratch root.

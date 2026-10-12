@@ -158,8 +158,8 @@ oracle-manif:
     cargo xtask conformance --oracle manif
 
 # Every oracle runner (`docs/PHASE1.md` §3, §7): the three crates' checks and rows, then the three
-# containers', each image built from its pins. The nightly `oracles` workflow runs this; it needs
-# docker, and the first GTSAM build takes minutes.
+# containers', each image built from its pins. Local only: it needs docker, and the first GTSAM
+# build takes minutes.
 oracles: oracle-tf-tree-math oracle-sophus-rs oracle-nalgebra oracle-sophus oracle-gtsam oracle-manif
 
 # The one-variable twins (`0037`, draft): a candidate's program at a scalar whose transcendentals
