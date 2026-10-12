@@ -98,7 +98,7 @@ Single test: `cargo nextest run -p helicoid -- so3_exp_log_roundtrip`. The gener
 | `just oracle-tf-tree-math` | the `tf_tree_math` runner (workspace-excluded): its fmt, clippy, doc, deny, tests, then its rows over the corpus (`conformance --oracle`) |
 | `just oracle-sophus-rs` | the same for the sophus-rs runner (`runners/sophus_rs`, audited with its own `deny.toml`) |
 | `just oracle-nalgebra` | the same for the nalgebra runner (`runners/nalgebra`, its own `deny.toml`): `eig3`, `chol_*`, `solve_cubic`, `quat_renormalize` (`0056`) |
-| `just oracle-sophus` | the Sophus C++ container (`docker/oracles/sophus`, needs docker): builds the pinned image, whose build runs the conversions' tests, then its rows over the corpus offline (`0072`) |
+| `just oracle-sophus` | the Sophus C++ container (`docker/oracles/sophus`, needs docker): builds the pinned image, whose build runs the conversions' tests, then its rows over the corpus offline (`0072`); `eig3` is the image's Eigen (`0083`) |
 | `just oracle-gtsam` | the same for GTSAM C++ (`docker/oracles/gtsam`), the library built in the image under the runner's flags (`0074`) |
 | `just oracle-manif` | the same for the manif container (`docker/oracles/manif`): SO(2), SE(2), SO(3), SE(3), SE₂(3) and the screw and world charts (`0075`) |
 | `just oracles` | every `oracle-*` recipe above, in order; local only (docker, a source-built GTSAM), no CI job runs it |

@@ -226,6 +226,40 @@ void sim3_exp() {
   exact(shift_f.x, {1, 2, 3}, "sim3 exp f32: x = ρ");
 }
 
+// Column `i` of `got` against `want`'s, up to its sign: an eigenvector's sign is the solver's.
+void near_columns(const oracle::Vec& got, const oracle::Vec& want, const std::string& what, double tol) {
+  bool ok = got.size() == 9 && want.size() == 9;
+  for (std::size_t c = 0; ok && c < 3; ++c) {
+    bool same = true, flipped = true;
+    for (std::size_t r = 0; r < 3; ++r) {
+      same = same && std::fabs(got[3 * c + r] - want[3 * c + r]) <= tol;
+      flipped = flipped && std::fabs(got[3 * c + r] + want[3 * c + r]) <= tol;
+    }
+    ok = same || flipped;
+  }
+  check(ok, what);
+}
+
+void eig3() {
+  // The corpus's `A` is column-major, as Eigen's storage: entry k is (k mod 3, k div 3).
+  const Eigen::Matrix3d m = oracle::helicoid_to_eigen_matrix3<double>({0, 1, 2, 3, 4, 5, 6, 7, 8});
+  check(m(1, 0) == 1 && m(0, 1) == 3 && m(2, 1) == 5, "eig3: A column-major");
+  // A = [5 0 0; 0 2 1; 0 1 2], its largest eigenvalue first on the diagonal: λ = (1, 3, 5)
+  // ascending, V's columns (0, 1, −1)/√2, (0, 1, 1)/√2, e₀; a transposed V would fail.
+  const oracle::Vec a{5, 0, 0, 0, 2, 1, 0, 1, 2};
+  const double h = std::sqrt(0.5);
+  const oracle::Vec v{0, h, -h, 0, h, h, 1, 0, 0};
+  using Solver = Eigen::SelfAdjointEigenSolver<Eigen::Matrix3d>;
+  const oracle::HelicoidEig3 e = oracle::eigen_to_helicoid_eig3<double>(Solver(oracle::helicoid_to_eigen_matrix3<double>(a)));
+  near(e.lambda, {1, 3, 5}, "eig3: λ ascending");
+  near_columns(e.v, v, "eig3: V's columns, column-major", kTol);
+  using SolverF = Eigen::SelfAdjointEigenSolver<Eigen::Matrix3f>;
+  const oracle::HelicoidEig3 f = oracle::eigen_to_helicoid_eig3<float>(SolverF(oracle::helicoid_to_eigen_matrix3<float>(a)));
+  near(f.lambda, {1, 3, 5}, "eig3 f32: λ ascending", kTolF);
+  near_columns(f.v, v, "eig3 f32: V's columns, column-major", kTolF);
+  check(binary32(f.lambda) && binary32(f.v), "eig3 f32: binary32");
+}
+
 void hex_floats() {
   check(oracle::format_hex(1.0) == "0x1p+0", "hex: 1");
   check(oracle::format_hex(-0.0) == "-0x0p+0", "hex: −0");
@@ -259,6 +293,7 @@ int main() {
   sim3_element_f32();
   sim3_adjoint();
   sim3_exp();
+  eig3();
   hex_floats();
   if (failures != 0) return 1;
   std::puts("convert_test: all passed");

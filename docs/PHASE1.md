@@ -17,7 +17,7 @@ defects and `tf_tree_math`, which becomes oracle #1 ([`0010`](./decisions/0010-s
 | Reference generator and committed corpus v1 (§4) | Partial: generator skeleton and committed corpus v1 with 150-digit mpmath reference generation across scalar and group strata. SE(2) coefficients pending. |
 | Conformance harness and result schema (§5) | Partial: `cargo xtask conformance` runner, result CSV generation, and seeded defect checks; `cargo xtask compare` (`0038`, `0078`). Backward error and f32 vector strata pending. |
 | Threshold sweep and generated-file format (§6) | Partial: two-stage threshold sweep over full domain generating `coeffs` and series tables (`0039`, `0047`). |
-| Oracle runners: `tf_tree_math`, sophus-rs (excluded crates); Sophus, manif, GTSAM (containers) (§7) | Partial: runners implemented for `tf_tree_math`, `sophus_rs` and `nalgebra` (`0056`) over file protocol; the Sophus (`0072`), GTSAM (`0074`) and manif (`0075`) containers done; nalgebra and Sophus answer `@f32` strata in binary32 (`0077`). |
+| Oracle runners: `tf_tree_math`, sophus-rs (excluded crates); Sophus, manif, GTSAM (containers) (§7) | Partial: runners implemented for `tf_tree_math`, `sophus_rs` and `nalgebra` (`0056`) over file protocol; the Sophus (`0072`), GTSAM (`0074`) and manif (`0075`) containers done; nalgebra and Sophus answer `@f32` strata in binary32 (`0077`); the Sophus image answers `eig3` with its Eigen ([`0083`](./decisions/0083-eig3-is-also-judged-against-eigen.md)). |
 | Envelope and bars (§8) | Partial: domination and no-regression gating over baseline and oracles (`0006`). Baseline blessing awaiting Phase 3 candidate rows. |
 | Bench harness and gate (§9) | Partial: criterion benchmarks and replicate-outermost gate (`0033` draft). Bench-check CI job pending. |
 | Seeded-defect validation (§10) | Partial: `just conformance --self-test` runs defect injection for coefficient, SO(3), and SE(3) defects. |
@@ -394,7 +394,9 @@ sample count by an edit to this list, never silently.
   quaternion of a matrix (`quat_from_rot3`), `slerp` and ScLERP (`so3_geodesic`,
   `se3_geodesic`), $a, b, c$ via its `V`/`V⁻¹`. A runner answers every id its oracle exports and the corpus holds, on every stratum
   of the file: selecting strata would make a paired comparison the runner's choice. `runners/sophus_rs` (pinned version):
-  SO(3)/SE(3) `exp`/`log`, any exposed Jacobians. `docker/oracles/sophus` (Sophus C++),
+  SO(3)/SE(3) `exp`/`log`, any exposed Jacobians. `docker/oracles/sophus` (Sophus C++, and
+  `eig3` by the image's Eigen `SelfAdjointEigenSolver`,
+  [`0083`](./decisions/0083-eig3-is-also-judged-against-eigen.md)),
   `manif` (header-only, small C++ runner), `gtsam` (`Rot3`/`Pose3` `Expmap`/`Logmap` and their
   derivatives).
 - **Pinning.** Every runner pins its oracle; the envelope records oracle versions.
