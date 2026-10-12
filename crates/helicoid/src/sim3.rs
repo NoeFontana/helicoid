@@ -5,7 +5,10 @@
 //! `[A 0 0; B C f; 0 0 e]` every Sim(3) Jacobian has (`docs/maths/sim3.md` SM.9), closed under
 //! product and inverse; the coefficients are `coeffs::sim3`'s group.
 
-use crate::coeffs::{sim3_coeffs, sim3_coeffs_scaled, sim3_v, sim3_v_scaled, unscale, Sim3Coeffs};
+use crate::coeffs::{
+    sim3_coeffs, sim3_coeffs_scaled, sim3_coeffs_scaled_pair, sim3_v, sim3_v_scaled, unscale,
+    Sim3Coeffs,
+};
 use crate::quat::Quat;
 use crate::side::Side;
 use crate::so3::{hat_mul, mul_hat, norm_sq, SO3Tangent, SO3};
@@ -322,9 +325,22 @@ fn inv_coeffs<S: Real>(v: [S; 3], z: S) -> [S; 3] {
 /// `J_l(τ)` from the group's coefficients `c` at `(σ, ‖φ‖²)`, unscaled (SM.10):
 /// `[J_l(φ) 0 0; Q V −Γ₂(M)ρ; 0 0 1]`, `y = Vρ`,
 /// `Q = [y]_× J_l(φ) + 2(∂_z v₁ μ + ∂_z v₂ ν)φᵀ − v₁Ξ + v₂(ΞW − 2WΞ)`, `μ = φ × ρ`, `ν = φ × μ`.
+///
+/// SO(3)'s `J_l(φ)` is formed here, not passed in: as an argument `jr` paid 2–9% to carry it
+/// through memory into the out-of-line call (`0073`).
 #[inline]
 fn jl_blocks<S: Real>(phi: Vec3<S>, rho: Vec3<S>, c: &Sim3Coeffs<S>) -> Sim3Jac<S> {
-    let jl_phi = SO3::jl(&SO3Tangent { phi });
+    jl_blocks_with(phi, rho, c, SO3::jl(&SO3Tangent { phi }))
+}
+
+/// [`jl_blocks`] given SO(3)'s `J_l(φ)`.
+#[inline(always)]
+fn jl_blocks_with<S: Real>(
+    phi: Vec3<S>,
+    rho: Vec3<S>,
+    c: &Sim3Coeffs<S>,
+    jl_phi: Mat3<S>,
+) -> Sim3Jac<S> {
     let (w, xi) = (hat(phi), hat(rho));
     let mu = phi.cross(rho);
     let nu = phi.cross(mu);
@@ -343,11 +359,12 @@ fn jl_blocks<S: Real>(phi: Vec3<S>, rho: Vec3<S>, c: &Sim3Coeffs<S>) -> Sim3Jac<
     }
 }
 
-/// `(ĉ, scaled, c)` at `(σ, ‖φ‖²)`: the coefficients as the arm forms them and unscaled.
+/// SO(3)'s `(J_l(φ), J_l⁻¹(φ))`. At `-φ` they are these transposed, to the bit
+/// (`so3_tests::jl_is_jr_transposed_to_the_bit`).
 #[inline]
-fn coeffs<S: Real>(sigma: S, z: S) -> (Sim3Coeffs<S>, S::Mask, Sim3Coeffs<S>) {
-    let (hat_c, scaled) = sim3_coeffs_scaled(sigma, z);
-    (hat_c, scaled, unscale(hat_c, sigma, scaled))
+fn so3_jl_pair<S: Real>(phi: Vec3<S>) -> (Mat3<S>, Mat3<S>) {
+    let t = SO3Tangent { phi };
+    (SO3::jl(&t), SO3::jl_inv(&t))
 }
 
 /// `(J_l(τ), J_l(τ)⁻¹)` by blocks (SM.10(c)): `A⁻¹` from SO(3)'s closed form, `C⁻¹ = V⁻¹` from
@@ -355,9 +372,27 @@ fn coeffs<S: Real>(sigma: S, z: S) -> (Sim3Coeffs<S>, S::Mask, Sim3Coeffs<S>) {
 #[inline]
 fn jl_and_inverse<S: Real>(phi: Vec3<S>, rho: Vec3<S>, sigma: S) -> (Sim3Jac<S>, Sim3Jac<S>) {
     let z = norm_sq(phi);
-    let (hat_c, scaled, c) = coeffs(sigma, z);
-    let j = jl_blocks(phi, rho, &c);
-    let a_inv = SO3::jl_inv(&SO3Tangent { phi });
+    jl_and_inverse_from(
+        phi,
+        rho,
+        sigma,
+        z,
+        sim3_coeffs_scaled(sigma, z),
+        so3_jl_pair(phi),
+    )
+}
+
+/// [`jl_and_inverse`] from the group's `(ĉ, scaled)` at `(σ, z = ‖φ‖²)` and [`so3_jl_pair`]`(φ)`.
+#[inline]
+fn jl_and_inverse_from<S: Real>(
+    phi: Vec3<S>,
+    rho: Vec3<S>,
+    sigma: S,
+    z: S,
+    (hat_c, scaled): (Sim3Coeffs<S>, S::Mask),
+    (jl_phi, a_inv): (Mat3<S>, Mat3<S>),
+) -> (Sim3Jac<S>, Sim3Jac<S>) {
+    let j = jl_blocks_with(phi, rho, &unscale(hat_c, sigma, scaled), jl_phi);
     let inv_scale = S::branch(scaled, || (-sigma).exp(), S::one);
     let c_inv = poly(phi, inv_coeffs(hat_c.v, z)).scale(inv_scale);
     let inv = Sim3Jac {
@@ -368,6 +403,55 @@ fn jl_and_inverse<S: Real>(phi: Vec3<S>, rho: Vec3<S>, sigma: S) -> (Sim3Jac<S>,
         e: S::one(),
     };
     (j, inv)
+}
+
+impl<S: Real> Sim3<S> {
+    /// `Log`'s `ρ = V⁻¹t` from `v̂` at `(σ, z = ‖φ‖²)` (SM.8), applied as `e^{-σ/2}(V̂⁻¹(e^{-σ/2} t))`
+    /// where scaled (SM.7(g)): neither `Λ` nor `V̂⁻¹ t` overflows before the answer does.
+    #[inline]
+    fn log_rho(&self, phi: Vec3<S>, z: S, (v, scaled): ([S; 3], S::Mask)) -> Vec3<S> {
+        let h = S::branch(scaled, || (S::lit(-0.5) * self.sigma).exp(), S::one);
+        poly_apply(phi, inv_coeffs(v, z), self.t.scale(h)).scale(h)
+    }
+}
+
+/// `(Exp τ, J_l(τ))` from one evaluation of the group: `Exp`'s `V` is the full group's `v`, the
+/// same bits as `sim3_v`'s.
+#[inline]
+fn exp_and_jl<S: Real>(tau: &Sim3Tangent<S>) -> (Sim3<S>, Sim3Jac<S>) {
+    let (phi, rho) = (tau.phi, tau.rho);
+    let t = SO3Tangent { phi };
+    let c = sim3_coeffs(tau.sigma, norm_sq(phi));
+    let x = Sim3 {
+        q: SO3::exp(&t).quat(),
+        t: poly_apply(phi, c.v, rho),
+        sigma: tau.sigma,
+    };
+    (x, jl_blocks(phi, rho, &c))
+}
+
+/// `(J_l⁻¹(τ), J_r⁻¹(τ))` at `τ = Log x`, each `LieGroup::jl_inv`'s and `jr_inv`'s to the bit
+/// (`0073`): the group's coefficients at `σ` and `-σ` from one [`sim3_coeffs_scaled_pair`], whose
+/// `v` at `σ` is `Log`'s, and SO(3)'s pair at `φ` transposed for `-φ`. Against `Log` and the two
+/// calls this drops two of three coefficient evaluations and one of two SO(3) pairs.
+#[inline]
+fn log_inverses<S: Real>(x: &Sim3<S>) -> (Sim3Jac<S>, Sim3Jac<S>) {
+    let phi = x.rotation().log().phi;
+    let z = norm_sq(phi);
+    let [pos, neg] = sim3_coeffs_scaled_pair(x.sigma, z);
+    let rho = x.log_rho(phi, z, (pos.0.v, pos.1));
+    let (jl, jl_inv) = so3_jl_pair(phi);
+    let left = jl_and_inverse_from(phi, rho, x.sigma, z, pos, (jl, jl_inv)).1;
+    let right = jl_and_inverse_from(
+        -phi,
+        -rho,
+        -x.sigma,
+        z,
+        neg,
+        (jl.transpose(), jl_inv.transpose()),
+    )
+    .1;
+    (left, right)
 }
 
 impl<S: Real> LieGroup<S> for Sim3<S> {
@@ -415,12 +499,9 @@ impl<S: Real> LieGroup<S> for Sim3<S> {
     fn log(&self) -> Sim3Tangent<S> {
         let phi = self.rotation().log().phi;
         let z = norm_sq(phi);
-        let (v, scaled) = sim3_v_scaled(self.sigma, z);
-        let h = S::branch(scaled, || (S::lit(-0.5) * self.sigma).exp(), S::one);
-        let rho = poly_apply(phi, inv_coeffs(v, z), self.t.scale(h)).scale(h);
         Sim3Tangent {
             phi,
-            rho,
+            rho: self.log_rho(phi, z, sim3_v_scaled(self.sigma, z)),
             sigma: self.sigma,
         }
     }
@@ -483,30 +564,36 @@ impl<S: Real> LieGroup<S> for Sim3<S> {
         jl_and_inverse(n.phi, n.rho, n.sigma).1
     }
 
-    /// `(Ad_Exp(τ)⁻¹, J_r(τ))`, `Ad⁻¹` as `Ad_Exp(−τ)` (`NUMERICS.md` §2.3).
+    /// `(Ad_Exp(τ)⁻¹, J_r(τ))`, `Ad⁻¹` as `Ad_Exp(−τ)` (`NUMERICS.md` §2.3), from one
+    /// coefficient evaluation: `Exp`'s `V` is the group's `v`, the same bits (`0073`).
     #[inline]
     fn rplus_jacobians(&self, tau: &Sim3Tangent<S>) -> (Sim3Jac<S>, Sim3Jac<S>) {
-        (Self::exp(&tau.neg()).adjoint(), Self::jr(tau))
+        let (x, jr) = exp_and_jl(&tau.neg());
+        (x.adjoint(), jr)
     }
 
-    /// `(Ad_Exp(τ), J_l(τ))` (`NUMERICS.md` §2.3).
+    /// `(Ad_Exp(τ), J_l(τ))` (`NUMERICS.md` §2.3), from one coefficient evaluation.
     #[inline]
     fn lplus_jacobians(&self, tau: &Sim3Tangent<S>) -> (Sim3Jac<S>, Sim3Jac<S>) {
-        (Self::exp(tau).adjoint(), Self::jl(tau))
+        let (x, jl) = exp_and_jl(tau);
+        (x.adjoint(), jl)
     }
 
-    /// `(J_r⁻¹(τ), −J_l⁻¹(τ))` at `τ = self ⊖_R base` (`NUMERICS.md` §2.3).
+    /// `(J_r⁻¹(τ), −J_l⁻¹(τ))` at `τ = self ⊖_R base` (`NUMERICS.md` §2.3): `Log`'s coefficients
+    /// and both inverses' from one evaluation at `±σ`, each `jr_inv`'s and `jl_inv`'s to the bit
+    /// (`0073`).
     #[inline]
     fn rminus_jacobians(&self, base: &Self) -> (Sim3Jac<S>, Sim3Jac<S>) {
-        let tau = self.rminus(base);
-        (Self::jr_inv(&tau), Self::jl_inv(&tau).neg())
+        let (jl_inv, jr_inv) = log_inverses(&self.inv_mul(base));
+        (jr_inv, jl_inv.neg())
     }
 
-    /// `(J_l⁻¹(τ), −J_r⁻¹(τ))` at `τ = self ⊖_L base` (`NUMERICS.md` §2.3).
+    /// `(J_l⁻¹(τ), −J_r⁻¹(τ))` at `τ = self ⊖_L base` (`NUMERICS.md` §2.3), as
+    /// [`rminus_jacobians`](LieGroup::rminus_jacobians).
     #[inline]
     fn lminus_jacobians(&self, base: &Self) -> (Sim3Jac<S>, Sim3Jac<S>) {
-        let tau = self.lminus(base);
-        (Self::jl_inv(&tau), Self::jr_inv(&tau).neg())
+        let (jl_inv, jr_inv) = log_inverses(&self.mul_inv(base));
+        (jl_inv, jr_inv.neg())
     }
 
     /// Right `(Ad_Y⁻¹, I)`, left `(I, Ad_X)` (`NUMERICS.md` §2.3).

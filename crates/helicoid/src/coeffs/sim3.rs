@@ -86,39 +86,53 @@ fn recip_fact<S: Real>(n: usize) -> S {
 /// `j ≤ k + 2` and `∂_z v₂` `j ≤ k + 3`: every scalar to total degree `k - 1` (SM.7(d)(ii)).
 #[inline]
 pub(crate) fn series<S: Real, const FULL: bool>(sigma: S, z: S, k: usize) -> Sim3Coeffs<S> {
+    let [c, _] = series_at::<S, FULL, false>(sigma, z, k);
+    c
+}
+
+/// [`series`] at `σ` and, with `PAIR`, at `-σ`, each to the bit, from one recurrence.
+///
+/// A level of total degree `n` is odd or even in `σ` with `n`, and rounding commutes with
+/// negation, so the recurrence at `-σ` holds the level at `σ` times `(-1)ⁿ` exactly: only the sums
+/// differ, and `-σ`'s adds a term where `σ`'s does or subtracts it (`0073`).
+#[inline]
+fn series_at<S: Real, const FULL: bool, const PAIR: bool>(
+    sigma: S,
+    z: S,
+    k: usize,
+) -> [Sim3Coeffs<S>; 2] {
     let zero = S::zero();
     let (mut p, mut xi, mut zeta, mut dxi, mut dzeta) = (S::one(), zero, zero, zero, zero);
-    let mut c = Sim3Coeffs {
-        v: [zero; 3],
-        w: [zero; 3],
-        dv: [zero; 2],
-    };
+    // `v₀, v₁, v₂, w₀, w₁, w₂, ∂_z v₁, ∂_z v₂`, each at `σ` and `-σ`.
+    let mut acc = [[zero; 2]; 8];
     let last = if FULL { k + 3 } else { k + 1 };
     for j in 0..=last {
         let (r1, r2) = (recip_fact::<S>(j + 1), recip_fact::<S>(j + 2));
+        // `p`, `ζ`, `ζ'` have the parity of `j`; `ξ`, `ξ'` the other.
+        let odd = j % 2 == 1;
         if j < k {
-            c.v[0] = c.v[0] + p * r1;
+            gain::<S, PAIR>(&mut acc[0], p * r1, odd);
             if FULL {
-                c.w[0] = c.w[0] + p * r2;
+                gain::<S, PAIR>(&mut acc[3], p * r2, odd);
             }
         }
         if j <= k {
-            c.v[1] = c.v[1] + xi * r1;
+            gain::<S, PAIR>(&mut acc[1], xi * r1, !odd);
             if FULL {
-                c.w[1] = c.w[1] + xi * r2;
+                gain::<S, PAIR>(&mut acc[4], xi * r2, !odd);
             }
         }
         if j <= k + 1 {
-            c.v[2] = c.v[2] + zeta * r1;
+            gain::<S, PAIR>(&mut acc[2], zeta * r1, odd);
             if FULL {
-                c.w[2] = c.w[2] + zeta * r2;
+                gain::<S, PAIR>(&mut acc[5], zeta * r2, odd);
             }
         }
         if FULL {
             if j <= k + 2 {
-                c.dv[0] = c.dv[0] + dxi * r1;
+                gain::<S, PAIR>(&mut acc[6], dxi * r1, !odd);
             }
-            c.dv[1] = c.dv[1] + dzeta * r1;
+            gain::<S, PAIR>(&mut acc[7], dzeta * r1, odd);
         }
         // SM.3, SM.11(c): ξ_{j+1} = σξ + σʲ - zζ, ζ_{j+1} = σζ + ξ,
         // ξ'_{j+1} = σξ' - ζ - zζ', ζ'_{j+1} = σζ' + ξ'.
@@ -128,7 +142,21 @@ pub(crate) fn series<S: Real, const FULL: bool>(sigma: S, z: S, k: usize) -> Sim
         }
         (xi, zeta, p) = (nxi, nzeta, p * sigma);
     }
-    c
+    let at = |i: usize| Sim3Coeffs {
+        v: [acc[0][i], acc[1][i], acc[2][i]],
+        w: [acc[3][i], acc[4][i], acc[5][i]],
+        dv: [acc[6][i], acc[7][i]],
+    };
+    [at(0), at(1)]
+}
+
+/// `σ`'s sum gains `t`; with `PAIR`, `-σ`'s gains `-t` where `flip` and `t` elsewhere.
+#[inline]
+fn gain<S: Real, const PAIR: bool>(acc: &mut [S; 2], t: S, flip: bool) {
+    acc[0] = acc[0] + t;
+    if PAIR {
+        acc[1] = if flip { acc[1] - t } else { acc[1] + t };
+    }
 }
 
 /// `g_ℓ(σ) = Σ σⁱ/(i + ℓ)!` by Horner from the last of `terms` terms.
@@ -149,15 +177,70 @@ pub(crate) fn closed<S: Real, const FULL: bool>(
     w0_small: S::Mask,
     w0_terms: usize,
 ) -> Sim3Coeffs<S> {
+    closed_from::<S, FULL>(
+        sigma,
+        z,
+        Transcendentals::at(sigma, z),
+        form_b,
+        w0_small,
+        w0_terms,
+    )
+}
+
+/// What [`closed`] evaluates through `libm`: `sin θ/θ, a, b, d` at `z`, and `e^t`, `expm1 t` at
+/// `t = -|σ|`, which is even in `σ` but at `σ = ±0`, where `t` is `σ` itself.
+#[derive(Clone, Copy)]
+struct Transcendentals<S> {
+    sinc_a_b_d: (S, S, S, S),
+    et: S,
+    mt: S,
+}
+
+impl<S: Real> Transcendentals<S> {
+    #[inline]
+    fn at(sigma: S, z: S) -> Self {
+        // `t = -|σ|`: `e^t` and `expm1 t` are `E` and `m₁` for `σ ≤ 0`; for `σ > 0` the scaled
+        // arrangement has `E = 1`, `m₁ = -expm1(-σ)` and `e^σ` applied last (SM.7(g)).
+        let t = S::select(S::zero().lt(sigma), -sigma, sigma);
+        Self {
+            sinc_a_b_d: sinc_a_b_d(z),
+            et: t.exp(),
+            mt: t.exp_m1(),
+        }
+    }
+
+    /// [`at`](Self::at)`(-σ, z)` to the bit, given `at(σ, z)`. At `σ = ±0` the two `t` are `σ` and
+    /// `-σ`, which differ in sign and, on `Dual`, in derivative, so they are evaluated again: a
+    /// branch no other `σ` takes.
+    #[inline]
+    fn mirrored(self, sigma: S) -> Self {
+        let zero = S::zero();
+        let at_zero = sigma.le(zero).and(zero.le(sigma));
+        let (et, mt) = S::branch(
+            at_zero,
+            || ((-sigma).exp(), (-sigma).exp_m1()),
+            || (self.et, self.mt),
+        );
+        Self { et, mt, ..self }
+    }
+}
+
+/// [`closed`] from its transcendentals.
+#[inline]
+fn closed_from<S: Real, const FULL: bool>(
+    sigma: S,
+    z: S,
+    tr: Transcendentals<S>,
+    form_b: S::Mask,
+    w0_small: S::Mask,
+    w0_terms: usize,
+) -> Sim3Coeffs<S> {
     let (zero, one) = (S::zero(), S::one());
-    let (sinc, a, b, d) = sinc_a_b_d(z);
+    let (sinc, a, b, d) = tr.sinc_a_b_d;
     let delta = sigma * sigma + z;
     let pos = zero.lt(sigma);
     let at_zero = sigma.le(zero).and(zero.le(sigma));
-    // `t = -|σ|`: `e^t` and `expm1 t` are `E` and `m₁` for `σ ≤ 0`; for `σ > 0` the scaled
-    // arrangement has `E = 1`, `m₁ = -expm1(-σ)` and `e^σ` applied last (SM.7(g)).
-    let t = S::select(pos, -sigma, sigma);
-    let (et, mt) = (t.exp(), t.exp_m1());
+    let (et, mt) = (tr.et, tr.mt);
     let e = S::select(pos, one, et);
     let m1 = S::select(pos, -mt, mt);
     let f = S::select(pos, et, one);
@@ -236,6 +319,40 @@ fn group<S: Real, const FULL: bool>(sigma: S, z: S) -> (Sim3Coeffs<S>, S::Mask) 
     (c, scaled)
 }
 
+/// [`group`] at `σ` and at `-σ`, each to the bit: `Δ`, so the branch, the safe argument's
+/// masks and the closed arm's [`Transcendentals`] are even in `σ` and formed once, and the series'
+/// recurrence runs once ([`series_at`]).
+#[inline]
+fn group_pair<S: Real>(sigma: S, z: S) -> [(Sim3Coeffs<S>, S::Mask); 2] {
+    let sw = switch::<S>();
+    let delta = sigma * sigma + z;
+    let small = delta.lt(S::lit(sw.series_below));
+    let zero = S::zero();
+    let c = S::branch(
+        small,
+        || series_at::<S, true, true>(sigma, z, sw.series_terms),
+        || {
+            let one = S::one();
+            let (s, zz) = (S::select(small, one, sigma), S::select(small, one, z));
+            let d = s * s + zz;
+            let (form_b, w0_small) = (
+                S::lit(sw.form_b_below).le(d),
+                (s * s).lt(S::lit(sw.w0_below)),
+            );
+            let tr = Transcendentals::at(s, zz);
+            [
+                closed_from::<S, true>(s, zz, tr, form_b, w0_small, sw.w0_terms),
+                closed_from::<S, true>(-s, zz, tr.mirrored(s), form_b, w0_small, sw.w0_terms),
+            ]
+        },
+    );
+    let big = small.not();
+    [
+        (c[0], big.and(zero.lt(sigma))),
+        (c[1], big.and(zero.lt(-sigma))),
+    ]
+}
+
 /// All eight scalars at `(σ, z = θ²)`.
 ///
 /// # Domain
@@ -253,6 +370,13 @@ pub(crate) fn sim3_coeffs<S: Real>(sigma: S, z: S) -> Sim3Coeffs<S> {
 #[inline]
 pub(crate) fn sim3_coeffs_scaled<S: Real>(sigma: S, z: S) -> (Sim3Coeffs<S>, S::Mask) {
     group::<S, true>(sigma, z)
+}
+
+/// [`sim3_coeffs_scaled`] at `σ` and at `-σ`, each to the bit, for less than two calls cost
+/// ([`group_pair`]): `⊖`'s Jacobians want `J_l⁻¹` and `J_r⁻¹` at one `τ`.
+#[inline]
+pub(crate) fn sim3_coeffs_scaled_pair<S: Real>(sigma: S, z: S) -> [(Sim3Coeffs<S>, S::Mask); 2] {
+    group_pair(sigma, z)
 }
 
 /// [`sim3_coeffs_scaled`]'s `v` alone: the same bits.

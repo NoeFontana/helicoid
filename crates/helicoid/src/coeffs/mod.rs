@@ -76,7 +76,8 @@ pub(crate) use kernel::{
     log_ratio_takes_short_arm, q_coeffs,
 };
 pub(crate) use sim3::{
-    sim3_coeffs, sim3_coeffs_scaled, sim3_v, sim3_v_scaled, unscale, Sim3Coeffs,
+    sim3_coeffs, sim3_coeffs_scaled, sim3_coeffs_scaled_pair, sim3_v, sim3_v_scaled, unscale,
+    Sim3Coeffs,
 };
 #[cfg(feature = "__sweep")]
 pub mod sweep;

@@ -407,6 +407,11 @@ fn sim3_rminus_jacobians<S: Real>(x: &Sim3<S>, b: &Sim3<S>) -> (Sim3Jac<S>, Sim3
     x.rminus_jacobians(b)
 }
 
+#[inline(never)]
+fn sim3_rplus_jacobians<S: Real>(x: &Sim3<S>, t: &Sim3Tangent<S>) -> (Sim3Jac<S>, Sim3Jac<S>) {
+    x.rplus_jacobians(t)
+}
+
 /// Sim(3) at the stratum's `θ`, `σ = 0.5` (the closed arm off the joint limit, the series near it).
 fn sim3<S: Fixture>(g: &mut BenchmarkGroup<'_, WallTime>, name: &str, theta: f64) {
     let ta = Sim3Tangent {
@@ -452,6 +457,9 @@ fn sim3<S: Fixture>(g: &mut BenchmarkGroup<'_, WallTime>, name: &str, theta: f64
     });
     g.bench_function(format!("sim3/rminus_jacobians/{name}"), |b| {
         b.iter(|| sim3_rminus_jacobians(black_box(&x), black_box(&base)))
+    });
+    g.bench_function(format!("sim3/rplus_jacobians/{name}"), |b| {
+        b.iter(|| sim3_rplus_jacobians(black_box(&base), black_box(&ta)))
     });
 }
 
