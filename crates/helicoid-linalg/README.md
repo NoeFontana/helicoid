@@ -47,7 +47,7 @@ prose, this file included.
 
 ## Stability
 
-`0.0.x`: **every release may break every other.** MSRV 1.87. Dependencies: `libm`, and `mint` only
+`0.0.x`: **every release may break every other.** MSRV 1.85. Dependencies: `libm`, and `mint` only
 when its feature is on.
 
 License: MIT OR Apache-2.0.
