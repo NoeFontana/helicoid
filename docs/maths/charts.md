@@ -25,7 +25,7 @@ $v \in \mathbb R^3$, is the SO(3) exponential.
 | CH.6 | change of chart: $\mathrm{rj}'(\Phi\delta)\,\mathrm D\Phi = \Psi\,\mathrm{rj}(\delta)$; it contains SE.9(b), (c) | P5 §1.4 | (checks) |
 | CH.7 | what changes in an LM iterate: same step for `Screw`, `Decoupled`; the trial point differs by $\ell(\theta)\lVert\rho_\perp\rVert \le \tfrac\theta2\lVert\rho\rVert$ | P5 §1.3, `0012` | (the choice of chart) |
 | CH.8 | the Householder basis: $B^\top B = I$, $B^\top n = 0$, $b_1 \times b_2 = \varsigma n$, $\nu^\top\nu = 2(1 + \lvert n_z\rvert)$, closed form; the oriented $B^\circ$ (f), $b_1 \times b_2 = n$ | §8 | `S2Chart::at` |
-| CH.9 | $n \oplus \delta = \cos\theta\,n - \varsigma\frac{\sin\theta}\theta BK\delta$; $\mathrm{loc}_n(m) = \varsigma\frac\alpha s KB^\top m$; $\frac\alpha s = \frac12 r(s^2, w) = r(s^2, 1 + w)$; domains | §8, §4, §12, §14; P5 §2 | `S2Chart::{retract, local}` |
+| CH.9 | $n \oplus \delta = \cos\theta\,n - \varsigma\frac{\sin\theta}\theta BK\delta$; $\mathrm{loc}_n(m) = \varsigma\frac\alpha s KB^\top m$ ($\varsigma = 1$ for $B^\circ$, CH.8(f)); $\frac\alpha s = \frac12 r(s^2, w) = r(s^2, 1 + w)$; domains | §8, §4, §12, §14; P5 §2 | `S2Chart::{retract, local}` |
 | CH.10 | $\mathrm{rj} = Z^\top A(\delta)$, $\mathrm{lj} = A(\delta)^{-1}Z$, $A^{-1} = \frac\alpha s(I - b\,\delta\delta^\top)$, $\lVert\mathrm{lj}\rVert_2 = \alpha/\sin\alpha$, $\det Z = \varsigma\varsigma_m$ ($1$ for $B^\circ$, CH.8(f)); $\mathrm{rj}$ singular at $\theta = \pi$ | P5 §1.4, §2 | `S2Chart::{retract_jacobian, local_jacobian}` |
 | CH.11 | the basis jumps by a reflection at $n_z = 0$ (by a rotation for $B^\circ$, CH.8(f)); no continuous basis exists; why the chart is frozen; $m \ne -n$; `f64` figures | §8, §12; P5 §2 | `S2Chart::at` |
 | CH.12 | sign audit: the usual wrong variant of each entry and its exact gap | — | — |
@@ -231,7 +231,7 @@ Scripts not committed. **Permanent:** none specified; `chart_jacobians_match_dua
 
 ## 5. S²
 
-`NUMERICS.md` §8: $\nu = n + \varsigma e_z$ with $\varsigma = \mathrm{sgn}(n_z)$, $\mathrm{sgn}(0) = +1$; $H = I - 2\nu\nu^\top/\nu^\top\nu$; $b_1 = He_x$, $b_2 = He_y$, $B = [b_1\ b_2]$; $K = \begin{bmatrix}0 & -1\\ 1 & 0\end{bmatrix}$.
+`NUMERICS.md` §8: $\nu = n + \varsigma e_z$ with $\varsigma = \mathrm{sgn}(n_z)$, $\mathrm{sgn}(0) = +1$; $H = I - 2\nu\nu^\top/\nu^\top\nu$; $b_1 = He_x$, $b_2 = He_y$, $B = [b_1\ b_2]$, the Householder frame these propositions are stated in; §8 ships the oriented $B^\circ = [b_1\ \varsigma b_2]$ of CH.8(f); $K = \begin{bmatrix}0 & -1\\ 1 & 0\end{bmatrix}$.
 
 **Proposition CH.8 (the basis).** For unit $n$:
 
@@ -245,7 +245,7 @@ Scripts not committed. **Permanent:** none specified; `chart_jacobians_match_dua
 
 *Proof.* (a) $\nu^\top\nu = 1 + 2\varsigma n_z + 1$ and $\varsigma n_z = \lvert n_z\rvert$. (b) $H$ is a Householder reflection. $\nu^\top e_z = n_z + \varsigma = \varsigma(1 + \lvert n_z\rvert)$, so
 $He_z = e_z - 2\nu\,\varsigma(1 + \lvert n_z\rvert)/(2(1 + \lvert n_z\rvert)) = e_z - \varsigma n - \varsigma^2e_z = -\varsigma n$. (c) The columns of an orthogonal matrix are orthonormal, so $b_1, b_2 \perp He_z = -\varsigma n$; for
-$\det H = -1$, $b_1 \times b_2 = \det(H)\,He_z = \varsigma n$. Then $n \times b_1 = \varsigma b_2$, $n \times b_2 = -\varsigma b_1$. (d) $2/\nu^\top\nu = 1/(1 + \lvert n_z\rvert)$ and $\nu_z/(1 + \lvert n_z\rvert) = \varsigma$. (f) $D^2 = I$ and $DKD = \varsigma K$, so $[n]_\times BD = \varsigma BKD = BDK$ and $b_1 \times \varsigma b_2 = \varsigma^2 n$. In CH.10, $Eb_1 \times Eb_2^\circ = E(b_1 \times b_2^\circ) = m$ and $b_1' \times b_2'^\circ = m$, so $Z$ preserves orientation. At $n_z = 0$, $D_+ = I$ and $D_- = \mathrm{diag}(1, -1)$, so $B^\circ_- = B_+TD_-$, with $\det TD_- = 1$ and entries $(n_y^2 - n_x^2, 2n_xn_y; -2n_xn_y, n_x^2 - n_y^2)$, i.e. $\cos = -\cos 2\lambda$, $\sin = -\sin 2\lambda$. $\square$
+$\det H = -1$, $b_1 \times b_2 = \det(H)\,He_z = \varsigma n$. Then $n \times b_1 = \varsigma b_2$, $n \times b_2 = -\varsigma b_1$. (d) $2/\nu^\top\nu = 1/(1 + \lvert n_z\rvert)$ and $\nu_z/(1 + \lvert n_z\rvert) = \varsigma$. (f) $D^2 = I$ and $DKD = \varsigma K$, so $[n]_\times BD = \varsigma BKD = BDK$ and $b_1 \times \varsigma b_2 = \varsigma^2 n$. In CH.10, $Eb_1 \times Eb_2^\circ = E(b_1 \times b_2^\circ) = m$ and $b_1' \times b_2'^\circ = m$, so $Z$ preserves orientation. At $n_z = 0$, $D_+ = I$ and $D_- = \mathrm{diag}(1, -1)$, so $B^\circ_- = B_+TD_-$, with $\det TD_- = 1$ and entries $(n_y^2 - n_x^2, 2n_xn_y; -2n_xn_y, n_y^2 - n_x^2)$, i.e. $\cos = -\cos 2\lambda$, $\sin = -\sin 2\lambda$. $\square$
 
 **Checked:** mpmath 1.3.0, 110 digits, 22 unit $n$: 6 random; $n_z \in \{0, \pm10^{-30}, \pm10^{-60}, \pm10^{-100}, \pm10^{-300}\}$; $n_z = 0$ with $\varsigma = +1$ and with $\varsigma = -1$ (both are valid, CH.11(d));
 $\pm e_z$, $e_x$; two within $10^{-40}$ of $\pm e_z$. Every property of (a)–(d) (and $\nu^\top\nu \ge 2$, minimum $2.0$): $\le 3.3\times10^{-111}$. Exactly, with sympy 1.14.0: (a)–(d) and $H$-form $=$ closed form, for $\varsigma = \pm1$, modulo $n_x^2 + n_y^2 + n_z^2 = 1$.

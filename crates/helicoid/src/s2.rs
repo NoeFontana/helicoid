@@ -129,10 +129,13 @@ fn basis<S: Real>(n: Vec3<S>) -> (Vec3<S>, Vec3<S>) {
     let s = sign(n);
     let nu = Vector([x, y, z + s]);
     let k = S::lit(2.0) / nu.norm_sq();
-    let (kx, ky) = (k * x, k * y);
+    // `ς b₂` with `ς` folded into `k y`: `ς = ±1` exactly and rounding is odd, so these are the
+    // bits of `ς (H e_y)` on `f64` and `f32` for one multiply where scaling the column takes three
+    // (on `Dual`, the same values; a zero derivative may differ in sign).
+    let (kx, sky) = (k * x, s * (k * y));
     (
         Vector([S::one() - kx * x, -(kx * y), -(kx * nu.0[2])]),
-        Vector([-(ky * x), S::one() - ky * y, -(ky * nu.0[2])]).scale(s),
+        Vector([-(sky * x), s - sky * y, -(sky * nu.0[2])]),
     )
 }
 
@@ -141,7 +144,7 @@ impl<S: Real> S2Chart<S> {
     /// (`NUMERICS.md` §8, `0082`). Orthonormal and oriented, `b₁ × b₂ = n`; frozen with the chart,
     /// and discontinuous in `n` at `n_z = 0`, as every global frame of S² is somewhere.
     #[inline]
-    pub fn basis(&self) -> Matrix<S, 3, 2> {
+    pub fn rotation_basis(&self) -> Matrix<S, 3, 2> {
         Matrix::from_cols([self.b1, self.b2])
     }
 
