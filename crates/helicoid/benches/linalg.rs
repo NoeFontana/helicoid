@@ -1,7 +1,7 @@
 //! `helicoid-linalg`'s solvers by stratum (`docs/PHASE1.md` §9): `solve_cubic` (a closed form) and
-//! `eig3` (four Jacobi sweeps, `0081`), at `f64` and `f32` (`0053` *Further work* 2), and `chol` at
-//! the three clauses of `0021`'s bar (`0080`): positive definite and failing input at `f64` and
-//! `f32`, and `Dual`.
+//! `eig3` (Jacobi with an exit, `0084`, draft), at `f64` and `f32` (`0053` *Further work* 2), and
+//! `chol` at the three clauses of `0021`'s bar (`0080`): positive definite and failing input at
+//! `f64` and `f32`, and `Dual`.
 //!
 //! **A third binary**, for the reason `benches/groups.rs` gives: `bench-gate --against <binary>`
 //! takes one bench binary, so a change to a solver pays for these rows alone.
@@ -10,7 +10,8 @@
 //! baseline and candidate alike (`benches/groups.rs`, `geodesic_of`). Fixtures are one input per
 //! stratum of the corpus ids (`0056`), so a row's arm is the stratum's: `solve_cubic` at three
 //! distinct roots (the trigonometric arm), one real root, a small root beside a complex pair, and a
-//! triple root; `eig3` at a random spectrum, a pair `1e-8` apart, and a triple eigenvalue.
+//! triple root; `eig3` at a random spectrum, a pair `1e-8` apart, and a triple eigenvalue, and the
+//! three in turn.
 //!
 //! A baseline binary for `--against` is built in this tree with only the bodies under test
 //! reverted, as `benches/groups.rs` says.
@@ -186,6 +187,16 @@ fn rows<S: Fixture>(g: &mut BenchmarkGroup<'_, WallTime>) {
     chol_row::<S, 8>(g);
     chol_row::<S, 9>(g);
     chol_row::<S, 12>(g);
+    // The three fixtures in turn, as `solve_cubic/mixed-six-calls`: a data-dependent exit is
+    // predicted perfectly by the rows above and not here.
+    let mixed: Vec<Mat3<S>> = SPECTRA.iter().map(|&(_, l)| sym::<S>(l)).collect();
+    g.bench_function("eig3/mixed-three-calls", |b| {
+        b.iter(|| {
+            for a in black_box(&mixed) {
+                black_box(eig3_of(a));
+            }
+        });
+    });
 }
 
 fn linalg(c: &mut Criterion) {
