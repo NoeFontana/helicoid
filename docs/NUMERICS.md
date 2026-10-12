@@ -18,8 +18,7 @@ computes from definitions (`PHASE1.md` §4.3), so a wrong line in this file fail
 
 | Section | Status |
 |---|---|
-| §1–§8, §10–§12, §14, §15 | **Ready** |
-| §9 Sim(3) | **Owed**: group law and `Ad` stated; `Exp`, `Log`, `Jr` block must be derived and generator-verified before `PHASE5.md` §3 starts |
+| §1–§12, §14, §15 | **Ready** (§9 Sim(3) by [`0070`](./decisions/0070-sim3-a-structured-jacobian-and-a-series-on-delta.md)) |
 
 ## 1. Conventions
 
@@ -118,7 +117,7 @@ Shepperd's method: select the largest of $\{\mathrm{tr}R, R_{00}, R_{11}, R_{22}
 $x = (R_{21} - R_{12})/(4w)$, …), then normalize. **Closed form, never iterative**:
 avoids iterative convergence failures (such as Müller iteration hangs on degenerate input).
 Projecting an arbitrary $3\times3$ onto SO(3) is `svd3` first
-($U\,\mathrm{diag}(1, 1, \det UV^\top)\,V^\top$), then this.
+($U\,\mathrm{diag}(1, 1, \det UV^\top)\,V^\top$), then this; `svd3` is owed (`PHASE2.md` §6).
 
 ### 3.5 Jacobians and adjoints
 

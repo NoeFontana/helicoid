@@ -1,6 +1,6 @@
 # CLAUDE.md — agent guidance for helicoid
 
-For AI agents. Humans: `CONTRIBUTING.md` (owed by [`PHASE1.md`](./docs/PHASE1.md) §3). `helicoid`
+For AI agents. Humans: [`CONTRIBUTING.md`](./CONTRIBUTING.md). `helicoid`
 is the one Lie-group layer under `tf_tree` and downstream perception libraries,
 built along the seven-phase roadmap in [`docs/PROJECT.md`](./docs/PROJECT.md) §4.
 
