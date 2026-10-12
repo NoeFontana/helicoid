@@ -25,3 +25,17 @@ stratum = "theta:1e-5"
 precision = "f64"
 record = "0046"
 reason = "ten-digit tie: 0.4952463054990 against 0.4952463054734, both under 1/2 u, margin 5.2e-11 relative"
+
+[[exception]]
+fn = "so3_act"
+stratum = "q:nonunit"
+precision = "f64"
+record = "0076"
+reason = "carried drift: helicoid returns 0058's Rv + eta(Rv - v), Sophus normalizes q at construction"
+
+[[exception]]
+fn = "sen3_ad_n1"
+stratum = "q:nonunit"
+precision = "f64"
+record = "0076"
+reason = "carried drift: helicoid's Ad blocks carry 0058's (1 + eta)R, Sophus normalizes q at construction"
