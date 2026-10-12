@@ -2,7 +2,8 @@
 //! that `0063` settled, planted over `s2_retract` and `s2_local`.
 //!
 //! - **`ς` by the sign bit**, `copysign(1, n_z)` for decision 1's comparison: at `n_z = -0` the
-//!   basis is reflected (CH.11(d)), so the `s2:nz0` strata, whose odd records hold `-0`, must fail
+//!   oriented basis is rotated by `T°` (`docs/maths/charts.md` CH.8(f), CH.11(d)), the identity only
+//!   at azimuth `π/2 (mod π)`, so the `s2:nz0` strata, whose odd records hold `-0`, must fail
 //!   and every other stratum must read what the clean program reads. Planted through the public
 //!   API: the chart at `n_z = -2⁻¹⁴⁰` has `ν_z = -1` exactly, the sign-bit basis at `-0`.
 //! - **§8's ratio as worded**, `r(s², w)` for `½ r(s², w)` (decision 3): `local` returns `2δ`.

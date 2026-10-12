@@ -113,12 +113,13 @@ class PlantedTest(unittest.TestCase):
     REC = {"n": [0.6, 0.8, -0.0], "delta": [0.4, -1.1]}
 
     def test_retract_check_catches_the_sign_bit_reading(self):
-        # `copysign(1, n_z)` gives sigma = -1 at -0: the frame B_- = B_+ T (CH.11(d)).
+        # `copysign(1, n_z)` gives sigma = -1 at -0: the oriented frame B_- D_- = B_+ T diag(1, -1),
+        # a rotation (CH.8(f), CH.11(d)).
         nh, _, _, _ = s2.basis(self.REC["n"])
         nu = [nh[0], nh[1], nh[2] - 1]
         k = 2 / s2.dot(nu, nu)
         b1 = [(1 if i == 0 else 0) - k * nu[i] * nu[0] for i in range(3)]
-        b2 = [(1 if i == 1 else 0) - k * nu[i] * nu[1] for i in range(3)]
+        b2 = [-((1 if i == 1 else 0) - k * nu[i] * nu[1]) for i in range(3)]
         d1, d2 = (mpf(c) for c in self.REC["delta"])
         wrong = s2.rodrigues([d1 * a + d2 * b for a, b in zip(b1, b2, strict=True)], nh)
         check_charts.s2_retract(self.REC, s2.retract(self.REC))

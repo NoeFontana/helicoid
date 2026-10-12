@@ -118,10 +118,11 @@ fn sign<S: Real>(n: Vec3<S>) -> S {
 
 /// `(H e_x, ς H e_y)`, `H = I - 2ννᵀ/(νᵀν)`, `ν = n + ς e_z` (CH.8). `H` reflects, so
 /// `H e_x × H e_y = ςn`; the factor `ς` on `b₂` makes the frame oriented, `b₁ × b₂ = n` on both
-/// hemispheres (`0082`): a bearing behind the camera keeps the handedness of one in front. The `H`
-/// form, with `νᵀν` computed rather than taken as `2(1 + |n_z|)`: it keeps `BᵀB = I` to rounding for
-/// a point off the sphere, where the closed form CH.8(d) is off by twice the drift in `BᵀB` and
-/// `Bᵀn` (CH.8(e)).
+/// hemispheres (`0082`): a bearing behind the camera keeps the handedness of one in front.
+///
+/// The `H` form, with `νᵀν` computed rather than taken as `2(1 + |n_z|)`: it keeps `BᵀB = I` to
+/// rounding for a point off the sphere, where the closed form CH.8(d) is off by twice the drift
+/// in `BᵀB` and `Bᵀn` (CH.8(e)).
 #[inline]
 fn basis<S: Real>(n: Vec3<S>) -> (Vec3<S>, Vec3<S>) {
     let [x, y, z] = n.0;
@@ -137,8 +138,8 @@ fn basis<S: Real>(n: Vec3<S>) -> (Vec3<S>, Vec3<S>) {
 
 impl<S: Real> S2Chart<S> {
     /// `B = [b₁ b₂]`, the chart's frame of `n^⊥`: the coordinates `δ` are the rotation vector `Bδ`
-    /// (`NUMERICS.md` §8, `0082`). Orthonormal and oriented, `b₁ × b₂ = n`; frozen with the chart, and
-    /// discontinuous in `n` at `n_z = 0`, as every global frame of S² is somewhere.
+    /// (`NUMERICS.md` §8, `0082`). Orthonormal and oriented, `b₁ × b₂ = n`; frozen with the chart,
+    /// and discontinuous in `n` at `n_z = 0`, as every global frame of S² is somewhere.
     #[inline]
     pub fn basis(&self) -> Matrix<S, 3, 2> {
         Matrix::from_cols([self.b1, self.b2])
@@ -146,16 +147,19 @@ impl<S: Real> S2Chart<S> {
 
     /// `T = [b₁ × n, b₂ × n] = [-b₂, b₁]`, the directions `δ` moves the point along: `∂retract/∂δ`
     /// at `δ = 0`, and `Tᵀ = ∂local/∂m` at `m = n` (`NUMERICS.md` §8, `0082`). `B` a quarter turn
-    /// about `n`, so orthonormal and oriented too, `t₁ × t₂ = n`. Exact: `B`'s columns, one negated.
+    /// about `n`, so orthonormal and oriented too, `t₁ × t₂ = n`. Exact: `B`'s columns, one
+    /// negated.
     #[inline]
     pub fn displacement_basis(&self) -> Matrix<S, 3, 2> {
         Matrix::from_cols([-self.b2, self.b1])
     }
 
     /// `(retract(δ), θ²)`: `cos θ n + (sin θ/θ)(δ₂ b₁ - δ₁ b₂)`, which is `Exp(Bδ) n` since
-    /// `Bδ × n = -B K δ` (CH.9(a) with the oriented frame's `ς = 1`, `0082`). `sin θ/θ = 2k cos(θ/2)` and `cos θ = 1 - 2k²θ²` from the one
-    /// `exp_coeffs`, finite at `δ = 0`. [`retract_jacobian`](Chart::retract_jacobian) reads the
-    /// point from here, so the frame of `m` it is expressed in is the one `retract` returns.
+    /// `Bδ × n = -B K δ` (CH.9(a) with the oriented frame's `ς = 1`, `0082`).
+    /// `sin θ/θ = 2k cos(θ/2)` and `cos θ = 1 - 2k²θ²` from the one `exp_coeffs`, finite at
+    /// `δ = 0`.
+    /// [`retract_jacobian`](Chart::retract_jacobian) reads the point from here, so the frame of `m`
+    /// it is expressed in is the one `retract` returns.
     #[inline]
     fn step(&self, delta: &RnTangent<S, 2>) -> (Vec3<S>, S) {
         let [d1, d2] = delta.rho.0;
@@ -270,25 +274,25 @@ impl<S: Real> Chart<S, S2<S>> for S2Chart<S> {
     /// `B'ᵀ J_l(Bδ) B` (CH.10(a)), `B'` the basis at `m = retract(δ)`, the same bits `retract`
     /// returns, so the frame it reads `m` in is `S2Chart::at(&retract(δ))`'s.
     ///
-    /// By CH.8(c) with the oriented frame (`b₁ × b₂ = n`, `0082`), `J_l b₁ = (1 - bδ₂²) b₁ + bδ₁δ₂ b₂ - aδ₂ n`
-    /// and `J_l b₂ = bδ₁δ₂ b₁ + (1 - bδ₁²) b₂ + aδ₁ n`: the symmetric `A(δ)` of CH.10 plus the normal
-    /// part, which `B'` reads and `B` does not. Defined for every `δ`; singular at `‖δ‖ = π`, where
-    /// every direction retracts to `-n` (CH.10(a)).
+    /// By CH.8(c) with the oriented frame (`b₁ × b₂ = n`, `0082`),
+    /// `J_l b₁ = (1 - bδ₂²) b₁ + bδ₁δ₂ b₂ - aδ₂ n` and `J_l b₂ = bδ₁δ₂ b₁ + (1 - bδ₁²) b₂ + aδ₁ n`:
+    /// the symmetric `A(δ)` of CH.10 plus the normal part, which `B'` reads and `B` does not.
+    /// Defined for every `δ`; singular at `‖δ‖ = π`, where every direction retracts to `-n`
+    /// (CH.10(a)).
     #[inline]
     fn retract_jacobian(&self, delta: &RnTangent<S, 2>) -> Mat2<S> {
         let (m, z) = self.step(delta);
         let (a, b) = jr_coeffs(z);
         let [d1, d2] = delta.rho.0;
         let n = self.base.0;
-        let e = a;
         let bx = b * d1 * d2;
         let col = |x: S, y: S, t: S| {
             Vector(array::from_fn(|k| {
                 (x * self.b1.0[k] + y * self.b2.0[k]) + t * n.0[k]
             }))
         };
-        let j1 = col(S::one() - b * d2 * d2, bx, -(e * d2));
-        let j2 = col(bx, S::one() - b * d1 * d1, e * d1);
+        let j1 = col(S::one() - b * d2 * d2, bx, -(a * d2));
+        let j2 = col(bx, S::one() - b * d1 * d1, a * d1);
         let (c1, c2) = basis(m);
         Matrix::from_rows([
             Vector([c1.dot(j1), c1.dot(j2)]),
