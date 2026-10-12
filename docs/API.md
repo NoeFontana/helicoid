@@ -27,8 +27,8 @@ side's perturbation convention (`NUMERICS.md` §2.3).
 
 **NORMATIVE.** Groups, tangents, Jacobians, charts and `Gaussian` are `Copy`. No method allocates,
 locks, reads global state or mutates hidden state; the only `&mut self` numeric method is
-`renormalize`. Batch operations write into caller memory (`act_many(&self, &[Point3<S>],
-&mut [Point3<S>])`); there is no `Vec` anywhere.
+`renormalize`. Batch operations write into caller memory (`act_many(&self, &mut [Point3<S>])`, in place);
+there is no `Vec` anywhere.
 
 ### R3 — Order is stated, never inferred
 

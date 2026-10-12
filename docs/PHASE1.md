@@ -87,7 +87,7 @@ helicoid/
 
 **NORMATIVE.**
 
-- `[workspace.package]`: `version = "0.0.0"`, `edition = "2021"`, `rust-version = "1.87"`,
+- `[workspace.package]`: `version = "0.0.0"`, `edition = "2021"`, `rust-version = "1.85"`,
   `license = "MIT OR Apache-2.0"`, `repository`/`homepage` `https://github.com/NoeFontana/helicoid`.
 - `[workspace.lints.clippy]`: `unwrap_used`, `expect_used`, `panic`, `todo`, `unimplemented`,
   `dbg_macro`, `float_cmp` = `deny`; `print_stdout`, `print_stderr`, `redundant_clone`,
@@ -107,7 +107,7 @@ helicoid/
   `helicoid::reference` and proptest names (Phase 3 onward); **the normal-dependency closure of
   each library crate equals the allowed set** of [`0007`](./decisions/0007-the-budget-a-foundation-can-afford.md);
   no crate other than `xtask` enables `__sweep`.
-- Owed files: `CONTRIBUTING.md`, `LICENSE-MIT`, `LICENSE-APACHE`, `deny.toml` (licenses; bans on
+- Root files: `CONTRIBUTING.md`, `LICENSE-MIT`, `LICENSE-APACHE`, `deny.toml` (licenses; bans on
   `nalgebra`, `faer`, `num-traits`, `bytemuck`, `serde` for library crates).
 
 ## 4. The reference generator
@@ -455,7 +455,7 @@ any is not detected** by its named mechanism.
 - [ ] The sweep regenerates a seeded `generated.rs` byte-identically; `thresholds-check` fails on a
       hand edit (test).
 - [x] `bench-gate --aa` noise floor recorded in `baseline/HOST.md`.
-- [ ] `CONTRIBUTING.md`, licenses, `deny.toml`; the dependency-closure lint rejects a planted
+- [x] `CONTRIBUTING.md`, licenses, `deny.toml`; the dependency-closure lint rejects a planted
       `nalgebra` dependency (test).
 
 ## Appendix: suggested implementation order
