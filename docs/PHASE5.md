@@ -163,7 +163,7 @@ pub struct Gaussian<S: Real, G: LieGroup<S>, Sd: Side, const D: usize> {
 ## 7. Definition of done
 
 - [x] §1, §2, §4, §5 implemented with corpus, envelope, and dual-number twins.
-- [ ] `NUMERICS.md` §9 completed by record; §3 implemented and dominated against oracles. (Record and implementation done, `0070`. The Sophus container (`0072`) pairs 434 binary64 Sim(3) strata, and `helicoid` fails domination on 87 of them: `sim3_exp` 15, `sim3_log` 17, `sim3_ad` 33, `sim3_act` 22, by at most 3.17×. With GTSAM (`0074`) 485 strata are paired and 151 fail: `sim3_exp` 30, `sim3_log` 27, `sim3_ad` 48, `sim3_act` 46, three past 3× of which the two at `σ = 1` are half D16. No oracle answers `f32` or the Sim(3) Jacobians.)
+- [ ] `NUMERICS.md` §9 completed by record; §3 implemented and dominated against oracles. (Record and implementation done, `0070`. The Sophus container (`0072`) pairs 434 binary64 Sim(3) strata, and `helicoid` fails domination on 87 of them: `sim3_exp` 15, `sim3_log` 17, `sim3_ad` 33, `sim3_act` 22, by at most 3.17×. With GTSAM (`0074`) 485 strata are paired and 151 fail: `sim3_exp` 30, `sim3_log` 27, `sim3_ad` 48, `sim3_act` 46, three past 3× of which the two at `σ = 1` are half D16. At `f32` (`0077`, Sophus) 428 are paired and 74 fail, by at most 2.53×. No oracle answers the Sim(3) Jacobians.)
 - [ ] Downstream migrations validated against regression gates.
 
 ## Appendix: suggested implementation order
