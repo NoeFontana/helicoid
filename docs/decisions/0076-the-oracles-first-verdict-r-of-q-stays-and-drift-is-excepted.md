@@ -36,7 +36,8 @@ not of that kind, and each asks for a decision.
    | `sim3_ad` `f64` | 36 | 51 | 0.28–2.02 |
    | `sim3_ad` `f32` | 43 | 32 | 0.45–1.94 |
 
-   The unit form wins every stratum at `θ ≤ 1` and loses every one at `θ ≥ 3`. The cause is not
+   The unit form is better at `θ ≤ 1` and worse at `θ ≥ 3`, per record and pooled per id
+   (`cargo xtask compare`, `p` ≤ 1.1e-6), though not on every stratum's maximum. The cause is not
    the rounding of `w²`: a corpus quaternion is a rounded unit one, `‖q‖² = 1 + η` with
    `|η| ≈ u`, and every reference evaluates `R(q/‖q‖)`. The homogeneous form errs by `ηR̂`,
    norm `√3|η|` at every angle; the unit form by `η(R̂ - I)`, zero at the identity and `2√2|η|`
@@ -68,5 +69,10 @@ None.
 
 ## Further work
 
-- `cargo xtask compare` (`0038` decision 4) would have answered decision 1 as a direction and a
-  magnitude per stratum, with a twin of the unit form, instead of this record's hand tally.
+- ~~`cargo xtask compare` (`0038` decision 4) would have answered decision 1 as a direction and a
+  magnitude per stratum, with a twin of the unit form, instead of this record's hand tally.~~
+  **Done** ([`0078`](./0078-a-comparison-drops-ties-and-prints-both-maxima.md)):
+  `just compare --a helicoid --b helicoid:unit-r` reproduces decision 1's table exactly, every
+  strata count and the ratio column to two decimals, at both precisions. Per record it confirms the
+  direction at each end of `θ` (`p` from 1.1e-6 to 8.0e-15), but not on every stratum: by the
+  maximum, `sim3_ad` at `f64` is worse on 20 of its 81 strata at `θ ≤ 1`. `0078` has the rows.

@@ -169,6 +169,14 @@ conformance-twin:
     cargo xtask conformance --subject seeded:host-std
     cargo xtask conformance --subject helicoid:host-std
 
+# A paired comparison of two in-process subjects (`0038` decision 4, `0078`): per (fn, stratum),
+# per id and over every id, the records each is better on, an exact sign test, the geometric mean
+# and extremes of the per-record error ratio, and the ratio of the two maxima. Printed only: no
+# result CSV, no baseline, no bar reads it. Arguments: --a NAME --b NAME [--fn ID]
+# [--precision f64|f32], e.g. `just compare --a helicoid --b helicoid:unit-r`.
+compare *args:
+    cargo xtask compare {{args}}
+
 # The bars of `docs/PHASE1.md` §8 over conformance/results: domination over the best oracle and exact
 # no-regress against conformance/baseline, per (fn, stratum, precision) on the max, then coverage of
 # the corpus. It first reruns the in-process subjects, so the candidate's rows are current; the
