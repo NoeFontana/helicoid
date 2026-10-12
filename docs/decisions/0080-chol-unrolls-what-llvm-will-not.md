@@ -2,7 +2,7 @@
 
 **Status:** ready
 **Owner:** @NoeFontana
-**Implementation:** branch `perf/chol-speed` (PR number when opened)
+**Implementation:** #155
 
 ## Context
 
@@ -32,9 +32,10 @@ scratch harness.
 
 ## Decision
 
-1. **`chol` runs the recurrence fully unrolled for `4 <= N <= 9`.** Two `macro_rules!` in
-   `chol.rs` expand one column per literal index: `dot!` writes `sum_{k<j} L_ik L_jk` from its first
-   term, left to right (`+0` when empty), and `columns!` writes column `j` for the rows below it,
+1. **`chol` runs the recurrence fully unrolled for `4 <= N <= 9`.** `macro_rules!` in
+   `chol.rs` expand one column per literal index: `rows!` writes `sum_{k<j} L_ik L_jk` for every row
+   `i >= j` of the column, each from its first term, left to right (`+0` when empty), and `columns!`
+   writes column `j` for the rows below it,
    each step guarded by `j < N`, `i < N`, constants after monomorphization. The operations, their
    operands and their order are those of the loop: the pivot `a_jj - dot`, `ok`, the fold into the
    mask, `sqrt(select(ok, d, 1))`, each entry's quotient, its `fin`, the fold `fin or not ok`, the
@@ -150,8 +151,19 @@ each × ten sizes × three scalars.
 ## Consequences
 
 - `chol` is two code paths with one operation sequence; a change to the recurrence is made in
-  `columns!`/`dot!` and `chol_loop` together, and the two bit-identity tests are what holds them
-  equal.
+  `columns!`/`rows!` and `chol_loop` together, and the two bit-identity tests are what holds them
+  equal. The unrolled column list is written once (`unrolled!`) and `UNROLLED` is its length, so
+  the dispatch bound cannot outgrow the list.
+- **Rows of a column accumulate together** (#155's review): `rows!` runs `k` outer and the rows
+  inner, so each step reads column `k` of `L` contiguously and broadcasts `L_jk`, each row's terms
+  still summed in `chol_loop`'s order. Against the per-row form, pinned on one core: `f32` `N = 8`
+  0.93–0.97, `N = 9` 0.97–0.98, everything else at parity within its floor. LLVM's SLP pass already
+  packed what it could. The remaining gap to nalgebra at `N = 6` is the column chain: column `j`
+  waits on column `j - 1`'s `sqrt` and division, about 35 cycles a column. Shortening it with a
+  reciprocal changes bits, so it is not taken here.
+- A debug build (`opt-level = 0`) carries the unrolled body in every `chol::<S, N>` it
+  instantiates, `N <= 3` and `N > 9` included: stable Rust has no conditional monomorphization on a
+  const generic. Release builds drop the untaken path.
 - `0021` stands: the guard stays, and its rule 1 is met by this change, not relaxed.
 - `0030` (draft): its question 2 is answered here, and its proposed decision 1 ("do not touch
   `chol` yet") is overtaken by a measurement under the instrument; its questions 3 and 4 remain.
@@ -166,5 +178,7 @@ each × ten sizes × three scalars.
 ## Further work
 
 - Re-measure on aarch64 and wasm32 when `just bench` can time them (`0021` rule 3).
+- Whether a reciprocal-per-column form (`1/l_jj` once, then multiplies), which moves bits and so
+  needs the instrument's no-regress reading, closes the `N = 6` latency gap.
 - Whether `N` from 10 to 16 pays in a consumer's loop, where its code size competes for the
   instruction cache.
