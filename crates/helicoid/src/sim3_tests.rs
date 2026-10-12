@@ -8,6 +8,7 @@ use crate::laws::{self, tangent as law_tangent, Bounds, Rng, Sample};
 use crate::{reference, Jac, LieGroup, SEn3Tangent, Sim3, Sim3Jac, Sim3Tangent, Tangent, SE3};
 use helicoid_linalg::{Dual, Matrix, StridedMut, Vector};
 use proptest::prelude::*;
+use std::string::String;
 
 // `measure_sim3` (2·10⁵ draws, 2·10⁴ for `Dual`) and `measure_geodesic` (10⁶), worst of each law:
 // `f64` axioms 6.021, exp_log 4.556, adjoint 8.546, jl_ad_jr 14.695, plus_minus 9.879, rows 0
@@ -60,6 +61,69 @@ mod group {
 
 fn t<S: Sample>(v: &[f64; 7]) -> Sim3Tangent<S> {
     law_tangent::<S, Sim3<S>, 7>(v)
+}
+
+/// The fused rows (`0073`) against the compositions they replace, to the bit: `⊖`'s from one pair
+/// of coefficient evaluations against `Log`, `jr_inv` and `jl_inv`; `⊕`'s from one evaluation
+/// against `Exp`, `adjoint` and `jr`/`jl`. Draws reach `|σ| = 8` (the scaled arm) and `σ = 0` with
+/// a nonzero `Dual` derivative (where the pair re-evaluates `e^t`).
+fn fused_rows_are_composed<S: Sample + core::fmt::Debug>(draws: usize) -> Result<(), String> {
+    let dense = |j: &Sim3Jac<S>| {
+        let mut m = [S::zero(); 49];
+        j.write_dense(&mut StridedMut::col_major(&mut m, 7, 7));
+        std::format!("{m:?}")
+    };
+    let same = |name: &str, (a, b): (Sim3Jac<S>, Sim3Jac<S>), (c, d): (Sim3Jac<S>, Sim3Jac<S>)| {
+        match dense(&a) == dense(&c) && dense(&b) == dense(&d) {
+            true => Ok(()),
+            false => Err(std::format!("{name} is not its composition")),
+        }
+    };
+    let mut rng = Rng(0x7369_6d33_6675_7365);
+    for i in 0..draws {
+        let (mut a, b, mut c) = (rng.shaped::<7>(), rng.shaped::<7>(), rng.shaped::<7>());
+        match i % 3 {
+            0 => (a[6], c[6]) = (0.0, 0.0),
+            1 => (a[6], c[6]) = (8.0 * a[6], 8.0 * c[6]),
+            _ => {}
+        }
+        let x = Sim3::<S>::exp(&t(&a));
+        let base = Sim3::<S>::exp(&Sim3Tangent {
+            sigma: S::zero(),
+            ..t::<S>(&b)
+        });
+        let tau = t::<S>(&c);
+        let r = x.rminus(&base);
+        same(
+            "rminus_jacobians",
+            x.rminus_jacobians(&base),
+            (Sim3::jr_inv(&r), Sim3::jl_inv(&r).neg()),
+        )?;
+        let l = x.lminus(&base);
+        same(
+            "lminus_jacobians",
+            x.lminus_jacobians(&base),
+            (Sim3::jl_inv(&l), Sim3::jr_inv(&l).neg()),
+        )?;
+        same(
+            "rplus_jacobians",
+            x.rplus_jacobians(&tau),
+            (Sim3::exp(&tau.neg()).adjoint(), Sim3::jr(&tau)),
+        )?;
+        same(
+            "lplus_jacobians",
+            x.lplus_jacobians(&tau),
+            (Sim3::exp(&tau).adjoint(), Sim3::jl(&tau)),
+        )?;
+    }
+    Ok(())
+}
+
+#[test]
+fn fused_rows_are_the_composed_rows_to_the_bit() -> Result<(), String> {
+    fused_rows_are_composed::<f64>(3000)?;
+    fused_rows_are_composed::<f32>(3000)?;
+    fused_rows_are_composed::<Dual<f64, 7>>(600)
 }
 
 /// The worst of every law over seeded draws, the figures `F64`/`F32` are recorded from.

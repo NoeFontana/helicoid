@@ -3,7 +3,7 @@
 //! the value-only call is the full one's `v` to the bit, and the scaled arrangement holds to
 //! `ln MAX`.
 
-use super::sim3::{sim3_coeffs, sim3_v};
+use super::sim3::{sim3_coeffs, sim3_coeffs_scaled, sim3_coeffs_scaled_pair, sim3_v, Sim3Coeffs};
 use helicoid_linalg::{Dual, Real};
 use std::format;
 use std::string::{String, ToString};
@@ -382,6 +382,72 @@ fn dual_value_is_plain_value() -> Result<(), String> {
             .ne(b.iter().map(|x| x.to_bits()))
         {
             return Err(String::from("dual value differs"));
+        }
+    }
+    Ok(())
+}
+
+fn bits<S: Real + Into<f64>>(c: &Sim3Coeffs<S>) -> [u64; 8] {
+    let x = [
+        c.v[0], c.v[1], c.v[2], c.w[0], c.w[1], c.w[2], c.dv[0], c.dv[1],
+    ];
+    x.map(|x| Into::<f64>::into(x).to_bits())
+}
+
+/// The pair against two calls at `(σ, z)`; `Err` names the first difference.
+fn pair_is_two_calls<S: Real + Into<f64>>(sigma: S, z: S) -> Result<(), String> {
+    let pair = sim3_coeffs_scaled_pair(sigma, z);
+    for ((c, scaled), s) in pair.iter().zip([sigma, -sigma]) {
+        let (want, want_scaled) = sim3_coeffs_scaled(s, z);
+        let flag = |m| Into::<f64>::into(S::select(m, S::one(), S::zero())).to_bits();
+        if bits(c) != bits(&want) || flag(*scaled) != flag(want_scaled) {
+            let (s, z): (f64, f64) = (s.into(), z.into());
+            return Err(format!("σ = {s:e}, z = {z:e}"));
+        }
+    }
+    Ok(())
+}
+
+/// `sim3_coeffs_scaled_pair` is two `sim3_coeffs_scaled` calls to the bit (`0073`), on both arms,
+/// at `σ = ±0`, across `form_b`, `σ_w` and the scaled arrangement, at both precisions and on
+/// `Dual`'s value and derivatives: the parity argument holds for any `Real` whose negation is
+/// exact.
+#[test]
+fn the_pair_is_two_calls_to_the_bit() -> Result<(), String> {
+    let sigmas = [
+        0.0, -0.0, 1e-300, 1e-9, 1e-4, 0.01, 0.1, 0.3, 0.5, 1.0, 2.0, 3.0, 10.0, 80.0, 700.0,
+    ];
+    let zs = [0.0, 1e-12, 1e-6, 0.01, 0.1, 0.3, 1.0, 2.5, 4.0, 9.8];
+    for &s in &sigmas {
+        for &z in &zs {
+            for s in [s, -s] {
+                pair_is_two_calls(s, z)?;
+                pair_is_two_calls(s as f32, z as f32)?;
+                let (ds, dz) = (Dual::<f64, 2>::variable(s, 0), Dual::variable(z, 1));
+                let pair = sim3_coeffs_scaled_pair(ds, dz);
+                for ((c, _), s) in pair.iter().zip([ds, -ds]) {
+                    let (want, _) = sim3_coeffs_scaled(s, dz);
+                    let flat = |c: &Sim3Coeffs<Dual<f64, 2>>| {
+                        [c.v, c.w]
+                            .concat()
+                            .into_iter()
+                            .chain(c.dv)
+                            .flat_map(|x| [x.v, x.d[0], x.d[1]].map(f64::to_bits))
+                            .collect::<Vec<_>>()
+                    };
+                    if flat(c) != flat(&want) {
+                        return Err(format!("Dual at σ = {:e}, z = {z:e}", s.v));
+                    }
+                }
+            }
+        }
+    }
+    for precision in ["f64", "f32"] {
+        for p in points(precision)? {
+            match precision {
+                "f64" => pair_is_two_calls(p.sigma, p.z)?,
+                _ => pair_is_two_calls(p.sigma as f32, p.z as f32)?,
+            }
         }
     }
     Ok(())
