@@ -31,7 +31,7 @@ A **single-maintainer, pre-1.0 project**; the expectations below are the ceiling
 
 ## MSRV policy
 
-The minimum supported Rust version is **1.87**, declared in `[workspace.package] rust-version`
+The minimum supported Rust version is **1.85**, declared in `[workspace.package] rust-version`
 and never above the lowest MSRV among consumers (D17). `just msrv` builds at that version.
 Suspended for the whole `0.0.x` line; the rule (a bump is a minor-version bump) returns at `0.1.0`.
 **MSRV is raised only for a reason written in the raising commit.**

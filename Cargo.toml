@@ -9,7 +9,7 @@ exclude = ["runners/tf_tree_math", "runners/sophus_rs", "runners/nalgebra"]
 version = "0.0.2"
 edition = "2021"
 # Never above the lowest MSRV among consumers (D17, `0007`). The `msrv` job reads this field.
-rust-version = "1.87"
+rust-version = "1.85"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/NoeFontana/helicoid"
 homepage = "https://github.com/NoeFontana/helicoid"
