@@ -171,6 +171,61 @@ const RUNNERS: &[Runner] = &[
             "sim3_act",
         ],
     },
+    Runner {
+        name: "gtsam",
+        launch: Launch::Container("docker/oracles/gtsam"),
+        // C++ on the image's glibc (`0074`).
+        backend: Backend::HostStd,
+        answers: &[
+            "so2_exp",
+            "so2_log",
+            "se2_exp",
+            "se2_log",
+            "se2_ad",
+            "se2_jl",
+            "se2_jr",
+            "se2_jl_inv",
+            "se2_jr_inv",
+            "so3_exp",
+            "so3_log",
+            "so3_act",
+            "so3_from_matrix",
+            "so3_jl",
+            "so3_jr",
+            "so3_jl_inv",
+            "so3_jr_inv",
+            "so3_gamma2",
+            "so3_geodesic",
+            "se3_geodesic",
+            "se3_screw_retract",
+            "se3_screw_local",
+            "sen3_exp_n1",
+            "sen3_log_n1",
+            "sen3_ad_n1",
+            "sen3_jl_n1",
+            "sen3_jr_n1",
+            "sen3_jl_inv_n1",
+            "sen3_jr_inv_n1",
+            "sen3_exp_n2",
+            "sen3_log_n2",
+            "sen3_ad_n2",
+            "sen3_jl_n2",
+            "sen3_jr_n2",
+            "sen3_jl_inv_n2",
+            "sen3_jr_inv_n2",
+            "sen3_exp_n3",
+            "sen3_log_n3",
+            "sen3_ad_n3",
+            "sen3_jl_n3",
+            "sen3_jr_n3",
+            "sen3_jl_inv_n3",
+            "sen3_jr_inv_n3",
+            "sim3_exp",
+            "sim3_log",
+            "sim3_ad",
+            "sim3_act",
+        ],
+    },
 ];
 
 pub(super) fn names() -> Vec<&'static str> {
@@ -655,7 +710,7 @@ mod tests {
                 .unwrap_or_default()
         };
         assert!(go("nope", None).contains(
-            "no oracle runner `nope`; have [\"tf_tree_math\", \"sophus_rs\", \"nalgebra\", \"sophus\"]"
+            "no oracle runner `nope`; have [\"tf_tree_math\", \"sophus_rs\", \"nalgebra\", \"sophus\", \"gtsam\"]"
         ));
         assert!(go("tf_tree_math", Some("nope")).contains("no corpus file for `--fn nope`"));
         assert!(!scratch.0.exists());
@@ -821,7 +876,7 @@ mod tests {
     /// Each registered runner's backend, and an unregistered name answering `None`.
     ///
     /// `tf_tree_math` declares `libm.workspace = true`; sophus-rs and nalgebra are Rust `std`, and
-    /// the Sophus image is C++ on its glibc. The domination split reads this, so a wrong entry
+    /// the Sophus and GTSAM images are C++ on their glibc. The domination split reads this, so a wrong entry
     /// would silently mislabel a failure (`0036`, draft).
     #[test]
     fn every_runner_declares_where_its_transcendentals_come_from() {
@@ -829,6 +884,7 @@ mod tests {
         assert_eq!(backend("sophus_rs"), Some(Backend::HostStd));
         assert_eq!(backend("nalgebra"), Some(Backend::HostStd));
         assert_eq!(backend("sophus"), Some(Backend::HostStd));
+        assert_eq!(backend("gtsam"), Some(Backend::HostStd));
         assert_eq!(backend("not_a_runner"), None);
         assert_eq!(names().len(), RUNNERS.len());
     }
