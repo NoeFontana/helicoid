@@ -196,8 +196,8 @@ fn binary32_agrees_on_a_dense_sample() {
 ///
 /// By-construction is an argument about one release of `libm`'s source -- `cos` and `sincos` share
 /// `rem_pio2`, the kernels, the octant table and, unlike `sin`, the small-argument cut -- and
-/// `libm` is a caret dependency. `solve_cubic`'s committed golden bits and `eig3`'s fixture ratio
-/// now rest on the claim (`0022`, `0053`), so it is a test.
+/// `libm` is a caret dependency. `solve_cubic`'s committed golden bits rest on the claim (`0022`,
+/// `0053`), so it is a test.
 #[test]
 fn cos_agrees_at_binary64() {
     // `Real::cos` and `Real::sin_cos`, spelled as paths and not as methods: on a concrete `f64`,

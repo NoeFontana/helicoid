@@ -281,7 +281,7 @@ impl<S: Real, const N: usize> Real for Dual<S, N> {
     /// one omitted for a commit. So a constant at `v = 1` has all-NaN derivatives and a seeded one
     /// has `-+inf` in its own lane and NaN in the rest. That is the true behaviour of `acos` there,
     /// and the same singularity the `atan2` spelling this replaces had through its own `sqrt`
-    /// (`0022`), which `eig3`'s ambient Jacobian reaches at a double eigenvalue.
+    /// (`0022`), which `solve_cubic`'s derivative reaches at a double root.
     ///
     /// Outside `[-1, 1]` the value is NaN, as [`Real::acos`] states, and the derivative is the same
     /// pair of cases:
