@@ -1,5 +1,6 @@
 //! `helicoid-linalg`'s closed forms by stratum (`docs/PHASE1.md` §9): `solve_cubic` and `eig3`, at
-//! `f64` and `f32` (`0053` *Further work* 2).
+//! `f64` and `f32` (`0053` *Further work* 2), and `chol` at the three clauses of `0021`'s bar
+//! (`0080`): positive definite and failing input at `f64` and `f32`, and `Dual`.
 //!
 //! **A third binary**, for the reason `benches/groups.rs` gives: `bench-gate --against <binary>`
 //! takes one bench binary, so a change to a solver pays for these rows alone.
@@ -25,7 +26,7 @@ use core::time::Duration;
 
 use criterion::measurement::WallTime;
 use criterion::{criterion_group, criterion_main, BenchmarkGroup, Criterion};
-use helicoid_linalg::{eig3, solve_cubic, Mat3, Matrix, Real, Vec3, Vector};
+use helicoid_linalg::{chol, eig3, solve_cubic, Dual, Mat3, Matrix, Real, Vec3, Vector};
 
 /// Four scalars, not `[S; 4]`: an array by value reaches the callee through the stack, and a wide
 /// load of two of its narrow stores is a store-to-load forwarding stall that read 10-20 ns of a
@@ -39,6 +40,13 @@ fn cubic_of<S: Real>(a: S, b: S, c: S, d: S) -> (Vec3<S>, [S::Mask; 3]) {
 #[inline(never)]
 fn eig3_of<S: Real>(a: &Mat3<S>) -> (Vec3<S>, Mat3<S>) {
     eig3(a)
+}
+
+/// The whole factor and the mask come back, and criterion's `black_box` keeps every entry live:
+/// consuming one entry lets the optimizer delete most of the factorisation (`0030`, a draft).
+#[inline(never)]
+fn chol_of<S: Real, const N: usize>(a: &Matrix<S, N, N>) -> (Matrix<S, N, N>, S::Mask) {
+    chol(a)
 }
 
 /// A fixture at the precision: the `f64` value, rounded (`benches/groups.rs`, `Fixture`).
@@ -102,6 +110,48 @@ fn sym<S: Fixture>(lambda: [f64; 3]) -> Mat3<S> {
     }))
 }
 
+impl Fixture for Dual<f64, 2> {
+    fn of(x: f64) -> Self {
+        Dual { v: x, d: [x, 0.5] }
+    }
+}
+
+/// `B^T B + N I`, `B` entries in `[-1, 1)` from a fixed LCG, so the mask is set; `failing` negates
+/// the middle pivot, so column `N / 2` runs the failed arm (unit pivot, zeros below) and the later
+/// columns factor the matrix with that row and column removed.
+fn spd<S: Fixture, const N: usize>(failing: bool) -> Matrix<S, N, N> {
+    let mut state = 0x9E37_79B9_7F4A_7C15_u64;
+    let mut next = || {
+        state = state
+            .wrapping_mul(6_364_136_223_846_793_005)
+            .wrapping_add(1_442_695_040_888_963_407);
+        (state >> 11) as f64 / (1u64 << 53) as f64 * 2.0 - 1.0
+    };
+    let b: [[f64; N]; N] = core::array::from_fn(|_| core::array::from_fn(|_| next()));
+    let a = |i: usize, j: usize| {
+        let g = (0..N).map(|k| b[k][i] * b[k][j]).sum::<f64>();
+        let shift = if i == j { N as f64 } else { 0.0 };
+        let flip = if failing && i == N / 2 && j == N / 2 {
+            -1.0
+        } else {
+            1.0
+        };
+        flip * (g + shift)
+    };
+    Matrix::from_cols(core::array::from_fn(|j| {
+        Vector(core::array::from_fn(|i| S::of(a(i, j))))
+    }))
+}
+
+fn chol_row<S: Fixture, const N: usize>(g: &mut BenchmarkGroup<'_, WallTime>) {
+    for (name, failing) in [("pd", false), ("failing", true)] {
+        let a = spd::<S, N>(failing);
+        g.bench_function(format!("chol/{N}/{name}"), |b| {
+            b.iter(|| chol_of(black_box(&a)));
+        });
+    }
+}
+
 const SPECTRA: &[(&str, [f64; 3])] = &[
     ("random", [-0.7, 0.2, 0.9]),
     ("gap-1e-8", [-0.7, 0.4, 0.4 + 1e-8]),
@@ -130,6 +180,11 @@ fn rows<S: Fixture>(g: &mut BenchmarkGroup<'_, WallTime>) {
             b.iter(|| eig3_of(black_box(&a)));
         });
     }
+    chol_row::<S, 3>(g);
+    chol_row::<S, 6>(g);
+    chol_row::<S, 8>(g);
+    chol_row::<S, 9>(g);
+    chol_row::<S, 12>(g);
 }
 
 fn linalg(c: &mut Criterion) {
@@ -138,6 +193,9 @@ fn linalg(c: &mut Criterion) {
     g.finish();
     let mut g = c.benchmark_group("linalg/f32");
     rows::<f32>(&mut g);
+    g.finish();
+    let mut g = c.benchmark_group("linalg/dual2");
+    chol_row::<Dual<f64, 2>, 6>(&mut g);
     g.finish();
 }
 
