@@ -285,9 +285,13 @@ Storage: unit $n \in \mathbb{R}^3$. The chart at $n$ is frozen at construction:
 - **Basis.** $\nu = n + \varsigma\,e_z$ with $\varsigma = +1$ unless $n_z < 0$, a comparison and not
   the sign bit, so $\pm0$ (and NaN) give $+1$
   ([`0063`](./decisions/0063-the-sphere-reads-its-sign-by-comparison-and-is-held-unit.md));
-  $H = I - 2\,\nu\nu^\top/(\nu^\top\nu)$; $b_1 = H e_x$, $b_2 = H e_y$. $H e_z = -\varsigma\,n$,
-  so $b_1, b_2 \perp n$; $\nu^\top\nu = 2(1 + |n_z|) \ge 2$ never cancels.
-- **Retract.** $n \oplus \delta = \mathrm{Exp}(B\delta)\,n$, $B = [b_1\ b_2]$.
+  $H = I - 2\,\nu\nu^\top/(\nu^\top\nu)$; $b_1 = H e_x$, $b_2 = \varsigma\,H e_y$. $H e_z = -\varsigma\,n$,
+  so $b_1, b_2 \perp n$; $\nu^\top\nu = 2(1 + |n_z|) \ge 2$ never cancels. The factor $\varsigma$ on $b_2$
+  orients the frame, $b_1 \times b_2 = n$ on both hemispheres (`maths/charts.md` CH.8(f);
+  [`0082`](./decisions/0082-the-sphere-chart-is-oriented-and-shows-its-frames.md)): `S2Chart::basis` returns $B = [b_1\ b_2]$, and
+  `S2Chart::displacement_basis` returns $T = [b_1 \times n,\ b_2 \times n] = [-b_2,\ b_1]$, which is
+  $\partial(n \oplus \delta)/\partial\delta$ at $0$, with $T^\top = \partial\,\mathrm{local}/\partial m$ at $m = n$.
+- **Retract.** $n \oplus \delta = \mathrm{Exp}(B\delta)\,n = \cos\theta\,n + \tfrac{\sin\theta}{\theta}(\delta_2 b_1 - \delta_1 b_2)$, $B = [b_1\ b_2]$.
 - **Local.** $\delta = B^\top\,(\alpha\,\hat m)$ with $\hat m = (n \times m)/\|n \times m\|$,
   $\alpha = \mathrm{atan2}(\|n \times m\|, n \cdot m)$; the ratio $\alpha/\|n \times m\|$ is **half** §4's $r$,
   $\tfrac12 r(s^2, w)$ with $s = \|n\times m\|$, $w = n\cdot m$, from `log_ratio` with the mask on

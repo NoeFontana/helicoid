@@ -2,7 +2,8 @@
 
 The chart at a point n of S2 is frozen at n (NUMERICS.md section 8, docs/maths/charts.md CH.8):
 sigma = -1 iff the stored n_z < 0, a comparison, so +0 and -0 both give +1 (0063 decision 1);
-nu = n + sigma e_z, H = I - 2 nu nu^T / nu^T nu, b1 = H e_x, b2 = H e_y, B = [b1 b2].
+nu = n + sigma e_z, H = I - 2 nu nu^T / nu^T nu, b1 = H e_x, b2 = sigma H e_y, B = [b1 b2]: the
+oriented frame, b1 x b2 = n on both hemispheres (0082).
 
     retract   m = Exp(B delta) n                      Rodrigues, CH.9(a)
     local     delta = B^T (alpha v / s)               v = n x m, s = |v|, alpha = atan2(s, n . m)
@@ -60,13 +61,14 @@ def sigma(n_z: float) -> int:
 
 
 def basis(n: list[float]) -> tuple[list, int, list, list]:
-    """(n normalized, sigma, b1, b2): the Householder frame of CH.8 at the stored n."""
+    """(n normalized, sigma, b1, b2): CH.8's Householder frame at the stored n, b2 times sigma so
+    that b1 x b2 = n (0082)."""
     nh = unit([mpf(c) for c in n])
     s = sigma(n[2])
     nu = [nh[0], nh[1], nh[2] + s]
     k = 2 / dot(nu, nu)
     b1 = [(1 if i == 0 else 0) - k * nu[i] * nu[0] for i in range(3)]
-    b2 = [(1 if i == 1 else 0) - k * nu[i] * nu[1] for i in range(3)]
+    b2 = [s * ((1 if i == 1 else 0) - k * nu[i] * nu[1]) for i in range(3)]
     return nh, s, b1, b2
 
 
