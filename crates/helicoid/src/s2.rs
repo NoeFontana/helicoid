@@ -100,7 +100,9 @@ impl<S: Real> Blend<S> for S2<S> {
 /// `retract(δ) = Exp(Bδ) n`; `local(m) = Bᵀ Log(E)`, `E` the minimal rotation taking `n` to `m`.
 /// `δ` is a **rotation vector** `Bδ`, a quarter turn from the displacement it causes
 /// (`docs/maths/charts.md` CH.9(a)). The Jacobians are `Mat2` and read the perturbed point in its
-/// own frozen frame (CH.10), so they carry the frame change `ς ς_m` between the two bases.
+/// own frozen frame (CH.10), so they carry the frame change between the two bases. Both frames are
+/// oriented, `b₁ × b₂ = n` (`0082`), so that change is a rotation about the normal on either
+/// hemisphere.
 #[derive(Clone, Copy, Debug)]
 pub struct S2Chart<S> {
     base: S2<S>,
@@ -114,24 +116,44 @@ fn sign<S: Real>(n: Vec3<S>) -> S {
     S::select(n.0[2].lt(S::zero()), -S::one(), S::one())
 }
 
-/// `(H e_x, H e_y)`, `H = I - 2ννᵀ/(νᵀν)`, `ν = n + ς e_z` (CH.8). The `H` form, with `νᵀν`
-/// computed rather than taken as `2(1 + |n_z|)`: it keeps `BᵀB = I` to rounding for a point off
-/// the sphere, where the closed form CH.8(d) is off by twice the drift in `BᵀB` and `Bᵀn` (CH.8(e)).
+/// `(H e_x, ς H e_y)`, `H = I - 2ννᵀ/(νᵀν)`, `ν = n + ς e_z` (CH.8). `H` reflects, so
+/// `H e_x × H e_y = ςn`; the factor `ς` on `b₂` makes the frame oriented, `b₁ × b₂ = n` on both
+/// hemispheres (`0082`): a bearing behind the camera keeps the handedness of one in front. The `H`
+/// form, with `νᵀν` computed rather than taken as `2(1 + |n_z|)`: it keeps `BᵀB = I` to rounding for
+/// a point off the sphere, where the closed form CH.8(d) is off by twice the drift in `BᵀB` and
+/// `Bᵀn` (CH.8(e)).
 #[inline]
 fn basis<S: Real>(n: Vec3<S>) -> (Vec3<S>, Vec3<S>) {
     let [x, y, z] = n.0;
-    let nu = Vector([x, y, z + sign(n)]);
+    let s = sign(n);
+    let nu = Vector([x, y, z + s]);
     let k = S::lit(2.0) / nu.norm_sq();
     let (kx, ky) = (k * x, k * y);
     (
         Vector([S::one() - kx * x, -(kx * y), -(kx * nu.0[2])]),
-        Vector([-(ky * x), S::one() - ky * y, -(ky * nu.0[2])]),
+        Vector([-(ky * x), S::one() - ky * y, -(ky * nu.0[2])]).scale(s),
     )
 }
 
 impl<S: Real> S2Chart<S> {
-    /// `(retract(δ), θ²)`: `cos θ n + ς (sin θ/θ)(δ₂ b₁ - δ₁ b₂)`, which is `Exp(Bδ) n` since
-    /// `Bδ × n = -ς B K δ` (CH.9(a)). `sin θ/θ = 2k cos(θ/2)` and `cos θ = 1 - 2k²θ²` from the one
+    /// `B = [b₁ b₂]`, the chart's frame of `n^⊥`: the coordinates `δ` are the rotation vector `Bδ`
+    /// (`NUMERICS.md` §8, `0082`). Orthonormal and oriented, `b₁ × b₂ = n`; frozen with the chart, and
+    /// discontinuous in `n` at `n_z = 0`, as every global frame of S² is somewhere.
+    #[inline]
+    pub fn basis(&self) -> Matrix<S, 3, 2> {
+        Matrix::from_cols([self.b1, self.b2])
+    }
+
+    /// `T = [b₁ × n, b₂ × n] = [-b₂, b₁]`, the directions `δ` moves the point along: `∂retract/∂δ`
+    /// at `δ = 0`, and `Tᵀ = ∂local/∂m` at `m = n` (`NUMERICS.md` §8, `0082`). `B` a quarter turn
+    /// about `n`, so orthonormal and oriented too, `t₁ × t₂ = n`. Exact: `B`'s columns, one negated.
+    #[inline]
+    pub fn displacement_basis(&self) -> Matrix<S, 3, 2> {
+        Matrix::from_cols([-self.b2, self.b1])
+    }
+
+    /// `(retract(δ), θ²)`: `cos θ n + (sin θ/θ)(δ₂ b₁ - δ₁ b₂)`, which is `Exp(Bδ) n` since
+    /// `Bδ × n = -B K δ` (CH.9(a) with the oriented frame's `ς = 1`, `0082`). `sin θ/θ = 2k cos(θ/2)` and `cos θ = 1 - 2k²θ²` from the one
     /// `exp_coeffs`, finite at `δ = 0`. [`retract_jacobian`](Chart::retract_jacobian) reads the
     /// point from here, so the frame of `m` it is expressed in is the one `retract` returns.
     #[inline]
@@ -140,7 +162,7 @@ impl<S: Real> S2Chart<S> {
         let z = delta.rho.norm_sq();
         let (k, cos_half) = exp_coeffs(z);
         let cos = S::one() - S::lit(2.0) * (k * k * z);
-        let g = sign(self.base.0) * (S::lit(2.0) * k * cos_half);
+        let g = S::lit(2.0) * k * cos_half;
         let n = self.base.0;
         let m = Vector(array::from_fn(|i| {
             cos * n.0[i] + g * (d2 * self.b1.0[i] - d1 * self.b2.0[i])
@@ -152,7 +174,7 @@ impl<S: Real> S2Chart<S> {
     /// rotation vector of the minimal rotation (`‖p‖ = α`), `w = n·m` and the ratio `α/s`.
     ///
     /// `α/s = ½ r(s², w)` from `log_ratio`, whose mask on `s²/w²` takes the series arm only for
-    /// `w > 0` (CH.9(c), `0063` decision 3). `Bᵀ(α/s · n × m)` and not `ς (α/s) K Bᵀ m`: the first
+    /// `w > 0` (CH.9(c), `0063` decision 3). `Bᵀ(α/s · n × m)` and not `(α/s) K Bᵀ m`: the first
     /// measured 1.4–1.9 `u/(π - α)` near the antipode, the second 2.3–3.8 (CH.11(e)). At `m = -n`
     /// (`s² = 0`, `w < 0`) the exact arm would divide `2π` by `0`; the safe argument `s² = 1` makes
     /// the answer `0` there, the finite value `NUMERICS.md` §12 promises outside the domain.
@@ -248,8 +270,8 @@ impl<S: Real> Chart<S, S2<S>> for S2Chart<S> {
     /// `B'ᵀ J_l(Bδ) B` (CH.10(a)), `B'` the basis at `m = retract(δ)`, the same bits `retract`
     /// returns, so the frame it reads `m` in is `S2Chart::at(&retract(δ))`'s.
     ///
-    /// By CH.8(c) (`b₁ × b₂ = ς n`), `J_l b₁ = (1 - bδ₂²) b₁ + bδ₁δ₂ b₂ - aςδ₂ n` and
-    /// `J_l b₂ = bδ₁δ₂ b₁ + (1 - bδ₁²) b₂ + aςδ₁ n`: the symmetric `A(δ)` of CH.10 plus the normal
+    /// By CH.8(c) with the oriented frame (`b₁ × b₂ = n`, `0082`), `J_l b₁ = (1 - bδ₂²) b₁ + bδ₁δ₂ b₂ - aδ₂ n`
+    /// and `J_l b₂ = bδ₁δ₂ b₁ + (1 - bδ₁²) b₂ + aδ₁ n`: the symmetric `A(δ)` of CH.10 plus the normal
     /// part, which `B'` reads and `B` does not. Defined for every `δ`; singular at `‖δ‖ = π`, where
     /// every direction retracts to `-n` (CH.10(a)).
     #[inline]
@@ -258,7 +280,7 @@ impl<S: Real> Chart<S, S2<S>> for S2Chart<S> {
         let (a, b) = jr_coeffs(z);
         let [d1, d2] = delta.rho.0;
         let n = self.base.0;
-        let e = sign(n) * a;
+        let e = a;
         let bx = b * d1 * d2;
         let col = |x: S, y: S, t: S| {
             Vector(array::from_fn(|k| {

@@ -58,14 +58,14 @@ def local(chart: str) -> Callable[[dict, dict], None]:
 
 
 def s2_retract(inputs: dict, out: dict) -> None:
-    """CH.9(a)'s closed form cos(theta) n - sigma sin(theta)/theta B K delta, the unit norm, and
+    """CH.9(a)'s closed form cos(theta) n - sin(theta)/theta B K delta (the oriented frame, 0082), the unit norm, and
     `local` of the answer returning delta (CH.9(d): every stratum has theta < pi)."""
-    nh, sg, b1, b2 = s2.basis(inputs["n"])
+    nh, _, b1, b2 = s2.basis(inputs["n"])
     d1, d2 = (mpf(c) for c in inputs["delta"])
     theta = mp.sqrt(d1 * d1 + d2 * d2)
     sinc = mp.sin(theta) / theta if theta != 0 else mpf(1)
     bk = [-d2 * a + d1 * b for a, b in zip(b1, b2, strict=True)]  # B K delta
-    closed = [mp.cos(theta) * x - sg * sinc * y for x, y in zip(nh, bk, strict=True)]
+    closed = [mp.cos(theta) * x - sinc * y for x, y in zip(nh, bk, strict=True)]
     m = list(out["m"])
     check._agree("s2_retract: CH.9(a) closed form", m, closed)
     check._agree("s2_retract: |m|", [s2.norm(m)], [mpf(1)])

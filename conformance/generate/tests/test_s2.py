@@ -35,13 +35,13 @@ class BasisTest(unittest.TestCase):
         [-0.48, 0.6, -0.64],
     )
 
-    def test_the_frame_is_orthonormal_tangent_and_oriented_by_sigma(self):
-        # CH.8(c): B^T B = I, B^T n = 0, b1 x b2 = sigma n.
+    def test_the_frame_is_orthonormal_tangent_and_oriented(self):
+        # CH.8(c), oriented (0082): B^T B = I, B^T n = 0, b1 x b2 = n on both hemispheres.
         for n in self.POINTS:
-            nh, sg, b1, b2 = s2.basis(n)
+            nh, _, b1, b2 = s2.basis(n)
             near([s2.dot(b1, b1), s2.dot(b2, b2), s2.dot(b1, b2)], [1, 1, 0])
             near([s2.dot(b1, nh), s2.dot(b2, nh)], [0, 0])
-            near(s2.cross(b1, b2), [sg * c for c in nh])
+            near(s2.cross(b1, b2), nh)
 
     def test_the_sign_of_zero_picks_no_frame(self):
         # 0063 decision 1: +0 and -0 are one point and one frame, sigma = +1.

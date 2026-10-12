@@ -92,7 +92,7 @@ blocks differ (a second `Jac` impl on `ProductJac` itself is E0283 at every conc
 ## 2. S²
 
 **NORMATIVE.** `S2<S>(Vec3<S>)`, `S2Chart<S> { base, b1, b2 }`, formulas `NUMERICS.md` §8.
-Householder basis computed once in `Chart::at`, with $\varsigma = +1$ unless $n_z < 0$. `S2` is held
+Householder basis computed once in `Chart::at`, with $\varsigma = +1$ unless $n_z < 0$, oriented by $b_2 = \varsigma He_y$ and exposed as `basis` and `displacement_basis` ([`0082`](./decisions/0082-the-sphere-chart-is-oriented-and-shows-its-frames.md)). `S2` is held
 unit: `from_vec_unchecked`, `from_vec_normalized` and `renormalize` with the quaternion's bounds
 (`NUMERICS.md` §12). Domain: `local(m)` requires $m \ne -n$.
 Coordinates `RnTangent<S, 2>`, Jacobians `Mat2<S>` (§1.4, [`0067`](./decisions/0067-the-sphere-takes-plane-coordinates-and-both-precisions.md)).

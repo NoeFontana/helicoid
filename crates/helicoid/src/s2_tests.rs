@@ -98,12 +98,11 @@ fn legs<S: Sample>(a: &[f64; 3], b: &[f64; 2], c: &[f64; 3]) -> [f64; 4] {
     ]
 }
 
-/// `max(|BᵀB - I|, |Bᵀn|, ‖b₁ × b₂ - ςn‖)` in `u` (CH.8(c)), from the values of `S`.
+/// `max(|BᵀB - I|, |Bᵀn|, ‖b₁ × b₂ - n‖)` in `u` (CH.8(c); oriented, `0082`), from the values of `S`.
 fn basis_err<S: Sample>(a: &[f64; 3]) -> f64 {
     let n = point::<S>(a);
-    let c = S2Chart::at(&n);
-    let (b1, b2, nn) = (f(c.b1), f(c.b2), f(n.vec()));
-    let sigma = if nn[2] < 0.0 { -1.0 } else { 1.0 };
+    let b = S2Chart::at(&n).basis();
+    let (b1, b2, nn) = (f(b.col(0)), f(b.col(1)), f(n.vec()));
     let k = cross(b1, b2);
     let errs = [
         dot(b1, b1) - 1.0,
@@ -111,9 +110,9 @@ fn basis_err<S: Sample>(a: &[f64; 3]) -> f64 {
         dot(b1, b2),
         dot(b1, nn),
         dot(b2, nn),
-        k[0] - sigma * nn[0],
-        k[1] - sigma * nn[1],
-        k[2] - sigma * nn[2],
+        k[0] - nn[0],
+        k[1] - nn[1],
+        k[2] - nn[2],
     ];
     errs.iter().fold(0.0, |w, x| worst(w, x.abs())) / unit::<S>()
 }
@@ -144,6 +143,31 @@ fn jacobians_match_dual(a: &[f64; 3], b: &[f64; 2], c: &[f64; 3]) -> f64 {
         e::<f64>(&fm(&chart.retract_jacobian(&delta)), &rj),
         e::<f64>(&fm(&chart.local_jacobian(&m)), &lj),
     )
+}
+
+/// `displacement_basis()` against `Dual` (`0082`): `T` is `∂retract/∂δ` at `δ = 0`, and `Tᵀ` is
+/// `∂local/∂m` at `m = n`, the ambient `m` carrying three lanes. The largest entry error.
+fn displacement_basis_matches_dual(a: &[f64; 3]) -> f64 {
+    let n = point::<D2>(a);
+    let chart = S2Chart::at(&n);
+    let t = chart.displacement_basis();
+    let eta = RnTangent {
+        rho: Vector([Dual::variable(0.0, 0), Dual::variable(0.0, 1)]),
+    };
+    let m = chart.retract(&eta).vec();
+    let along = (0..3).flat_map(|i| (0..2).map(move |j| (i, j)));
+    let d_retract = along.clone().fold(0.0, |w, (i, j)| {
+        worst(w, (m.0[i].d[j] - t.get(i, j).value_f64()).abs())
+    });
+    let n3 = point::<Dual<f64, 3>>(a);
+    let ambient = S2::from_vec_unchecked(Vector(array::from_fn(|i| {
+        Dual::variable(n3.vec().0[i].value_f64(), i)
+    })));
+    let delta = S2Chart::at(&n3).local(&ambient).rho.0;
+    let d_local = along.fold(0.0, |w, (i, j)| {
+        worst(w, (delta[j].d[i] - t.get(i, j).value_f64()).abs())
+    });
+    worst(d_retract, d_local)
 }
 
 /// `local_jacobian(retract(δ)) · retract_jacobian(δ) = I` (CH.2(b)).
@@ -179,6 +203,8 @@ const DRIFT: [f64; 2] = [22.0, 18.0];
 const INVERSE: [f64; 2] = [18.0, 19.0];
 const TWIN: [f64; 2] = [12.0, 13.0];
 const DUAL: f64 = 20.0;
+/// `displacement_basis` against `Dual`, in `ε` of `f64` (entries at most `1`).
+const DISPLACEMENT: f64 = 16.0;
 
 proptest! {
     #[test]
@@ -191,9 +217,14 @@ proptest! {
     }
 
     #[test]
-    fn the_basis_is_orthonormal_and_right_handed_up_to_sign(a in laws::sample::<3>()) {
+    fn the_basis_is_orthonormal_and_oriented(a in laws::sample::<3>()) {
         laws::within(basis_err::<f64>(&a), BASIS[0])?;
         laws::within(basis_err::<f32>(&a), BASIS[1])?;
+    }
+
+    #[test]
+    fn displacement_basis_is_the_derivative_of_the_chart_at_its_base(a in laws::sample::<3>()) {
+        laws::within(displacement_basis_matches_dual(&a) / f64::EPSILON, DISPLACEMENT)?;
     }
 
     #[test]
