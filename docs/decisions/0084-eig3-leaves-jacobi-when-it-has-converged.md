@@ -120,6 +120,10 @@ division was worth 288 → 228 ns at the random fixture, more than the shorter c
 
 ## Consequences
 
+- `rotate` takes `c2.sqrt()` and then selects: the same bits as selecting first, and the order
+  `select(small, 1, c2).sqrt()` makes rustc 1.98.1's LLVM segfault while compiling `eig3`. Keep it
+  until a toolchain that compiles the other order is the floor.
+
 - `NUMERICS.md` §17 states decisions 1–6. `PHASE2.md` §6 and its §0.0 row name this record.
 - `eig3`'s rustdoc: the cost and the `Dual` paragraph change, and the contract does not. At a
   repeated eigenvalue the lanes are finite and in general no directional derivative, as `0081` says.
