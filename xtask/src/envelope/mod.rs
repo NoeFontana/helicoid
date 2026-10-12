@@ -7,9 +7,11 @@
 //! write and writes nothing; `--check` fails when either file is not what `--bless` would write,
 //! as `thresholds --check` does, so an improved maximum is blessed in its own PR.
 //!
-//! **Binary64 only.** `f32` scoring and the `@f32` strata (`0016`) landed after this module
-//! and it reads the binary64 result files alone, although `PHASE1.md` §8 states the bars per
-//! precision. The `@f32` half of the envelope is owed.
+//! **Both precisions** (`0077`): each subject's rows are its binary64 file's and its `f32` one's,
+//! and a bar pairs rows by `(fn, stratum, precision)`, so an `@f32` stratum is judged against the
+//! oracles that answered it in binary32. An oracle that answers in binary32 owes its `f32` file;
+//! one that does not has none. The one-variable twin has no `f32` kernel, so a binary32 failure no
+//! `libm`-crate oracle wins is unattributed.
 //!
 //! Where the specs are silent, the smallest reading was taken:
 //!
@@ -33,8 +35,8 @@
 //!   D16 does not cover (`docs/maths/error-analysis.md` EA.13(d)). Not every runner is host-bound:
 //!   `tf_tree_math` routes through the `libm` crate as we do, which is what makes it the control in
 //!   `0032` (draft) and what the domination split reports (`conformance::Backend`).
-//! - **The CSVs read** are `results_path`'s for the named subjects, so a stale `--fn` run's file
-//!   or a planted defect's is never merged.
+//! - **The CSVs read** are `results_path`'s for the named subjects at each precision, so a stale
+//!   `--fn` run's file or a planted defect's is never merged.
 
 mod bars;
 mod coverage;
@@ -45,8 +47,8 @@ mod rows;
 use std::fmt::Write;
 use std::path::Path;
 
-use crate::conformance::report::{csv, Row};
-use crate::conformance::{corpus, oracle_names, results_path, root, subject};
+use crate::conformance::report::{csv, precision_name, Row};
+use crate::conformance::{corpus, oracle_answers_f32, oracle_names, results_path, root, subject};
 use bars::{Bar, Failure};
 use helicoid_linalg::Precision;
 use rows::Subject;
@@ -161,9 +163,35 @@ fn read_optional<T>(
     }
 }
 
+/// `name`'s rows at `precision`, from the file `conformance` writes at it, every row of that
+/// precision; `None` when there is no file.
+fn read_at(root: &Path, name: &str, precision: Precision) -> Result<Option<Subject>, String> {
+    let rel = results_path(Path::new(RESULTS), name, None, precision);
+    read_optional(root, &rel, |text| {
+        let subject = rows::parse_results(name, text)?;
+        match subject.rows.iter().find(|r| r.precision != precision) {
+            Some(r) => Err(format!(
+                "a `{}` row in a {} file",
+                precision_name(r.precision),
+                precision_name(precision)
+            )),
+            None => Ok(subject),
+        }
+    })
+}
+
+/// `name`'s rows at both precisions, each read when its file exists (`0077`); `None` when neither
+/// does. The subject's version is its binary64 file's, each row keeping its own.
 fn read_subject(root: &Path, name: &str) -> Result<Option<Subject>, String> {
-    let rel = results_path(Path::new(RESULTS), name, None, Precision::F64);
-    read_optional(root, &rel, |text| rows::parse_results(name, text))
+    let wide = read_at(root, name, Precision::F64)?;
+    let narrow = read_at(root, name, Precision::F32)?;
+    Ok(match (wide, narrow) {
+        (Some(mut both), Some(f32)) => {
+            both.rows.extend(f32.rows);
+            Some(both)
+        }
+        (one, None) | (None, one) => one,
+    })
 }
 
 fn write_file(root: &Path, rel: &str, text: &str) -> Result<(), String> {
@@ -173,7 +201,8 @@ fn write_file(root: &Path, rel: &str, text: &str) -> Result<(), String> {
     std::fs::write(&path, text).map_err(|e| format!("{}: {e}", path.display()))
 }
 
-/// The oracles' rows: the named ones, else the runners'; each must have written its CSV.
+/// The oracles' rows: the named ones, else the runners'; each must have written its CSV, and its
+/// `f32` one too when it answers in binary32 (`conformance::oracle_answers_f32`).
 fn read_oracles(root: &Path, options: &Options) -> Result<Vec<Subject>, String> {
     let names = options.oracles.clone();
     let names = names.unwrap_or_else(|| oracle_names().into_iter().map(String::from).collect());
@@ -183,7 +212,18 @@ fn read_oracles(root: &Path, options: &Options) -> Result<Vec<Subject>, String> 
             return Err(format!("`{name}` is the candidate or named twice"));
         }
         let missing = || format!("no result rows for oracle `{name}`: run its oracle recipe");
-        oracles.push(read_subject(root, &name)?.ok_or_else(missing)?);
+        let mut oracle = read_at(root, &name, Precision::F64)?.ok_or_else(missing)?;
+        match read_at(root, &name, Precision::F32)? {
+            Some(f32) => oracle.rows.extend(f32.rows),
+            None if oracle_answers_f32(&name) => {
+                return Err(format!(
+                    "no f32 result rows for oracle `{name}`, which answers in binary32: run its \
+                     oracle recipe"
+                ))
+            }
+            None => {}
+        }
+        oracles.push(oracle);
     }
     Ok(oracles)
 }
@@ -305,6 +345,17 @@ fn execute(root: &Path, options: &Options) -> Result<Report, String> {
         Some(_) => read_oracles(root, options)?,
         None => Vec::new(),
     };
+    // An oracle's `f32` rows with none of the candidate's would leave every one unpaired in silence.
+    let has_f32 = |rows: &[Row]| rows.iter().any(|r| r.precision == Precision::F32);
+    if let (Some(c), Some(o)) = (&candidate, oracles.iter().find(|o| has_f32(&o.rows))) {
+        if !has_f32(&c.rows) {
+            return Err(format!(
+                "`{}` has f32 rows and the candidate `{name}` none: run `cargo xtask conformance \
+                 --precision f32`",
+                o.name
+            ));
+        }
+    }
     // The twin is optional and never an oracle: it attributes a failure, it does not score one
     // (`0037`, draft). Absent, the failures it would explain are reported unattributed.
     // A candidate's own program with one variable changed is `<candidate>:host-std` where that
@@ -913,6 +964,67 @@ mod tests {
         put(&scratch, "cand", &rows)?;
         let r = go(&scratch, "cand", &["o1"], "")?;
         assert_eq!(bars(&r), ["no-regress", "unscored"]);
+        Ok(())
+    }
+
+    /// `rows` at `f32`, written to `subject`'s `f32` file.
+    fn put_f32(scratch: &Scratch, subject: &str, rows: &[Row]) -> Result<(), String> {
+        let rows: Vec<Row> = rows
+            .iter()
+            .map(|r| Row {
+                precision: Precision::F32,
+                ..r.clone()
+            })
+            .collect();
+        let rel = results_path(Path::new(RESULTS), subject, None, Precision::F32);
+        write_file(&scratch.0, &rel.to_string_lossy(), &csv(&rows, "rev"))
+    }
+
+    /// The `f32` rows pair by precision (`0077`): a binary32 stratum fails against the oracle's
+    /// binary32 row alone, an oracle's `f32` rows with no candidate ones stop the run, a runner
+    /// that answers in binary32 owes its `f32` file, and a file holds its own precision only.
+    #[test]
+    fn f32_rows_are_judged_against_the_oracles_f32_rows() -> Result<(), String> {
+        let scratch = world("f32")?;
+        put(&scratch, "cand", &strata("cand", &[1.0, 1.0, 1.0]))?;
+        put(&scratch, "o1", &strata("o1", &[2.0, 2.0, 2.0]))?;
+        put_f32(&scratch, "o1", &strata("o1", &[2.0, 0.5, 2.0]))?;
+        let e = go(&scratch, "cand", &["o1"], "").err().unwrap_or_default();
+        assert!(
+            e.contains("`o1` has f32 rows and the candidate `cand` none"),
+            "{e}"
+        );
+        put_f32(&scratch, "cand", &strata("cand", &[1.0, 1.0, 1.0]))?;
+        let r = go(&scratch, "cand", &["o1"], "")?;
+        assert_eq!(bars(&r), ["no-regress", "domination"]);
+        assert!(r.text.contains("6 strata paired"), "{}", r.text);
+        assert!(
+            r.text.contains("FAIL domination: so3_exp/theta:1e-2/f32"),
+            "{}",
+            r.text
+        );
+        // An oracle with no `f32` file is binary64 only, unless it is a runner that answers in
+        // binary32.
+        put(&scratch, "o2", &strata("o2", &[2.0, 2.0, 2.0]))?;
+        let r = go(&scratch, "cand", &["o2"], "")?;
+        assert_eq!(bars(&r), ["no-regress"]);
+        assert!(
+            r.text
+                .contains("3 strata paired with an oracle, 3 with none"),
+            "{}",
+            r.text
+        );
+        // `sophus` is a runner that answers in binary32, so it owes `sophus--f32.csv`.
+        assert!(oracle_answers_f32("sophus"));
+        put(&scratch, "sophus", &strata("sophus", &[2.0, 2.0, 2.0]))?;
+        let e = go(&scratch, "cand", &["sophus"], "");
+        let e = e.err().unwrap_or_default();
+        assert!(e.contains("no f32 result rows for oracle `sophus`"), "{e}");
+        let wrong = strata("o1", &[1.0]);
+        let rel = results_path(Path::new(RESULTS), "o1", None, Precision::F32);
+        write_file(&scratch.0, &rel.to_string_lossy(), &csv(&wrong, "rev"))?;
+        let e = go(&scratch, "cand", &["o1"], "").err().unwrap_or_default();
+        assert!(e.contains("a `f64` row in a f32 file"), "{e}");
         Ok(())
     }
 

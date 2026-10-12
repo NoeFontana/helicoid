@@ -18,33 +18,82 @@
 //!   `determinant`; `None` (a zero determinant) answers a NaN inverse, the singular answer.
 //!
 //! The corpus's matrices are exactly symmetric, so the triangle read changes nothing; the corpus
-//! test asserts it. Every record is answered in binary64, `@f32` strata included: the protocol
-//! answers every stratum of a file, and the harness scores this runner at `f64` only.
+//! test asserts it. In binary64 every record is answered, `@f32` strata included: the protocol
+//! answers every stratum of a file. In binary32 (`docs/decisions/0077`) each id is the same
+//! generic code at `f32`, so the iteration tolerance is `f32::EPSILON` where it was
+//! `f64::EPSILON`; an input crosses by a lossless narrowing and an output by the exact widening.
 
 use std::collections::BTreeMap;
 
-use nalgebra::{Cholesky, Quaternion, SMatrix, SVector, Schur, SymmetricEigen, Unit};
+use nalgebra::{Cholesky, Quaternion, RealField, SMatrix, SVector, Schur, SymmetricEigen, Unit};
 
 /// Named arrays: a record's `in` object (its `shape` as two numbers), or the `out` of the answer.
 pub(crate) type Fields = BTreeMap<String, Vec<f64>>;
 
+/// The precision a record is answered in.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Precision {
+    F64,
+    F32,
+}
+
+/// The scalar an id is computed in. The corpus's values are binary64, so an `f32` input is the
+/// binary32 it equals and an `f32` output the binary64 that equals it.
+pub(crate) trait Real: RealField + Copy {
+    /// `x` as this scalar, or `None` when that would round it.
+    fn narrow(x: f64) -> Option<Self>;
+    /// The binary64 equal to `self`.
+    fn widen(self) -> f64;
+}
+
+impl Real for f64 {
+    fn narrow(x: f64) -> Option<Self> {
+        Some(x)
+    }
+
+    fn widen(self) -> f64 {
+        self
+    }
+}
+
+impl Real for f32 {
+    fn narrow(x: f64) -> Option<Self> {
+        // `as` rounds to nearest; the round trip says whether it had to.
+        let y = x as f32;
+        (f64::from(y).to_bits() == x.to_bits() || x.is_nan()).then_some(y)
+    }
+
+    fn widen(self) -> f64 {
+        f64::from(self)
+    }
+}
+
 /// One function id's evaluation.
 type Evaluate = fn(&Fields) -> Result<Fields, String>;
 
-/// The function ids this runner answers, each with its evaluation: the one list, so an id cannot
-/// be advertised without an answer or answered without being advertised.
-const TABLE: [(&str, Evaluate); 8] = [
-    ("eig3", eig3),
-    ("chol_n3", chol::<3>),
-    ("chol_n6", chol::<6>),
-    ("chol_solve_n3", chol_solve::<3>),
-    ("chol_solve_n6", chol_solve::<6>),
-    ("solve_cubic", solve_cubic),
-    ("quat_renormalize", quat_renormalize),
-    ("mat2_inverse_adj", mat2_inverse_adj),
+/// The function ids this runner answers, each with its evaluation in binary64 and in binary32:
+/// the one list, so an id cannot be advertised without an answer or answered without being
+/// advertised.
+const TABLE: [(&str, Evaluate, Evaluate); 8] = [
+    ("eig3", eig3::<f64>, eig3::<f32>),
+    ("chol_n3", chol::<f64, 3>, chol::<f32, 3>),
+    ("chol_n6", chol::<f64, 6>, chol::<f32, 6>),
+    ("chol_solve_n3", chol_solve::<f64, 3>, chol_solve::<f32, 3>),
+    ("chol_solve_n6", chol_solve::<f64, 6>, chol_solve::<f32, 6>),
+    ("solve_cubic", solve_cubic::<f64>, solve_cubic::<f32>),
+    (
+        "quat_renormalize",
+        quat_renormalize::<f64>,
+        quat_renormalize::<f32>,
+    ),
+    (
+        "mat2_inverse_adj",
+        mat2_inverse_adj::<f64>,
+        mat2_inverse_adj::<f32>,
+    ),
 ];
 
-/// The iterations `SymmetricEigen` and `Schur` get. Their `new` is `try_new(m, f64::EPSILON, 0)`,
+/// The iterations `SymmetricEigen` and `Schur` get. Their `new` is `try_new(m, T::EPSILON, 0)`,
 /// which never gives up: the same answer wherever it converges within this bound, and a NaN
 /// answer instead of a hang where it does not (`x³`, whose companion is a nilpotent Jordan block).
 /// LAPACK's `dlahqr` allows `30 · max(10, n)`; the slowest convergent cubic found, `x³ ∓ 1`, takes
@@ -53,18 +102,23 @@ const MAX_ITERATIONS: usize = 300;
 
 /// The function ids [`answer`] evaluates, in table order.
 pub(crate) fn supported() -> impl Iterator<Item = &'static str> {
-    TABLE.iter().map(|(id, _)| *id)
+    TABLE.iter().map(|(id, ..)| *id)
 }
 
-/// `fn_id`'s answer to `input`, or `None` if this runner does not answer `fn_id`.
-pub(crate) fn answer(fn_id: &str, input: &Fields) -> Option<Result<Fields, String>> {
-    TABLE
-        .iter()
-        .find(|(id, _)| *id == fn_id)
-        .map(|(_, evaluate)| evaluate(input))
+/// `fn_id`'s answer to `input` at `precision`, or `None` if this runner does not answer `fn_id`.
+pub(crate) fn answer(
+    fn_id: &str,
+    input: &Fields,
+    precision: Precision,
+) -> Option<Result<Fields, String>> {
+    let (_, wide, narrow) = TABLE.iter().find(|(id, ..)| *id == fn_id)?;
+    Some(match precision {
+        Precision::F64 => wide(input),
+        Precision::F32 => narrow(input),
+    })
 }
 
-fn take<'a>(input: &'a Fields, key: &str, len: usize) -> Result<&'a [f64], String> {
+fn take_f64<'a>(input: &'a Fields, key: &str, len: usize) -> Result<&'a [f64], String> {
     match input.get(key) {
         Some(v) if v.len() == len => Ok(v),
         Some(v) => Err(format!("`{key}` has {} values, expected {len}", v.len())),
@@ -72,10 +126,22 @@ fn take<'a>(input: &'a Fields, key: &str, len: usize) -> Result<&'a [f64], Strin
     }
 }
 
+/// The input `key`, `len` values, each exactly a `T`.
+fn take<T: Real>(input: &Fields, key: &str, len: usize) -> Result<Vec<T>, String> {
+    // Only a binary32 can refuse: no input is rounded on the way in.
+    let narrow =
+        |&x: &f64| T::narrow(x).ok_or_else(|| format!("`{key}` holds {x:e}, not a binary32"));
+    take_f64(input, key, len)?.iter().map(narrow).collect()
+}
+
+fn take_one<T: Real>(input: &Fields, key: &str) -> Result<T, String> {
+    Ok(take::<T>(input, key, 1)?[0])
+}
+
 /// The input `A`, which must carry `shape` `[N, N]`.
-fn take_square<const N: usize>(input: &Fields) -> Result<&[f64], String> {
+fn take_square<T: Real, const N: usize>(input: &Fields) -> Result<Vec<T>, String> {
     let n = N as f64;
-    match take(input, "shape", 2)? {
+    match take_f64(input, "shape", 2)? {
         [r, c] if r.to_bits() == n.to_bits() && c.to_bits() == n.to_bits() => {
             take(input, "A", N * N)
         }
@@ -83,10 +149,15 @@ fn take_square<const N: usize>(input: &Fields) -> Result<&[f64], String> {
     }
 }
 
+/// `values` widened to binary64.
+fn wide<T: Real>(values: &[T]) -> Vec<f64> {
+    values.iter().map(|x| x.widen()).collect()
+}
+
 /// A helicoid matrix, column-major, as nalgebra's: the same order.
-pub(crate) fn helicoid_to_nalgebra_matrix<const R: usize, const C: usize>(
-    m: &[f64],
-) -> Result<SMatrix<f64, R, C>, String> {
+pub(crate) fn helicoid_to_nalgebra_matrix<T: Real, const R: usize, const C: usize>(
+    m: &[T],
+) -> Result<SMatrix<T, R, C>, String> {
     match m.len() == R * C {
         true => Ok(SMatrix::from_column_slice(m)),
         false => Err(format!(
@@ -98,14 +169,14 @@ pub(crate) fn helicoid_to_nalgebra_matrix<const R: usize, const C: usize>(
 }
 
 /// A nalgebra matrix as helicoid's column-major array.
-pub(crate) fn nalgebra_to_helicoid_matrix<const R: usize, const C: usize>(
-    m: &SMatrix<f64, R, C>,
+pub(crate) fn nalgebra_to_helicoid_matrix<T: Real, const R: usize, const C: usize>(
+    m: &SMatrix<T, R, C>,
 ) -> Vec<f64> {
-    m.as_slice().to_vec()
+    wide(m.as_slice())
 }
 
 /// A helicoid quaternion `[w, x, y, z]` as nalgebra's, whose `coords` are `[i, j, k, w]`.
-pub(crate) fn helicoid_to_nalgebra_quat(q: &[f64]) -> Result<Quaternion<f64>, String> {
+pub(crate) fn helicoid_to_nalgebra_quat<T: Real>(q: &[T]) -> Result<Quaternion<T>, String> {
     match *q {
         [w, x, y, z] => Ok(Quaternion::new(w, x, y, z)),
         _ => Err(format!("a quaternion has 4 values, not {}", q.len())),
@@ -113,8 +184,8 @@ pub(crate) fn helicoid_to_nalgebra_quat(q: &[f64]) -> Result<Quaternion<f64>, St
 }
 
 /// A nalgebra quaternion as helicoid's `[w, x, y, z]`.
-pub(crate) fn nalgebra_to_helicoid_quat(q: &Quaternion<f64>) -> Vec<f64> {
-    vec![q.w, q.i, q.j, q.k]
+pub(crate) fn nalgebra_to_helicoid_quat<T: Real>(q: &Quaternion<T>) -> Vec<f64> {
+    wide(&[q.w, q.i, q.j, q.k])
 }
 
 fn fields<const N: usize>(entries: [(&str, Vec<f64>); N]) -> Fields {
@@ -135,42 +206,43 @@ fn flag(set: bool) -> f64 {
 /// `SymmetricEigen` of `A`, with the eigenpairs sorted ascending by eigenvalue (a stable sort, so
 /// equal eigenvalues keep nalgebra's order) and each eigenvector column's sign as nalgebra gives
 /// it. Not converged within [`MAX_ITERATIONS`]: NaN.
-fn eig3(input: &Fields) -> Result<Fields, String> {
-    let a = helicoid_to_nalgebra_matrix::<3, 3>(take_square::<3>(input)?)?;
-    let Some(eig) = SymmetricEigen::try_new(a, f64::EPSILON, MAX_ITERATIONS) else {
+fn eig3<T: Real>(input: &Fields) -> Result<Fields, String> {
+    let a = helicoid_to_nalgebra_matrix::<T, 3, 3>(&take_square::<T, 3>(input)?)?;
+    let Some(eig) = SymmetricEigen::try_new(a, T::default_epsilon(), MAX_ITERATIONS) else {
         return Ok(fields([
             ("V", vec![f64::NAN; 9]),
             ("lambda", vec![f64::NAN; 3]),
         ]));
     };
+    let values = wide(eig.eigenvalues.as_slice());
     let mut order = [0, 1, 2];
-    order.sort_by(|&i, &j| eig.eigenvalues[i].total_cmp(&eig.eigenvalues[j]));
-    let lambda = order.iter().map(|&i| eig.eigenvalues[i]).collect();
+    order.sort_by(|&i, &j| values[i].total_cmp(&values[j]));
+    let lambda = order.iter().map(|&i| values[i]).collect();
     let v = order
         .iter()
         .flat_map(|&i| {
-            eig.eigenvectors
-                .column(i)
-                .iter()
-                .copied()
-                .collect::<Vec<_>>()
+            let column = eig.eigenvectors.column(i);
+            column.iter().map(|x| x.widen()).collect::<Vec<_>>()
         })
         .collect();
     Ok(fields([("V", v), ("lambda", lambda)]))
 }
 
 /// `A.try_inverse()` and `A.determinant()`; `None`: a NaN inverse.
-fn mat2_inverse_adj(input: &Fields) -> Result<Fields, String> {
-    let a = helicoid_to_nalgebra_matrix::<2, 2>(take_square::<2>(input)?)?;
+fn mat2_inverse_adj<T: Real>(input: &Fields) -> Result<Fields, String> {
+    let a = helicoid_to_nalgebra_matrix::<T, 2, 2>(&take_square::<T, 2>(input)?)?;
     let inv = a
         .try_inverse()
         .map_or(vec![f64::NAN; 4], |m| nalgebra_to_helicoid_matrix(&m));
-    Ok(fields([("det", vec![a.determinant()]), ("inv", inv)]))
+    Ok(fields([
+        ("det", vec![a.determinant().widen()]),
+        ("inv", inv),
+    ]))
 }
 
 /// `Cholesky::new(A)`: `valid = 1` and its `L` (zero above the diagonal), or `valid = 0` and zeros.
-fn chol<const N: usize>(input: &Fields) -> Result<Fields, String> {
-    let a = helicoid_to_nalgebra_matrix::<N, N>(take_square::<N>(input)?)?;
+fn chol<T: Real, const N: usize>(input: &Fields) -> Result<Fields, String> {
+    let a = helicoid_to_nalgebra_matrix::<T, N, N>(&take_square::<T, N>(input)?)?;
     let l = Cholesky::new(a).map(|c| c.l());
     Ok(fields([
         (
@@ -182,11 +254,11 @@ fn chol<const N: usize>(input: &Fields) -> Result<Fields, String> {
 }
 
 /// `Cholesky::new(A)?.solve(b)`: forward then backward substitution. `None`: NaN.
-fn chol_solve<const N: usize>(input: &Fields) -> Result<Fields, String> {
-    let a = helicoid_to_nalgebra_matrix::<N, N>(take_square::<N>(input)?)?;
-    let b = SVector::<f64, N>::from_column_slice(take(input, "b", N)?);
-    let x = Cholesky::new(a).map_or([f64::NAN; N].into(), |c| c.solve(&b));
-    Ok(fields([("x", x.as_slice().to_vec())]))
+fn chol_solve<T: Real, const N: usize>(input: &Fields) -> Result<Fields, String> {
+    let a = helicoid_to_nalgebra_matrix::<T, N, N>(&take_square::<T, N>(input)?)?;
+    let b = SVector::<T, N>::from_column_slice(&take::<T>(input, "b", N)?);
+    let x = Cholesky::new(a).map_or(vec![f64::NAN; N], |c| wide(c.solve(&b).as_slice()));
+    Ok(fields([("x", x)]))
 }
 
 /// The roots of `a x³ + b x² + c x + d` by `numpy.roots`' route, without LAPACK's balancing and
@@ -207,21 +279,22 @@ fn chol_solve<const N: usize>(input: &Fields) -> Result<Fields, String> {
 /// `a = 0`, or a non-finite coefficient or companion entry: no valid slot. Not converged within
 /// [`MAX_ITERATIONS`]: NaN in every slot, each marked valid, so the row is non-finite rather than
 /// a scored miss.
-fn solve_cubic(input: &Fields) -> Result<Fields, String> {
-    let [a, b, c, d] = ["a", "b", "c", "d"].map(|k| take(input, k, 1).map(|v| v[0]));
+fn solve_cubic<T: Real>(input: &Fields) -> Result<Fields, String> {
+    let [a, b, c, d] = ["a", "b", "c", "d"].map(|k| take_one::<T>(input, k));
     let (a, b, c, d) = (a?, b?, c?, d?);
     let none = || fields([("roots", vec![0.0; 3]), ("valid", vec![0.0; 3])]);
     let row = [-b / a, -c / a, -d / a];
-    if a == 0.0 || ![a, b, c, d].iter().chain(&row).all(|x| x.is_finite()) {
+    if a == T::zero() || ![a, b, c, d].iter().chain(&row).all(|x| x.is_finite()) {
         return Ok(none());
     }
+    let (one, zero) = (T::one(), T::zero());
     #[rustfmt::skip]
-    let companion = SMatrix::<f64, 3, 3>::new(
+    let companion = SMatrix::<T, 3, 3>::new(
         row[0], row[1], row[2],
-        1.0, 0.0, 0.0,
-        0.0, 1.0, 0.0,
+        one, zero, zero,
+        zero, one, zero,
     );
-    let Some(schur) = Schur::try_new(companion, f64::EPSILON, MAX_ITERATIONS) else {
+    let Some(schur) = Schur::try_new(companion, T::default_epsilon(), MAX_ITERATIONS) else {
         return Ok(fields([
             ("roots", vec![f64::NAN; 3]),
             ("valid", vec![1.0; 3]),
@@ -231,8 +304,8 @@ fn solve_cubic(input: &Fields) -> Result<Fields, String> {
     let (mut roots, mut valid) = (vec![0.0; 3], vec![0.0; 3]);
     let mut i = 0;
     while i < 3 {
-        if i == 2 || t[(i + 1, i)] == 0.0 {
-            (roots[i], valid[i]) = (t[(i, i)], 1.0);
+        if i == 2 || t[(i + 1, i)] == zero {
+            (roots[i], valid[i]) = (t[(i, i)].widen(), 1.0);
             i += 1;
         } else {
             i += 2;
@@ -244,8 +317,8 @@ fn solve_cubic(input: &Fields) -> Result<Fields, String> {
 /// `Unit::new_unchecked(q).renormalize_fast()`, which nalgebra 0.35.0 computes as
 /// `s = (x² + z²) + (y² + w²)` (`dotx`'s four-lane pairing over `coords = [x, y, z, w]`), then
 /// each component times `0.5 · (3 − s)`: the first-order Newton step of `NUMERICS.md` §3.6.
-fn quat_renormalize(input: &Fields) -> Result<Fields, String> {
-    let mut q = Unit::new_unchecked(helicoid_to_nalgebra_quat(take(input, "q", 4)?)?);
+fn quat_renormalize<T: Real>(input: &Fields) -> Result<Fields, String> {
+    let mut q = Unit::new_unchecked(helicoid_to_nalgebra_quat(&take::<T>(input, "q", 4)?)?);
     q.renormalize_fast();
     Ok(fields([("q", nalgebra_to_helicoid_quat(q.as_ref()))]))
 }
@@ -274,8 +347,8 @@ mod tests {
     #[test]
     fn every_supported_id_has_an_answer_and_no_other() {
         assert_eq!(supported().count(), TABLE.len());
-        assert!(supported().all(|id| answer(id, &Fields::new()).is_some()));
-        assert!(answer("so3_exp", &Fields::new()).is_none());
+        assert!(supported().all(|id| answer(id, &Fields::new(), Precision::F64).is_some()));
+        assert!(answer("so3_exp", &Fields::new(), Precision::F32).is_none());
     }
 
     /// Distinct components, so a permutation cannot pass.
@@ -294,7 +367,7 @@ mod tests {
     /// `[1, 2, 3, 4, 5, 6]` column-major is the 2×3 matrix whose first row is `1, 3, 5`.
     #[test]
     fn a_matrix_crosses_column_major_both_ways() -> Result<(), String> {
-        let m = helicoid_to_nalgebra_matrix::<2, 3>(&[1.0, 2.0, 3.0, 4.0, 5.0, 6.0])?;
+        let m = helicoid_to_nalgebra_matrix::<f64, 2, 3>(&[1.0, 2.0, 3.0, 4.0, 5.0, 6.0])?;
         assert_eq!(
             bits(&[m[(0, 0)], m[(0, 1)], m[(0, 2)]]),
             bits(&[1.0, 3.0, 5.0])
@@ -302,23 +375,23 @@ mod tests {
         assert_eq!(m[(1, 0)].to_bits(), 2.0f64.to_bits());
         let back = nalgebra_to_helicoid_matrix(&m);
         assert_eq!(bits(&back), bits(&[1.0, 2.0, 3.0, 4.0, 5.0, 6.0]));
-        assert!(helicoid_to_nalgebra_matrix::<2, 2>(&[1.0; 3]).is_err());
+        assert!(helicoid_to_nalgebra_matrix::<f64, 2, 2>(&[1.0; 3]).is_err());
         Ok(())
     }
 
     #[test]
     fn a_matrix_input_must_carry_its_shape() {
         let a = vec![0.0; 9];
-        assert!(eig3(&input([("A", a.clone())])).is_err());
-        assert!(eig3(&input([("A", a.clone()), ("shape", vec![3.0, 1.0])])).is_err());
-        assert!(chol::<6>(&square::<3>(a)).is_err());
+        assert!(eig3::<f64>(&input([("A", a.clone())])).is_err());
+        assert!(eig3::<f64>(&input([("A", a.clone()), ("shape", vec![3.0, 1.0])])).is_err());
+        assert!(chol::<f64, 6>(&square::<3>(a)).is_err());
     }
 
     /// `diag(3, −1, 2)`: the eigenvalues ascending, `−1, 2, 3`, and the vectors the matching unit
     /// columns `e₁, e₂, e₀` up to sign.
     #[test]
     fn a_diagonal_eig3_is_sorted_ascending_with_its_unit_vectors() -> Result<(), String> {
-        let out = eig3(&square::<3>(vec![
+        let out = eig3::<f64>(&square::<3>(vec![
             3.0, 0.0, 0.0, 0.0, -1.0, 0.0, 0.0, 0.0, 2.0,
         ]));
         assert_eq!(bits(&get(&out, "lambda")?), bits(&[-1.0, 2.0, 3.0]));
@@ -332,7 +405,7 @@ mod tests {
     /// `(1, ∓1, 0)/√2`.
     #[test]
     fn a_coupled_eig3_has_its_closed_form_pairs() -> Result<(), String> {
-        let out = eig3(&square::<3>(vec![
+        let out = eig3::<f64>(&square::<3>(vec![
             2.0, 1.0, 0.0, 1.0, 2.0, 0.0, 0.0, 0.0, 5.0,
         ]));
         let lambda = get(&out, "lambda")?;
@@ -359,14 +432,14 @@ mod tests {
     #[test]
     fn an_spd_chol_is_valid_and_exact() -> Result<(), String> {
         let a = vec![4.0, 2.0, 2.0, 2.0, 5.0, 3.0, 2.0, 3.0, 6.0];
-        let out = chol::<3>(&square::<3>(a.clone()));
+        let out = chol::<f64, 3>(&square::<3>(a.clone()));
         assert_eq!(bits(&get(&out, "valid")?), bits(&[1.0]));
         let l = [2.0, 1.0, 1.0, 0.0, 2.0, 1.0, 0.0, 0.0, 2.0];
         assert_eq!(bits(&get(&out, "L")?), bits(&l));
         // `A x = b` for `x = (1, −1, 2)`: `b = (6, 3, 11)`.
         let mut solve = square::<3>(a);
         solve.insert("b".into(), vec![6.0, 3.0, 11.0]);
-        let x = get(&chol_solve::<3>(&solve), "x")?;
+        let x = get(&chol_solve::<f64, 3>(&solve), "x")?;
         for (got, want) in x.iter().zip([1.0, -1.0, 2.0]) {
             assert!((got - want).abs() < 1e-15, "{x:?}");
         }
@@ -377,12 +450,12 @@ mod tests {
     #[test]
     fn an_indefinite_chol_is_invalid_with_zeros_and_its_solve_is_nan() -> Result<(), String> {
         let a = vec![1.0, 2.0, 0.0, 2.0, 1.0, 0.0, 0.0, 0.0, 1.0];
-        let out = chol::<3>(&square::<3>(a.clone()));
+        let out = chol::<f64, 3>(&square::<3>(a.clone()));
         assert_eq!(bits(&get(&out, "valid")?), bits(&[0.0]));
         assert_eq!(bits(&get(&out, "L")?), bits(&[0.0; 9]));
         let mut solve = square::<3>(a);
         solve.insert("b".into(), vec![1.0; 3]);
-        assert!(get(&chol_solve::<3>(&solve), "x")?
+        assert!(get(&chol_solve::<f64, 3>(&solve), "x")?
             .iter()
             .all(|x| x.is_nan()));
         Ok(())
@@ -392,14 +465,14 @@ mod tests {
     #[test]
     fn chol_reads_the_lower_triangle_only() -> Result<(), String> {
         let a = vec![4.0, 2.0, 2.0, 99.0, 5.0, 3.0, -7.0, f64::NAN, 6.0];
-        let out = chol::<3>(&square::<3>(a));
+        let out = chol::<f64, 3>(&square::<3>(a));
         let l = [2.0, 1.0, 1.0, 0.0, 2.0, 1.0, 0.0, 0.0, 2.0];
         assert_eq!(bits(&get(&out, "L")?), bits(&l));
         Ok(())
     }
 
     fn cubic(a: f64, b: f64, c: f64, d: f64) -> Result<(Vec<f64>, Vec<f64>), String> {
-        let out = solve_cubic(&input([
+        let out = solve_cubic::<f64>(&input([
             ("a", vec![a]),
             ("b", vec![b]),
             ("c", vec![c]),
@@ -474,16 +547,56 @@ mod tests {
     #[test]
     fn renormalize_is_the_newton_step_in_w_first_order() -> Result<(), String> {
         let w = 1.0 + 2f64.powi(-20);
-        let out = quat_renormalize(&input([("q", vec![w, 0.0, 0.0, 0.0])]));
+        let out = quat_renormalize::<f64>(&input([("q", vec![w, 0.0, 0.0, 0.0])]));
         let want = 1.0 - 3.0 * 2f64.powi(-41);
         assert_eq!(bits(&get(&out, "q")?), bits(&[want, 0.0, 0.0, 0.0]));
         // Distinct components keep their places.
-        let out = quat_renormalize(&input([("q", vec![0.5, -0.5, 0.25, 0.75])]));
+        let out = quat_renormalize::<f64>(&input([("q", vec![0.5, -0.5, 0.25, 0.75])]));
         let f = 0.5 * (3.0 - 1.125);
         assert_eq!(
             bits(&get(&out, "q")?),
             bits(&[0.5 * f, -0.5 * f, 0.25 * f, 0.75 * f])
         );
+        Ok(())
+    }
+
+    /// An input crosses into binary32 exactly or not at all, and an output back exactly.
+    #[test]
+    fn a_binary32_input_is_the_binary64_it_equals_and_no_other() {
+        let one_ulp = 1.0 + 2f64.powi(-23);
+        assert_eq!(
+            f32::narrow(one_ulp).map(f32::to_bits),
+            Some(1.0f32.next_up().to_bits())
+        );
+        assert_eq!(f32::narrow(1.0 + 2f64.powi(-30)), None);
+        // A binary32 subnormal, and the binary64 nearest `10⁻⁴⁰`, which is none.
+        let subnormal = f64::from(1e-40f32);
+        let back = f32::narrow(subnormal).map(f32::widen);
+        assert_eq!(back.map(f64::to_bits), Some(subnormal.to_bits()));
+        assert_eq!(f32::narrow(1e-40), None);
+        assert!(f32::narrow(f64::NAN).is_some_and(f32::is_nan));
+        assert_eq!(f32::narrow(f64::MAX), None);
+        let q = helicoid_to_nalgebra_quat::<f32>(&[1.0, 2.0, 3.0, 4.0]).map(|q| q.coords);
+        assert_eq!(
+            q.map(|c| c.as_slice().to_vec()),
+            Ok(vec![2.0f32, 3.0, 4.0, 1.0])
+        );
+        let take = take::<f32>(&input([("q", vec![1.0 + 2f64.powi(-30)])]), "q", 1);
+        assert!(take.is_err_and(|e| e.contains("not a binary32")));
+    }
+
+    /// `q = (1 + 2⁻¹⁰)(1, 0, 0, 0)` in binary32: `s = 1 + 2⁻⁹ + 2⁻²⁰`, `0.5 (3 − s) = 1 − 2⁻¹⁰ −
+    /// 2⁻²¹` and the product `1 − 3 · 2⁻²¹ − 2⁻³¹` exactly, by hand, which binary32 rounds to
+    /// `1 − 3 · 2⁻²¹` and binary64 keeps: the step is computed in binary32, not promoted.
+    #[test]
+    fn renormalize_in_binary32_rounds_in_binary32() -> Result<(), String> {
+        let w = 1.0 + 2f64.powi(-10);
+        let q = |out: &Result<Fields, String>| get(out, "q").map(|q| q[0]);
+        let narrow = quat_renormalize::<f32>(&input([("q", vec![w, 0.0, 0.0, 0.0])]));
+        let wide = quat_renormalize::<f64>(&input([("q", vec![w, 0.0, 0.0, 0.0])]));
+        let rounded = 1.0 - 3.0 * 2f64.powi(-21);
+        assert_eq!(q(&narrow)?.to_bits(), rounded.to_bits());
+        assert_eq!(q(&wide)?.to_bits(), (rounded - 2f64.powi(-31)).to_bits());
         Ok(())
     }
 }

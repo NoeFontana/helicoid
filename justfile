@@ -119,8 +119,9 @@ oracle-sophus-rs:
 # The nalgebra oracle (`docs/decisions/0056` decision 4): as `oracle-sophus-rs`, for
 # `runners/nalgebra` (`subject_version` is the pinned `nalgebra`), audited with the runner's own
 # `deny.toml`, which cargo-deny finds beside the manifest: the root's bans `nalgebra`. It answers
-# `eig3`, `chol_*`, `chol_solve_*`, `solve_cubic` and `quat_renormalize`, in binary64.
-# Rows in conformance/results/nalgebra.csv.
+# `eig3`, `chol_*`, `chol_solve_*`, `solve_cubic`, `quat_renormalize` and `mat2_inverse_adj`, in
+# binary64 and, on their `@f32` strata, in binary32 (`docs/decisions/0077`). Rows in
+# conformance/results/nalgebra.csv and nalgebra--f32.csv.
 oracle-nalgebra:
     cargo fmt --manifest-path runners/nalgebra/Cargo.toml -- --check
     cargo clippy --manifest-path runners/nalgebra/Cargo.toml --locked --all-targets -- -D warnings
@@ -128,14 +129,17 @@ oracle-nalgebra:
     cargo deny --manifest-path runners/nalgebra/Cargo.toml check advisories licenses sources
     cargo nextest run --manifest-path runners/nalgebra/Cargo.toml --locked
     cargo xtask conformance --oracle nalgebra
+    cargo xtask conformance --oracle nalgebra --precision f32
 
 # The Sophus C++ oracle (`docs/decisions/0072`): the image of docker/oracles/sophus, pinned by base
 # digest, Ubuntu snapshot and Sophus commit. Its build compiles the runner with warnings denied and
 # runs the conversions' hand-computed tests; the image then runs offline over the corpus, as the
 # owner of the answers' directory. Needs docker. `subject_version` names Sophus, Eigen, gcc and
-# glibc; it answers in binary64. Rows in conformance/results/sophus.csv.
+# glibc; it answers in binary64, and `sim3_*`'s `@f32` strata with `Sophus::Sim3<float>`
+# (`docs/decisions/0077`). Rows in conformance/results/sophus.csv and sophus--f32.csv.
 oracle-sophus:
     cargo xtask conformance --oracle sophus
+    cargo xtask conformance --oracle sophus --precision f32
 
 # The GTSAM C++ oracle (`docs/decisions/0074`): the image of docker/oracles/gtsam, pinned by base
 # digest, Ubuntu snapshot and GTSAM commit, the library compiled in the image under the runner's
@@ -179,7 +183,8 @@ compare *args:
 
 # The bars of `docs/PHASE1.md` §8 over conformance/results: domination over the best oracle and exact
 # no-regress against conformance/baseline, per (fn, stratum, precision) on the max, then coverage of
-# the corpus. It first reruns the in-process subjects, so the candidate's rows are current; the
+# the corpus. It first reruns the in-process subjects at both precisions, so the candidate's rows are
+# current (`docs/decisions/0077`: an oracle's `f32` rows pair with the candidate's `@f32` ones); the
 # oracles' rows are what `oracle-tf-tree-math`, `oracle-sophus-rs`, `oracle-nalgebra`, `oracle-sophus`, `oracle-gtsam`, `oracle-manif` last wrote. `--check` also fails on
 # a baseline or docs/evidence/ENVELOPE.md (its oracle columns aside) that `--bless` would write
 # differently (an improved max is blessed in its own PR); `--bless` writes both, and nothing while
@@ -189,6 +194,7 @@ compare *args:
 # a stand-in, read-only in practice. It also reruns `conformance-twin`, so the attribution of a
 # domination failure is never read from a stale twin.
 envelope *args: conformance conformance-twin
+    cargo xtask conformance --precision f32
     cargo xtask envelope {{args}}
 
 # The bench gate (`docs/PHASE1.md` §9): criterion over the shipped coefficient kernel, then the
