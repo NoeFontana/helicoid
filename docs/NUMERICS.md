@@ -288,7 +288,7 @@ Storage: unit $n \in \mathbb{R}^3$. The chart at $n$ is frozen at construction:
   $H = I - 2\,\nu\nu^\top/(\nu^\top\nu)$; $b_1 = H e_x$, $b_2 = \varsigma\,H e_y$. $H e_z = -\varsigma\,n$,
   so $b_1, b_2 \perp n$; $\nu^\top\nu = 2(1 + |n_z|) \ge 2$ never cancels. The factor $\varsigma$ on $b_2$
   orients the frame, $b_1 \times b_2 = n$ on both hemispheres (`maths/charts.md` CH.8(f);
-  [`0082`](./decisions/0082-the-sphere-chart-is-oriented-and-shows-its-frames.md)): `S2Chart::basis` returns $B = [b_1\ b_2]$, and
+  [`0082`](./decisions/0082-the-sphere-chart-is-oriented-and-shows-its-frames.md)): `S2Chart::rotation_basis` returns $B = [b_1\ b_2]$, and
   `S2Chart::displacement_basis` returns $T = [b_1 \times n,\ b_2 \times n] = [-b_2,\ b_1]$, which is
   $\partial(n \oplus \delta)/\partial\delta$ at $0$, with $T^\top = \partial\,\mathrm{local}/\partial m$ at $m = n$.
 - **Retract.** $n \oplus \delta = \mathrm{Exp}(B\delta)\,n = \cos\theta\,n + \tfrac{\sin\theta}{\theta}(\delta_2 b_1 - \delta_1 b_2)$, $B = [b_1\ b_2]$.

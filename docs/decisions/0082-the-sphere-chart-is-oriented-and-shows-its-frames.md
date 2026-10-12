@@ -31,7 +31,7 @@ S² is unreleased (CHANGELOG `[Unreleased]`), so its coordinates can change now 
    CH.9–CH.11 holds with `ς = 1`: `retract` is `cos θ n + (sin θ/θ)(δ₂b₁ - δ₁b₂)`, and
    `retract_jacobian`'s normal part loses its `ς`. `local` and the frame change of CH.10 read the
    frames as computed, so their code is unchanged.
-2. **`S2Chart::basis(&self) -> Matrix<S, 3, 2>`** returns `B = [b₁ b₂]`, the frame of `δ`'s
+2. **`S2Chart::rotation_basis(&self) -> Matrix<S, 3, 2>`** returns `B = [b₁ b₂]`, the frame of `δ`'s
    rotation vector.
 3. **`S2Chart::displacement_basis(&self) -> Matrix<S, 3, 2>`** returns
    `T = [b₁ × n, b₂ × n] = [-b₂, b₁]`. That is `∂retract/∂δ` at `δ = 0`, and `Tᵀ = ∂local/∂m` at
@@ -46,6 +46,8 @@ S² is unreleased (CHANGELOG `[Unreleased]`), so its coordinates can change now 
   one.
 - **Rejected: `T` as a 3×2 `AmbientChart` row.** That trait is Phase 6 and not started; `T` at the
   base is all a residual's chain rule needs now.
+- **Names:** `rotation_basis`, not `basis`, which is one letter from `Chart::base` on the same
+  type and would read as the point; it pairs with `displacement_basis`.
 - **Return type:** `Matrix<S, 3, 2>` and not a pair of `Vec3`, so that `B * δ` and `Tᵀ * v` are the
   products they are.
 
@@ -60,7 +62,7 @@ S² is unreleased (CHANGELOG `[Unreleased]`), so its coordinates can change now 
 - API §6:
   1. Rules: R1 and R2 are untouched (values, no side); R3 holds, since two names are two
      quantities.
-  2. Corpus: no new arithmetic. `basis` returns stored values, and `displacement_basis` is a
+  2. Corpus: no new arithmetic. `rotation_basis` returns stored values, and `displacement_basis` is a
      negation of them. Both are covered by the `s2_*` strata and by
      `the_basis_is_orthonormal_and_oriented` and
      `displacement_basis_is_the_derivative_of_the_chart_at_its_base` (against `Dual`: worst 6.000 `u` over 10⁵ cases, bound 12 `u`).

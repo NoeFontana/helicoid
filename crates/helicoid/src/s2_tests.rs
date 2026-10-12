@@ -102,7 +102,7 @@ fn legs<S: Sample>(a: &[f64; 3], b: &[f64; 2], c: &[f64; 3]) -> [f64; 4] {
 /// of `S`.
 fn basis_err<S: Sample>(a: &[f64; 3]) -> f64 {
     let n = point::<S>(a);
-    let b = S2Chart::at(&n).basis();
+    let b = S2Chart::at(&n).rotation_basis();
     let (b1, b2, nn) = (f(b.col(0)), f(b.col(1)), f(n.vec()));
     let k = cross(b1, b2);
     let errs = [
@@ -116,6 +116,28 @@ fn basis_err<S: Sample>(a: &[f64; 3]) -> f64 {
         k[2] - nn[2],
     ];
     errs.iter().fold(0.0, |w, x| worst(w, x.abs())) / unit::<S>()
+}
+
+/// The bits of `x`, every NaN one value: D16 sets NaN's sign and payload aside.
+fn bits64(x: f64) -> u64 {
+    if x.is_nan() {
+        u64::MAX
+    } else {
+        x.to_bits()
+    }
+}
+
+/// `rotation_basis`'s `b₂`, with `ς` folded into `k y`, against `ς (H e_y)` formed unfolded, every
+/// lane as `bits` reads it (`0082`): the fold is exact because `ς = ±1` and rounding is odd.
+fn folded<S: Sample>(a: &[f64; 3], bits: impl Fn(S) -> [u64; 3]) -> bool {
+    let n = point::<S>(a);
+    let [x, y, z] = n.vec().0;
+    let s = S::select(z.lt(S::zero()), -S::one(), S::one());
+    let nu = Vector([x, y, z + s]);
+    let ky = (S::lit(2.0) / nu.norm_sq()) * y;
+    let unfolded = Vector([-(ky * x), S::one() - ky * y, -(ky * nu.0[2])]).scale(s);
+    let b2 = S2Chart::at(&n).rotation_basis().col(1);
+    (0..3).all(|i| bits(b2.0[i]) == bits(unfolded.0[i]))
 }
 
 /// `|‖retract(δ)‖² - 1|` in `u`: the drift `retract` adds to a base on the sphere.
@@ -226,6 +248,14 @@ proptest! {
     #[test]
     fn displacement_basis_is_the_derivative_of_the_chart_at_its_base(a in laws::sample::<3>()) {
         laws::within(displacement_basis_matches_dual(&a), DISPLACEMENT)?;
+    }
+
+    #[test]
+    fn the_folded_sign_is_sigma_times_h_e_y_to_the_bit(a in laws::sample::<3>()) {
+        prop_assert!(folded::<f64>(&a, |x| [bits64(x), 0, 0]));
+        prop_assert!(folded::<f32>(&a, |x| [bits64(f64::from(x)), 0, 0]));
+        // `Dual`'s product rule sums signed zeros in another order, so its lanes agree in value.
+        prop_assert!(folded::<D2>(&a, |x| [x.v, x.d[0], x.d[1]].map(|v| bits64(v + 0.0))));
     }
 
     #[test]
