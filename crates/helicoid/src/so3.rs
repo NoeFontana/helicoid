@@ -201,10 +201,13 @@ impl<S: Real> SO3<S> {
     }
 
     /// The rotation of a `3 x 3` matrix by Shepperd's method (`NUMERICS.md` §3.4): the largest of
-    /// `{tr R, R00, R11, R22}` through nested `branch`es, then normalize. Closed form avoids
-    /// iterative convergence failures on degenerate input.
+    /// `{tr R, R00, R11, R22}` through nested `branch`es picks a column of `K(R) + I`, which is
+    /// `4 q_j q` (SO.12(b)), and normalizing it is `q` with its pivot positive: one `sqrt`, no
+    /// division before it (`0079`, draft). Closed form avoids iterative convergence failures on
+    /// degenerate input.
     ///
-    /// Each arm takes `sqrt` at a safe argument (`0003` item 3): the selected candidate is at least `1`.
+    /// The selected column's pivot entry is at least `1` (SO.12(c)), so the `sqrt` takes a norm of
+    /// at least `1` and needs no safe argument (`0003` item 3).
     ///
     /// # Domain
     ///
@@ -221,7 +224,6 @@ impl<S: Real> SO3<S> {
         // `get` per entry, each read once: `row(i)` builds and discards a whole `Vec3` per scalar,
         // and the diagonal is wanted four times over (the trace and the three axis candidates).
         let (d0, d1, d2) = (r.get(0, 0), r.get(1, 1), r.get(2, 2));
-        let (two, half) = (S::lit(2.0), S::lit(0.5));
         let trace = (d0 + d1) + d2;
         let c = [
             S::one() + trace,
@@ -233,55 +235,19 @@ impl<S: Real> SO3<S> {
         let best01 = c[1].lt(c[0]);
         let best23 = c[3].lt(c[2]);
         let first = S::select(best23, c[2], c[3]).lt(S::select(best01, c[0], c[1]));
-        let pick = [
-            first.and(best01),
-            first.and(best01.not()),
-            first.not().and(best23),
-            first.not().and(best23.not()),
-        ];
-        // The three off-diagonal differences and sums every arm reads.
+        // The three off-diagonal differences and sums: `K`'s off-diagonal entries (SO.11).
         let (m01, m10) = (r.get(0, 1), r.get(1, 0));
         let (m02, m20) = (r.get(0, 2), r.get(2, 0));
         let (m12, m21) = (r.get(1, 2), r.get(2, 1));
         let (dx, dy, dz) = (m21 - m12, m02 - m20, m10 - m01);
         let (sx, sy, sz) = (m01 + m10, m02 + m20, m12 + m21);
-        // `d >= 1` when selected and exactly `1` when not, so `two * d` never divides by zero.
-        let arm = |i: usize| {
-            let d = S::select(pick[i], c[i], S::one()).sqrt();
-            (half * d, two * d)
-        };
         let q = S::branch(
             first,
-            || {
-                S::branch(
-                    best01,
-                    || {
-                        let (p, t) = arm(0);
-                        [p, dx / t, dy / t, dz / t]
-                    },
-                    || {
-                        let (p, t) = arm(1);
-                        [dx / t, p, sx / t, sy / t]
-                    },
-                )
-            },
-            || {
-                S::branch(
-                    best23,
-                    || {
-                        let (p, t) = arm(2);
-                        [dy / t, sx / t, p, sz / t]
-                    },
-                    || {
-                        let (p, t) = arm(3);
-                        [dz / t, sy / t, sz / t, p]
-                    },
-                )
-            },
+            || S::branch(best01, || [c[0], dx, dy, dz], || [dx, c[1], sx, sy]),
+            || S::branch(best23, || [dy, sx, c[2], sz], || [dz, sy, sz, c[3]]),
         );
         // The same four divisions `Quat::from_wxyz_normalized` performs, in the same order and on
-        // the same `norm_sq`, so an in-domain matrix gives the identical quaternion -- without its
-        // `debug_assert!`, for the reason the *Domain* note gives.
+        // the same `norm_sq`, without its `debug_assert!`, for the reason the *Domain* note gives.
         let n = Quat {
             w: q[0],
             x: q[1],

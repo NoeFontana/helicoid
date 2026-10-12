@@ -1,0 +1,90 @@
+# 0079: `from_matrix` normalizes a column of `K + I`
+
+**Status:** draft
+**Owner:** @NoeFontana
+**Implementation:** this record's PR (open, gated on its open question)
+
+## Context
+
+`SO3::from_matrix` is Shepperd's method (`NUMERICS.md` §3.4). It takes `d = √c_j` of the largest
+pivot candidate, divides the three other numerators by `2d`, then normalizes. That is two `sqrt`
+and seven divisions. locus-tag's tag-pose path converts every chosen IPPE branch through it, and
+measured it at about 2× nalgebra's Shepperd, which does not normalize (2026-10-12, downstream
+validation on locus-tag's `feat/helicoid-pose` branch).
+
+`docs/maths/so3.md` SO.12(b) gives a cheaper form of the same quaternion: column `j` of
+`K(R) + I` is `4 q̂_j q̂`, so normalizing that column returns `q̂` with its pivot component
+positive, exactly the current output's sign rule. The column's entries are already formed (the
+pivot candidate `c_j` and the six sums and differences), so the extraction needs no division
+before the normalization: **one `sqrt`, four divisions**. The selected column's pivot entry is at
+least `1` for every input (SO.11(c)), so the norm is at least `1` and the `sqrt` needs no safe
+argument.
+
+## Measured
+
+Protocol:
+- **Accuracy:** every record of `so3_from_matrix.jsonl` (2594 records, 30 strata, read
+  column-major as the harness reads it), through both kernels at `f64` and on the matrix rounded
+  to `f32`. Each output is scored exactly in Python against Shepperd's formula evaluated in exact
+  rational arithmetic on the same input matrix (pivot by exact comparison, 80-digit `sqrt`). That
+  isolates each kernel's own rounding. The error is the componentwise max of `|q − s q_exact|/u`,
+  with `s = ±1` the better sign. The id itself is unscored: the harness reports matrix inputs as
+  backward error only (`NUMERICS.md` §11), so `just conformance` cannot adjudicate this change.
+- **Speed:** `cargo xtask bench-gate --bench groups --only so3/from_matrix --against <base>`, with
+  the base binary built from the same tree with the old kernel and the new `so3/from_matrix` row,
+  `taskset -c 2`, EPYC-Milan. Ratios are candidate/base.
+
+| | `f64` | `f32` |
+|---|---|---|
+| Time, three strata (identity, generic, near-`π`) | **0.55–0.61** (floor 0.5–8.3%) | **0.80–0.84** (floor 0.5–3.5%) |
+| Max error over all records, old → new | 1.557 → **1.507** `u` | 2.013 → **1.465** `u` |
+| Mean error, old → new | 0.362 → 0.416 `u` | 0.329 → 0.355 `u` |
+| Records new better / worse | 359 / 542 | 284 / 396 |
+| Strata whose max grows | 11 of 30, by at most +0.32 `u` (`theta:pi-1e-7`, 1.150 → 1.472) | 4 of 30, by at most +0.26 `u` (`theta:1e0`, 1.208 → 1.465) |
+
+The mean grows because the old denominator `2√c_j` is one rounded `sqrt` of one number, and its
+final normalization rescales a vector already unit to `O(u)`. The new denominator
+`√(Σ col²)` carries the rounding of four squares and three sums. The worst case shrinks because the
+old form's error compounds through two divisions where the new one has one.
+
+## Decision
+
+Proposed, not settled:
+
+1. **`NUMERICS.md` §3.4:** the extraction is "column `j` of `K(R) + I` (SO.12(b)), normalized",
+   with the trace pivot's column `(1 + tr R, R₂₁ − R₁₂, R₀₂ − R₂₀, R₁₀ − R₀₁)` written out. The
+   pivot rule, the nested `branch`es and the sign rule are unchanged.
+2. **`SO3::from_matrix`** forms the selected column inside the branches and normalizes once
+   outside them, with the four divisions of `Quat::from_wxyz_normalized`.
+
+## Rationale
+
+The alternative that keeps the old accuracy and drops the second `sqrt` is to skip the
+normalization: `q = col/(2√c_j)`. It breaks §3.4's "then normalize" and the rustdoc's promise of a
+unit quaternion for a non-orthogonal input (`|η|` up to `6ε` by SO.12(d)), and `SO3`'s invariants
+assume `|η|` near `u`. Rejected.
+
+## Consequences
+
+- Output bits change on about half the records (1218 of 2594 at `f64`), each within the bounds
+  above. No other function's bits change.
+- The no-regress bar (`0006`) is per stratum, on the max. If `so3_from_matrix` were scored,
+  11 `f64` strata would regress, by up to 0.32 `u`, while its overall max improves. The
+  bar does not read this id today. Taking the change means accepting that trade explicitly.
+
+## Implementation plan
+
+1. One PR: the kernel, the §3.4 edit, the `so3/from_matrix` bench rows, the CHANGELOG. Verified by
+   `just test`, the measurement above and the bench gate above.
+
+## Open questions
+
+1. **Does the owner accept a speedup of 1.6–1.8× (`f64`) and 1.2× (`f32`) for a mean error up
+   0.03–0.05 `u` and some strata's max up to 0.32 `u`, with the overall max down?** Accept: this
+   record goes `ready` as written. Decline: the PR keeps only the bench row, and the consumer's 2×
+   stays.
+
+## Further work
+
+- A forward-error score for matrix-input ids against the exact-arithmetic Shepperd, as this
+  record's protocol computes it, so the instrument can read `from_matrix` changes itself.
