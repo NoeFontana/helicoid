@@ -8,8 +8,10 @@
 // An answer line is `{"id":N,"out":{"<field>":["<hex float>",…]}}`, fields flat in the reference's
 // order (matrices column-major). In binary64 every record is answered with `Sophus::*<double>`;
 // with `--precision f32` the `@f32` records alone, with `Sophus::*<float>` (docs/decisions/0077).
-// A record Sophus refuses (a failed `SOPHUS_ENSURE`) is answered with `nan` in every field:
-// answered, so no stratum is the runner's choice, and non-finite, so it never sets a bar.
+// `eig3` is the image's Eigen, `SelfAdjointEigenSolver<Matrix3<T>>` (docs/decisions/0083).
+// A record Sophus refuses (a failed `SOPHUS_ENSURE`, or Eigen's solver not converging) is answered
+// with `nan` in every field: answered, so no stratum is the runner's choice, and non-finite, so it
+// never sets a bar.
 #include <gnu/libc-version.h>
 
 #include <cstddef>
@@ -160,6 +162,12 @@ struct At {
     if (id == "sim3_act") {
       return {{"Xp", sophus_to_helicoid_vec3<T>(sim3_in(in) * helicoid_to_sophus_vec3<T>(take(in, "p", 3)))}};
     }
+    // Not Sophus's: the image's Eigen, the solver a Sophus user has (docs/decisions/0083).
+    if (id == "eig3") {
+      const Eigen::SelfAdjointEigenSolver<Eigen::Matrix<T, 3, 3>> es(helicoid_to_eigen_matrix3<T>(take(in, "A", 9)));
+      const HelicoidEig3 e = eigen_to_helicoid_eig3<T>(es);
+      return {{"V", e.v}, {"lambda", e.lambda}};
+    }
     throw std::logic_error("no evaluation of `" + id + "`");
   }
 };
@@ -200,6 +208,7 @@ const std::vector<Id>& table() {
       {"sim3_log", {{"tau", 7}}, true},
       {"sim3_ad", {{"Ad", 49}}, true},
       {"sim3_act", {{"Xp", 3}}, true},
+      {"eig3", {{"V", 9}, {"lambda", 3}}, true},
   };
   return ids;
 }

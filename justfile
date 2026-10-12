@@ -136,7 +136,8 @@ oracle-nalgebra:
 # runs the conversions' hand-computed tests; the image then runs offline over the corpus, as the
 # owner of the answers' directory. Needs docker. `subject_version` names Sophus, Eigen, gcc and
 # glibc; it answers in binary64, and `sim3_*`'s `@f32` strata with `Sophus::Sim3<float>`
-# (`docs/decisions/0077`). Rows in conformance/results/sophus.csv and sophus--f32.csv.
+# (`docs/decisions/0077`). `eig3` is the image's Eigen, `SelfAdjointEigenSolver<Matrix3<T>>`, at
+# both precisions (`docs/decisions/0083`). Rows in conformance/results/sophus.csv and sophus--f32.csv.
 oracle-sophus:
     cargo xtask conformance --oracle sophus
     cargo xtask conformance --oracle sophus --precision f32

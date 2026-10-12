@@ -96,6 +96,7 @@ grep -m1 -H '^\*\*Status:' docs/decisions/0*.md
 | [`0080`](./0080-chol-unrolls-what-llvm-will-not.md) | **ready.** `chol` runs fully unrolled for `4 <= N <= 9` by two `macro_rules!`, the loop's operations in its order, so `(L, mask)` is bit-identical (two proptests over every special, all lanes); the loop stays for `N <= 3` (LLVM unrolls and unswitches it) and `N > 9`. Meets `0021`'s bar under the gate: `f64` `N = 6` 0.588×, `f32` 0.726×, `Dual` 0.743×, failing input 0.63–0.83×. Answers `0030` question 2. |
 | [`0081`](./0081-eig3-is-four-jacobi-sweeps.md) | **ready.** `eig3` is four cyclic Jacobi sweeps (`NUMERICS.md` §17) with an exact power-of-two scaling, replacing Smith's closed form, whose `acos` lost up to `sqrt(u) |A|` at a close pair: every `eig3` stratum dominates nalgebra at both precisions (max 4.76 `u` `f64`, 3.24 `u` `f32`), every finite matrix is in the domain, at 2.1–2.8× the latency. Answers `0023` (draft) questions 1 and 4. |
 | [`0082`](./0082-the-sphere-chart-is-oriented-and-shows-its-frames.md) | **ready.** S²'s frame is oriented (`b₂ = ς He_y`, `b₁ × b₂ = n` on both hemispheres) and public: `S2Chart::rotation_basis` (`B`) and `displacement_basis` (`T = [-b₂ b₁] = ∂retract/∂δ` at `0`). |
+| [`0083`](./0083-eig3-is-also-judged-against-eigen.md) | **ready.** The Sophus image answers `eig3` with its Eigen 3.4.0 `SelfAdjointEigenSolver<Matrix3<T>>::compute`, at both precisions: a second oracle on all 50 strata, which `helicoid` dominates (ratio of maxima 0.19–0.59); `computeDirect` measured once and not a subject. |
 
 ## Lifecycle
 
