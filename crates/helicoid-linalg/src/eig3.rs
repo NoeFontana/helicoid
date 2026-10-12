@@ -5,9 +5,8 @@
 //! square root and division has a safe argument, and the only operations are `+ - * /`, `sqrt`,
 //! `abs` and `copysign`.
 
-use crate::cubic::pow2;
 use crate::matrix::Mat3;
-use crate::real::{is_finite, Blend, Mask, Precision, Real};
+use crate::real::{is_finite, pow2, pow2_step, Blend, Mask, Precision, Real};
 use crate::vector::{Vec3, Vector};
 
 /// Sweeps over the pairs `(0, 1), (0, 2), (1, 2)`. Four leave every off-diagonal entry below
@@ -25,23 +24,21 @@ const WINDOW_F64: (f64, f64, [f64; 4]) = (
 const WINDOW_F32: (f64, f64, [f64; 4]) =
     (pow2(-32), pow2(32), [pow2(64), pow2(32), pow2(16), pow2(8)]);
 
-/// The lower triangle `[xx, yy, zz, xy, xz, yz]` and the power of two that undoes its scaling.
-type Scaled<S> = ([S; 6], S);
+/// The lower triangle `[xx, yy, zz, xy, xz, yz]`, its largest `|entry|` and the power of two that
+/// undoes its scaling.
+type Scaled<S> = ([S; 6], S, S);
 
 /// [`eig3`]'s scaling steps, out of line: rarely taken, as `cubic`'s ladders. At `2^k` the entries
 /// are divided by it where the largest is at least `2^k` and multiplied where it is below
-/// `2^(1-k)`; every product is exact.
+/// `2^(1-k)` (`real::pow2_step`). The largest entry stays normal, so it scales exactly and is carried
+/// as `m f`; an entry that falls below the smallest normal rounds, by less than `2^-1074` of `2^k`,
+/// far below `u |A|`.
 #[cold]
 #[inline(never)]
 fn ladder<S: Real>(steps: &[f64], start: Scaled<S>) -> Scaled<S> {
-    let (one, two) = (S::one(), S::lit(2.0));
-    steps.iter().fold(start, |(e, back), &k| {
-        let (big, small) = (S::lit(k), S::lit(1.0 / k));
-        let m = largest(&e);
-        let (down, up) = (big.le(m), (m * big).lt(two));
-        let f = S::select(down, small, S::select(up, big, one));
-        let b = S::select(down, big, S::select(up, small, one));
-        (e.map(|x| x * f), back * b)
+    steps.iter().fold(start, |(e, m, back), &k| {
+        let (f, b) = pow2_step(k, m);
+        (e.map(|x| x * f), m * f, back * b)
     })
 }
 
@@ -59,9 +56,12 @@ fn largest<S: Real>(e: &[S; 6]) -> S {
 ///
 /// With `d = a_qq - a_pp`, `w = 2 a_pq sign(d)`, `den = |d| + sqrt(d^2 + w^2)` and `g = sqrt(den^2 +
 /// w^2)`: `t = w / den`, `c = den / g`, `s = w / g`. Below the smallest normal `d^2 + w^2` is `1`
-/// under the root (the safe argument), which leaves an orthogonal rotation by about `w` of a block
-/// below `2^-383 |A|` (`f64`), `2^-31 |A|` (`f32`) inside the window: `c` and `s` share `g`, so
-/// `c^2 + s^2 = 1` to rounding only while `g` is normal.
+/// under the root (the safe argument): `c` and `s` share `g`, so `c^2 + s^2 = 1` to rounding only
+/// while `g` is normal. That arm rotates by about `w`, not by the annihilating angle, and then drops
+/// `a_pq`: a backward error of a block below `2^-383 |A|` (`f64`), `2^-31 |A|` (`f32`) inside the
+/// window, so the values hold, and a column's error stays within `u |A| / gap` because such a block
+/// only arises at a gap that small. Reciprocal forms (`1/g` once, then two products) measured slower
+/// and less accurate (`0081`).
 #[inline(always)]
 #[allow(clippy::type_complexity)]
 fn rotate<S: Real>(
@@ -70,8 +70,8 @@ fn rotate<S: Real>(
 ) -> ((S, S, S, S), (Vec3<S>, Vec3<S>)) {
     let (one, two) = (S::one(), S::lit(2.0));
     let tiny = S::lit(match S::PRECISION {
-        Precision::F64 => pow2(-1022),
-        Precision::F32 => pow2(-126),
+        Precision::F64 => const { pow2(-1022) },
+        Precision::F32 => const { pow2(-126) },
     });
     let d = aqq - app;
     let w = two * apq * one.copysign(d);
@@ -119,9 +119,11 @@ fn rotate<S: Real>(
 /// eigenvalues, never a plausible number, and the identity frame.
 ///
 /// A `Dual` result differentiates the rotations taken. Where the eigenvalues are simple that is
-/// first-order perturbation theory, to the convergence of the last sweep; at a repeated eigenvalue
-/// it is one of the one-sided derivatives (a multiple of the identity: each eigenvalue has the
-/// derivative of one diagonal entry, and the vectors none).
+/// first-order perturbation theory, to the convergence of the last sweep. At a repeated eigenvalue
+/// the eigenvalues are not differentiable, and the lanes are finite but in general no directional
+/// derivative: at a multiple of the identity, a diagonal lane gives each eigenvalue one diagonal
+/// entry's derivative, and an off-diagonal lane gives the eigenvalues none and the vectors a
+/// rotation.
 ///
 /// # Example
 ///
@@ -151,7 +153,7 @@ pub fn eig3<S: Real>(a: &Mat3<S>) -> (Vec3<S>, Mat3<S>) {
     ];
     // A non-finite entry iterates on the zero matrix, the safe argument, and reports through the
     // eigenvalues.
-    let finite = e
+    let finite = e[1..]
         .iter()
         .fold(is_finite(e[0]), |ok, &x| ok.and(is_finite(x)));
     let e = e.map(|x| S::select(finite, x, zero));
@@ -161,8 +163,8 @@ pub fn eig3<S: Real>(a: &Mat3<S>) -> (Vec3<S>, Mat3<S>) {
     };
     let m = largest(&e);
     let inside = S::lit(lo).le(m).and(m.lt(S::lit(hi))).or(m.le(zero));
-    let ([mut d0, mut d1, mut d2, mut o01, mut o02, mut o12], back) =
-        S::branch(inside, || (e, one), || ladder(&steps, (e, one)));
+    let ([mut d0, mut d1, mut d2, mut o01, mut o02, mut o12], _, back) =
+        S::branch(inside, || (e, m, one), || ladder(&steps, (e, m, one)));
 
     let (mut v0, mut v1, mut v2) = (
         Vector([one, zero, zero]),

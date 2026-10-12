@@ -663,11 +663,8 @@ fn diagonal_residual<S: Lane>(d: V3) -> f64 {
     })
 }
 
-/// A repeated eigenvalue costs no digits. The closed form this replaced (`0081`) lost `sqrt(u) |A|`
-/// to `acos` at a double root (`6e-9 |A|` on a rank-1 matrix at `f64`) and, anchored on the larger
-/// eigenvalue, left every column of a tied top pair wrong (`0.8 |A|` on `diag(5, 1, 5)`); here the
-/// eigenvalue error and every residual stay within the recorded bound at a tie, a near tie, a rank-1
-/// matrix and a diagonal one.
+/// A repeated eigenvalue costs no digits (`0081`): the eigenvalue error and every residual stay
+/// within the recorded bound at a tie, a near tie, a rank-1 matrix and a diagonal one.
 #[test]
 fn a_repeated_eigenvalue_costs_no_digits() {
     for l in [
@@ -687,9 +684,8 @@ fn a_repeated_eigenvalue_costs_no_digits() {
 }
 
 /// Every finite magnitude: the matrix is scaled by an exact power of two into the window, so the
-/// recorded bounds hold from `2^-1000` to `2^1000` (`f64`) and `2^-120` to `2^120` (`f32`), where
-/// the closed form this replaced had no finite eigenvalue at `2^+-400` (`f64`), `2^50` or `2^-87`
-/// (`f32`). A subnormal
+/// recorded bounds hold from `2^-1000` to `2^1000` (`f64`) and `2^-120` to `2^120` (`f32`). A
+/// subnormal
 /// matrix keeps an orthonormal frame and ascending finite eigenvalues; an eigenvalue beyond the
 /// largest finite number is infinite, the frame still orthonormal.
 #[test]
@@ -732,9 +728,9 @@ fn every_finite_magnitude_is_in_the_domain() {
 }
 
 /// At a multiple of the identity no rotation turns (each sees `d = a_pq = 0` and takes the safe
-/// argument), so the vectors are the axes with no derivative and each eigenvalue has the derivative
-/// of one diagonal entry: one of the one-sided derivatives at a triple eigenvalue, finite in every
-/// lane.
+/// argument): with diagonal lanes, the vectors are the axes with no derivative and each eigenvalue
+/// has the derivative of one diagonal entry. The eigenvalues are not differentiable there, so this is
+/// the rotations' derivative, not a directional one (`0081`); what is promised is finite lanes.
 #[test]
 fn the_derivative_at_a_multiple_of_the_identity_is_finite() {
     type D3 = Dual<f64, 3>;
@@ -756,4 +752,44 @@ fn the_derivative_at_a_multiple_of_the_identity_is_finite() {
         );
         assert!((0..3).all(|r| v.get(r, k).d.iter().all(|d| d.abs() == 0.0)));
     }
+}
+
+/// An off-diagonal lane at a multiple of the identity: the safe argument rotates by about `w`, so
+/// the vectors get a derivative and the eigenvalues none (`0081`). Finite, and not a directional
+/// derivative: along `e_01 + e_10` those are `(-1, 0, 1)`.
+#[test]
+fn an_off_diagonal_lane_at_a_multiple_of_the_identity_is_finite() {
+    type D1 = Dual<f64, 1>;
+    let x = Mat3::from_rows([0, 1, 2].map(|r| {
+        Vector([0, 1, 2].map(|c| match (r, c) {
+            (1, 0) | (0, 1) => D1::variable(0.0, 0),
+            _ if r == c => D1::constant(2.0),
+            _ => D1::constant(0.0),
+        }))
+    }));
+    let (l, v) = eig3(&x);
+    assert!(l.0.iter().all(|x| x.v == 2.0 && x.d[0] == 0.0), "{l:?}");
+    assert!((0..9).all(|i| v.get(i / 3, i % 3).d[0].is_finite()));
+}
+
+/// The safe argument with a nonzero `a_pq`: a tied pair whose block is below the smallest normal
+/// under the root (`a_pq = 2^-540` at `f64`, `2^-70` at `f32`, `|A| = 3`) keeps the frame within
+/// `FRAME u` and every residual within `K u |A|` (`0081`).
+#[test]
+fn the_safe_argument_keeps_the_frame_on_a_tiny_block() {
+    fn at<S: Lane>(apq: f64) {
+        let a = round::<S>(&matrix([1.0, 1.0, 3.0, apq, 0.0, 0.0]));
+        let (l, v) = run::<S>(&a);
+        let (orth, det) = frame(&v);
+        assert!(orth.max(det) <= FRAME * unit::<S>(), "{orth} {det}");
+        for (k, want) in [1.0, 1.0, 3.0].into_iter().enumerate() {
+            assert!((l[k] - want).abs() <= K * unit::<S>() * 3.0, "{l:?}");
+            assert!(
+                residual(&a, l[k], col(&v, k)) <= K * unit::<S>() * 3.0,
+                "{k}"
+            );
+        }
+    }
+    at::<f64>(2.0_f64.powi(-540));
+    at::<f32>(2.0_f64.powi(-70));
 }

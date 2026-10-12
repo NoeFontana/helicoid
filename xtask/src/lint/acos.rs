@@ -3,7 +3,7 @@
 //! D5 is "`Log` goes through the quaternion `atan2`; no `acos` of a trace anywhere in the
 //! workspace", and until [`0022`] it held by **absence**: `Real` had no `acos`, so a group routine
 //! that wanted one had to spell `atan2(sqrt(..), x)` and a reviewer would see it. `0022` adds
-//! `Real::acos` for `solve_cubic` (and `eig3`, until `0081`), which is where it belongs — the argument there is a
+//! `Real::acos` for `solve_cubic`, which is where it belongs — the argument there is a
 //! normalized determinant ratio, not a trace — and in doing so opens the hole D5 names.
 //!
 //! So the rule is made explicit instead: **`crates/helicoid` does not name `acos`.** That is the
