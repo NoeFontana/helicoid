@@ -123,9 +123,17 @@ gate fails all six, and is meant to. This record buys the accuracy with that lat
   gap_k`, the frame within `16 u`, with the measured worst ratios in its header; the closed form's
   pinned limits (the tie, the clamp of `r`, the magnitude cliff) are replaced by tests that a
   repeated eigenvalue costs no digits and that every finite magnitude is in the domain.
-- A `Dual` derivative is that of the rotations taken. At a multiple of the identity each
-  eigenvalue has the derivative of one diagonal entry, where the closed form gave `1/3` of each:
-  both are one-sided derivatives of a non-differentiable point.
+- A `Dual` derivative is that of the rotations taken. At a repeated eigenvalue the eigenvalues are
+  not differentiable and the lanes are finite but in general no directional derivative: at a
+  multiple of the identity a diagonal lane gives each eigenvalue one diagonal entry's derivative
+  (the closed form gave `1/3` of each), and an off-diagonal lane gives the eigenvalues none and the
+  vectors a rotation, where the directional derivatives along `e_01 + e_10` are `(-1, 0, 1)`
+  (`an_off_diagonal_lane_at_a_multiple_of_the_identity_is_finite`).
+- **Reciprocal forms are not taken** (#154's review): `1/g` once per rotation and one reciprocal per
+  column's norm, against the divisions, measured slower at every row (`f64` 1.02, `f32` 1.03–1.09,
+  pinned, floors under 0.7%) and less accurate (32 strata worse, up to 2.2x, though every one
+  still dominates nalgebra): the product after the reciprocal lengthens each rotation's chain more
+  than the division's throughput costs.
 
 ## Implementation plan
 
@@ -167,3 +175,6 @@ nalgebra's. Domination holds on all 50; `eig:triple` is a tie (`3.99e-14`, 0), w
    1 / (1 + t^2)` is available a square root earlier; worth a measurement if a consumer's budget
    needs the 200 ns back.
 2. `0023` can be marked superseded by this record when its owner next edits the index.
+3. Accumulating `V` as a quaternion (McAdams et al., `NUMERICS.md` §13): fewer products per
+   rotation and one normalisation, `det = +1` by construction; it moves bits, so it is measured
+   against the rows first.
