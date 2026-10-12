@@ -166,8 +166,9 @@ const RUNNERS: &[Runner] = &[
         launch: Launch::Container("docker/oracles/sophus"),
         // C++ on the image's glibc (`0072`).
         backend: Backend::HostStd,
-        // `Sophus::Sim3<float>`; no other id it answers has `@f32` strata.
-        answers_f32: &["sim3_exp", "sim3_log", "sim3_ad", "sim3_act"],
+        // `Sophus::Sim3<float>` and Eigen's `SelfAdjointEigenSolver<Matrix3f>` (`0083`); no other
+        // id it answers has `@f32` strata.
+        answers_f32: &["sim3_exp", "sim3_log", "sim3_ad", "sim3_act", "eig3"],
         answers: &[
             "so2_exp",
             "so2_log",
@@ -195,6 +196,8 @@ const RUNNERS: &[Runner] = &[
             "sim3_log",
             "sim3_ad",
             "sim3_act",
+            // The image's Eigen, not Sophus (`0083`).
+            "eig3",
         ],
     },
     Runner {
