@@ -4,6 +4,7 @@
 #![allow(clippy::print_stderr)]
 
 mod bench;
+mod compare;
 mod conformance;
 mod envelope;
 mod lint;
@@ -20,6 +21,7 @@ const TASKS: &[&str] = &[
     "thresholds",
     "envelope",
     "bench-gate",
+    "compare",
 ];
 
 fn main() -> ExitCode {
@@ -31,6 +33,7 @@ fn main() -> ExitCode {
         thresholds::run,
         envelope::run,
         bench::run,
+        compare::run,
     ) {
         ExitCode::SUCCESS
     } else {
@@ -48,6 +51,7 @@ fn dispatch(
     thresholds: impl FnOnce(&[String]) -> Result<(), String>,
     envelope: impl FnOnce(&[String]) -> Result<(), String>,
     bench_gate: impl FnOnce(&[String]) -> Result<(), String>,
+    compare: impl FnOnce(&[String]) -> Result<(), String>,
 ) -> bool {
     match args.first().map(String::as_str) {
         Some("lint") => match lint() {
@@ -92,6 +96,13 @@ fn dispatch(
                 false
             }
         },
+        Some("compare") => match compare(&args[1..]) {
+            Ok(()) => true,
+            Err(e) => {
+                eprintln!("xtask compare: {e}");
+                false
+            }
+        },
         Some(task) => {
             eprintln!("xtask: `{task}` is not implemented (docs/PHASE1.md §0.0); have: {TASKS:?}");
             false
@@ -118,6 +129,7 @@ mod tests {
                 &args,
                 || lint,
                 |_| conf,
+                |_| Err("unused".into()),
                 |_| Err("unused".into()),
                 |_| Err("unused".into()),
                 |_| Err("unused".into()),
@@ -148,6 +160,7 @@ mod tests {
                 check,
                 |_| Err("unused".into()),
                 |_| Err("unused".into()),
+                |_| Err("unused".into()),
             )
         };
         assert!(thr(&["thresholds", "--check"]) && !thr(&["thresholds"]));
@@ -165,10 +178,29 @@ mod tests {
                     out
                 },
                 unused,
+                unused,
             )
         };
         assert!(env(&["envelope", "--check"], Ok(())));
         assert!(!env(&["envelope", "--check"], Err("1 failure(s)".into())));
+        // `compare` gets the arguments after its name, and its `Err` fails the run.
+        let cmp = |out: Result<(), String>| {
+            let args: Vec<String> = ["compare", "--a", "x"].map(String::from).to_vec();
+            let unused = |_: &[String]| Err("unused".to_string());
+            dispatch(
+                &args,
+                || Ok(vec![]),
+                unused,
+                unused,
+                unused,
+                unused,
+                |rest| {
+                    assert_eq!(rest, ["--a", "x"]);
+                    out
+                },
+            )
+        };
+        assert!(cmp(Ok(())) && !cmp(Err("usage".into())));
     }
 
     #[test]
@@ -184,6 +216,7 @@ mod tests {
                 seen.borrow_mut().extend(rest.iter().cloned());
                 Ok(())
             },
+            |_| Err("unused".into()),
             |_| Err("unused".into()),
             |_| Err("unused".into()),
             |_| Err("unused".into()),

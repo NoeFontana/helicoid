@@ -62,6 +62,8 @@ pub(crate) fn registry() -> Vec<Registered> {
     // The candidate's own host-`std` twin, beside the seeded stand-in's: the envelope prefers a
     // candidate's own (`seeded::TWIN_SUFFIX`).
     all.push(crate::shipped::host_std());
+    // `R(q)` in the unit form, `0076` decision 1's variable, for `cargo xtask compare`.
+    all.push(crate::shipped::unit_r_twin());
     all.extend(crate::seeded::registry());
     all
 }

@@ -31,6 +31,10 @@ use crate::conformance::corpus::{exact_f32, Record};
 use crate::conformance::subject::{Output, Registered, Subject};
 use crate::seeded::{exact_input, input, Coeff, Host, Input, Swept};
 
+mod unit_r;
+
+pub(crate) use unit_r::registered as unit_r_twin;
+
 /// The group of `id` at `x`, as the shipped kernel evaluates it.
 pub(crate) fn shipped<S: Real>(id: Swept, x: Input<Dual<S, 1>>) -> Dual<S, 1> {
     match id {

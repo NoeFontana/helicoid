@@ -15,7 +15,7 @@ defects and `tf_tree_math`, which becomes oracle #1 ([`0010`](./decisions/0010-s
 |---|---|
 | Workspace, lints, `justfile`, CI matrix (§3) | Partial: workspace, lints, `justfile` and CI for `build`/`test`/`lint`/`audit`/`msrv`/`no-std`/`wasm`/`doc`/`corpus-check`/`conformance --self-test`/`thresholds-check`/`envelope`. The nightly `oracles` job (`.github/workflows/oracles.yml`, `just oracles`) is wired; determinism pending. |
 | Reference generator and committed corpus v1 (§4) | Partial: generator skeleton and committed corpus v1 with 150-digit mpmath reference generation across scalar and group strata. SE(2) coefficients pending. |
-| Conformance harness and result schema (§5) | Partial: `cargo xtask conformance` runner, result CSV generation, and seeded defect checks. Backward error and f32 vector strata pending. |
+| Conformance harness and result schema (§5) | Partial: `cargo xtask conformance` runner, result CSV generation, and seeded defect checks; `cargo xtask compare` (`0038`, `0078`). Backward error and f32 vector strata pending. |
 | Threshold sweep and generated-file format (§6) | Partial: two-stage threshold sweep over full domain generating `coeffs` and series tables (`0039`, `0047`). |
 | Oracle runners: `tf_tree_math`, sophus-rs (excluded crates); Sophus, manif, GTSAM (containers) (§7) | Partial: runners implemented for `tf_tree_math`, `sophus_rs` and `nalgebra` (`0056`) over file protocol; the Sophus (`0072`), GTSAM (`0074`) and manif (`0075`) containers done. |
 | Envelope and bars (§8) | Partial: domination and no-regression gating over baseline and oracles (`0006`). Baseline blessing awaiting Phase 3 candidate rows. |
@@ -267,6 +267,11 @@ sample count by an edit to this list, never silently.
 - **Metrics:** `NUMERICS.md` §11, per record; aggregated per `(fn, stratum, precision, subject)`.
 - **Result CSV:** `fn,stratum,precision,subject,subject_version,n,max_u,p99_u,argmax_id,nonfinite,git_rev`.
 - `just conformance` prints the table sorted by `max_u` descending and fails on any `nonfinite > 0`.
+- `cargo xtask compare --a X --b Y` pairs two in-process subjects record by record and prints a
+  direction, a sign test and the per-record ratio per stratum, per id and pooled
+  ([`0038`](./decisions/0038-a-program-comparison-is-not-a-bar.md) decision 4,
+  [`0078`](./decisions/0078-a-comparison-drops-ties-and-prints-both-maxima.md)); it is not a bar,
+  writes no result CSV and touches no baseline, so the schema above is unchanged.
 
 ## 6. The threshold sweep
 
