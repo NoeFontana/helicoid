@@ -457,7 +457,7 @@ const CBRT32: [(f32, f32, f32); 13] = [
 // `(x, acos x, d/dx acos x)` from mpmath at 120 digits, at exact inputs of each precision, each
 // rounded to what its type holds. `0053`: `Dual::acos`'s rule shipped without one of these, which
 // is the standard this module's own header sets ("each derivative rule against an independent
-// derivative"), and `eig3`'s ambient Jacobian reaches it at a double eigenvalue.
+// derivative"), and `solve_cubic`'s derivative reaches it at a double root.
 #[rustfmt::skip]
 const ACOS: [(f64, f64, f64); 5] = [
     // `acos` at `0` and `+-0.5` is `pi/2`, `pi/3` and `2 pi/3` exactly, so those rows would be

@@ -18,7 +18,7 @@ computes from definitions (`PHASE1.md` §4.3), so a wrong line in this file fail
 
 | Section | Status |
 |---|---|
-| §1–§12, §14, §15 | **Ready** (§9 Sim(3) by [`0070`](./decisions/0070-sim3-a-structured-jacobian-and-a-series-on-delta.md)) |
+| §1–§12, §14, §15, §17 | **Ready** (§9 Sim(3) by [`0070`](./decisions/0070-sim3-a-structured-jacobian-and-a-series-on-delta.md)) |
 
 ## 1. Conventions
 
@@ -463,7 +463,7 @@ $X(t) = X_0\,\mathrm{Exp}(t\,d)$ with $d = X_1 \ominus_R X_0$ and $\Delta = X_0^
 | `from_wxyz_normalized` | $\|q\|^2$ normal (components within $\approx 10^{\pm154}$ `f64`, $10^{\pm19}$ `f32`); `debug_assert!` on the result (§3.6, [`0027`](./decisions/0027-a-normalizing-constructor-normalizes.md)) | NaN at $q = 0$; zero above the overflow |
 | `renormalize` | none; a normalization only for $\lvert\|q\|^2 - 1\rvert \le 2^{-26.29}$ (`f64`), $2^{-11.79}$ (`f32`) (§3.6) | defined everywhere; $0$ at $\|q\|^2 = 3$, $q$ reversed beyond |
 | `solve_cubic` | every input; the mask is the report: a non-finite coefficient, $a = 0$, or $1/a$, $b/a$, $c/a$ or $d/a$ overflowing gives no valid slot (§16) | — |
-| `eig3` | every input, lower triangle read; entries of magnitude $m$ with $p^3$ normal, $10^{-100} < m < 10^{100}$ (`f64`), $10^{-12} < m < 10^{12}$ (`f32`); the vectors need $\|A\|^4$ normal, $10^{\pm75}$, $10^{\pm9}$ | eigenvalues not finite, never a plausible number ([`0023`](./decisions/0023-eig3-departs-from-omnisac-and-its-limits.md), draft) |
+| `eig3` | every input, lower triangle read; every finite matrix (§17's exact power-of-two scaling); a subnormal largest entry keeps only its own digits | a non-finite entry: `NaN` eigenvalues, never a plausible number, and the identity frame; an eigenvalue beyond the largest finite number is infinite ([`0081`](./decisions/0081-eig3-is-four-jacobi-sweeps.md)) |
 | `so3::gamma1`, `gamma2`, `gamma_apply_jacobians` | every finite $\varphi$ with $\theta^2$ finite: $\Gamma_m$ is entire (GG.2), no singular $\theta$; the overflow of $\theta^2$ is `Exp`'s (CO.15(c)) ([`0064`](./decisions/0064-the-integrated-exponentials-reuse-the-swept-switches.md)) | — |
 | `S2::from_vec_unchecked` | $\lvert\|v\|^2 - 1\rvert \le 2^{-40}$ (`f64`), $2^{-16}$ (`f32`); `debug_assert!`, NaN fails (`0063`) | garbage in, garbage out |
 | `S2::from_vec_normalized` | $\|v\|^2$ normal (`0027`) | NaN at $v = 0$; zero above the overflow |
@@ -501,6 +501,9 @@ $X(t) = X_0\,\mathrm{Exp}(t\,d)$ with $d = X_1 \ominus_R X_0$ and $\Delta = X_0^
 - A. McAdams et al., "Computing the Singular Value Decomposition of 3×3 matrices with minimal
   branching and elementary floating point operations", 2011; J. Kopp, "Efficient numerical
   diagonalization of hermitian 3×3 matrices", 2008.
+- G. H. Golub, C. F. Van Loan, *Matrix Computations*, 4th ed., 2013, §8.5 (the symmetric Jacobi
+  method, `sym.schur2`); J. Demmel, K. Veselić, "Jacobi's method is more accurate than QR", SIAM J.
+  Matrix Anal. Appl. 1992 (§17).
 - H. Sommer, J. Forbes, R. Siegwart, P. Furgale, "Continuous-Time Estimation of attitude using
   B-splines on Lie groups", 2016; C. Sommer, V. Usenko, D. Schubert, N. Demmel, D. Cremers,
   "Efficient Derivative Computation for Cumulative B-Splines on Lie Groups", CVPR 2020 (Phase 7).
@@ -664,3 +667,31 @@ arms and tolerances are the rustdoc's table.
   of $\Delta$ zero or underflowed: a triple root of the scale) $\sqrt[3]{-q}$.
 - **Each root** is $(t - B/3)\cdot m$.
 
+## 17. The symmetric 3×3 eigendecomposition
+
+`eig3`'s formulas ([`0081`](./decisions/0081-eig3-is-four-jacobi-sweeps.md)). Only the lower
+triangle $a_{ij}$, $i \ge j$, is read.
+
+- **Non-finite input.** If any entry is not finite every entry is replaced by $0$ (the safe
+  argument) and the eigenvalues are reported `NaN`.
+- **Scaling.** With $m = \max\lvert a_{ij}\rvert$, the entries are multiplied by a power of two
+  $f$ that brings $m$ into $[2^{-128}, 2^{128})$ (`f64`), $[2^{-32}, 2^{32})$ (`f32`); $f = 1$
+  inside it and at $m = 0$. Outside, two-sided steps at $2^{512}, 2^{256}, 2^{128}, 2^{64}$
+  ($2^{64}, 2^{32}, 2^{16}, 2^{8}$): at $2^k$, divide where $m \ge 2^k$, multiply where
+  $m\,2^k < 2$. Every product is exact; the eigenvalues are multiplied by $1/f$ at the end.
+- **Sweeps.** Four, each the rotations $(p, q) = (0, 1), (0, 2), (1, 2)$ in that order, $r$ the
+  third index, $V = I$ at the start. No convergence test.
+- **Rotation.** $d = a_{qq} - a_{pp}$, $w = 2a_{pq}\operatorname{copysign}(1, d)$,
+  $\mathrm{den} = \lvert d\rvert + \sqrt{d^2 + w^2}$ (the root of $1$ where $d^2 + w^2$ is below
+  the smallest normal), $g = \sqrt{\mathrm{den}^2 + w^2}$, $t = w/\mathrm{den}$,
+  $c = \mathrm{den}/g$, $s = w/g$. Then $a_{pp} \leftarrow a_{pp} - t\,a_{pq}$,
+  $a_{qq} \leftarrow a_{qq} + t\,a_{pq}$, $a_{pq} \leftarrow 0$,
+  $(a_{rp}, a_{rq}) \leftarrow (c\,a_{rp} - s\,a_{rq},\ s\,a_{rp} + c\,a_{rq})$,
+  $(v_p, v_q) \leftarrow (c\,v_p - s\,v_q,\ s\,v_p + c\,v_q)$ for the columns of $V$. This is
+  $J^\top A J$ with $J$ the rotation $\begin{bmatrix}c & s\\ -s & c\end{bmatrix}$ in the $(p, q)$
+  plane, $\tan\theta = t$, $\lvert t\rvert \le 1$, which annihilates $a_{pq}$; no step divides by
+  $a_{pq}$.
+- **Order and sign.** The diagonal and the columns are sorted ascending by the compare-exchange
+  network $(0, 1), (1, 2), (0, 1)$, an exchange where the second is strictly less; each exchange
+  negates the first column's sign, so $\det V = +1$.
+- **Normalisation.** Each column is divided by its norm once, after the sort.

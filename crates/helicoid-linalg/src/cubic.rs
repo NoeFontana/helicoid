@@ -16,7 +16,7 @@ use crate::vector::{Vec3, Vector};
 /// assert stands rather than a `debug_assert!` (D11 governs release *checks*, and every caller
 /// evaluates this in a `const` context, where the assert is a compile error and costs nothing at
 /// run time).
-const fn pow2(e: i32) -> f64 {
+pub(crate) const fn pow2(e: i32) -> f64 {
     assert!(
         e >= -1022 && e <= 1023,
         "pow2: exponent outside the normal range"

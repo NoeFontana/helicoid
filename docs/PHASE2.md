@@ -16,7 +16,7 @@ signatures in code blocks are normative.
 | `Dual<S, N>` (§3) | Partial: dual numbers generic over `Real` with automatic differentiation; corpus ids `real_sqrt`, `real_cbrt`, `real_sin_cos`, `real_acos`, `real_atan2`, `real_div` at both precisions, ≤ 3.65 `u` ([`0056`](./decisions/0056-the-routines-d7-does-not-reach.md)); `real_exp`, `real_expm1` ([`0068`](./decisions/0068-real-owes-exp-and-exp-m1.md)). |
 | `Vector`, `Matrix`, `Point`, `hat`/`vee`, `Mat3::inverse_adj`, `chol` (§4) | Partial: fixed-size types, operations, and `chol_solve` implemented (`0019`); corpus ids `chol_n{3,6}`, `chol_solve_n{3,6}` (`0056`). `Mat2::inverse_adj` and its id `mat2_inverse_adj` implemented ([`0061`](./decisions/0061-mat2-keeps-its-adjugate.md), #121). |
 | `Strided`, `StridedMut` (§5) | Done: column-major, row-major, strided slice views. |
-| `eig3`, `svd3`, `solve_cubic` + corpus ids (§6) | Partial: `solve_cubic` and `eig3` implemented with `libm` transcendentals (`0017`, `0022`, `0053`). Corpus ids `solve_cubic` and `eig3` at both precisions, `eig3` against nalgebra (`0056`). `svd3` and its id pending. |
+| `eig3`, `svd3`, `solve_cubic` + corpus ids (§6) | Partial: `solve_cubic` implemented with `libm` transcendentals (`0017`, `0022`, `0053`); `eig3` is four cyclic Jacobi sweeps and dominates nalgebra on every stratum at both precisions ([`0081`](./decisions/0081-eig3-is-four-jacobi-sweeps.md)). Corpus ids `solve_cubic` and `eig3` at both precisions, `eig3` against nalgebra (`0056`, `0077`). `svd3` and its id pending. |
 | `mint` feature (§7) | Done: optional feature conversions for fixed-size types. |
 | Downstream perception migration (§9) | Not started |
 
@@ -212,7 +212,8 @@ their Jacobian through these (faer `MatMut` and Ceres row-major buffers both map
 **NORMATIVE.**
 
 - `eig3(a: &Mat3<S>) -> (Vec3<S>, Mat3<S>)`: symmetric input; eigenvalues ascending, orthonormal
-  eigenvectors as columns with $\det = +1$. Smith's closed form. Bars against `mp.eigsy`: eigenvalue error in $u\|A\|$; eigenvector angular error in
+  eigenvectors as columns with $\det = +1$. Cyclic Jacobi, four sweeps (`NUMERICS.md` §17,
+  [`0081`](./decisions/0081-eig3-is-four-jacobi-sweeps.md)). Bars against `mp.eigsy`: eigenvalue error in $u\|A\|$; eigenvector angular error in
   $u\|A\|/\mathrm{gap}$ (`NUMERICS.md` §11), each the committed per-stratum maximum and no typed
   constant. Strata: `eig:gap-1e-k/{bottom,top}` ($k = 0, \dots, 12$; `@f32` $0, \dots, 6$),
   `eig:triple`, `eig:rank1`, `eig:random`, `eig:scale-{up,down}`
