@@ -15,7 +15,7 @@
 //! PROPTEST_CASES=1000000 PROPTEST_RNG_SEED=1 cargo nextest run --release -p helicoid-linalg chol_tests
 //! ```
 
-use crate::chol::solve_lower_transposed;
+use crate::chol::{chol_loop, solve_lower_transposed, UNROLLED};
 use crate::linalg_tests::{cfg, extra, flat, gamma, pool, ratio, shadow_m, shadow_v, unit, within};
 use crate::linalg_tests::{Lane, Pool, D};
 use crate::{chol, chol_solve, solve_lower, solve_upper, Mask, Mat3, Matrix, Vector};
@@ -342,6 +342,53 @@ fn solve_bits_all<S: Lane>(cells: &[Cell], b: &[Cell]) -> Result<(), TestCaseErr
     solve_bits::<S, 4>(cells, b)?;
     solve_bits::<S, 5>(cells, b)?;
     solve_bits::<S, 6>(cells, b)
+}
+
+/// `chol` against `chol_loop`, all lanes of `L` and the mask, bit for bit (a NaN is one value, see
+/// `all_bits`). `raw` takes every special in every entry; otherwise `a = B B^T + I` from plain
+/// cells, so the mask is set and every rounding of the recurrence runs, with entry `poke` (lower
+/// triangle) replaced by a special so a single failure is reached from a passing column.
+fn unrolled_bits<S: Lane, const N: usize>(
+    cells: &[Cell],
+    raw: bool,
+    poke: (usize, Cell),
+) -> Result<(), TestCaseError> {
+    let m = Matrix::<S, N, N>::from_cols(array::from_fn(|c| {
+        Vector(array::from_fn(|r| cell(cells[r * N + c])))
+    }));
+    let mut a = match raw {
+        true => m,
+        false => m * m.transpose() + Matrix::identity(),
+    };
+    if !raw && N > 0 {
+        let (i, j) = (poke.0 % N, poke.0 / N % N);
+        a.set(i.max(j), i.min(j), cell(poke.1));
+    }
+    let (l, pd) = chol(&a);
+    let (l0, pd0) = chol_loop(&a);
+    prop_assert_eq!(all_bits(&flat(&l)), all_bits(&flat(&l0)));
+    prop_assert_eq!(pd.all(), pd0.all());
+    prop_assert_eq!(pd.any(), pd0.any());
+    Ok(())
+}
+
+/// Every unrolled size and the first one past it, which runs the loop.
+fn unrolled_bits_all<S: Lane>(
+    cells: &[Cell],
+    raw: bool,
+    poke: (usize, Cell),
+) -> Result<(), TestCaseError> {
+    const { assert!(UNROLLED == 9) };
+    unrolled_bits::<S, 1>(cells, raw, poke)?;
+    unrolled_bits::<S, 2>(cells, raw, poke)?;
+    unrolled_bits::<S, 3>(cells, raw, poke)?;
+    unrolled_bits::<S, 4>(cells, raw, poke)?;
+    unrolled_bits::<S, 5>(cells, raw, poke)?;
+    unrolled_bits::<S, 6>(cells, raw, poke)?;
+    unrolled_bits::<S, 7>(cells, raw, poke)?;
+    unrolled_bits::<S, 8>(cells, raw, poke)?;
+    unrolled_bits::<S, 9>(cells, raw, poke)?;
+    unrolled_bits::<S, 10>(cells, raw, poke)
 }
 
 fn known_factor<S: Lane>() {
@@ -850,6 +897,29 @@ proptest! {
         solve_bits_all::<f64>(&l, &b)?;
         solve_bits_all::<f32>(&l, &b)?;
         solve_bits_all::<D>(&l, &b)?;
+    }
+
+    /// The unrolled `chol` is the loop nest to the bit (`0080`), on every special value and all
+    /// lanes.
+    #[test]
+    fn chol_unrolled_is_the_loop_to_the_bit(a in cells(100, 0..24), poke in (0usize..100, cells(1, 0..24))) {
+        let poke = (poke.0, poke.1[0]);
+        unrolled_bits_all::<f64>(&a, true, poke)?;
+        unrolled_bits_all::<f32>(&a, true, poke)?;
+        unrolled_bits_all::<D>(&a, true, poke)?;
+    }
+
+    /// The same on positive definite input, where the mask is set and every rounding of the
+    /// recurrence runs, with one lower entry made special.
+    #[test]
+    fn chol_unrolled_is_the_loop_to_the_bit_on_plain_values(
+        a in cells(100, 9..24),
+        poke in (0usize..100, cells(1, 0..30)),
+    ) {
+        let poke = (poke.0, poke.1[0]);
+        unrolled_bits_all::<f64>(&a, false, poke)?;
+        unrolled_bits_all::<f32>(&a, false, poke)?;
+        unrolled_bits_all::<D>(&a, false, poke)?;
     }
 
     #[test]

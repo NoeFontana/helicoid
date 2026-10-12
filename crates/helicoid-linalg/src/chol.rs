@@ -38,6 +38,10 @@ use crate::vector::{sum, Vector};
 /// columns (without the zeros it squares per column and overflows `f32` at `N = 6` on entries
 /// below 20).
 ///
+/// For `N` from 4 to 9 the recurrence runs fully unrolled, the same operations on the same operands
+/// in the same order, so `(L, mask)` is bit-identical to the loop that runs every other `N`
+/// (`0080`).
+///
 /// # Domain
 ///
 /// Positive definite is the domain on which `L` is the Cholesky factor (`NUMERICS.md` §12). Any
@@ -59,6 +63,66 @@ use crate::vector::{sum, Vector};
 /// ```
 #[inline]
 pub fn chol<S: Real, const N: usize>(a: &Matrix<S, N, N>) -> (Matrix<S, N, N>, S::Mask) {
+    if N <= 3 || N > UNROLLED {
+        return chol_loop(a);
+    }
+    let mut l = Matrix::from_cols([Vector([S::zero(); N]); N]);
+    let mut pd = S::zero().le(S::zero());
+    columns!(a, l, pd, [], [0 1 2 3 4 5 6 7 8]);
+    (l, pd)
+}
+
+/// The largest `N` that [`chol`] unrolls; the literal list in its `columns!` call has this many
+/// entries. Up to `N = 3` LLVM unrolls the loop itself and unswitches each column on the pivot
+/// mask, which the unrolled form cannot (`f32` measured 1.11x unrolled there); past 9 the code
+/// grows as `N^3` (`0080`).
+pub(crate) const UNROLLED: usize = 9;
+
+/// `sum_{k in ks} L_ik L_jk`, from the first term, left to right; `+0` when `ks` is empty, as
+/// [`sum`] gives.
+macro_rules! dot {
+    ($l:ident, $i:literal, $j:literal, []) => {
+        S::zero()
+    };
+    ($l:ident, $i:literal, $j:literal, [$k0:literal $($k:literal)*]) => {{
+        let s = $l.get($i, $k0) * $l.get($j, $k0);
+        $(let s = s + $l.get($i, $k) * $l.get($j, $k);)*
+        s
+    }};
+}
+
+/// One column of [`chol_loop`]'s recurrence at a literal `j`, `ks` the columns before it and `is`
+/// the rows below it, then the next column. Each step is guarded by `< N`, a constant.
+macro_rules! columns {
+    ($a:ident, $l:ident, $pd:ident, $ks:tt, []) => {};
+    (@next $a:ident, $l:ident, $pd:ident, [$($k:literal)*], $j:literal, $is:tt) => {
+        columns!($a, $l, $pd, [$($k)* $j], $is)
+    };
+    ($a:ident, $l:ident, $pd:ident, $ks:tt, [$j:literal $($i:literal)*]) => {
+        if $j < N {
+            let d = $a.get($j, $j) - dot!($l, $j, $j, $ks);
+            let ok = S::zero().lt(d).and(is_finite(d));
+            $pd = $pd.and(ok);
+            let ljj = S::select(ok, d, S::one()).sqrt();
+            $l.set($j, $j, ljj);
+            $(if $i < N {
+                let x = ($a.get($i, $j) - dot!($l, $i, $j, $ks)) / ljj;
+                let fin = is_finite(x);
+                $pd = $pd.and(fin.or(ok.not()));
+                $l.set($i, $j, S::select(ok.and(fin), x, S::zero()));
+            })*
+        }
+        columns!(@next $a, $l, $pd, $ks, $j, [$($i)*])
+    };
+}
+use {columns, dot};
+
+/// [`chol`] as a loop nest: the recurrence for every `N`, and the reference its unrolled form is
+/// tested against to the bit (`chol_unrolled_is_the_loop_to_the_bit`).
+#[inline]
+pub(crate) fn chol_loop<S: Real, const N: usize>(
+    a: &Matrix<S, N, N>,
+) -> (Matrix<S, N, N>, S::Mask) {
     let mut cols = [[S::zero(); N]; N];
     let mut pd = S::zero().le(S::zero());
     for j in 0..N {
