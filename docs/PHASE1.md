@@ -17,7 +17,7 @@ defects and `tf_tree_math`, which becomes oracle #1 ([`0010`](./decisions/0010-s
 | Reference generator and committed corpus v1 (§4) | Partial: generator skeleton and committed corpus v1 with 150-digit mpmath reference generation across scalar and group strata. SE(2) coefficients pending. |
 | Conformance harness and result schema (§5) | Partial: `cargo xtask conformance` runner, result CSV generation, and seeded defect checks; `cargo xtask compare` (`0038`, `0078`). Backward error and f32 vector strata pending. |
 | Threshold sweep and generated-file format (§6) | Partial: two-stage threshold sweep over full domain generating `coeffs` and series tables (`0039`, `0047`). |
-| Oracle runners: `tf_tree_math`, sophus-rs (excluded crates); Sophus, manif, GTSAM (containers) (§7) | Partial: runners implemented for `tf_tree_math`, `sophus_rs` and `nalgebra` (`0056`) over file protocol; the Sophus (`0072`), GTSAM (`0074`) and manif (`0075`) containers done. |
+| Oracle runners: `tf_tree_math`, sophus-rs (excluded crates); Sophus, manif, GTSAM (containers) (§7) | Partial: runners implemented for `tf_tree_math`, `sophus_rs` and `nalgebra` (`0056`) over file protocol; the Sophus (`0072`), GTSAM (`0074`) and manif (`0075`) containers done; nalgebra and Sophus answer `@f32` strata in binary32 (`0077`). |
 | Envelope and bars (§8) | Partial: domination and no-regression gating over baseline and oracles (`0006`). Baseline blessing awaiting Phase 3 candidate rows. |
 | Bench harness and gate (§9) | Partial: criterion benchmarks and replicate-outermost gate (`0033` draft). Bench-check CI job pending. |
 | Seeded-defect validation (§10) | Partial: `just conformance --self-test` runs defect injection for coefficient, SO(3), and SE(3) defects. |
@@ -382,7 +382,10 @@ sample count by an edit to this list, never silently.
 **NORMATIVE.**
 
 - **File protocol.** A runner reads corpus JSONL for the function ids it supports and writes
-  `{"id":…,"out":{…}}` with hex-float outputs; the harness computes metrics. Convention conversion
+  `{"id":…,"out":{…}}` with hex-float outputs; the harness computes metrics. In binary64 it
+  answers every record; asked `--precision f32`, it answers the `@f32` records alone, computing in
+  binary32, or it is a runner that answers binary64 only and is never asked
+  ([`0077`](./decisions/0077-an-oracle-answers-at-the-precision-it-is-asked.md)). Convention conversion
   happens inside the runner, in functions named after the foreign convention
   (`sophus_to_helicoid_tangent`, `gtsam_pose3_to_helicoid`), each with a hand-computed unit test.
 - **Runners.** `runners/tf_tree_math` (pinned tf_tree commit): SO(3)/SE(3) `exp`/`log`,

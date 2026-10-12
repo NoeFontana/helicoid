@@ -4,12 +4,14 @@
 //! metric.
 //!
 //! ```text
-//! nalgebra_runner --version               the pin, one line: the result rows' subject_version
-//! nalgebra_runner --out DIR FILE.jsonl…   DIR/<id>.jsonl for each FILE whose id is supported
+//! nalgebra_runner --version                               the pin, one line: the result rows' subject_version
+//! nalgebra_runner [--precision f32] --out DIR FILE.jsonl…  DIR/<id>.jsonl for each FILE whose id is supported
 //! ```
 //!
 //! An answer line is `{"id":N,"out":{"<field>":["<hex float>",…]}}`, `N` the record's `id`, fields
-//! flat (matrices column-major, no `shape`), values as in [`hexfloat`].
+//! flat (matrices column-major, no `shape`), values as in [`hexfloat`]. In binary64 every record
+//! is answered; with `--precision f32` the `@f32` records alone, in binary32
+//! (`docs/decisions/0077`).
 
 mod convert;
 mod hexfloat;
@@ -21,7 +23,7 @@ use std::process::ExitCode;
 
 use serde_json::{json, Map, Value};
 
-use convert::{answer, supported, Fields};
+use convert::{answer, supported, Fields, Precision};
 
 /// The oracle, as `Cargo.toml` pins it.
 const PIN: &str = "nalgebra@0.35.0";
@@ -49,8 +51,9 @@ fn inputs(object: &Map<String, Value>) -> Result<Fields, String> {
     Ok(fields)
 }
 
-/// The answer file of `fn_id` for the corpus file `text`: one line per record, in order.
-fn answer_file(fn_id: &str, text: &str) -> Result<String, String> {
+/// The answer file of `fn_id` for the corpus file `text` at `precision`: one line per record of
+/// that precision (every record in binary64, the `@f32` ones in binary32), in order.
+fn answer_file(fn_id: &str, text: &str, precision: Precision) -> Result<String, String> {
     let mut out = String::with_capacity(text.len() / 2);
     for (i, line) in text.lines().enumerate() {
         let at = |e: String| format!("line {}: {e}", i + 1);
@@ -59,12 +62,19 @@ fn answer_file(fn_id: &str, text: &str) -> Result<String, String> {
             .get("id")
             .and_then(Value::as_u64)
             .ok_or_else(|| at("no `id`".into()))?;
+        let stratum = record
+            .get("stratum")
+            .and_then(Value::as_str)
+            .ok_or_else(|| at("no `stratum`".into()))?;
+        if precision == Precision::F32 && !stratum.ends_with("@f32") {
+            continue;
+        }
         let object = record
             .get("in")
             .and_then(Value::as_object)
             .ok_or_else(|| at("no `in` object".into()))?;
         let given = inputs(object).map_err(at)?;
-        let answered = answer(fn_id, &given)
+        let answered = answer(fn_id, &given, precision)
             .ok_or_else(|| format!("`{fn_id}` is not supported"))?
             .map_err(at)?;
         let out_fields: Map<String, Value> = answered
@@ -86,8 +96,14 @@ fn answer_file(fn_id: &str, text: &str) -> Result<String, String> {
 
 fn run(args: &[String], stdout: &mut impl Write, stderr: &mut impl Write) -> Result<(), String> {
     let io = |e: std::io::Error| e.to_string();
-    match args {
-        [flag] if flag == "--version" => writeln!(stdout, "{PIN}").map_err(io),
+    let (precision, rest) = match args {
+        [flag, p, rest @ ..] if flag == "--precision" && p == "f32" => (Precision::F32, rest),
+        rest => (Precision::F64, rest),
+    };
+    match rest {
+        [flag] if flag == "--version" && rest.len() == args.len() => {
+            writeln!(stdout, "{PIN}").map_err(io)
+        }
         [flag, dir, files @ ..] if flag == "--out" && !files.is_empty() => {
             let dir = Path::new(dir);
             std::fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
@@ -103,18 +119,21 @@ fn run(args: &[String], stdout: &mut impl Write, stderr: &mut impl Write) -> Res
                     continue;
                 }
                 let text = std::fs::read_to_string(path).map_err(|e| format!("{file}: {e}"))?;
-                let lines = answer_file(fn_id, &text).map_err(|e| format!("{file}: {e}"))?;
+                let lines =
+                    answer_file(fn_id, &text, precision).map_err(|e| format!("{file}: {e}"))?;
                 let target = dir.join(format!("{fn_id}.jsonl"));
                 std::fs::write(&target, lines).map_err(|e| format!("{}: {e}", target.display()))?;
                 answered.push(fn_id);
             }
             writeln!(
                 stderr,
-                "answered {answered:?}; {skipped} files of other ids skipped"
+                "answered {answered:?} in {precision:?}; {skipped} files of other ids skipped"
             )
             .map_err(io)
         }
-        _ => Err("usage: nalgebra_runner --version | --out DIR FILE.jsonl…".into()),
+        _ => {
+            Err("usage: nalgebra_runner --version | [--precision f32] --out DIR FILE.jsonl…".into())
+        }
     }
 }
 
@@ -141,7 +160,7 @@ mod tests {
 
     #[test]
     fn a_record_is_answered_with_its_id_and_hex_floats() -> Result<(), String> {
-        let out = answer_file("chol_n3", LINE)?;
+        let out = answer_file("chol_n3", LINE, Precision::F64)?;
         let line: Value = serde_json::from_str(out.trim_end()).map_err(|e| e.to_string())?;
         assert_eq!(line["id"], 0);
         let floats = |key: &str| -> Result<Vec<f64>, String> {
@@ -164,22 +183,22 @@ mod tests {
 
     #[test]
     fn a_bad_line_or_an_unsupported_id_is_an_error_naming_the_line() {
-        let e = answer_file("chol_n3", &format!("{LINE}\n{{}}\n"))
+        let e = answer_file("chol_n3", &format!("{LINE}\n{{}}\n"), Precision::F64)
             .err()
             .unwrap_or_default();
         assert!(e.contains("line 2"), "{e}");
         let bad = LINE.replacen("0x1.0000000000000p+2", "4.0", 1);
-        assert!(answer_file("chol_n3", &bad)
+        assert!(answer_file("chol_n3", &bad, Precision::F64)
             .err()
             .unwrap_or_default()
             .contains("bad hex float"));
         let bad = LINE.replace("[3,3]", "[3,\"3\"]");
-        assert!(answer_file("chol_n3", &bad)
+        assert!(answer_file("chol_n3", &bad, Precision::F64)
             .err()
             .unwrap_or_default()
             .contains("not a dimension"));
-        assert!(answer_file("chol_n6", LINE).is_err());
-        assert!(answer_file("so3_exp", LINE).is_err());
+        assert!(answer_file("chol_n6", LINE, Precision::F64).is_err());
+        assert!(answer_file("so3_exp", LINE, Precision::F64).is_err());
     }
 
     /// Every input of every supported corpus file is `float.hex()` to the byte, every matrix of an
@@ -212,10 +231,55 @@ mod tests {
                     }
                 }
             }
-            let answers = answer_file(fn_id, &text)?;
+            let answers = answer_file(fn_id, &text, Precision::F64)?;
             assert_eq!(answers.lines().count(), text.lines().count(), "{fn_id}");
+            // In binary32: the `@f32` records, ids in order, every value a binary32.
+            let f32_ids: Vec<u64> = text
+                .lines()
+                .filter(|l| l.contains("@f32\""))
+                .map(|l| serde_json::from_str::<Value>(l).map(|r| r["id"].as_u64()))
+                .collect::<Result<Option<_>, _>>()
+                .map_err(|e| e.to_string())?
+                .ok_or("id")?;
+            assert!(!f32_ids.is_empty(), "{fn_id}");
+            let answers = answer_file(fn_id, &text, Precision::F32)?;
+            let mut ids = Vec::new();
+            for line in answers.lines() {
+                let answer: Value = serde_json::from_str(line).map_err(|e| e.to_string())?;
+                ids.push(answer["id"].as_u64().ok_or("id")?);
+                for values in answer["out"].as_object().ok_or("out")?.values() {
+                    for v in values.as_array().ok_or("array")? {
+                        let x = hexfloat::parse(v.as_str().ok_or("string")?)?;
+                        let narrow = f64::from(x as f32);
+                        assert!(
+                            x.is_nan() || narrow.to_bits() == x.to_bits(),
+                            "{fn_id}: {x:e}"
+                        );
+                    }
+                }
+            }
+            assert_eq!(ids, f32_ids, "{fn_id}");
         }
         Ok(())
+    }
+
+    /// The narrowing is exact or refused: an input of an `@f32` record that is not a binary32 is
+    /// an error, never a rounding.
+    #[test]
+    fn a_binary32_answer_refuses_an_input_that_is_not_a_binary32() {
+        let f32_line = LINE.replace("chol:spd", "chol:spd@f32");
+        assert!(answer_file("chol_n3", &f32_line, Precision::F32).is_ok());
+        // `1 + 2⁻³⁰` is a binary64 and no binary32.
+        let bad = f32_line.replacen("0x1.0000000000000p+2", "0x1.0000000400000p+2", 1);
+        let e = answer_file("chol_n3", &bad, Precision::F32)
+            .err()
+            .unwrap_or_default();
+        assert!(e.contains("not a binary32"), "{e}");
+        // A binary64 record is not answered in binary32.
+        assert_eq!(
+            answer_file("chol_n3", LINE, Precision::F32).as_deref(),
+            Ok("")
+        );
     }
 
     #[test]
@@ -236,7 +300,15 @@ mod tests {
             run(&args, &mut out, &mut err)
         };
         assert!(go(&["--version"]).is_ok());
-        for bad in [&[][..], &["--out", "d"], &["--nope"], &["x.jsonl"]] {
+        for bad in [
+            &[][..],
+            &["--out", "d"],
+            &["--nope"],
+            &["x.jsonl"],
+            &["--precision", "f32", "--version"],
+            &["--precision", "f16", "--out", "d", "x.jsonl"],
+            &["--precision", "f32", "--out", "d"],
+        ] {
             assert!(go(bad).is_err(), "{bad:?}");
         }
         assert_eq!(String::from_utf8_lossy(&out), format!("{PIN}\n"));

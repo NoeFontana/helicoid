@@ -30,12 +30,13 @@
 //!   `f32` kernel (`Registered::no_f32`). `--precision f32` without `--fn` runs the ids that have
 //!   such strata and names the others that a selected subject supports (left out, not asked); with
 //!   `--fn` it runs the id named or fails. Its result file is `<subject>[--<fn>]--f32.csv`, the
-//!   `precision` column `f32`.
-//! - **`helicoid`** (`crate::shipped`) is a plain subject over the eight `coeff_*` ids at both
-//!   precisions; a plain run of any of them prints its rows beside `seeded:correct`'s.
-//! - **Not implemented**: backward error (`Log` near π, `from_matrix`), the manif container
-//!   runner, `helicoid` on any other id, and the `Dual` comparison of the planted `Q` defect. The
-//!   envelope reads the CSVs this module writes (`crate::envelope`).
+//!   `precision` column `f32`. `--oracle NAME --precision f32` asks the runner for binary32
+//!   answers, or, for one that answers binary64 only, says so and passes (`0077`).
+//! - **`helicoid`** (`crate::shipped`) is a plain subject over every id `shipped` answers, at
+//!   `f32` where the id has `@f32` strata; a plain run of a `coeff_*` id prints its rows beside
+//!   `seeded:correct`'s.
+//! - **Not implemented**: backward error (`Log` near π, `from_matrix`) and the `Dual` comparison of
+//!   the planted `Q` defect. The envelope reads the CSVs this module writes (`crate::envelope`).
 
 pub(crate) mod corpus;
 pub(crate) mod metric;
@@ -135,7 +136,7 @@ pub(crate) fn oracle_names() -> Vec<&'static str> {
     oracle::names()
 }
 
-pub(crate) use oracle::{backend as oracle_backend, Backend};
+pub(crate) use oracle::{answers_f32 as oracle_answers_f32, backend as oracle_backend, Backend};
 
 pub(crate) fn root() -> Result<PathBuf, String> {
     let manifest = Path::new(env!("CARGO_MANIFEST_DIR"));
@@ -367,14 +368,21 @@ pub(crate) fn run(args: &[String]) -> Result<(), String> {
     }
     let rev = git_rev(&root);
     let corpus = corpus_dir()?;
+    let precision = options.precision.unwrap_or(Precision::F64);
     let subjects = match &options.oracle {
-        Some(name) => vec![oracle::run(
-            name,
-            &root,
-            &corpus,
-            &results,
-            options.fn_id.as_deref(),
-        )?],
+        Some(name) => {
+            let fn_id = options.fn_id.as_deref();
+            match oracle::run(name, &root, &corpus, &results, fn_id, precision)? {
+                Some(registered) => vec![registered],
+                // Not a failure: an f32 pass over every runner skips the binary64 ones (`0077`).
+                None => {
+                    eprintln!(
+                        "conformance: the `{name}` runner answers binary64 only; no f32 rows"
+                    );
+                    return Ok(());
+                }
+            }
+        }
         None => subject::registry(),
     };
     run_with(&corpus, &results, &rev, &options, subjects)
