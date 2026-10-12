@@ -44,6 +44,7 @@ defined by the status tables in `docs/`; they win over this file.
 
 ### Changed
 
+- **The resolved `libm` version is recorded** (`0034` plan step 2, in part): helicoid's conformance rows carry `subject_version` `0.0.2+libm.0.2.16`, and the files `cargo xtask thresholds` generates name it in their header. `libm` stays a caret dependency: an exact pin would force every consumer's graph onto one patch release (`0034`). No output moves.
 - **MSRV 1.85** (D17): omnisac, a consumer, is on 1.85, and the workspace already built there unchanged. `just msrv` and the CI job read the new floor.
 - **`R(q)` stays homogeneous** (`0076`): the unit form `(1 − 2‖u‖²)I + …` wins `Ad` near the identity and loses it near `π`, and it breaks §12's `to_matrix` contract `(1 + η)R`, so `Quat::to_matrix` is unchanged and its rustdoc says why. `so3_act/q:nonunit/f64` and `sen3_ad_n1/q:nonunit/f64` are excepted as `0058`'s stated drift term.
 - **Sim(3)'s `⊖` and `⊕` Jacobians share their coefficient evaluations** (`0073`): the group at `σ` and `-σ` from one branch and one set of transcendentals, each to the bit, so `rminus_jacobians` and `lminus_jacobians` run one pair where they ran three evaluations, and `rplus_jacobians`, `lplus_jacobians` one where they ran two. No output bit moves. `rminus_jacobians` takes 0.65–0.84 of its time (`f64` 270–294 ns, was 387–468), `rplus_jacobians` 0.73–0.88 and `jr_inv` 0.74–0.84.
