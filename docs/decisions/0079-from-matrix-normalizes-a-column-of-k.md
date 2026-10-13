@@ -30,13 +30,15 @@ Protocol:
   isolates each kernel's own rounding. The error is the componentwise max of `|q − s q_exact|/u`,
   with `s = ±1` the better sign. The id itself is unscored: the harness reports matrix inputs as
   backward error only (`NUMERICS.md` §11), so `just conformance` cannot adjudicate this change.
-- **Speed:** `cargo xtask bench-gate --bench groups --only so3/from_matrix --against <base>`, with
-  the base binary built from the same tree with the old kernel and the new `so3/from_matrix` row,
-  `taskset -c 2`, EPYC-Milan. Ratios are candidate/base.
+- **Speed:** `cargo xtask bench-gate --bench groups --only so3/from_matrix --against <base>`, the
+  base binary built clean from `main` with this PR's two bench rows added: one per stratum, and
+  `mixed-64`, 64 rotations whose pivot changes unpredictably from call to call. `taskset -c 2`,
+  EPYC-Milan. Ratios are candidate/base, over two runs.
 
 | | `f64` | `f32` |
 |---|---|---|
-| Time, three strata (identity, generic, near-`π`) | **0.55–0.61** (floor 0.5–8.3%) | **0.80–0.84** (floor 0.5–3.5%) |
+| Time, three strata (identity, generic, near-`π`) | **0.54–0.60** (floor 0.3–0.8%) | **0.70** (floor 0.3–0.6%) |
+| Time, `mixed-64` | **0.57** | **0.70** |
 | Max error over all records, old → new | 1.557 → **1.507** `u` | 2.013 → **1.465** `u` |
 | Mean error, old → new | 0.362 → 0.416 `u` | 0.329 → 0.355 `u` |
 | Records new better / worse | 359 / 542 | 284 / 396 |
@@ -56,6 +58,16 @@ Proposed, not settled:
    pivot rule, the nested `branch`es and the sign rule are unchanged.
 2. **`SO3::from_matrix`** forms the selected column inside the branches and normalizes once
    outside them, with the four divisions of `Quat::from_wxyz_normalized`.
+3. **The arms return scalars, captured by `move`.** Arms that borrow their candidates let LLVM
+   merge the four arms' reads into one load through a selected stack address: every candidate is
+   spilled, and the pivot compare feeds the load's address through `cmov` instead of a predicted
+   branch. That kernel, the PR's first, read 0.88 (`f64`) and 1.05–1.10 (`f32`) of the old time.
+4. **An overflowed norm gives NaN.** `n = sqrt(n2) + n2 · 0`: the added term is `+0` for a
+   finite `n2`, so `n` and every in-domain output are unchanged to the bit, and NaN once `n2`
+   overflows. That is an entry beyond about `2^511` (`f64`) or `2^63` (`f32`), where `q / ‖q‖` would
+   otherwise be a finite zero quaternion. It costs one multiplication beside the `sqrt` and one
+   addition after it. Rescaling instead, through a cold branch, kept the old kernel's range and
+   cost the gain: 0.98 (`f64`) and 1.18–1.21 (`f32`).
 
 ## Rationale
 
@@ -68,6 +80,15 @@ assume `|η|` near `u`. Rejected.
 
 - Output bits change on about half the records (1218 of 2594 at `f64`), each within the bounds
   above. No other function's bits change.
+- Out of domain, the range shrinks. The old kernel returned a finite unit quaternion for entries
+  up to about `2^1022`; this one returns NaN beyond `2^511` (`f64`) or `2^63` (`f32`).
+  `from_matrix_is_nan_where_the_column_norm_overflows` pins it. A rotation's entries are at most `1`.
+- Every matrix with finite entries below that overflow gives a unit quaternion, the zero matrix
+  included: the selected column's pivot entry is at least `1`.
+- Branch-free pivot selection measured slower at every row, `mixed-64` included: blending whole
+  columns costs more than the branch it replaces, mispredictions and all. With the rescaling
+  guard it read 1.42 (`f64`) and 1.78 (`f32`) on the strata, and 1.13 and
+  1.44 on `mixed-64`.
 - The no-regress bar (`0006`) is per stratum, on the max. If `so3_from_matrix` were scored,
   11 `f64` strata would regress, by up to 0.32 `u`, while its overall max improves. The
   bar does not read this id today. Taking the change means accepting that trade explicitly.
@@ -79,9 +100,9 @@ assume `|η|` near `u`. Rejected.
 
 ## Open questions
 
-1. **Does the owner accept a speedup of 1.6–1.8× (`f64`) and 1.2× (`f32`) for a mean error up
+1. **Does the owner accept a speedup of 1.7–1.9× (`f64`) and 1.4× (`f32`) for a mean error up
    0.03–0.05 `u` and some strata's max up to 0.32 `u`, with the overall max down?** Accept: this
-   record goes `ready` as written. Decline: the PR keeps only the bench row, and the consumer's 2×
+   record goes `ready` as written. Decline: the PR keeps only the bench rows, and the consumer's 2×
    stays.
 
 ## Further work

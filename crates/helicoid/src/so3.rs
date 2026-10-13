@@ -214,53 +214,51 @@ impl<S: Real> SO3<S> {
     /// `r` is a rotation matrix. For anything else this returns the nearest quaternion its pivot
     /// admits, which is not a projection onto SO(3); §3.4 projects with `svd3` first, which is
     /// owed (`PHASE2.md` §6), so until then a caller projects with its own SVD. It does
-    /// not panic, in debug or release: an entry large enough to overflow a pivot candidate gives a
-    /// non-finite or NaN quaternion, as `Quat::from_wxyz_unchecked` does -- garbage in, garbage
-    /// out. That is why the normalization below is written out rather than taken from
-    /// `Quat::from_wxyz_normalized`, whose `debug_assert!` would turn such a matrix, and an
-    /// all-NaN one, into a panic. `SO3::exp` and `coeffs`'s `nonnegative` read NaN the same way.
+    /// not panic, in debug or release: NaN propagates, and an entry large enough to overflow the
+    /// selected column's squared norm, beyond about `2^511` (`f64`) or `2^63` (`f32`), gives a NaN
+    /// quaternion -- garbage in, garbage out. That is why the normalization below is written out
+    /// rather than taken from `Quat::from_wxyz_normalized`, whose `debug_assert!` would turn such
+    /// a matrix, and an all-NaN one, into a panic. `SO3::exp` and `coeffs`'s `nonnegative` read NaN the same way.
     #[inline]
     pub fn from_matrix(r: &Mat3<S>) -> Self {
         // `get` per entry, each read once: `row(i)` builds and discards a whole `Vec3` per scalar,
         // and the diagonal is wanted four times over (the trace and the three axis candidates).
         let (d0, d1, d2) = (r.get(0, 0), r.get(1, 1), r.get(2, 2));
         let trace = (d0 + d1) + d2;
-        let c = [
+        let (c0, c1, c2, c3) = (
             S::one() + trace,
             (S::one() + d0 - d1) - d2,
             (S::one() - d0 + d1) - d2,
             (S::one() - d0 - d1) + d2,
-        ];
+        );
         // `lt` only: `b.lt(a)` is `a > b`, and `Real` has no `PartialOrd` (`0003`).
-        let best01 = c[1].lt(c[0]);
-        let best23 = c[3].lt(c[2]);
-        let first = S::select(best23, c[2], c[3]).lt(S::select(best01, c[0], c[1]));
+        let best01 = c1.lt(c0);
+        let best23 = c3.lt(c2);
+        let first = S::select(best23, c2, c3).lt(S::select(best01, c0, c1));
         // The three off-diagonal differences and sums: `K`'s off-diagonal entries (SO.11).
         let (m01, m10) = (r.get(0, 1), r.get(1, 0));
         let (m02, m20) = (r.get(0, 2), r.get(2, 0));
         let (m12, m21) = (r.get(1, 2), r.get(2, 1));
         let (dx, dy, dz) = (m21 - m12, m02 - m20, m10 - m01);
         let (sx, sy, sz) = (m01 + m10, m02 + m20, m12 + m21);
-        let q = S::branch(
+        // Scalars, captured by `move`: arms that borrow let LLVM merge their reads into one load
+        // through a selected stack address, which spills every candidate first (`0079`, draft).
+        let (w, x, y, z) = S::branch(
             first,
-            || S::branch(best01, || [c[0], dx, dy, dz], || [dx, c[1], sx, sy]),
-            || S::branch(best23, || [dy, sx, c[2], sz], || [dz, sy, sz, c[3]]),
+            move || S::branch(best01, move || (c0, dx, dy, dz), move || (dx, c1, sx, sy)),
+            move || S::branch(best23, move || (dy, sx, c2, sz), move || (dz, sy, sz, c3)),
         );
         // The same four divisions `Quat::from_wxyz_normalized` performs, in the same order and on
         // the same `norm_sq`, without its `debug_assert!`, for the reason the *Domain* note gives.
-        let n = Quat {
-            w: q[0],
-            x: q[1],
-            y: q[2],
-            z: q[3],
-        }
-        .norm_sq()
-        .sqrt();
+        // `n2 * 0` is `+0` for a finite `n2`, so `n` is exact, and NaN for an overflowed one,
+        // where `q / n` would otherwise be a finite zero quaternion.
+        let n2 = Quat { w, x, y, z }.norm_sq();
+        let n = n2.sqrt() + n2 * S::zero();
         Self(Quat {
-            w: q[0] / n,
-            x: q[1] / n,
-            y: q[2] / n,
-            z: q[3] / n,
+            w: w / n,
+            x: x / n,
+            y: y / n,
+            z: z / n,
         })
     }
 
