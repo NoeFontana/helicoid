@@ -175,10 +175,9 @@ fn so3_act(input: &Fields) -> Result<Fields, String> {
 
 /// The quaternion of a rounded or scaled `R`, through Shepperd's method.
 ///
-/// `quat_from_rot3` neither validates nor normalizes `R` and has no sign rule of its own, where
-/// the reference is the polar factor's quaternion under a stated sign convention: this id is
-/// scored by backward error, which `NUMERICS.md` §11 owes, so the row measures shape and
-/// finiteness until it lands (`metric.rs`'s `BackwardOnly`).
+/// `quat_from_rot3` neither validates nor normalizes `R` and has no sign rule of its own. The id
+/// is scored by direction and drift (`0085`): the angle to the polar factor's quaternion, sign
+/// forgiven, and `|‖q‖² − 1|`, so its un-normalized output is scored as it is.
 fn so3_from_matrix(input: &Fields) -> Result<Fields, String> {
     let r = helicoid_to_tf_tree_rot3(take(input, "R", 9)?)?;
     Ok(fields([(

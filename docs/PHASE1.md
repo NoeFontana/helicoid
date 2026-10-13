@@ -242,7 +242,7 @@ Series are summed until the term's norm is below $10^{-110}$ relative. Phase 2's
   `geo:consecutive` for $10^4$; giving the other two the same span costs nothing and is what
   `PHASE4.md` §5.2's left-invariance bound is measured against). $t = 0$ and $t = 1$ are kept and
   are the cheapest rows in the corpus: they catch an endpoint error no interior $t$ sees.
-- `q:nonunit`: quaternions at $\|q\|^2 - 1 = \pm 2^{-45}$ (`Log`'s scale invariance, `from_*` normalization).
+- `q:nonunit`: quaternions at $\|q\|^2 - 1 = \pm 2^{-45}$ (`Log`'s scale invariance, `from_*` normalization); its `@f32` twin at $\pm 2^{-19}$, which binary32 resolves (`0085`).
 - `matrix:exact` (`so3_from_matrix`, [`0085`](./decisions/0085-from-matrix-is-measured-on-exact-rotations.md)):
   the 24 rotations that are signed permutation matrices, built from integers, so exact in both
   precisions. `so3_from_matrix` also has the `@f32` twin of every stratum, after all of them: the

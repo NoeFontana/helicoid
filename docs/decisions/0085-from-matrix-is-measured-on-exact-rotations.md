@@ -45,6 +45,9 @@ and a sign-free metric does not read it.
    matrix is its binary64 namesake's rounded to nearest-even binary32, and its reference is the
    function at that matrix ([`0016`](./0016-f32-exact-strata-for-the-scalar-coefficient-ids.md)
    items 1–2). `theta:subnormal@f32` is its own binary32-subnormal decade, as 0016 makes it.
+   `q:nonunit@f32` scales the same quaternions by `1 ± 2⁻¹⁹`, since binary32 rounds `2⁻⁴⁵` away.
+   That is the largest power of two Sophus's binary32 `SO3(Matrix)` accepts, so the stratum keeps
+   an oracle (amended after the first run, which read a plain rotation there).
    `matrix:exact@f32` is `matrix:exact` under its own name. No existing record moves.
 4. **Subjects.** `helicoid` answers `so3_from_matrix` at `f32`. The Sophus image answers it with
    `Sophus::SO3<float>`. `tf_tree_math` and GTSAM stay binary64-only.
@@ -76,7 +79,7 @@ so3_from_matrix [--precision f32]`, and `--oracle tf_tree_math | sophus | gtsam`
 | `theta:pi-1e-12` | 1.5571 | 0.8839 | 1.3702 | 1.4096 |
 | `theta:dense` | 1.3928 | 1.0337 | 1.3701 | 0.8248 |
 | `q:w0` | 1.2894 | 0.5928 | 1.1223 | 1.0644 |
-| `q:nonunit` | 89.41 | 162.35 | 1.2992 | 1.1896 |
+| `q:nonunit` | 89.41 | 162.35 | 11.087 (at `1 ± 2⁻¹⁹`) | 20.528 |
 | all strata | 89.41 (1.567 without `q:nonunit`) | | 1.8342 (`theta:pi-1e-11@f32`) | |
 
 `matrix:exact` at `f64` is the reported defect. The two `√½` both come out as `ℓ`, the double

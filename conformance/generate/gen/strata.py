@@ -114,6 +114,11 @@ def f32_twin(s: Stratum) -> Stratum:
     if s.name == "theta:subnormal":
         name = s.name + F32_SUFFIX
         return replace(_log_uniform(name, _decade(F32_SUBNORMAL_DECADE)), f32=True)
+    if s.name == "q:nonunit":
+        # Its scale is its reading, and 2^-45 rounds away in binary32: the same quaternions at
+        # NONUNIT_EXP_F32 instead, on the same stream.
+        source = replace(s, draw_quats=_q_nonunit_at(NONUNIT_EXP_F32))
+        return replace(source, name=s.name + F32_SUFFIX, f32=True, source=source)
     return replace(s, name=s.name + F32_SUFFIX, f32=True, source=s)
 
 
@@ -134,20 +139,30 @@ COEFF_R_STRATA = (*R_STRATA, *SCALAR_F32_STRATA, f32_twin(Q_W0))
 # The quaternion ids (`so3_log`, `so3_act`, `so3_from_matrix`) see the theta strata as the unit
 # quaternion of (theta, axis), then two strata of their own, in the order that keeps every id.
 # `q:w0` is (+0, u) for a unit u, an angle of exactly pi. `q:nonunit` is a Haar-random unit
-# quaternion scaled to |q|^2 - 1 = +-2^-45 (alternately), each component rounded to binary64.
+# quaternion scaled to |q|^2 - 1 = +-2^-45 (alternately), each component rounded to binary64. Its
+# `@f32` twin scales by 2^-19 instead, 32 u of binary32: the largest power of two whose scaled
+# rotation Sophus's binary32 `SO3(Matrix)` accepts (|R R^T - I|_F = 2 sqrt(3) 2^-19 < 1e-5), so the
+# stratum keeps an oracle.
 NONUNIT_EXP = -45
+NONUNIT_EXP_F32 = -19
 
 
 def _q_w0(rng: SplitMix64) -> list[tuple]:
     return [(0.0, *unit_vector_s2(rng)) for _ in range(N_AXES)]
 
 
-def _q_nonunit(rng: SplitMix64) -> list[tuple]:
-    out = []
-    for i in range(N_AXES):
-        scale = mp.sqrt(1 + (-1) ** i * mpf(2) ** NONUNIT_EXP)
-        out.append(tuple(to_f64(scale * c) for c in unit_quaternion_s3(rng)))
-    return out
+def _q_nonunit_at(exp: int) -> Callable[[SplitMix64], list[tuple]]:
+    def draw(rng: SplitMix64) -> list[tuple]:
+        out = []
+        for i in range(N_AXES):
+            scale = mp.sqrt(1 + (-1) ** i * mpf(2) ** exp)
+            out.append(tuple(to_f64(scale * c) for c in unit_quaternion_s3(rng)))
+        return out
+
+    return draw
+
+
+_q_nonunit = _q_nonunit_at(NONUNIT_EXP)
 
 
 Q_STRATA = (
