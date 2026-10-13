@@ -1,4 +1,5 @@
-//! The resolved `libm` version, read from the workspace lock file into `HELICOID_LIBM_VERSION`.
+//! The resolved `libm` version, read from the workspace lock file into `HELICOID_LIBM_VERSION`,
+//! and the target triple into `XTASK_TARGET`.
 //!
 //! D16's bit identity holds per resolved `libm` version (`docs/decisions/0034`, draft), and `libm`
 //! is a caret dependency, so a patch release may move bits. The rows the shipped subject writes
@@ -13,6 +14,9 @@ fn main() -> Result<(), String> {
     let text = std::fs::read_to_string(&lock).map_err(|e| format!("{}: {e}", lock.display()))?;
     let version = libm_version(&text)?;
     println!("cargo:rustc-env=HELICOID_LIBM_VERSION={version}");
+    // `cargo xtask determinism` names the target its digests were computed on (`PHASE6.md` §3).
+    let target = std::env::var("TARGET").map_err(|e| format!("TARGET: {e}"))?;
+    println!("cargo:rustc-env=XTASK_TARGET={target}");
     Ok(())
 }
 

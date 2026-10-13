@@ -101,6 +101,50 @@ jobs:
           tool: just
       - run: just wasm
 
+  # D16 (`docs/PHASE6.md` §3): one digest table per target, then one comparison. Wired, not yet
+  # required: `PHASE1.md` §3 makes it required from Phase 6.
+  determinism:
+    name: determinism (${{ matrix.target }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { target: x86_64, os: ubuntu-latest, recipe: determinism-digest }
+          - { target: aarch64, os: ubuntu-24.04-arm, recipe: determinism-digest }
+          - { target: wasm32, os: ubuntu-latest, recipe: determinism-wasm }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-wasip1
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: just,wasmtime
+      - run: just ${{ matrix.recipe }} target/determinism/${{ matrix.target }}.txt
+      - uses: actions/upload-artifact@v7
+        with:
+          name: determinism-${{ matrix.target }}
+          path: target/determinism/${{ matrix.target }}.txt
+
+  determinism-compare:
+    name: determinism (compare)
+    needs: determinism
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: determinism-*
+          path: target/determinism
+          merge-multiple: true
+      - run: >-
+          cargo xtask determinism --compare target/determinism/x86_64.txt
+          target/determinism/aarch64.txt target/determinism/wasm32.txt
+
   docs:
     name: docs
     runs-on: ubuntu-latest

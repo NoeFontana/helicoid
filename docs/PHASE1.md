@@ -13,7 +13,7 @@ defects and `tf_tree_math`, which becomes oracle #1 ([`0010`](./decisions/0010-s
 
 | Area | Status |
 |---|---|
-| Workspace, lints, `justfile`, CI matrix (§3) | Partial: workspace, lints, `justfile` and CI for `build`/`test`/`lint`/`audit`/`msrv`/`no-std`/`wasm`/`doc`/`corpus-check`/`conformance --self-test`/`thresholds-check`/`envelope`. The oracles run locally (`just oracles`), not in CI: their containers and a source-built GTSAM do not fit hosted runners. Determinism pending. |
+| Workspace, lints, `justfile`, CI matrix (§3) | Partial: workspace, lints, `justfile` and CI for `build`/`test`/`lint`/`audit`/`msrv`/`no-std`/`wasm`/`doc`/`corpus-check`/`conformance --self-test`/`thresholds-check`/`envelope`. The oracles run locally (`just oracles`), not in CI: their containers and a source-built GTSAM do not fit hosted runners. Determinism wired (`PHASE6.md` §3), not required. |
 | Reference generator and committed corpus v1 (§4) | Partial: generator skeleton and committed corpus v1 with 150-digit mpmath reference generation across scalar and group strata. SE(2) coefficients pending. |
 | Conformance harness and result schema (§5) | Partial: `cargo xtask conformance` runner, result CSV generation, and seeded defect checks; `cargo xtask compare` (`0038`, `0078`). Backward error (`Log` near π) and `@f32` strata for most vector ids pending; `so3_from_matrix` is scored forward at both precisions ([`0085`](./decisions/0085-from-matrix-is-measured-on-exact-rotations.md)). |
 | Threshold sweep and generated-file format (§6) | Partial: two-stage threshold sweep over full domain generating `coeffs` and series tables (`0039`, `0047`). |

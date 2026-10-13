@@ -8,6 +8,10 @@ defined by the status tables in `docs/`; they win over this file.
 
 ## [Unreleased]
 
+### Added
+
+- **`just determinism`** (`PHASE6.md` §3, D16): `cargo xtask determinism` digests the shipped subject's outputs over the whole corpus, one SHA-256 per id and precision, NaN canonicalized. CI digests x86_64, aarch64 and `wasm32-wasip1` and fails on any difference. At `0.0.3` all 114 digests agree on x86_64 and `wasm32-wasip1`.
+
 ## [0.0.3] - 2026-10-13
 
 Phase 5: charts, S², Sim(3), the integrated exponentials and `Gaussian`. `eig3` is Jacobi and dominates nalgebra and Eigen; `chol` and `SO3::from_matrix` are faster; three C++ container oracles. MSRV 1.85.
