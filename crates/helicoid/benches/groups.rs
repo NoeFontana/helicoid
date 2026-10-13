@@ -518,7 +518,7 @@ fn gaussian<S: Fixture, const N: usize, const D: usize>(
 
 /// `SO3::from_matrix` over 64 rotations whose angles and axes come from a fixed LCG, so the pivot
 /// (`tr R` or one of the three diagonals) changes unpredictably from call to call: the per-stratum
-/// rows feed one matrix and never pay a mispredicted pivot (`0079`, draft).
+/// rows feed one matrix and never pay a mispredicted pivot (`0079`).
 fn so3_from_matrix_mixed<S: Fixture>(g: &mut BenchmarkGroup<'_, WallTime>) {
     let mut state = 0x2545_F491_4F6C_DD1D_u64;
     let mut next = || {

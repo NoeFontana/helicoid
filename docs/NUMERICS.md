@@ -114,7 +114,7 @@ per point; its reference twin is the per-point `act`.
 
 Shepperd's method: select the largest of $\{\mathrm{tr}R, R_{00}, R_{11}, R_{22}\}$ through nested
 `branch`es and normalize that pivot's column of $K(R) + I = 4qq^\top$ (`docs/maths/so3.md` SO.12(b);
-[`0079`](./decisions/0079-from-matrix-normalizes-a-column-of-k.md), draft), e.g. for the trace pivot
+[`0079`](./decisions/0079-from-matrix-normalizes-a-column-of-k.md)), e.g. for the trace pivot
 $(1 + \mathrm{tr}R,\ R_{21} - R_{12},\ R_{02} - R_{20},\ R_{10} - R_{01})$: one square root, and the
 pivot component comes out positive. **Closed form, never iterative**:
 avoids iterative convergence failures (such as Müller iteration hangs on degenerate input).

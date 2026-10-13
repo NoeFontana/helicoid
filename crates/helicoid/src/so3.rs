@@ -203,7 +203,7 @@ impl<S: Real> SO3<S> {
     /// The rotation of a `3 x 3` matrix by Shepperd's method (`NUMERICS.md` §3.4): the largest of
     /// `{tr R, R00, R11, R22}` through nested `branch`es picks a column of `K(R) + I`, which is
     /// `4 q_j q` (SO.12(b)), and normalizing it is `q` with its pivot positive: one `sqrt`, no
-    /// division before it (`0079`, draft). Closed form avoids iterative convergence failures on
+    /// division before it (`0079`). Closed form avoids iterative convergence failures on
     /// degenerate input.
     ///
     /// The selected column's pivot entry is at least `1` (SO.12(c)), so the `sqrt` takes a norm of
@@ -242,7 +242,7 @@ impl<S: Real> SO3<S> {
         let (dx, dy, dz) = (m21 - m12, m02 - m20, m10 - m01);
         let (sx, sy, sz) = (m01 + m10, m02 + m20, m12 + m21);
         // Scalars, captured by `move`: arms that borrow let LLVM merge their reads into one load
-        // through a selected stack address, which spills every candidate first (`0079`, draft).
+        // through a selected stack address, which spills every candidate first (`0079`).
         let (w, x, y, z) = S::branch(
             first,
             move || S::branch(best01, move || (c0, dx, dy, dz), move || (dx, c1, sx, sy)),

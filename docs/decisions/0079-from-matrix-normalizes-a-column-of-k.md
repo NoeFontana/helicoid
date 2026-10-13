@@ -1,8 +1,8 @@
 # 0079: `from_matrix` normalizes a column of `K + I`
 
-**Status:** draft
+**Status:** ready
 **Owner:** @NoeFontana
-**Implementation:** this record's PR (open, gated on its open question)
+**Implementation:** this record's PR (#153)
 
 ## Context
 
@@ -51,8 +51,6 @@ old form's error compounds through two divisions where the new one has one.
 
 ## Decision
 
-Proposed, not settled:
-
 1. **`NUMERICS.md` §3.4:** the extraction is "column `j` of `K(R) + I` (SO.12(b)), normalized",
    with the trace pivot's column `(1 + tr R, R₂₁ − R₁₂, R₀₂ − R₂₀, R₁₀ − R₀₁)` written out. The
    pivot rule, the nested `branch`es and the sign rule are unchanged.
@@ -91,7 +89,7 @@ assume `|η|` near `u`. Rejected.
   1.44 on `mixed-64`.
 - The no-regress bar (`0006`) is per stratum, on the max. If `so3_from_matrix` were scored,
   11 `f64` strata would regress, by up to 0.32 `u`, while its overall max improves. The
-  bar does not read this id today. Taking the change means accepting that trade explicitly.
+  bar does not read this id today. The owner accepted that trade for the speed (2026-10-13).
 
 ## Implementation plan
 
@@ -100,10 +98,7 @@ assume `|η|` near `u`. Rejected.
 
 ## Open questions
 
-1. **Does the owner accept a speedup of 1.7–1.9× (`f64`) and 1.4× (`f32`) for a mean error up
-   0.03–0.05 `u` and some strata's max up to 0.32 `u`, with the overall max down?** Accept: this
-   record goes `ready` as written. Decline: the PR keeps only the bench rows, and the consumer's 2×
-   stays.
+None.
 
 ## Further work
 
