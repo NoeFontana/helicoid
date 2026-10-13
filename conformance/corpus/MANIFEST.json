@@ -477,9 +477,9 @@
     },
     "so3_from_matrix.jsonl": {
       "kind": "corpus",
-      "rechecked": 38,
-      "records": 2594,
-      "sha256": "089405df4ac313a89707a588bcd3efa44410679444cbc3bf4d11d3eced2353e5"
+      "rechecked": 78,
+      "records": 5236,
+      "sha256": "2a0c35b0f2ae8489562efd11d9dca313797480ae6c6c247f2ac48708c9809d95"
     },
     "so3_gamma2.jsonl": {
       "kind": "corpus",
@@ -530,7 +530,7 @@
       "sha256": "3780fb0bfac76491d5c03b5ebbeb52fc333c95edaf3784bf6e805add3f219f2b"
     }
   },
-  "generator": "sha256:7964f6ad4ce59e367f2e6029f540d15719d684d29f36227e7ab3da4c0030911c",
+  "generator": "sha256:7cfdf7a4877fb8283e5ea2434150c24fd34f8dbffc7783a5e6e76e98a4786f48",
   "mpmath": "1.4.1",
   "python": "3.12",
   "recheck": {

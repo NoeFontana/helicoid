@@ -17,9 +17,6 @@
 //! - **p99** is nearest-rank over the records with finite outputs, `⌈0.99·m⌉`-th smallest.
 //! - **Non-finite** records count in `n` and `nonfinite`, not in `max_u`, `p99_u` or `argmax_id`;
 //!   so does a finite output whose error overflows binary64.
-//! - **Backward-only ids** (`so3_from_matrix`) are still evaluated: shape and finiteness are
-//!   checked, `n` and `nonfinite` are counted, `max_u` and `p99_u` are `NaN` until backward error
-//!   exists.
 //! - **A record's score** is the largest error over its output fields; a `--fn` run writes
 //!   `<subject>--<fn>.csv` so it never replaces a full result.
 //! - **`git_rev`** is `HEAD`, plus `-dirty` when the tree has uncommitted changes.
@@ -35,8 +32,8 @@
 //! - **`helicoid`** (`crate::shipped`) is a plain subject over every id `shipped` answers, at
 //!   `f32` where the id has `@f32` strata; a plain run of a `coeff_*` id prints its rows beside
 //!   `seeded:correct`'s.
-//! - **Not implemented**: backward error (`Log` near π, `from_matrix`) and the `Dual` comparison of
-//!   the planted `Q` defect. The envelope reads the CSVs this module writes (`crate::envelope`).
+//! - **Not implemented**: backward error (`Log` near π) and the `Dual` comparison of the planted
+//!   `Q` defect. The envelope reads the CSVs this module writes (`crate::envelope`).
 
 pub(crate) mod corpus;
 pub(crate) mod metric;
@@ -569,7 +566,8 @@ mod tests {
         let split = |subjects: &[Registered]| split_f32(&dir, corpus::manifest(&dir)?, subjects);
         let (with, left_out) = split(&[registered(Perfect::exact())])?;
         // Exactly the ids with an `@f32` stratum: the coefficient ids (`0016`), the routines'
-        // (`0056`, `0061`), `so3_gamma2` (`0064`), the Gaussians' (`0065`) and S²'s (`0067`).
+        // (`0056`, `0061`), `so3_gamma2` (`0064`), the Gaussians' (`0065`), S²'s (`0067`), Sim(3)'s
+        // (`0070`) and `so3_from_matrix` (`0085`).
         let entries = corpus::manifest(&dir)?;
         let mut with_f32 = Vec::new();
         for e in &entries {
@@ -590,6 +588,7 @@ mod tests {
                 "real_",
                 "mat2_",
                 "so3_gamma2",
+                "so3_from_matrix",
                 "gaussian_",
                 "s2_",
                 "sim3_",
@@ -609,8 +608,8 @@ mod tests {
         assert_eq!(split(&[of("so3_log")])?.1, ["so3_log"]);
         assert!(split(&[of("coeff_k")])?.1.is_empty());
         // The correct seeded subject and `helicoid` answer `so3_*` and `sen3_*`, which have no
-        // `@f32` stratum. The `ad`, `log` and `*_inv` widths are `helicoid`'s alone: the seeded
-        // kernel is `PHASE1.md` §10's `exp`, `jr` and `jl`.
+        // `@f32` stratum but `so3_from_matrix`'s. The `ad`, `log` and `*_inv` widths are
+        // `helicoid`'s alone: the seeded kernel is `PHASE1.md` §10's `exp`, `jr` and `jl`.
         let plain: Vec<Registered> = subject::registry()
             .into_iter()
             .filter(|r| !r.planted)
@@ -862,14 +861,14 @@ mod tests {
     }
 
     #[test]
-    fn a_backward_only_id_is_evaluated_and_a_non_finite_output_fails_it() -> Result<(), String> {
+    fn a_matrix_input_id_is_scored_and_a_non_finite_output_fails_it() -> Result<(), String> {
         let scratch = Scratch::new("from-matrix");
         let ok = run_in(&scratch, &["--fn", "so3_from_matrix"], Perfect::exact());
         assert!(ok.is_ok(), "{ok:?}");
         let csv = std::fs::read_to_string(scratch.0.join("perfect--so3_from_matrix.csv"))
             .map_err(|e| e.to_string())?;
         assert!(
-            csv.lines().count() > 5 && csv.contains(",NaN,NaN,"),
+            csv.lines().count() > 5 && csv.contains("matrix:exact,") && !csv.contains("NaN"),
             "{csv}"
         );
         let nan = Fixed::new("nan", |r| {

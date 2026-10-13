@@ -15,7 +15,7 @@ defects and `tf_tree_math`, which becomes oracle #1 ([`0010`](./decisions/0010-s
 |---|---|
 | Workspace, lints, `justfile`, CI matrix (§3) | Partial: workspace, lints, `justfile` and CI for `build`/`test`/`lint`/`audit`/`msrv`/`no-std`/`wasm`/`doc`/`corpus-check`/`conformance --self-test`/`thresholds-check`/`envelope`. The oracles run locally (`just oracles`), not in CI: their containers and a source-built GTSAM do not fit hosted runners. Determinism pending. |
 | Reference generator and committed corpus v1 (§4) | Partial: generator skeleton and committed corpus v1 with 150-digit mpmath reference generation across scalar and group strata. SE(2) coefficients pending. |
-| Conformance harness and result schema (§5) | Partial: `cargo xtask conformance` runner, result CSV generation, and seeded defect checks; `cargo xtask compare` (`0038`, `0078`). Backward error and f32 vector strata pending. |
+| Conformance harness and result schema (§5) | Partial: `cargo xtask conformance` runner, result CSV generation, and seeded defect checks; `cargo xtask compare` (`0038`, `0078`). Backward error (`Log` near π) and `@f32` strata for most vector ids pending; `so3_from_matrix` is scored forward at both precisions ([`0085`](./decisions/0085-from-matrix-is-measured-on-exact-rotations.md)). |
 | Threshold sweep and generated-file format (§6) | Partial: two-stage threshold sweep over full domain generating `coeffs` and series tables (`0039`, `0047`). |
 | Oracle runners: `tf_tree_math`, sophus-rs (excluded crates); Sophus, manif, GTSAM (containers) (§7) | Partial: runners implemented for `tf_tree_math`, `sophus_rs` and `nalgebra` (`0056`) over file protocol; the Sophus (`0072`), GTSAM (`0074`) and manif (`0075`) containers done; nalgebra and Sophus answer `@f32` strata in binary32 (`0077`); the Sophus image answers `eig3` with its Eigen ([`0083`](./decisions/0083-eig3-is-also-judged-against-eigen.md)). |
 | Envelope and bars (§8) | Partial: domination and no-regression gating over baseline and oracles (`0006`). Baseline blessing awaiting Phase 3 candidate rows. |
@@ -152,7 +152,7 @@ side of `docs/maths/coefficients.md` CO.12.
 | `so3_exp` | $\varphi$ | quaternion power series $\sum p^n/n!$, $p = (0, \varphi/2)$ |
 | `so3_log` | $q$ | the $\varphi$ with $\|\varphi\| \le \pi$ and $\mathrm{Exp}(\varphi) = q/\|q\|$ ($w \ge 0$ after the flip), by Newton's method on the `so3_exp` series; `mp.logm` of $R(q/\|q\|)$ is a test cross-check only, since it returns complex results near $\pi$; stratum `q:w0` uses the sign rule of `NUMERICS.md` §3.2 |
 | `so3_act` | $(q, p)$ | $R(q/\|q\|)\,p$ |
-| `so3_from_matrix` | $R$ | the quaternion of the rotation nearest to $R$ in Frobenius norm (the polar factor): a rounded or scaled $R$ is not a rotation, so its `mp.logm` is not skew; backward error only (`NUMERICS.md` §11) |
+| `so3_from_matrix` | $R$ | the quaternion of the rotation nearest to $R$ in Frobenius norm (the polar factor): a rounded or scaled $R$ is not a rotation, so its `mp.logm` is not skew. The quaternion strata, then `matrix:exact`, then the `@f32` twin of each; scored by §11's sign-free direction metric ([`0085`](./decisions/0085-from-matrix-is-measured-on-exact-rotations.md)) |
 | `so3_jr`, `so3_jl` | $\varphi$ | $\sum (\mp W)^n/(n+1)!$ |
 | `so3_jr_inv`, `so3_jl_inv` | $\varphi$ | `mp.inverse` of the above |
 | `so3_gamma2` | $\varphi$ | $\sum W^n/(n+2)!$ (`NUMERICS.md` §7); every stratum of `so3_jl` and its `@f32` twin ([`0064`](./decisions/0064-the-integrated-exponentials-reuse-the-swept-switches.md)) |
@@ -243,6 +243,10 @@ Series are summed until the term's norm is below $10^{-110}$ relative. Phase 2's
   `PHASE4.md` §5.2's left-invariance bound is measured against). $t = 0$ and $t = 1$ are kept and
   are the cheapest rows in the corpus: they catch an endpoint error no interior $t$ sees.
 - `q:nonunit`: quaternions at $\|q\|^2 - 1 = \pm 2^{-45}$ (`Log`'s scale invariance, `from_*` normalization).
+- `matrix:exact` (`so3_from_matrix`, [`0085`](./decisions/0085-from-matrix-is-measured-on-exact-rotations.md)):
+  the 24 rotations that are signed permutation matrices, built from integers, so exact in both
+  precisions. `so3_from_matrix` also has the `@f32` twin of every stratum, after all of them: the
+  binary64 matrix rounded to binary32 (`theta:subnormal@f32` its own decade, as below).
 - `<S>@f32` ([`0016`](./decisions/0016-f32-exact-strata-for-the-scalar-coefficient-ids.md)), for
   every stratum $S$ of `coeff_k`, `coeff_a`…`coeff_e`, `coeff_cos_half` and `coeff_r`, after all of
   them: $S$'s inputs rounded to nearest-even binary32 (`coeff_r`: $n$ and $w$ each), the reference

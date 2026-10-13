@@ -347,5 +347,47 @@ class InputsTest(unittest.TestCase):
                 self.assertLess(max(abs(e - int(i % 4 == 0)) for i, e in enumerate(err)), 1e-15)
 
 
+class MatrixStrataTest(unittest.TestCase):
+    """0085: `matrix:exact` and the `@f32` twins of `so3_from_matrix`."""
+
+    by = {s.name: s for s in so3.MATRIX_STRATA}
+
+    def test_exact_rotations_are_the_24_signed_permutations_of_determinant_one(self):
+        for name in ("matrix:exact", "matrix:exact@f32"):
+            recs = so3.matrix_inputs(self.by[name])
+            mats = {tuple(r["R"].data) for r in recs}
+            self.assertEqual(len(mats), 24, name)
+            for r in recs:
+                self.assertTrue(all(x in (-1.0, 0.0, 1.0) for x in r["R"].data))
+                R = so3.from_mat(r["R"])
+                self.assertEqual(so3.mm(so3.mt(R), R), so3.identity())
+                self.assertEqual(check._det3(R), 1)
+
+    def test_exact_references_are_the_exact_quaternions(self):
+        """Each component is one of 0, 1/2, sqrt(1/2), 1 in magnitude, a zero exactly zero: the
+        reference the corpus writes is the exact quaternion rounded once, to its 30 digits."""
+        exact = (mpf(0), mpf(1) / 2, mp.sqrt(mpf(1) / 2), mpf(1))
+        for r in so3.matrix_inputs(self.by["matrix:exact"]):
+            q = so3.from_matrix(r)["q"]
+            for c in q:
+                near = min(exact, key=lambda e: abs(abs(c) - e))
+                self.assertLess(abs(abs(c) - near), REL)
+                self.assertEqual(c == 0, near == 0)
+            check.so3_from_matrix(r, {"q": q})
+
+    def test_an_f32_twin_rounds_its_namesakes_matrix_to_binary32(self):
+        for name in ("theta:1e-3", "theta:pi-1e-9", "q:nonunit"):
+            wide = so3.matrix_inputs(self.by[name])
+            narrow = so3.matrix_inputs(self.by[f"{name}@f32"])
+            self.assertEqual(len(wide), len(narrow), name)
+            for w, n in zip(wide, narrow, strict=True):
+                self.assertEqual(n["R"].data, [precision.to_f32(x) for x in w["R"].data])
+        # `theta:subnormal@f32` is its own draw, as the scalar ids' is (0016): binary32 subnormals.
+        for r in so3.matrix_inputs(self.by["theta:subnormal@f32"]):
+            off = [abs(x) for i, x in enumerate(r["R"].data) if i % 4]
+            self.assertTrue(all(0 < x < 2.0**-126 for x in off if x), off)
+            self.assertTrue(any(off))
+
+
 if __name__ == "__main__":
     unittest.main()

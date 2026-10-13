@@ -11,6 +11,7 @@ row are below `_eps()` relative to the partial sum, entry by entry: an entry of 
 digits, as it does in the corpus.
 """
 
+import itertools
 import math
 from functools import lru_cache
 
@@ -18,7 +19,7 @@ from mpmath import mp, mpf
 
 from .fmt import Mat
 from .precision import to_f32, to_f64
-from .strata import Stratum
+from .strata import QUAT_STRATA, Draw, Drawn, Stratum, f32_twin
 
 MAX_ITER = 1000  # a series or an iteration that has not stopped by now is a bug, not slow
 
@@ -326,9 +327,43 @@ def act_inputs(stratum: Stratum) -> list[dict]:
     return [{"q": q, "p": list(p)} for q, p in zip(qs, stratum.points(len(qs)), strict=True)]
 
 
-def matrix_inputs(stratum: Stratum) -> list[dict]:
-    """R(q) rounded to binary64: not exactly a rotation, and a scaled one for a non-unit q."""
+def matrix_inputs(stratum: Stratum | Drawn) -> list[dict]:
+    """R(q) rounded to binary64: not exactly a rotation, and a scaled one for a non-unit q. An
+    `@f32` stratum rounds its binary64 namesake's matrix to binary32 (0016 item 1)."""
+    if isinstance(stratum, Drawn):
+        return stratum.records()
+    rnd = to_f32 if stratum.f32 else float
     return [
-        {"R": Mat((3, 3), [to_f64(x) for x in to_mat(rot([mpf(c) for c in q])).data])}
-        for q in quaternions(stratum)
+        {"R": Mat((3, 3), [rnd(to_f64(x)) for x in to_mat(rot([mpf(c) for c in q])).data])}
+        for q in quaternions(stratum.binary64())
     ]
+
+
+def _parity(perm) -> int:
+    return (-1) ** sum(perm[i] > perm[j] for i in range(3) for j in range(i + 1, 3))
+
+
+def exact_rotations(draw: Draw, n: int) -> list[dict]:
+    """`matrix:exact` (docs/decisions/0085): the 24 signed permutation matrices of determinant +1,
+    from integers. R(q) of an mpf quaternion would leave residues of 1e-120 that rounding keeps."""
+    out = []
+    for perm in itertools.permutations(range(3)):
+        for signs in itertools.product((1, -1), repeat=3):
+            if _parity(perm) * signs[0] * signs[1] * signs[2] != 1:
+                continue
+            R = [[mpf(signs[i] if j == perm[i] else 0) for j in range(3)] for i in range(3)]
+            out.append({"R": Mat((3, 3), [draw.round(x) for x in to_mat(R).data])})
+    if len(out) != n:
+        raise ValueError(f"{len(out)} signed permutation rotations, not {n}")
+    return out
+
+
+# `so3_from_matrix` (0085): the quaternion strata and `matrix:exact`, then their `@f32` twins in the
+# same order, so no existing record moves.
+N_EXACT = 24
+MATRIX_STRATA = (
+    *QUAT_STRATA,
+    Drawn("matrix:exact", N_EXACT, exact_rotations),
+    *(f32_twin(s) for s in QUAT_STRATA),
+    Drawn("matrix:exact@f32", N_EXACT, exact_rotations, True, "matrix:exact"),
+)

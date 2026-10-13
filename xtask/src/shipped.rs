@@ -90,9 +90,8 @@ impl So3 {
 
     /// The shipped answer at `S`; nothing when the record holds no usable input.
     ///
-    /// `f64` only, by the `From<f64>` bound: no vector id has an `@f32` stratum until a record
-    /// extends `0016`, and that bound — which `f32` does not implement — makes the `f32`
-    /// instantiation statically unreachable, as it does for the seeded subject's `so3_*` arms.
+    /// `f64` only, by the `From<f64>` bound, which `f32` does not implement: of these ids only
+    /// `so3_from_matrix` has `@f32` strata (`0085`), and [`from_matrix`] answers it at both.
     fn answer<S: Real + Into<f64> + From<f64>>(self, record: &Record) -> Output {
         match self {
             So3::Exp => {
@@ -123,16 +122,7 @@ impl So3 {
                 let rp = SO3::from_quat_unchecked(q).act(p);
                 Output::from([("Rp".to_string(), rp.0.map(Into::into).to_vec())])
             }
-            So3::FromMatrix => {
-                let Some(&m) = record.input("R").and_then(|r| r.first_chunk::<9>()) else {
-                    return Output::new();
-                };
-                // Column-major, as the record's sibling `shape` says (`PHASE1.md` §4.3).
-                let cols = core::array::from_fn(|c| {
-                    Vector(core::array::from_fn(|r| S::from(m[c * 3 + r])))
-                });
-                quat_out(&SO3::<S>::from_matrix(&Matrix::from_cols(cols)).quat())
-            }
+            So3::FromMatrix => from_matrix::<S>(record),
             So3::Jr | So3::Jl | So3::JrInv | So3::JlInv => {
                 let Some(phi) = vec3_of::<S>(record, "phi") else {
                     return Output::new();
@@ -148,6 +138,15 @@ impl So3 {
             }
         }
     }
+}
+
+/// `so3_from_matrix` at `S`: the matrix column-major, as the record's sibling `shape` says
+/// (`PHASE1.md` §4.3), and exactly a binary32 in an `@f32` stratum.
+fn from_matrix<S: Real + Into<f64>>(record: &Record) -> Output {
+    let Some(m) = matrix::<S, 3>(record, "R") else {
+        return Output::new();
+    };
+    quat_out(&SO3::<S>::from_matrix(&m).quat())
 }
 
 /// The quaternion a record holds under `key`, built from its fields.
@@ -814,11 +813,12 @@ impl Subject for Helicoid {
             };
         }
         if let Some(id) = So3::of_fn(fn_id) {
-            // A plain `f32` run skips every `so3_*` id; asking for one by name at `f32` is the
-            // harness's error, not this subject's (`So3::answer` says why).
-            return match precision {
-                Precision::F64 => id.answer::<f64>(record),
-                Precision::F32 => Output::new(),
+            // A plain `f32` run skips every `so3_*` id but `so3_from_matrix`; asking for another
+            // by name at `f32` is the harness's error, not this subject's (`So3::answer`).
+            return match (precision, id) {
+                (Precision::F64, _) => id.answer::<f64>(record),
+                (Precision::F32, So3::FromMatrix) => from_matrix::<f32>(record),
+                (Precision::F32, _) => Output::new(),
             };
         }
         if let Some(id) = Geodesic::of_fn(fn_id) {

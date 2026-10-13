@@ -69,7 +69,6 @@ impl Aggregate {
                 }
                 g.nonfinite += 1;
             }
-            Score::Unscored => {}
         }
     }
 
@@ -297,23 +296,6 @@ mod tests {
     }
 
     #[test]
-    fn unscored_records_are_counted_and_name_their_first_record() {
-        let rows = agg(&[
-            ("s", Score::Unscored),
-            ("s", Score::Unscored),
-            ("t", Score::Unscored),
-            ("t", Score::NonFinite),
-            ("u", Score::Unscored),
-            ("u", Score::Finite(4.0)),
-        ]);
-        let got: Vec<_> = rows
-            .iter()
-            .map(|r| (r.n, r.nonfinite, r.max_u.is_nan(), r.argmax_id))
-            .collect();
-        assert_eq!(got, [(2, 0, true, 0), (2, 1, true, 3), (2, 0, false, 5)]);
-    }
-
-    #[test]
     fn csv_has_the_exact_header_and_shortest_round_trip_floats() {
         let rows = agg(&[
             ("theta:1e-3", Score::Finite(0.5)),
@@ -348,8 +330,10 @@ mod tests {
             .map(|l| l.split_whitespace().nth(1).unwrap_or(""))
             .collect();
         assert_eq!(order, ["d", "b", "a", "c"]);
-        // Nothing scored and nothing wrong sorts last, under every finite score.
-        let rows = agg(&[("a", Score::Unscored), ("b", Score::Finite(0.0))]);
+        // Nothing scored and nothing wrong (a row read back from a CSV) sorts last, under every
+        // finite score.
+        let mut rows = agg(&[("a", Score::Finite(1.0)), ("b", Score::Finite(0.0))]);
+        rows[0].max_u = f64::NAN;
         assert!(table(&rows)
             .lines()
             .nth(1)

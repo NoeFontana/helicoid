@@ -64,11 +64,9 @@ fn every_family_has_a_rule_and_the_corpus_has_exactly_the_fields_it_scores() -> 
         let text = std::fs::read_to_string(dir.join(format!("{}.jsonl", e.fn_id)))
             .map_err(|e| e.to_string())?;
         let first = corpus::parse_line(text.lines().next().unwrap_or_default())?;
-        if let Some(scored) = rule.reference_fields() {
-            let mut corpus: Vec<&str> = first.reference.keys().map(String::as_str).collect();
-            corpus.sort_unstable();
-            assert_eq!(scored, corpus, "{}", e.fn_id);
-        }
+        let mut corpus: Vec<&str> = first.reference.keys().map(String::as_str).collect();
+        corpus.sort_unstable();
+        assert_eq!(rule.reference_fields(), corpus, "{}", e.fn_id);
     }
     Ok(())
 }
@@ -236,17 +234,15 @@ fn a_perfectly_rounded_subject_is_finite_and_within_two_u_on_every_forward_id() 
     let rows = rows(Perfect::exact(), |_| true)?;
     assert!(rows.len() > 1900, "{} rows", rows.len());
     for r in &rows {
-        let backward_only = r.fn_id == "so3_from_matrix";
         assert!(
-            r.nonfinite == 0 && (backward_only || r.max_u <= 2.0),
+            r.nonfinite == 0 && r.max_u <= 2.0,
             "{} {}: {}",
             r.fn_id,
             r.stratum,
             r.max_u
         );
     }
-    // Every binary64 record reaches an aggregate (`@f32` strata are `f32`'s), and a backward-only
-    // id scores nothing but is counted.
+    // Every binary64 record reaches an aggregate (`@f32` strata are `f32`'s).
     for e in corpus::manifest(&corpus_dir()?)? {
         let binary64 = corpus::read(&corpus_dir()?, &e)?
             .iter()
@@ -255,12 +251,6 @@ fn a_perfectly_rounded_subject_is_finite_and_within_two_u_on_every_forward_id() 
         let mine = rows.iter().filter(|r| r.fn_id == e.fn_id);
         assert_eq!(mine.map(|r| r.n).sum::<usize>(), binary64, "{}", e.fn_id);
     }
-    let unscored = |r: &&Row| r.fn_id == "so3_from_matrix";
-    assert!(rows.iter().filter(unscored).count() > 5);
-    assert!(rows
-        .iter()
-        .filter(unscored)
-        .all(|r| r.max_u.is_nan() && r.p99_u.is_nan()));
     Ok(())
 }
 

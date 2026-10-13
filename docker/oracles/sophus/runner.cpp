@@ -190,7 +190,7 @@ const std::vector<Id>& table() {
       {"so3_exp", {{"q", 4}}, false},
       {"so3_log", {{"phi", 3}}, false},
       {"so3_act", {{"Rp", 3}}, false},
-      {"so3_from_matrix", {{"q", 4}}, false},
+      {"so3_from_matrix", {{"q", 4}}, true},
       {"so3_jl", {{"J", 9}}, false},
       {"so3_jr", {{"J", 9}}, false},
       {"so3_jl_inv", {{"J", 9}}, false},

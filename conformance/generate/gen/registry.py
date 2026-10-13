@@ -73,7 +73,7 @@ FUNCTIONS: dict[str, FunctionSpec] = {
         FunctionSpec("so3_act", QUAT_STRATA, so3.act_inputs, so3.act, check.so3_act),
         FunctionSpec(
             "so3_from_matrix",
-            QUAT_STRATA,
+            so3.MATRIX_STRATA,
             so3.matrix_inputs,
             so3.from_matrix,
             check.so3_from_matrix,

@@ -11,7 +11,7 @@ from mpmath import mp, mpf
 from gen import corpus, fmt, manifest, precision
 from gen.manifest import Built
 from gen.registry import FUNCTIONS, FunctionSpec
-from gen.strata import SCALAR_THETA_STRATA, Stratum
+from gen.strata import QUAT_STRATA, SCALAR_THETA_STRATA, Stratum
 
 precision.setup()
 COMMITTED = manifest.ROOT.parent / "corpus"
@@ -172,10 +172,15 @@ class BuildTest(unittest.TestCase):
         # 0064: `so3_gamma2` is a scalar-theta id with the coefficients' layout.
         gamma2 = [s.name for s in FUNCTIONS["so3_gamma2"].strata]
         self.assertEqual(gamma2, [s.name for s in FUNCTIONS["coeff_k"].strata])
+        # 0085: `so3_from_matrix`'s quaternion strata and `matrix:exact`, then their twins.
+        binary64 = [*(s.name for s in QUAT_STRATA), "matrix:exact"]
+        matrix = [s.name for s in FUNCTIONS["so3_from_matrix"].strata]
+        self.assertEqual(matrix, [*binary64, *(f"{s}@f32" for s in binary64)])
         other = [
             n
             for n in FUNCTIONS
-            if not n.startswith(("coeff_", *ASKED_FOR_F32)) and n != "so3_gamma2"
+            if not n.startswith(("coeff_", *ASKED_FOR_F32))
+            and n not in ("so3_gamma2", "so3_from_matrix")
         ]
         for name in other:  # no other id has an @f32 stratum until a record asks for one
             self.assertFalse(any(s.f32 for s in FUNCTIONS[name].strata), name)
@@ -211,6 +216,7 @@ SUBSET = {"theta:exact0", "theta:1e-6", "q:w0", "theta:exact0@f32", "theta:1e-6@
 # and one cheap stratum of each 0056 family, a shared-stream and an own-stream @f32 among them
 SUBSET |= {"cubic:one-real", "eig:triple@f32", "renorm:eta-edge@f32", "nd:generic@f32", "nd:wide"}
 SUBSET |= {"x:1e-37@f32", "yx:ratio-1e+8", "chol:cond-1e-2@f32"}
+SUBSET |= {"matrix:exact", "matrix:exact@f32"}  # 0085
 
 
 def subset_registry() -> dict:

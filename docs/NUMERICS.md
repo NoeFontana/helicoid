@@ -426,8 +426,6 @@ $X(t) = X_0\,\mathrm{Exp}(t\,d)$ with $d = X_1 \ominus_R X_0$ and $\Delta = X_0^
   for the near-π strata.
 - **Quaternion inputs make `Log`'s forward error well-defined** everywhere except $w = +0$ exactly,
   where the metric is sign-invariant: $\min(\|\hat\varphi - \varphi\|, \|\hat\varphi + \varphi\|)$.
-  Matrix inputs (`from_matrix`) are ill-conditioned near $\pi$ in the axis; their strata report
-  backward error only.
 - **Eigenvectors** (`eig3`): column by column, sign-aligned, weighted by the reference gap,
   $\max_i \min(\|\hat v_i - v_i\|, \|\hat v_i + v_i\|)\,\mathrm{gap}_i / (\|\lambda\|_2\,u)$ with
   $\mathrm{gap}_i = \min_{j \ne i}\lvert\lambda_i - \lambda_j\rvert$: the Davis–Kahan scale
@@ -449,6 +447,16 @@ $X(t) = X_0\,\mathrm{Exp}(t\,d)$ with $d = X_1 \ominus_R X_0$ and $\Delta = X_0^
   \hat a\cdot a)/u,\ \lvert\|\hat a\|^2 - 1\rvert/(2u))$, the angle to the reference and the drift off the
   sphere, which the angle cannot see; `atan2` keeps the small angle that `acos` of the dot product
   resolves only to $\sim\sqrt{2u}$ ([`0063`](./decisions/0063-the-sphere-reads-its-sign-by-comparison-and-is-held-unit.md)).
+  The angle's numerator is formed as $\|\hat a \wedge a\|^2 = \|\hat a\|^2\|a\|^2 - (\hat a\cdot a)^2$,
+  which is $\|\hat a \times a\|^2$ in $\mathbb R^3$ and holds in any dimension.
+- **Quaternions from a matrix** (`so3_from_matrix`): the direction metric in $\mathbb R^4$ with
+  $\lvert\hat q\cdot q\rvert$ for $\hat q\cdot q$, since $q$ and $-q$ are one rotation, against
+  the quaternion of the input's polar factor. That map is $\tfrac1{2\sqrt2}$-Lipschitz at every
+  $\theta$, $\pi$ included (`maths/error-analysis.md` EA.9(a)), so the score is forward error, not
+  backward; a rotation error $\Delta$ reads $\Delta/(2u)$. On a rounded input every routine also
+  pays the gap between its extraction and the polar factor, $O(d_M)$ (EA.9(d)); the
+  `matrix:exact` stratum, exact rotations, has none
+  ([`0085`](./decisions/0085-from-matrix-is-measured-on-exact-rotations.md)).
 - **Expected non-finite** (`mat2_inverse_adj`'s `cond:singular`, the only stratum that declares
   it): the reference is singular, so a non-finite inverse is the answer and a finite one scores
   $1/u$; `det` is scored absolutely, $\lvert\widehat{\det}\rvert/(\|M\|_F^2\,u)$
