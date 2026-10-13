@@ -112,11 +112,19 @@ per point; its reference twin is the per-point `act`.
 
 ### 3.4 From a matrix
 
-Shepperd's method: select the largest of $\{\mathrm{tr}R, R_{00}, R_{11}, R_{22}\}$ through nested
-`branch`es and normalize that pivot's column of $K(R) + I = 4qq^\top$ (`docs/maths/so3.md` SO.12(b);
-[`0079`](./decisions/0079-from-matrix-normalizes-a-column-of-k.md)), e.g. for the trace pivot
-$(1 + \mathrm{tr}R,\ R_{21} - R_{12},\ R_{02} - R_{20},\ R_{10} - R_{01})$: one square root, and the
-pivot component comes out positive. **Closed form, never iterative**:
+Shepperd's method: select the largest $c_j$ of $\{1 + \mathrm{tr}R, \ldots\}$, the diagonal of
+$K(R) + I = 4qq^\top$ (`docs/maths/so3.md` SO.12(b)), through nested `branch`es, and form Shepperd's
+quotients: the pivot $q_j = \tfrac12\sqrt{c_j}$, the other three the pivot column's entries over
+$2\sqrt{c_j}$, e.g. for the trace pivot $(R_{21} - R_{12},\ R_{02} - R_{20},\ R_{10} - R_{01}) /
+2\sqrt{1 + \mathrm{tr}R}$. Each axis candidate adds its own diagonal first, as `tf_tree_math`
+does: $c_1 = ((1 + R_{00}) - R_{11}) - R_{22}$ and its two rotations. The pivot component comes out
+positive. They are kept when $\lvert \mathrm{fl}(\lVert q\rVert^2) - 1\rvert \le \varepsilon =
+16u$, twice the most any rotation rounded to the precision was measured to reach; otherwise (a
+scaled or non-orthogonal $R$, NaN) the pivot's column is normalized instead, one square root and
+four divisions ([`0079`](./decisions/0079-from-matrix-normalizes-a-column-of-k.md)). The quotients
+round $\sqrt{c_j}$ and $1/\sqrt{c_j}$ on opposite sides where a normalization rounds every
+component the same way: an exact quarter turn gets $\mathrm{fl}(\lVert q\rVert^2) = 1$ from them and
+$1 - 2u$ from the column ([`0086`](./decisions/0086-from-matrix-keeps-shepperd-s-quotients-on-the-sphere.md)). **Closed form, never iterative**:
 avoids iterative convergence failures (such as Müller iteration hangs on degenerate input).
 Projecting an arbitrary $3\times3$ onto SO(3) is `svd3` first
 ($U\,\mathrm{diag}(1, 1, \det UV^\top)\,V^\top$), then this; `svd3` is owed (`PHASE2.md` §6).

@@ -12,6 +12,10 @@ defined by the status tables in `docs/`; they win over this file.
 
 - **`just determinism`** (`PHASE6.md` §3, D16): `cargo xtask determinism` digests the shipped subject's outputs over the whole corpus, one SHA-256 per id and precision, NaN canonicalized. CI digests x86_64, aarch64 and `wasm32-wasip1` and fails on any difference. At `0.0.3` all 114 digests agree on x86_64 and `wasm32-wasip1`.
 
+### Changed
+
+- **`SO3::from_matrix` returns Shepperd's quotients** (`0086`), in `tf_tree_math`'s arithmetic, whenever they land within `16u` of the unit sphere, which every rotation rounded to the precision does. A scaled, non-orthogonal or NaN matrix still gets 0.0.3's normalized column. Exact rotations, such as quarter turns and frame conventions' signed permutations, come back with `fl(‖q‖²) = 1` at `f64` (0.0.3: `1 − 2u`, which every later `act` carried). Under `0085`'s score, strata above the best oracle fall from 18 to 8 of 31 at `f64` and from 14 to 9 at `f32`, and `f64` now equals `tf_tree_math` on every stratum's maximum but `q:nonunit` (89.4 against 163.0 `u`). Six `f64` strata near `π` read up to 0.50 `u` higher than 0.0.3.
+
 ## [0.0.3] - 2026-10-13
 
 Phase 5: charts, S², Sim(3), the integrated exponentials and `Gaussian`. `eig3` is Jacobi and dominates nalgebra and Eigen; `chol` and `SO3::from_matrix` are faster; three C++ container oracles. MSRV 1.85.

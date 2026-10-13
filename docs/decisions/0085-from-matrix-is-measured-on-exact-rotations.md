@@ -102,8 +102,10 @@ the polar factor the trade costs domination.
    Verified by `just corpus-check`, `metric::tests::an_axis_is_a_direction_in_four_dimensions_that_forgives_the_sign`,
    `test_so3.MatrixStrataTest` and the measurement above.
 2. The kernel (owed). `SO3::from_matrix` must dominate on every `so3_from_matrix` stratum at both
-   precisions, and `matrix:exact` must hold the correctly rounded quaternion. Verified by this
-   instrument: `just conformance` plus the three oracles, read by `just envelope`.
+   precisions, and `matrix:exact` must come back on the unit sphere. Verified by this instrument:
+   `just conformance` plus the three oracles, read by `just envelope`. The sphere, not correct
+   rounding: a correctly rounded quarter turn reads `fl(‖q‖²) = 1 + 2u`, and the 24 are pinned by
+   unit tests, which a stratum maximum cannot do (amended by `0086`).
 
 ## Open questions
 
