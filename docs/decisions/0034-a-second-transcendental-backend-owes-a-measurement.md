@@ -1,8 +1,8 @@
 # 0034: A second transcendental backend owes a measurement
 
-**Status:** draft
+**Status:** ready
 **Owner:** @NoeFontana
-**Implementation:** proposes a D16 reword and two guards; no backend change, no public surface.
+**Implementation:** the D16 reword and the `API.md` §5 sentence (plan step 4), and the guards of steps 1–2; no backend change, no public surface.
 
 ## Context
 
@@ -56,18 +56,19 @@ to clear that bar *end to end*, not per call.
 
 ## Decision
 
-Proposed, not settled. **Build the seam's guard and the measurement. Do not build the knob.**
+**Build the seam's guard and the measurement. Do not build the knob.**
 
 1. **Reword D16 from implementation to property**, so that a later kernel swap is not a breaking
-   change:
-   - bit-identical on x86_64, aarch64 and wasm32 for a given `helicoid` version **and a given
-     resolved `libm` version**;
-   - per-function error bounded by the envelope;
-   - implemented through one private kernel, currently the `libm` crate; no `mul_add`, no
-     `target-cpu`, no fast-math.
+   change. `PROJECT.md` §5 now says:
+   - outputs are bit-identical on x86_64, aarch64 and wasm32 for a given `helicoid` version **and a
+     given resolved `libm` version**;
+   - every transcendental goes through one private kernel, currently the `libm` crate, and the
+     containment lint keeps it there;
+   - no `mul_add`, no `target-cpu`, no fast-math. These three prohibitions stay literal.
 
-   The three prohibitions stay literal. This is a `PROJECT.md` §5 edit and is **not** made by this
-   record.
+   **Accuracy stays out of D16.** This record's draft also proposed "per-function error bounded by
+   the envelope". It is dropped: the envelope's bars are D8's and `0006`'s, and a determinism rule
+   that also stated an error bound would give one bar two owners.
 2. **Guard what already holds.** A `cargo xtask lint` check that `libm::` appears only in the
    kernel module, so the containment cannot erode silently — the compiler covers only the half
    `no_std` removes. And every generated evidence header records the **resolved `libm` version**,
@@ -75,11 +76,16 @@ Proposed, not settled. **Build the seam's guard and the measurement. Do not buil
 3. **The trigger for a second backend**, as `0013`'s sibling: a committed consumer benchmark where
    measured $f$ and $k$ clear tf_tree `0016`'s bar *end to end*, **and** a portable kernel cannot
    close the gap. Until both hold, this record closes with no change.
-4. **A bit change is a version bump.** A kernel change that moves bits is a **minor-version
-   release** of `helicoid` — never a patch — and a consumer that needs something stronger pins an
-   exact version, which is the consumer's call and not a surface `helicoid` offers. Decided by the
-   owner. This is what makes ladder step (iii) available at all: without it, a faster portable
-   kernel has no release shape and the ladder ends at (ii). `API.md` §5 owes the sentence.
+4. **A bit change is a version bump.** From 1.0, a `helicoid` change that moves bits is a
+   **minor-version release**, never a patch; on `0.0.x` every release may. A consumer that needs
+   something stronger pins an exact version, which is the consumer's call and not a surface
+   `helicoid` offers. Decided by the owner. This is what makes ladder step (iii) available at all:
+   without it, a faster portable kernel has no release shape and the ladder ends at (ii).
+
+   A `libm` patch release can move bits with no `helicoid` release, because the consumer's lockfile
+   resolves it. `helicoid` does not pin `libm` with `=`, since the lockfile belongs to the
+   application. An application that stores or replays outputs pins `libm` in its own lockfile.
+   `API.md` §5 states both.
 5. **The ladder, in order**, when the trigger fires:
    1. close with no change;
    2. algorithmic savings — two-stage geodesics, reusing `sincos`, half-angle forms. These cost
@@ -148,9 +154,8 @@ every group method fails `API.md` §6's checklist and has no consumer.
    mpmath for `libm` and for bench-only candidates (`std`/glibc, `core-math`). Runner dependencies
    are unrestricted under `0007`, so the budget does not move. `0032` has the `atan2` row already.
    **Owed.**
-4. `PROJECT.md` §5's D16 reword and `API.md` §5's stability sentence ("bits may change in a minor
-   release, never in a patch; the envelope never regresses") — only when this record is `ready`,
-   which now waits on the reword's wording alone. **Owed.**
+4. `PROJECT.md` §5's D16 reword, `API.md` §5's stability sentence and `CLAUDE.md`'s hard rule.
+   **Done** with this record going `ready` (2026-10-13).
 5. A two-stage geodesic form in Phase 4 — `Geodesic::new(a, b)` storing $\Omega$, `.at(τ)` costing
    one `exp` — if `PHASE4.md` only specifies `geodesic(a, b, τ)`. Caching the log is the one
    transcendental saving that never touches determinism; adopting it at bracket level is tf_tree's
@@ -158,11 +163,14 @@ every group method fails `API.md` §6's checklist and has no consumer.
 
 ## Open questions
 
-1. **Does the owner accept the three-clause D16 reword as worded in the Decision?** That is the only
-   question left between this record and `ready`. D16 is a hard rule, so the wording is the owner's
-   and is not changed by this record.
+None.
+
+## Answered questions
 
 Answered by the owner, and kept here because the reasoning is load-bearing:
+
+- *Is the D16 reword accepted?* **Yes, as decision 1 words it** (2026-10-13), without the envelope
+  clause.
 
 - *Is a bit change a minor-version event or a pin?* **A version bump**, with a pin available to a
   consumer that needs one. Folded into the Decision as item 4; it is what makes step 5(iii)

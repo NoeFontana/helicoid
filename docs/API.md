@@ -128,6 +128,13 @@ any crate other than `xtask` enables it.
 changes outputs without changing the API**: it ships in a minor release with a changelog line
 naming the functions, strata and the old/new max error.
 
+**Bits.** Outputs are bit-identical across targets for a given `helicoid` and a given resolved
+`libm` (D16). From 1.0, a `helicoid` change that moves any output bit, whether a kernel, a switch
+point or a formula, ships in a minor release, never a patch, and the envelope's bars hold. A `libm`
+patch release that a consumer's lockfile resolves can move bits with no `helicoid` release. An
+application that stores or replays outputs pins `libm`, and `helicoid` if it needs more, in its own
+lockfile ([`0034`](./decisions/0034-a-second-transcendental-backend-owes-a-measurement.md)).
+
 ## 6. The check a new surface has to pass
 
 A PR adding public API answers each line in its description:

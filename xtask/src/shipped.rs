@@ -1174,7 +1174,7 @@ impl Subject for HostStd {
 }
 
 /// The shipped kernel's `subject_version`: the workspace version and the `libm` it linked, as
-/// semver build metadata (`0034`, draft, plan step 2).
+/// semver build metadata (`0034` plan step 2).
 pub(crate) fn subject_version() -> String {
     format!(
         "{}+libm.{}",
