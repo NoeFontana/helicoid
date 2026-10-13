@@ -7,7 +7,8 @@ built along the seven-phase roadmap in [`docs/PROJECT.md`](./docs/PROJECT.md) §
 **The documents in [`docs/`](./docs/) are the contract.** Read `docs/PROJECT.md`; then
 `docs/NUMERICS.md` if you touch a formula; then the spec for the phase you touch — **before**
 touching code. When they do not answer a question, **stop and ask**. Never invent a formula, a
-series coefficient, a switch point, a tangent ordering or a sign.
+series coefficient, a switch point, a tangent ordering or a sign. Ignore `docs/changelog/`, the
+frozen release notes.
 
 ## Status
 
