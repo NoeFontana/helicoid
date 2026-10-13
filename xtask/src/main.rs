@@ -6,6 +6,7 @@
 mod bench;
 mod compare;
 mod conformance;
+mod determinism;
 mod envelope;
 mod lint;
 mod seeded;
@@ -22,6 +23,7 @@ const TASKS: &[&str] = &[
     "envelope",
     "bench-gate",
     "compare",
+    "determinism",
 ];
 
 fn main() -> ExitCode {
@@ -34,6 +36,7 @@ fn main() -> ExitCode {
         envelope::run,
         bench::run,
         compare::run,
+        determinism::run,
     ) {
         ExitCode::SUCCESS
     } else {
@@ -44,6 +47,8 @@ fn main() -> ExitCode {
 /// Runs the task named by `args[0]` with the rest as its arguments, reporting on stderr; `true`
 /// only when it ran and found nothing to complain about. The tasks are injected so the exit policy
 /// tests without touching the disk.
+// One injected function per task is the point of the signature, so its length grows with `TASKS`.
+#[allow(clippy::too_many_arguments)]
 fn dispatch(
     args: &[String],
     lint: impl FnOnce() -> Result<Vec<lint::Violation>, String>,
@@ -52,6 +57,7 @@ fn dispatch(
     envelope: impl FnOnce(&[String]) -> Result<(), String>,
     bench_gate: impl FnOnce(&[String]) -> Result<(), String>,
     compare: impl FnOnce(&[String]) -> Result<(), String>,
+    determinism: impl FnOnce(&[String]) -> Result<(), String>,
 ) -> bool {
     match args.first().map(String::as_str) {
         Some("lint") => match lint() {
@@ -103,6 +109,13 @@ fn dispatch(
                 false
             }
         },
+        Some("determinism") => match determinism(&args[1..]) {
+            Ok(()) => true,
+            Err(e) => {
+                eprintln!("xtask determinism: {e}");
+                false
+            }
+        },
         Some(task) => {
             eprintln!("xtask: `{task}` is not implemented (docs/PHASE1.md §0.0); have: {TASKS:?}");
             false
@@ -129,6 +142,7 @@ mod tests {
                 &args,
                 || lint,
                 |_| conf,
+                |_| Err("unused".into()),
                 |_| Err("unused".into()),
                 |_| Err("unused".into()),
                 |_| Err("unused".into()),
@@ -161,6 +175,7 @@ mod tests {
                 |_| Err("unused".into()),
                 |_| Err("unused".into()),
                 |_| Err("unused".into()),
+                |_| Err("unused".into()),
             )
         };
         assert!(thr(&["thresholds", "--check"]) && !thr(&["thresholds"]));
@@ -179,6 +194,7 @@ mod tests {
                 },
                 unused,
                 unused,
+                |_| Err("unused".into()),
             )
         };
         assert!(env(&["envelope", "--check"], Ok(())));
@@ -198,6 +214,7 @@ mod tests {
                     assert_eq!(rest, ["--a", "x"]);
                     out
                 },
+                |_| Err("unused".into()),
             )
         };
         assert!(cmp(Ok(())) && !cmp(Err("usage".into())));
@@ -216,6 +233,7 @@ mod tests {
                 seen.borrow_mut().extend(rest.iter().cloned());
                 Ok(())
             },
+            |_| Err("unused".into()),
             |_| Err("unused".into()),
             |_| Err("unused".into()),
             |_| Err("unused".into()),

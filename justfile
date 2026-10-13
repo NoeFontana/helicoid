@@ -216,6 +216,26 @@ bench *args:
 bench-replay dir:
     cargo xtask bench-gate --replay {{dir}}
 
+# D16 (`docs/PHASE6.md` §3): the shipped subject's outputs over the whole corpus, one SHA-256 per
+# id and precision, digested on this host and under wasmtime for `wasm32-wasip1`, then compared; any
+# difference fails and names the id. CI digests x86_64, aarch64 and wasm32 in separate jobs with the
+# two recipes below and compares the three files with `cargo xtask determinism --compare`.
+determinism: (determinism-digest "target/determinism/native.txt") (determinism-wasm "target/determinism/wasm32.txt")
+    cargo xtask determinism --compare target/determinism/native.txt target/determinism/wasm32.txt
+
+# This host's digest table into `out`.
+determinism-digest out:
+    mkdir -p "$(dirname '{{out}}')"
+    cargo run --quiet --release --locked -p xtask -- determinism --write '{{out}}'
+
+# The `wasm32-wasip1` digest table into `out` (needs `wasmtime`). The guest reads the corpus through
+# the checkout's absolute path, which is the one the harness was compiled with.
+determinism-wasm out:
+    mkdir -p "$(dirname '{{out}}')"
+    cargo build --quiet --release --locked --target wasm32-wasip1 -p xtask
+    wasmtime run --dir '{{justfile_directory()}}' target/wasm32-wasip1/release/xtask.wasm \
+        determinism --write '{{justfile_directory()}}/{{out}}'
+
 # The threshold sweep of the seeded kernels over the corpus (`docs/PHASE1.md` §6): writes
 # conformance/sweeps/thresholds.csv and xtask/src/seeded/generated.rs. `coeffs/generated.rs`
 # joins them with Phase 3. The second is compiled into xtask: a hand edit that no longer compiles
