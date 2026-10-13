@@ -1,5 +1,5 @@
 //! `helicoid-linalg`'s solvers by stratum (`docs/PHASE1.md` §9): `solve_cubic` (a closed form) and
-//! `eig3` (Jacobi with an exit, `0084`, draft), at `f64` and `f32` (`0053` *Further work* 2), and
+//! `eig3` (Jacobi with an exit, `0084`), at `f64` and `f32` (`0053` *Further work* 2), and
 //! `chol` at the three clauses of `0021`'s bar (`0080`): positive definite and failing input at
 //! `f64` and `f32`, and `Dual`.
 //!

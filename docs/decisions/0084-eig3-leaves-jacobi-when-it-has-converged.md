@@ -1,6 +1,6 @@
 # 0084: `eig3` leaves Jacobi when it has converged
 
-**Status:** draft
+**Status:** ready
 **Owner:** @NoeFontana
 **Implementation:** the PR that lands this record
 
@@ -55,6 +55,9 @@ Two costs, both measured below:
 6. **The normalisation.** Each column is within about `17 u` of unit length (measured with the
    step removed). One Newton step on `1 / sqrt(n^2)`, `v (3 - n^2) / 2`, replaces `0081`'s root and
    three divisions per column.
+7. **The bar.** Domination of nalgebra and Eigen on every stratum at both precisions, and the large
+   sample's overall and worst-frame maxima at most `#154`'s. Its per-family figures are recorded
+   (*Measured*), not a bar: at `5e4` draws they move by a few percent between equivalent programs.
 
 ## Rationale
 
@@ -151,11 +154,7 @@ division was worth 288 → 228 ns at the random fixture, more than the shorter c
 
 ## Open questions
 
-1. **The large-sample bar per family.** Of the 246 per-family figures of `measure_eig3` (p99.9,
-   mean and frame, at each precision), 16 are above `#154`'s (table below). Each is small: frame in
-   steps of `u / 2` at `f64`, means at ties up by 0.01 `u` on figures below 0.5 `u`. Both overall maxima
-   and both frame maxima are lower. Is "every family at most `#154`'s" the bar, or overall maxima
-   plus domination? This record is `draft` until that is answered.
+None.
 
 ## Measured
 

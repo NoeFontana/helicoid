@@ -7,7 +7,7 @@
 //!
 //! **The recorded bounds** are `orth, det <= 16 u`, `ev, res <= 36 u |A|` and `ang_k <= 36 u |A| /
 //! gap_k`, `gap_k` the distance of `l_k*` to the nearest other eigenvalue (at least `u |A|`, where
-//! the bound is vacuous): one constant at every gap, ties included (`0081`; `0084`, draft), twice
+//! the bound is vacuous): one constant at every gap, ties included (`0081`, `0084`), twice
 //! the measured worst. The worst over 10^6 cases of each proptest (the config's `cases` raised;
 //! `EIG3_REPORT=1` prints each new largest), two runs with different seeds, and the fixture is
 //! 18.0 `u |A|` on `ev`, 8.9 on `res`, 8.6 on `ang` and 7.0 `u` on the frame (`#154`'s four
@@ -15,7 +15,7 @@
 //! these include the rounding of the planted matrix and of `Q`, about `10 u |A|`; the corpus id
 //! `eig3`, scored against mpmath on the stored matrix, reads at most 3.06 `u` (`f64`) and 2.67
 //! (`f32`) on every stratum. `measure_eig3` scores against a double-double reference of the stored
-//! matrix instead, per family (the large-sample table of draft `0084`).
+//! matrix instead, per family (the large-sample table of `0084`).
 //!
 //! `MP` is the fixture: exact binary64 entries (the rows of `f32` strata rounded to binary32
 //! first, so both precisions solve the matrix mpmath solved), the eigenvalues and unit
@@ -1025,11 +1025,11 @@ fn summary(mut s: Vec<f64>) -> [f64; 3] {
 
 /// Per family, at `f64` and `f32`, 50 000 matrices each against the double-double [`reference`]
 /// of the matrix rounded to the precision: the max, p99.9 and mean of the corpus metric, and the
-/// worst frame `max(orth, det) / u`. The large-sample table of draft `0084` is these figures; run
+/// worst frame `max(orth, det) / u`. The large-sample table of `0084` is these figures; run
 /// with
 /// `cargo nextest run --release -p helicoid-linalg --run-ignored only measure_eig3 --no-capture`.
 #[test]
-#[ignore = "measurement: prints the figures draft `0084` and the bounds are recorded from"]
+#[ignore = "measurement: prints the figures `0084` and the bounds are recorded from"]
 #[allow(clippy::print_stdout)]
 fn measure_eig3() {
     fn at<S: Lane>(a: &M) -> (f64, f64) {
@@ -1061,7 +1061,7 @@ fn measure_eig3() {
 
 /// A diagonal input with off-diagonal lanes: the values are diagonal before any rotation turns, so
 /// only the step after the exit gives the vectors their derivative, `d v_k = sum_{j != k} e_j E_jk /
-/// (l_k - l_j)`, to `1e-12`; the eigenvalues get none (`0084`, draft).
+/// (l_k - l_j)`, to `1e-12`; the eigenvalues get none (`0084`).
 #[test]
 fn a_diagonal_input_differentiates_its_vectors() {
     type D3 = Dual<f64, 3>;
