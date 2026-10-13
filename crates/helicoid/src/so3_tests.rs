@@ -220,9 +220,9 @@ fn from_matrix_never_iterates_on_a_degenerate_matrix() {
         for c in [q.w, q.x, q.y, q.z] {
             assert!(c.is_finite(), "non-finite {c} from {m:?}");
         }
-        // Either a unit quaternion, or the all-zero one a zero matrix can only give.
+        // The selected column's pivot entry is at least `1`, so even the zero matrix is unit.
         let n = q.norm_sq();
-        assert!((n - 1.0).abs() < 1e-12 || n < 1e-300, "norm_sq {n}");
+        assert!((n - 1.0).abs() < 1e-12, "norm_sq {n}");
     }
 }
 
@@ -627,6 +627,27 @@ fn from_matrix_does_not_panic_out_of_domain() {
         // Out of domain, so the value means nothing; what is asserted is that it returns at all.
         let _ = [q.w, q.x, q.y, q.z];
     }
+}
+
+/// Past the overflow of the selected column's squared norm, `2^511` at `f64`, `from_matrix` is
+/// NaN, never the finite zero quaternion `q / ‖q‖` would round to.
+#[test]
+fn from_matrix_is_nan_where_the_column_norm_overflows() {
+    for m in [
+        Matrix::<f64, 3, 3>::identity().scale(1e200),
+        Matrix::from_cols([
+            Vector([0.0, 1e200, 0.0]),
+            Vector([0.0; 3]),
+            Vector([0.0; 3]),
+        ]),
+    ] {
+        let q = SO3::<f64>::from_matrix(&m).quat();
+        for c in [q.w, q.x, q.y, q.z] {
+            assert!(c.is_nan(), "{c} from {m:?}");
+        }
+    }
+    let q = SO3::<f32>::from_matrix(&Matrix::<f32, 3, 3>::identity().scale(1e30)).quat();
+    assert!([q.w, q.x, q.y, q.z].iter().all(|c| c.is_nan()), "{q:?}");
 }
 
 /// D6: `act_many`'s `NUMERICS.md` §14 twin is the per-point `act`. Nothing in `laws.rs` touches
