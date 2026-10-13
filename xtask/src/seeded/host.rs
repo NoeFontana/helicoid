@@ -326,7 +326,7 @@ mod tests {
     /// there is not D16's whatever else it is (`0037`, draft).
     ///
     /// Pinned, not bounded: a `libm` or glibc version that moves these counts is a change this
-    /// reading depends on, and `0034` (draft) asks to hear about it.
+    /// reading depends on, and `0034` asks to hear about it.
     #[test]
     fn the_swap_has_no_power_on_the_strata_near_pi() -> Result<(), String> {
         let per_stratum = power("sen3_jl_n1", "tau")?;

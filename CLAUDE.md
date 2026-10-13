@@ -70,8 +70,9 @@ lowest MSRV among consumers (D17).
 - **A retraction is a chart** ([`0012`](./docs/decisions/0012-a-retraction-is-a-chart.md)): a
   consumer that needs a different retraction gets a `Chart` here, never an inline formula in its
   own crate.
-- **Determinism** (D16): every transcendental through the `libm` crate; no `mul_add`, no
-  `target-cpu`, no fast-math. Outputs are bit-identical on x86_64, aarch64 and wasm32.
+- **Determinism** (D16): every transcendental through one private kernel, `helicoid-linalg`'s
+  `Real` impls, which call the `libm` crate; no `mul_add`, no `target-cpu`, no fast-math. Outputs
+  are bit-identical on x86_64, aarch64 and wasm32 for a given resolved `libm`.
 - Lints: `unwrap_used`, `expect_used`, `panic`, `todo`, `unimplemented`, `dbg_macro` are denied.
   No panic on valid input; a stated domain is a `debug_assert!`, never a release check (D11).
 - **Cite a symbol, never a line number**; `just lint` fails a new line citation. **A comment states

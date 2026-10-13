@@ -158,10 +158,13 @@ Status per phase: the §0.0 table heading each spec is authoritative.
 - **D15 — Seeded from `tf_tree_math`, and measured against it**
   ([`0010`](./decisions/0010-seeded-from-tf-tree-math.md)). `tf_tree_math` is oracle #1;
   `helicoid` must dominate it on every paired stratum before `tf_tree` migrates.
-- **D16 — Determinism by construction.** Every transcendental goes through the `libm` crate on
-  every target; no `mul_add`, no `target-cpu`, no fast-math. Outputs are bit-identical across
-  x86_64, aarch64 and wasm32 (NaN sign and payload apart); `just determinism` checks it. This is what
-  makes D8's no-regress bar exact. `libm`'s `arch` feature is on: it routes only exactly rounded
+- **D16 — Determinism by construction**
+  ([`0034`](./decisions/0034-a-second-transcendental-backend-owes-a-measurement.md)). For a given
+  `helicoid` version and a given resolved `libm` version, outputs are bit-identical across x86_64,
+  aarch64 and wasm32 (NaN sign and payload apart); `just determinism` checks it. Every
+  transcendental goes through one private kernel, `helicoid-linalg`'s `Real` impls for `f32` and
+  `f64`, which call the `libm` crate; `cargo xtask lint` keeps every `libm::` call there. No
+  `mul_add`, no `target-cpu`, no fast-math. This is what makes D8's no-regress bar exact. `libm`'s `arch` feature is on: it routes only exactly rounded
   operations to the target's instruction ([`0018`](./decisions/0018-libm-arch-is-bit-identical-for-exact-operations.md)).
 - **D17 — MSRV never exceeds a consumer's.** Today **1.85** (omnisac; `tf_tree` is 1.87). Raising it is a record
   that names every consumer's MSRV.
