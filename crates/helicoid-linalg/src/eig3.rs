@@ -1,5 +1,5 @@
 //! Eigendecomposition of a symmetric 3x3 matrix (`docs/PHASE2.md` §6, `docs/NUMERICS.md` §17,
-//! decisions `0081`, `0084`, draft).
+//! decisions `0081`, `0084`).
 //!
 //! Cyclic Jacobi with a deterministic exit, generic over `S: Real`: every decision is a mask, every
 //! square root and division has a safe argument, and the only operations are `+ - * /`, `sqrt`,
@@ -60,7 +60,7 @@ type Roles<S> = ([S; 7], [Vec3<S>; 3]);
 ///
 /// `h = sqrt(d^2 + w2)`, `den = |d| + h`, `t = w / den`, `ta = t a_pq = sign(d) (w2 / 2) / den`,
 /// `c^2 = den / 2h`, `s = c t`. `ta` is read from `w2`, the square the root saw, not from `a_pq`:
-/// the diagonal then moves by exactly the block's eigenvalue shift for that root (`0084`, draft).
+/// the diagonal then moves by exactly the block's eigenvalue shift for that root (`0084`).
 /// Below the smallest normal `d^2 + w2` is `1` under the root and `c = 1` (the safe argument,
 /// `0081`): that arm rotates by about `w`, a block below `2^-383 |A|` (`f64`), `2^-31 |A|` (`f32`)
 /// inside the window.
@@ -79,7 +79,7 @@ fn angle<S: Real>(d: S, apq: S, w2: S) -> (S, S, S, S, S) {
     let t = two * apq * sgn / den;
     let c2 = den / (h + h);
     // `c2` is at least 1/2 in both arms, so its root is safe. The select sits after the root:
-    // `select(..).sqrt()` here crashes rustc 1.98.1's LLVM (`0084`, draft).
+    // `select(..).sqrt()` here crashes rustc 1.98.1's LLVM (`0084`).
     let c = S::select(small, one, c2.sqrt());
     (
         sgn * (half * w2) / den,
@@ -92,7 +92,7 @@ fn angle<S: Real>(d: S, apq: S, w2: S) -> (S, S, S, S, S) {
 
 /// One rotation, `x = a_rp` (`FIRST` only; zero after it): the state of the next rotation, whose
 /// roles are `(q, r, p)`. The next pair's entry `c z`, `z = t x + y`, reaches the next rotation as
-/// `w2 = 4 z^2 c^2`, `c^2` a square root earlier than `c` (`0084`, draft); `d` is recomputed from
+/// `w2 = 4 z^2 c^2`, `c^2` a square root earlier than `c` (`0084`); `d` is recomputed from
 /// the stored diagonal.
 #[inline(always)]
 fn turn<S: Real, const FIRST: bool>(
@@ -121,7 +121,7 @@ fn turn<S: Real, const FIRST: bool>(
 }
 
 /// The last step, from a state whose entries are at most `u |A|`: the rotations of `(p, q)` and
-/// `(q, r)`, both computed from that state, in index order (`0084`, draft). Their values move by at
+/// `(q, r)`, both computed from that state, in index order (`0084`). Their values move by at
 /// most the entries; their `Dual` lanes annihilate the entries' lanes to first order, which no
 /// value test can see.
 ///
@@ -145,7 +145,7 @@ fn polish<S: Real>(([dp, dq, dr, d, apq, w2, y], [vp, vq, vr]): Roles<S>) -> [(S
 /// an eigenvector of `values.0[k]`, `vectors` orthonormal with `det = +1`. The sign of a column is
 /// what the rotations produce; only the parity of the three is fixed.
 ///
-/// Cyclic Jacobi with a deterministic exit (`docs/NUMERICS.md` §17, `0081`, `0084`, draft):
+/// Cyclic Jacobi with a deterministic exit (`docs/NUMERICS.md` §17, `0081`, `0084`):
 /// rotations of `(0, 1)`, `(1, 2)`, `(2, 0)`, ... each annihilating its entry, until both entries
 /// left are at most `u |A|` or twelve have run; then one step that rotates the two remaining pairs,
 /// which moves the values by at most those entries and gives a `Dual` its first-order lanes. The
@@ -161,7 +161,7 @@ fn polish<S: Real>(([dp, dq, dr, d, apq, w2, y], [vp, vq, vr]): Roles<S>) -> [(S
 /// Backward stable: the eigenvalues are within a few `u |A|` of the exact ones and column `k` within
 /// a few `u |A| / gap_k` radians, `gap_k` its distance to the nearest other eigenvalue, at every
 /// gap, ties and a multiple of the identity included. The corpus id `eig3` reads at most 3.06 `u`
-/// (`f64`) and 2.67 `u` (`f32`) over every stratum (`0084`, draft); the bounds `eig3_tests`
+/// (`f64`) and 2.67 `u` (`f32`) over every stratum (`0084`); the bounds `eig3_tests`
 /// asserts are its header's.
 ///
 /// # Domain
@@ -231,7 +231,7 @@ pub fn eig3<S: Real>(a: &Mat3<S>) -> (Vec3<S>, Mat3<S>) {
     // The first rotation, of `(0, 1)`, is general: `a_rp = a_02` is not yet zero.
     let w = two * o01;
     let mut st = turn::<S, true>(([d0, d1, d2, d1 - d0, o01, w * w, o12], ident), o02);
-    // The exit (`0084`, draft): both entries left at most `u |A|`, `|A|` the largest entry.
+    // The exit (`0084`): both entries left at most `u |A|`, `|A|` the largest entry.
     let th = S::lit(match S::PRECISION {
         Precision::F64 => const { pow2(-53) },
         Precision::F32 => const { pow2(-24) },
@@ -261,7 +261,7 @@ pub fn eig3<S: Real>(a: &Mat3<S>) -> (Vec3<S>, Mat3<S>) {
     let value = |l: S| S::select(finite, l * back, nan);
     // Each column is within about `17 u` of unit length (measured), so one Newton step on
     // `1 / sqrt(n^2)`, `(3 - n^2) / 2`, normalises it to rounding with no root and no division
-    // (`0084`, draft).
+    // (`0084`).
     let (three_halves, half) = (S::lit(1.5), S::lit(0.5));
     let unit = |v: Vec3<S>| v.scale(three_halves - half * v.norm_sq());
     (
