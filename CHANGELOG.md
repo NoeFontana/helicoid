@@ -8,6 +8,14 @@ defined by the status tables in `docs/`; they win over this file.
 
 ## [Unreleased]
 
+## [0.0.3] - 2026-10-13
+
+Phase 5: charts, S², Sim(3), the integrated exponentials and `Gaussian`. `eig3` is Jacobi and dominates nalgebra and Eigen; `chol` and `SO3::from_matrix` are faster; three C++ container oracles. MSRV 1.85.
+
+### Breaking
+
+- **`Real` gains two required methods, `exp` and `exp_m1`** (`0068`): an implementor of `Real` outside this workspace adds them. No public item was removed or changed.
+
 ### Added
 
 - **Charts** (`PHASE5.md` §1, `0012`, `0060`): `Chart<S, M>`, `Manifold<S>`, `WithChart<M, C>` (its chart `Lifted<C>`), `RightChart<G>` and `LeftChart<G>` on every group. The SE(3) charts `Screw<S>`, `Decoupled<S>` (locus-tag's `Pose::retract`) and `WorldTranslation<S>` share the tangent `Twist<S>`; the last two have `TwistBlockJac<S>` Jacobians, and `SE3::chart_transition::<From, To>()` gives `DΦ(0)` (`I`, `diag(I, R)`, `diag(I, Rᵀ)`) for moving a covariance between them. `Chart::local_with_jacobian` returns a residual and its Jacobian with the `Log` taken once, bit-identical to the two calls. Every chart Jacobian is checked against `Dual`, with both CH.6 identities. Corpus ids `se3_{screw,decoupled,world}_{retract,local}`: at most 5.94 `u`.
@@ -40,6 +48,7 @@ defined by the status tables in `docs/`; they win over this file.
 - **The GTSAM C++ oracle** (`PHASE1.md` §7, `0074`): `just oracle-gtsam` builds `docker/oracles/gtsam`, GTSAM 4.3.0 pinned by commit and checksum and compiled in the image under the runner's flags (no contraction, no Eigen SIMD), and runs it offline. It answers 47 ids at binary64: SO(2), SE(2), SO(3) with `Γ₂`, SE_N(3) for `N` = 1, 2, 3, the SE(3) screw chart and Sim(3) `exp`/`log`/`ad`/`act`. `sen3_*_n2`, `sen3_*_n3`, `so3_gamma2` and the screw chart get their first oracle (919 more strata paired); Sim(3)'s domination failures go from 87 of 434 to 151 of 485, so `PHASE5.md` §7 stays open.
 - **The manif oracle** (`PHASE1.md` §7, `0075`), the second container: `just oracle-manif` builds `docker/oracles/manif`, manif 0.0.5 pinned by commit and checksum on the Sophus image's base and snapshot, and answers 36 ids at binary64 across SO(2), SE(2), SO(3), SE(3), SE₂(3) and the SE(3) screw and world charts, every Jacobian by manif's own formula. SE₂(3) (`sen3_*_n2`) and the charts have their first oracle: `helicoid` is not dominated on 146 of the 576 newly paired strata, all within 3.52×.
 - **Oracles answer at the precision they are asked** (`0077`): the runner protocol takes `--precision f32`, and an `f32` run scores binary32 answers as an in-process `f32` subject is scored. nalgebra answers its ids and Sophus `sim3_{exp, log, ad, act}` in binary32; GTSAM, manif, `tf_tree_math` and sophus-rs stay binary64. Sim(3) at `f32` fails 74 of 428 paired strata, by at most 2.53×.
+- **Eigen judges `eig3`** (`0083`): the Sophus image answers `eig3` with Eigen 3.4.0's `SelfAdjointEigenSolver<Matrix3<T>>`, at both precisions, a second oracle on all 50 strata beside nalgebra; `computeDirect` was measured once and is not a subject.
 - **`cargo xtask compare`** (`just compare`, `0038` decision 4, `0078`): a paired comparison of two in-process subjects per id and stratum (an exact sign test with ties dropped, the geometric mean and both extremes of the per-record error ratio, and the ratio of the two maxima), printed only. Its first twin is `helicoid:unit-r`, `Ad` with `R(q)` in the unit form.
 - **The envelope with every oracle**: domination failures go from 148 (0.0.2) to 805, 707 at binary64 and 98 at binary32, with 3 exceptions (`0076`). Most of the rise is strata that had no oracle before, so it counts newly measured gaps more than regressions. The oracles run locally (`just oracles`), not in CI.
 
@@ -66,3 +75,4 @@ out of searches and sweeps.
 
 [0.0.1]: https://github.com/NoeFontana/helicoid/releases/tag/v0.0.1
 [0.0.2]: https://github.com/NoeFontana/helicoid/releases/tag/v0.0.2
+[0.0.3]: https://github.com/NoeFontana/helicoid/releases/tag/v0.0.3
