@@ -25,7 +25,7 @@ use crate::side::Side;
 use crate::traits::{tie_dof, Jac, LieGroup, Tangent};
 use core::array;
 use core::ops::Mul;
-use helicoid_linalg::{hat, Blend, Mask, Mat3, Matrix, Real, StridedMut, Vec3, Vector};
+use helicoid_linalg::{hat, Blend, Mask, Mat3, Matrix, Precision, Real, StridedMut, Vec3, Vector};
 
 /// A rotation, stored as a unit quaternion (Hamilton, `w` first, active — `0002`).
 ///
@@ -202,12 +202,14 @@ impl<S: Real> SO3<S> {
 
     /// The rotation of a `3 x 3` matrix by Shepperd's method (`NUMERICS.md` §3.4): the largest of
     /// `{tr R, R00, R11, R22}` through nested `branch`es picks a column of `K(R) + I`, which is
-    /// `4 q_j q` (SO.12(b)), and normalizing it is `q` with its pivot positive: one `sqrt`, no
-    /// division before it (`0079`). Closed form avoids iterative convergence failures on
-    /// degenerate input.
+    /// `4 q_j q` (SO.12(b)), and Shepperd's quotients, `½√c_j` and the column over `2√c_j`, are `q`
+    /// with its pivot positive. Within `16u` of the unit sphere, where every rotation rounded to `S`
+    /// lands, they are returned; otherwise the column is normalized (`0079`). An exact rotation, a
+    /// signed permutation included, comes back unit to rounding (`0086`). Closed form avoids
+    /// iterative convergence failures on degenerate input.
     ///
-    /// The selected column's pivot entry is at least `1` (SO.12(c)), so the `sqrt` takes a norm of
-    /// at least `1` and needs no safe argument (`0003` item 3).
+    /// The selected column's pivot entry is at least `1` (SO.12(c)), so its `sqrt` and the norm's
+    /// need no safe argument (`0003` item 3).
     ///
     /// # Domain
     ///
@@ -225,11 +227,13 @@ impl<S: Real> SO3<S> {
         // and the diagonal is wanted four times over (the trace and the three axis candidates).
         let (d0, d1, d2) = (r.get(0, 0), r.get(1, 1), r.get(2, 2));
         let trace = (d0 + d1) + d2;
+        // Each axis candidate adds its own diagonal first, as `tf_tree_math` does: measured over
+        // the other order on the `θ → π` and `q:w0` strata (`0086`).
         let (c0, c1, c2, c3) = (
             S::one() + trace,
             (S::one() + d0 - d1) - d2,
-            (S::one() - d0 + d1) - d2,
-            (S::one() - d0 - d1) + d2,
+            (S::one() + d1 - d0) - d2,
+            (S::one() + d2 - d0) - d1,
         );
         // `lt` only: `b.lt(a)` is `a > b`, and `Real` has no `PartialOrd` (`0003`).
         let best01 = c1.lt(c0);
@@ -241,25 +245,85 @@ impl<S: Real> SO3<S> {
         let (m12, m21) = (r.get(1, 2), r.get(2, 1));
         let (dx, dy, dz) = (m21 - m12, m02 - m20, m10 - m01);
         let (sx, sy, sz) = (m01 + m10, m02 + m20, m12 + m21);
-        // Scalars, captured by `move`: arms that borrow let LLVM merge their reads into one load
-        // through a selected stack address, which spills every candidate first (`0079`).
+        // Shepperd's quotients (SO.12(a)): the pivot `½√c_j`, the other three over `2√c_j`. Each
+        // arm takes `sqrt` at a safe argument (`0003` item 3): the selected candidate is at least
+        // `1`, and an unselected lane reads `1`.
+        let pick = [
+            first.and(best01),
+            first.and(best01.not()),
+            first.not().and(best23),
+            first.not().and(best23.not()),
+        ];
+        let half = S::lit(0.5);
+        let root = move |i: usize, c: S| {
+            let d = S::select(pick[i], c, S::one()).sqrt();
+            (half * d, d + d)
+        };
         let (w, x, y, z) = S::branch(
             first,
-            move || S::branch(best01, move || (c0, dx, dy, dz), move || (dx, c1, sx, sy)),
-            move || S::branch(best23, move || (dy, sx, c2, sz), move || (dz, sy, sz, c3)),
+            move || {
+                S::branch(
+                    best01,
+                    move || {
+                        let (p, t) = root(0, c0);
+                        (p, dx / t, dy / t, dz / t)
+                    },
+                    move || {
+                        let (p, t) = root(1, c1);
+                        (dx / t, p, sx / t, sy / t)
+                    },
+                )
+            },
+            move || {
+                S::branch(
+                    best23,
+                    move || {
+                        let (p, t) = root(2, c2);
+                        (dy / t, sx / t, p, sz / t)
+                    },
+                    move || {
+                        let (p, t) = root(3, c3);
+                        (dz / t, sy / t, sz / t, p)
+                    },
+                )
+            },
         );
-        // The same four divisions `Quat::from_wxyz_normalized` performs, in the same order and on
-        // the same `norm_sq`, without its `debug_assert!`, for the reason the *Domain* note gives.
-        // `n2 * 0` is `+0` for a finite `n2`, so `n` is exact, and NaN for an overflowed one,
-        // where `q / n` would otherwise be a finite zero quaternion.
-        let n2 = Quat { w, x, y, z }.norm_sq();
-        let n = n2.sqrt() + n2 * S::zero();
-        Self(Quat {
-            w: w / n,
-            x: x / n,
-            y: y / n,
-            z: z / n,
-        })
+        let q = Quat { w, x, y, z };
+        // A rotation rounded to `S` leaves the quotients within `8u` of the sphere, so `16u` keeps
+        // every in-domain input on them; a quarter turn's `½√2` and `1/√2` round apart and keep
+        // `fl(‖q‖²) = 1`, where a normalization rounds both alike (`0086`). Beyond `16u` the
+        // input is scaled, non-orthogonal or NaN, and the pivot's column of `K + I` is normalized
+        // (`0079`); its tree must stay the quotients' (`from_matrix_falls_back_on_every_pivot`).
+        let eps = S::lit(match S::PRECISION {
+            Precision::F64 => 8.0 * f64::EPSILON,
+            Precision::F32 => 8.0 * f64::from(f32::EPSILON),
+        });
+        let near = (q.norm_sq() - S::one()).abs().le(eps);
+        Self(S::branch(
+            near,
+            move || q,
+            move || {
+                // Scalars, captured by `move`: arms that only select let LLVM merge their reads into
+                // one load through a selected stack address, which spills every candidate (`0079`).
+                let (w, x, y, z) = S::branch(
+                    first,
+                    move || S::branch(best01, move || (c0, dx, dy, dz), move || (dx, c1, sx, sy)),
+                    move || S::branch(best23, move || (dy, sx, c2, sz), move || (dz, sy, sz, c3)),
+                );
+                // The same four divisions `Quat::from_wxyz_normalized` performs, in the same order and
+                // on the same `norm_sq`, without its `debug_assert!`, for the reason the *Domain* note
+                // gives. `n2 * 0` is `+0` for a finite `n2`, so `n` is exact, and NaN for an
+                // overflowed one, where `q / n` would otherwise be a finite zero quaternion.
+                let n2 = Quat { w, x, y, z }.norm_sq();
+                let n = n2.sqrt() + n2 * S::zero();
+                Quat {
+                    w: w / n,
+                    x: x / n,
+                    y: y / n,
+                    z: z / n,
+                }
+            },
+        ))
     }
 
     /// `R v` by the quaternion sandwich (`NUMERICS.md` §3.3):

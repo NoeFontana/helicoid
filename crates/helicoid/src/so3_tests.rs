@@ -32,7 +32,7 @@
 
 use crate::laws::{laws_for, tangent, Bounds, Sample};
 use crate::{Left, LieGroup, Quat, Right, SO3Tangent, Tangent, SO3};
-use helicoid_linalg::{hat, Dual, Mat3, Matrix, Vector};
+use helicoid_linalg::{hat, Dual, Mask, Mat3, Matrix, Real, Vector};
 
 type G<S> = SO3<S>;
 
@@ -175,6 +175,203 @@ fn log_is_scale_invariant_across_the_unchecked_domain() {
         SO3::from_quat_normalized(q).log().write_dense(&mut out);
         close(&out, &[1.0, 0.0, 0.0], 1e-15);
     }
+}
+
+/// The 24 rotations that are signed permutations, exact in any precision: frame conventions
+/// (FLU, FRD, ENU, NED, ...) are these. A signed permutation's determinant is the permutation's
+/// parity times the product of its signs, so a rotation's signs multiply to its parity.
+fn signed_permutations() -> [[[i8; 3]; 3]; 24] {
+    let (mut out, mut n) = ([[[0i8; 3]; 3]; 24], 0);
+    let perms = [
+        ([0, 1, 2], 1),
+        ([1, 2, 0], 1),
+        ([2, 0, 1], 1),
+        ([0, 2, 1], -1),
+        ([1, 0, 2], -1),
+        ([2, 1, 0], -1),
+    ];
+    for (p, parity) in perms {
+        for s in 0..8u8 {
+            let sign = |i: usize| if s >> i & 1 == 0 { 1i8 } else { -1 };
+            if sign(0) * sign(1) * sign(2) == parity {
+                for i in 0..3 {
+                    out[n][i][p[i]] = sign(i);
+                }
+                n += 1;
+            }
+        }
+    }
+    assert_eq!(n, 24);
+    out
+}
+
+/// `0086`: on an exact rotation `from_matrix` stays on the unit sphere, so `act` adds no
+/// `2|η|` (`0058`). At `f64` `fl(‖q‖²)` is exactly `1` on all 24 (`0079`'s column read `1 − 2u` on
+/// the quarter turns); at `f32` it is within `u`, and the 120° turns are exact at both.
+fn exact_rotations_stay_on_the_sphere<S: Real>(tol: f64) {
+    for m in signed_permutations() {
+        let r = Mat3::<S>::from_rows(m.map(|row| Vector(row.map(|x| S::lit(f64::from(x))))));
+        let q = SO3::<S>::from_matrix(&r).quat();
+        let e = (q.norm_sq() - S::one()).abs();
+        assert!(e.le(S::lit(tol)).all(), "{m:?}: |n2 - 1| above {tol:e}");
+        // The rotation is the matrix: `act` on each axis returns its column, to rounding.
+        for c in 0..3 {
+            let mut v = [S::zero(); 3];
+            v[c] = S::one();
+            let got = SO3::from_quat_unchecked(q).act(Vector(v));
+            for i in 0..3 {
+                let d = (got.0[i] - S::lit(f64::from(m[i][c]))).abs();
+                assert!(
+                    d.le(S::lit(4.0 * tol.max(f64::EPSILON / 2.0))).all(),
+                    "{m:?}: act on axis {c}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn from_matrix_keeps_exact_rotations_on_the_sphere() {
+    exact_rotations_stay_on_the_sphere::<f64>(0.0);
+    exact_rotations_stay_on_the_sphere::<f32>(f64::from(f32::EPSILON) / 2.0);
+}
+
+/// The quarter turn about `z`, to the bit (`0086`). `1 + tr R` and `1 + R22` tie at `2`
+/// and the pivot is `z`, so `z = ½·fl(√2)` and `w = 1/fl(√2)`, one each side of `√½`, and
+/// `fl(w² + z²) = 1`.
+#[test]
+fn from_matrix_rounds_a_quarter_turn_both_ways() {
+    let r = Mat3::<f64>::from_rows([
+        Vector([0.0, -1.0, 0.0]),
+        Vector([1.0, 0.0, 0.0]),
+        Vector([0.0, 0.0, 1.0]),
+    ]);
+    let q = SO3::<f64>::from_matrix(&r).quat();
+    assert_eq!(q.z.to_bits(), 0x3fe6_a09e_667f_3bcd);
+    assert_eq!(q.w.to_bits(), 0x3fe6_a09e_667f_3bcc);
+    assert_eq!((q.x.to_bits(), q.y.to_bits()), (0, 0));
+}
+
+/// Shepperd's quotients as `tf_tree_math` forms them: each axis candidate adds its own diagonal
+/// first, the pivot is `½√c` and the rest are over `2√c`, with no normalization.
+macro_rules! shepperd {
+    ($t:ty, $r:expr) => {{
+        let r: &Mat3<$t> = $r;
+        let g = |i: usize, j: usize| r.get(i, j);
+        let c = [
+            1.0 + ((g(0, 0) + g(1, 1)) + g(2, 2)),
+            (1.0 + g(0, 0) - g(1, 1)) - g(2, 2),
+            (1.0 + g(1, 1) - g(0, 0)) - g(2, 2),
+            (1.0 + g(2, 2) - g(0, 0)) - g(1, 1),
+        ];
+        let (dx, dy, dz) = (g(2, 1) - g(1, 2), g(0, 2) - g(2, 0), g(1, 0) - g(0, 1));
+        let (sx, sy, sz) = (g(0, 1) + g(1, 0), g(0, 2) + g(2, 0), g(1, 2) + g(2, 1));
+        let j01 = if c[1] < c[0] { 0 } else { 1 };
+        let j23 = if c[3] < c[2] { 2 } else { 3 };
+        let j = if c[j23] < c[j01] { j01 } else { j23 };
+        let d = c[j].sqrt();
+        let (p, t) = (0.5 * d, d + d);
+        match j {
+            0 => [p, dx / t, dy / t, dz / t],
+            1 => [dx / t, p, sx / t, sy / t],
+            2 => [dy / t, sx / t, p, sz / t],
+            _ => [dz / t, sy / t, sz / t, p],
+        }
+    }};
+}
+
+/// `0086`: no rotation rounded to the precision leaves `16u` of the sphere, so every one
+/// keeps Shepperd's quotients to the bit, at every pivot and near `π` where they drift most.
+macro_rules! keeps_the_quotients {
+    ($t:ty) => {{
+        let mut state = 0x9E37_79B9_7F4A_7C15_u64;
+        let mut next = || {
+            state = state
+                .wrapping_mul(6_364_136_223_846_793_005)
+                .wrapping_add(1_442_695_040_888_963_407);
+            (state >> 11) as f64 / (1_u64 << 53) as f64
+        };
+        let pi = core::f64::consts::PI;
+        for i in 0..20_000 {
+            let theta = match i % 4 {
+                0 => pi * next(),
+                1 => pi - 1e-3 * next(),
+                2 => pi - 1e-9 * next(),
+                _ => 1e-2 * next(),
+            };
+            let v = [next() - 0.5, next() - 0.5, next() - 0.5];
+            let n = (v[0] * v[0] + v[1] * v[1] + v[2] * v[2]).sqrt();
+            let phi = Vector(v.map(|x| (theta * x / n) as $t));
+            let r = SO3::<$t>::exp(&SO3Tangent { phi }).to_matrix();
+            let q = SO3::<$t>::from_matrix(&r).quat();
+            let want = shepperd!($t, &r);
+            let got = [q.w, q.x, q.y, q.z];
+            assert_eq!(
+                got.map(<$t>::to_bits),
+                want.map(<$t>::to_bits),
+                "theta {theta}, {v:?}"
+            );
+        }
+    }};
+}
+
+#[test]
+fn from_matrix_keeps_the_quotients_on_rotations() {
+    keeps_the_quotients!(f64);
+    keeps_the_quotients!(f32);
+}
+
+/// Off the sphere the pivot's column of `K + I` is normalized (`0079`). A rotation scaled by
+/// `1 + 2^-16` puts the quotients `~1e-5` off it, past `16u` at both precisions, so a unit result
+/// shows the fallback ran, and the rotation it denotes shows its tree picked the quotients' column,
+/// at each of the four pivots.
+fn falls_back_on_every_pivot<S: Sample>(tol: f64) {
+    let pi = core::f64::consts::PI;
+    let u = match S::PRECISION {
+        helicoid_linalg::Precision::F64 => f64::EPSILON / 2.0,
+        helicoid_linalg::Precision::F32 => f64::from(f32::EPSILON) / 2.0,
+    };
+    for (pivot, phi) in [
+        (0, [0.2, -0.1, 0.05]),
+        (1, [pi - 0.1, 0.2, -0.1]),
+        (2, [0.1, pi - 0.1, 0.2]),
+        (3, [-0.2, 0.1, pi - 0.1]),
+    ] {
+        let x = SO3::<S>::exp(&SO3Tangent {
+            phi: Vector(phi.map(S::constant)),
+        });
+        let r = x.to_matrix();
+        let k = S::lit(1.0 + 2f64.powi(-16));
+        let scaled =
+            Mat3::<S>::from_rows([0, 1, 2].map(|i| Vector([0, 1, 2].map(|j| r.get(i, j) * k))));
+        let q = SO3::<S>::from_matrix(&scaled).quat();
+        assert!(
+            (q.norm_sq() - S::one()).abs().le(S::lit(4.0 * u)).all(),
+            "pivot {pivot}: not normalized"
+        );
+        let c = [q.w, q.x, q.y, q.z];
+        let big = (0..4).fold(0, |b, i| {
+            if c[b].abs().lt(c[i].abs()).all() {
+                i
+            } else {
+                b
+            }
+        });
+        assert_eq!(big, pivot, "pivot {pivot}: largest component");
+        let back = SO3::from_quat_unchecked(q).to_matrix();
+        for i in 0..3 {
+            for j in 0..3 {
+                let d = (back.get(i, j) - r.get(i, j)).abs();
+                assert!(d.le(S::constant(tol)).all(), "pivot {pivot}: R[{i}][{j}]");
+            }
+        }
+    }
+}
+
+#[test]
+fn from_matrix_falls_back_on_every_pivot() {
+    falls_back_on_every_pivot::<f64>(1e-4);
+    falls_back_on_every_pivot::<f32>(1e-4);
 }
 
 #[test]
