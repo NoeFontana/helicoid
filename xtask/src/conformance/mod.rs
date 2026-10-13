@@ -373,9 +373,11 @@ pub(crate) fn run(args: &[String]) -> Result<(), String> {
                 Some(registered) => vec![registered],
                 // Not a failure: an f32 pass over every runner skips the binary64 ones (`0077`).
                 None => {
-                    eprintln!(
-                        "conformance: the `{name}` runner answers binary64 only; no f32 rows"
-                    );
+                    let why = match oracle::binary64_only(name) {
+                        true => "answers binary64 only",
+                        false => "answers no id with `@f32` strata",
+                    };
+                    eprintln!("conformance: the `{name}` runner {why}; no f32 rows");
                     return Ok(());
                 }
             }

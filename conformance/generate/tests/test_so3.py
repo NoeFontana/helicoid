@@ -376,12 +376,18 @@ class MatrixStrataTest(unittest.TestCase):
             check.so3_from_matrix(r, {"q": q})
 
     def test_an_f32_twin_rounds_its_namesakes_matrix_to_binary32(self):
-        for name in ("theta:1e-3", "theta:pi-1e-9", "q:nonunit"):
+        for name in ("theta:1e-3", "theta:pi-1e-9"):
             wide = so3.matrix_inputs(self.by[name])
             narrow = so3.matrix_inputs(self.by[f"{name}@f32"])
             self.assertEqual(len(wide), len(narrow), name)
             for w, n in zip(wide, narrow, strict=True):
                 self.assertEqual(n["R"].data, [precision.to_f32(x) for x in w["R"].data])
+        # `q:nonunit@f32` scales its namesake's quaternions by 2^-19, not 2^-45, which binary32
+        # rounds away: |q|^4 = |R|_F^2 / 3 alternates about 1 by 2^-18, every record resolved.
+        for i, r in enumerate(so3.matrix_inputs(self.by["q:nonunit@f32"])):
+            off = sum(mpf(x) ** 2 for x in r["R"].data) / 3 - 1
+            self.assertEqual(off > 0, i % 2 == 0, i)
+            self.assertLess(abs(abs(off) / mpf(2) ** -18 - 1), mpf(2) ** -3, (i, off))
         # `theta:subnormal@f32` is its own draw, as the scalar ids' is (0016): binary32 subnormals.
         for r in so3.matrix_inputs(self.by["theta:subnormal@f32"]):
             off = [abs(x) for i, x in enumerate(r["R"].data) if i % 4]

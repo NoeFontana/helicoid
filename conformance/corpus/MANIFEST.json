@@ -479,7 +479,7 @@
       "kind": "corpus",
       "rechecked": 78,
       "records": 5236,
-      "sha256": "2a0c35b0f2ae8489562efd11d9dca313797480ae6c6c247f2ac48708c9809d95"
+      "sha256": "54470e0dc99107706d2d6f368014d5657a64f00a6ed8042a0a29fdcbaef5974b"
     },
     "so3_gamma2.jsonl": {
       "kind": "corpus",
@@ -530,7 +530,7 @@
       "sha256": "3780fb0bfac76491d5c03b5ebbeb52fc333c95edaf3784bf6e805add3f219f2b"
     }
   },
-  "generator": "sha256:7cfdf7a4877fb8283e5ea2434150c24fd34f8dbffc7783a5e6e76e98a4786f48",
+  "generator": "sha256:89c5dad49a422344486f711cb1c0dea513313a66077d75cd82f619381f927a51",
   "mpmath": "1.4.1",
   "python": "3.12",
   "recheck": {

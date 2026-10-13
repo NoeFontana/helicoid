@@ -51,6 +51,9 @@ struct Runner {
     answers_f32: &'static [&'static str],
     /// Where its transcendentals come from: see [`Backend`].
     backend: Backend,
+    /// The library has no binary32 kernel, so it answers the binary64 strata of an id that also
+    /// has `@f32` ones; every other runner answers every such id at `f32` too.
+    binary64_only: bool,
 }
 
 /// Where a runner's transcendentals come from, which decides what a domination failure can mean.
@@ -98,6 +101,7 @@ const RUNNERS: &[Runner] = &[
         launch: Launch::Crate("runners/tf_tree_math"),
         // `tf_tree_math`'s manifest declares `libm.workspace = true`.
         backend: Backend::LibmCrate,
+        binary64_only: true,
         // Binary64 by construction (`tf_tree` D6).
         answers_f32: &[],
         answers: &[
@@ -117,6 +121,7 @@ const RUNNERS: &[Runner] = &[
         launch: Launch::Crate("runners/sophus_rs"),
         // sophus-rs is Rust `std`, so the host's library.
         backend: Backend::HostStd,
+        binary64_only: true,
         // `sophus_autodiff` implements its scalar trait for `f64` alone.
         answers_f32: &[],
         answers: &[
@@ -139,6 +144,7 @@ const RUNNERS: &[Runner] = &[
         launch: Launch::Crate("runners/nalgebra"),
         // nalgebra is Rust `std`, so the host's library (`0056` decision 4).
         backend: Backend::HostStd,
+        binary64_only: false,
         // Generic over `RealField`, and every id it answers has `@f32` strata.
         answers_f32: &[
             "eig3",
@@ -166,6 +172,7 @@ const RUNNERS: &[Runner] = &[
         launch: Launch::Container("docker/oracles/sophus"),
         // C++ on the image's glibc (`0072`).
         backend: Backend::HostStd,
+        binary64_only: false,
         // `Sophus::Sim3<float>`, `Sophus::SO3<float>` of a matrix (`0085`) and Eigen's
         // `SelfAdjointEigenSolver<Matrix3f>` (`0083`); no other id it answers has `@f32` strata.
         answers_f32: &[
@@ -212,6 +219,7 @@ const RUNNERS: &[Runner] = &[
         launch: Launch::Container("docker/oracles/gtsam"),
         // C++ on the image's glibc (`0074`).
         backend: Backend::HostStd,
+        binary64_only: true,
         // GTSAM is `double` throughout.
         answers_f32: &[],
         answers: &[
@@ -269,6 +277,7 @@ const RUNNERS: &[Runner] = &[
         launch: Launch::Container("docker/oracles/manif"),
         // C++ on the image's glibc (`0075`).
         backend: Backend::HostStd,
+        binary64_only: false,
         // No id it answers has `@f32` strata (`0077`).
         answers_f32: &[],
         answers: &[
@@ -319,6 +328,12 @@ pub(super) fn names() -> Vec<&'static str> {
 /// Where `name`'s transcendentals come from, or `None` if it is not a registered runner.
 pub(crate) fn backend(name: &str) -> Option<Backend> {
     RUNNERS.iter().find(|r| r.name == name).map(|r| r.backend)
+}
+
+/// Whether the runner `name`'s library has no binary32 kernel, as against one that has no id with
+/// `@f32` strata to answer: what a run at `f32` that launches nothing says.
+pub(crate) fn binary64_only(name: &str) -> bool {
+    RUNNERS.iter().any(|r| r.name == name && r.binary64_only)
 }
 
 /// Whether the runner `name` answers in binary32, and so owes `f32` result rows.
@@ -980,10 +995,12 @@ mod tests {
                 let entry = entry.ok_or_else(|| format!("{}: {id}", runner.name))?;
                 let f32 = runner.answers_f32.contains(id);
                 let has_f32 = corpus::mentions_f32(&dir, entry)?;
-                // GTSAM is `double` throughout and `tf_tree_math` binary64 by construction; every
-                // other runner answers every such id.
-                let binary64_library = matches!(runner.name, "gtsam" | "tf_tree_math");
-                assert_eq!(f32, has_f32 && !binary64_library, "{}: {id}", runner.name);
+                assert_eq!(
+                    f32,
+                    has_f32 && !runner.binary64_only,
+                    "{}: {id}",
+                    runner.name
+                );
             }
             for id in runner.answers_f32 {
                 assert!(runner.answers.contains(id), "{}: {id}", runner.name);
@@ -1173,6 +1190,7 @@ mod tests {
         name: "stub",
         launch: Launch::Crate(""),
         backend: Backend::HostStd,
+        binary64_only: false,
         answers: &["so2_exp", "quat_renormalize"],
         answers_f32: &["quat_renormalize"],
     };
