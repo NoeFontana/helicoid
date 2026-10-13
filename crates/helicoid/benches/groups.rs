@@ -516,6 +516,35 @@ fn gaussian<S: Fixture, const N: usize, const D: usize>(
     });
 }
 
+/// `SO3::from_matrix` over 64 rotations whose angles and axes come from a fixed LCG, so the pivot
+/// (`tr R` or one of the three diagonals) changes unpredictably from call to call: the per-stratum
+/// rows feed one matrix and never pay a mispredicted pivot (`0079`, draft).
+fn so3_from_matrix_mixed<S: Fixture>(g: &mut BenchmarkGroup<'_, WallTime>) {
+    let mut state = 0x2545_F491_4F6C_DD1D_u64;
+    let mut next = || {
+        state = state
+            .wrapping_mul(6_364_136_223_846_793_005)
+            .wrapping_add(1_442_695_040_888_963_407);
+        (state >> 11) as f64 / (1_u64 << 53) as f64
+    };
+    let ms: Vec<Mat3<S>> = (0..64)
+        .map(|_| {
+            let (theta, a, b) = (core::f64::consts::PI * next(), next() - 0.5, next() - 0.5);
+            let v = [a, b, next() - 0.5];
+            let n = (v[0] * v[0] + v[1] * v[1] + v[2] * v[2]).sqrt();
+            let phi = Vector(v.map(|x| S::of(theta * x / n)));
+            SO3::<S>::exp(&SO3Tangent { phi }).to_matrix()
+        })
+        .collect();
+    g.bench_function("so3/from_matrix/mixed-64", |b| {
+        b.iter(|| {
+            for m in black_box(&ms) {
+                black_box(SO3::<S>::from_matrix(m));
+            }
+        });
+    });
+}
+
 fn groups(c: &mut Criterion) {
     let mut g = c.benchmark_group("groups/f64");
     for &(name, theta) in THETA {
@@ -527,6 +556,7 @@ fn groups(c: &mut Criterion) {
         sim3::<f64>(&mut g, name, theta);
     }
     se3_consecutive::<f64>(&mut g);
+    so3_from_matrix_mixed::<f64>(&mut g);
     gaussian::<f64, 1, 6>(&mut g, "se3");
     gaussian::<f64, 2, 9>(&mut g, "se23");
     g.finish();
@@ -541,6 +571,7 @@ fn groups(c: &mut Criterion) {
         sim3::<f32>(&mut g, name, theta);
     }
     se3_consecutive::<f32>(&mut g);
+    so3_from_matrix_mixed::<f32>(&mut g);
     gaussian::<f32, 1, 6>(&mut g, "se3");
     gaussian::<f32, 2, 9>(&mut g, "se23");
     g.finish();
