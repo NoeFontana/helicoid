@@ -1,8 +1,21 @@
 # 0030: A consumer comparison is a trigger `0021` does not list
 
-**Status:** draft
+**Status:** superseded by 0080
 **Owner:** @NoeFontana
 **Implementation:** records a finding and five open questions; no code change.
+
+> **Superseded by [`0080`](./0080-chol-unrolls-what-llvm-will-not.md)** (2026-10-13). `0080`
+> measured `chol` under the instrument this record asked for and changed it, which overtakes
+> decision 1. The rest resolves as follows:
+> - Question 1 is moot: `chol` is timed in `crates/helicoid/benches/linalg.rs` (`0053`).
+> - Question 2 is answered: `N = 6` exceeds LLVM's full-unroll threshold.
+> - Question 5 is answered: `0080` re-measured `0021`'s bar on all three clauses.
+> - Questions 3 and 4, and decision 4's comparison runner, move to `0080`'s *Further work*.
+> - Decision 2 is not adopted as a rule: any measurement may open a record (`0006`), an external
+>   one included, as `0079` and `0083` show.
+> - Decision 3 is `0053`'s harness.
+>
+> The measurement trap, keeping the whole factor live, stands and is cited.
 
 ## Context
 

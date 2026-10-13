@@ -6,7 +6,7 @@
 
 ## Context
 
-[`0030`](./0030-a-consumer-comparison-is-a-trigger-0021-does-not-list.md) (draft) measured `chol`
+[`0030`](./0030-a-consumer-comparison-is-a-trigger-0021-does-not-list.md), which this record supersedes, measured `chol`
 2.6–3.4× slower than `nalgebra`'s `Cholesky` at `N = 6`, 1.5× at `N = 3` and 1.3–1.4× at `N = 8`,
 in an ad-hoc harness whose control read up to +11%, and asked why the gap peaks at `N = 6`
 (question 2). [`0021`](./0021-the-cholesky-finite-guard-stays.md) rule 1 sets the bar for rewriting
@@ -165,8 +165,9 @@ each × ten sizes × three scalars.
   instantiates, `N <= 3` and `N > 9` included: stable Rust has no conditional monomorphization on a
   const generic. Release builds drop the untaken path.
 - `0021` stands: the guard stays, and its rule 1 is met by this change, not relaxed.
-- `0030` (draft): its question 2 is answered here, and its proposed decision 1 ("do not touch
-  `chol` yet") is overtaken by a measurement under the instrument; its questions 3 and 4 remain.
+- `0030` is superseded by this record. Its question 2 is answered here. Its proposed decision 1 ("do not
+  touch `chol` yet") is overtaken by a measurement under the instrument. Its questions 3 and 4 are
+  *Further work* below.
 
 ## Implementation plan
 
@@ -178,6 +179,11 @@ each × ten sizes × three scalars.
 ## Further work
 
 - Re-measure on aarch64 and wasm32 when `just bench` can time them (`0021` rule 3).
+- Latency rows for a third-party subject, `nalgebra`'s `Cholesky` first, from a workspace-excluded
+  runner, reported and never gated (`0030` question 3 and decision 4). `runners/nalgebra` already
+  answers the accuracy ids.
+- How much of the remaining gap is D16's fixed order. A reassociating variant can be measured as a
+  reference row only, never as a candidate (`0030` question 4).
 - Whether a reciprocal-per-column form (`1/l_jj` once, then multiplies), which moves bits and so
   needs the instrument's no-regress reading, closes the `N = 6` latency gap.
 - Whether `N` from 10 to 16 pays in a consumer's loop, where its code size competes for the
