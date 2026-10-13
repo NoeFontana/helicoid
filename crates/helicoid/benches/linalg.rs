@@ -45,7 +45,7 @@ fn eig3_of<S: Real>(a: &Mat3<S>) -> (Vec3<S>, Mat3<S>) {
 }
 
 /// The whole factor and the mask come back, and criterion's `black_box` keeps every entry live:
-/// consuming one entry lets the optimizer delete most of the factorisation (`0030`, a draft).
+/// consuming one entry lets the optimizer delete most of the factorisation (`0030`).
 #[inline(never)]
 fn chol_of<S: Real, const N: usize>(a: &Matrix<S, N, N>) -> (Matrix<S, N, N>, S::Mask) {
     chol(a)
