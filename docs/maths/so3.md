@@ -524,8 +524,8 @@ of $K$ (`mp.eigsy`) $1.8\times10^{-79}$, $\lambda_{\max}$ against
 $\operatorname{tr}(R_\star^\top M)$ and against $\sigma_1 + \sigma_2 + d\sigma_3$
 $1.0\times10^{-79}$, and no better rotation among 50 random ones per $M$; $M = \mathrm{diag}(1,1,-5)$:
 $\lambda_{\max} = 5$, squared distance $20$, against $36$ for $I$. Scripts not committed.
-**Permanent:** planned, corpus `so3_from_matrix` (backward error), proptest
-`from_matrix_never_iterates`; the SVD route is `svd3`'s (PHASE2 §6), against `mp.svd_r`.
+**Permanent:** corpus `so3_from_matrix` (§11's sign-free direction metric, `matrix:exact`; `0085`),
+proptest `from_matrix_never_iterates`; the SVD route is `svd3`'s (PHASE2 §6), against `mp.svd_r`.
 
 ## 7. Renormalization
 

@@ -66,9 +66,6 @@ pub(crate) struct FieldRule {
 
 pub(crate) enum Rule {
     Forward(&'static [FieldRule]),
-    /// `NUMERICS.md` §11: a matrix input is scored by backward error only, which is owed; until
-    /// then its outputs are checked for shape and finiteness (`finiteness`).
-    BackwardOnly,
     /// `eig3` (`0056` decision 3): `lambda` by forward error, `V` column by column, sign-aligned and
     /// weighted by the reference gap, [`eigen`].
     Eigen,
@@ -86,6 +83,9 @@ pub(crate) enum Rule {
     /// A unit-vector output (`0063` decision 5): the angle to the reference and the drift off the
     /// sphere, [`direction`].
     Direction(&'static str),
+    /// A unit quaternion read as its rotation (`0085`): [`Rule::Direction`] in ℝ⁴ with `q` and `−q`
+    /// one point, [`direction`].
+    Axis(&'static str),
 }
 
 impl Rule {
@@ -98,26 +98,24 @@ impl Rule {
     ) -> Result<Score, String> {
         match self {
             Rule::Forward(fields) => score(fields, rec, out, precision),
-            Rule::BackwardOnly => finiteness(rec, out),
             Rule::Eigen => eigen(rec, out, precision),
             Rule::Roots => roots(rec, out, precision),
             Rule::Masked { mask, fields } => masked(mask, fields, rec, out, precision),
             Rule::Adjugate => adjugate(rec, out, precision),
-            Rule::Direction(field) => direction(field, rec, out, precision),
+            Rule::Direction(field) => direction(field, 3, false, rec, out, precision),
+            Rule::Axis(field) => direction(field, 4, true, rec, out, precision),
         }
     }
 
-    /// The reference fields the rule reads, sorted; `None` for [`Rule::BackwardOnly`], which reads
-    /// whatever the reference holds.
+    /// The reference fields the rule reads, sorted.
     #[cfg(test)]
-    pub(crate) fn reference_fields(&self) -> Option<Vec<&'static str>> {
+    pub(crate) fn reference_fields(&self) -> Vec<&'static str> {
         let mut fields = match self {
             Rule::Forward(fields) => fields.iter().map(|f| f.field).collect(),
-            Rule::BackwardOnly => return None,
             Rule::Eigen => vec!["lambda", "V"],
             Rule::Roots => vec!["re", "im"],
             Rule::Adjugate => ADJUGATE.iter().map(|f| f.field).collect(),
-            Rule::Direction(field) => vec![*field],
+            Rule::Direction(field) | Rule::Axis(field) => vec![*field],
             Rule::Masked { mask, fields } => {
                 let mut v: Vec<&str> = fields.iter().map(|f| f.field).collect();
                 v.push(mask);
@@ -125,7 +123,7 @@ impl Rule {
             }
         };
         fields.sort_unstable();
-        Some(fields)
+        fields
     }
 }
 
@@ -263,7 +261,7 @@ const REAL_DIV: &[FieldRule] = &[
     field("d_d", Floor::Tiny, SignRule::Fixed),
 ];
 
-use Rule::{BackwardOnly, Forward};
+use Rule::Forward;
 
 /// The rule of every corpus family; `sen3_*` share one row over `_n1`, `_n2`, `_n3`.
 const TABLE: &[(&str, Rule)] = &[
@@ -279,7 +277,8 @@ const TABLE: &[(&str, Rule)] = &[
     ("so3_exp", Forward(SO3_EXP)),
     ("so3_log", Forward(SO3_LOG)),
     ("so3_act", Forward(SO3_ACT)),
-    ("so3_from_matrix", BackwardOnly),
+    // `0085`: forward, against the polar factor's quaternion, sign-free.
+    ("so3_from_matrix", Rule::Axis("q")),
     ("so3_jr", Forward(JAC)),
     ("so3_jl", Forward(JAC)),
     ("so3_jr_inv", Forward(JAC)),
@@ -378,9 +377,6 @@ pub(crate) enum Score {
     /// Some output entry is NaN or infinite, or the error of a finite output overflows binary64;
     /// no error is reported.
     NonFinite,
-    /// A finite output of a function scored by backward error only, which is owed: shape and
-    /// finiteness are all that was checked.
-    Unscored,
 }
 
 /// `log2(1/u)`.
@@ -471,20 +467,6 @@ pub(crate) fn score(
     }
     Ok(if worst.is_finite() {
         Score::Finite(worst)
-    } else {
-        Score::NonFinite
-    })
-}
-
-/// The score of a function scored by backward error only (`Rule::BackwardOnly`): every reference
-/// field must be answered with its length, and every value must be finite.
-pub(crate) fn finiteness(rec: &Record, out: &Output) -> Result<Score, String> {
-    let mut finite = true;
-    for field in rec.reference.keys() {
-        finite &= pair(rec, out, field)?.1.iter().all(|x| x.is_finite());
-    }
-    Ok(if finite {
-        Score::Unscored
     } else {
         Score::NonFinite
     })
@@ -798,39 +780,44 @@ fn adjugate(rec: &Record, out: &Output, precision: Precision) -> Result<Score, S
     Ok(finite_or_nonfinite(d.abs() / size * 2f64.powi(bits as i32)))
 }
 
-/// `NUMERICS.md` §11's direction metric (`0063` decision 5) on the 3-vector `field`:
-/// `max(atan2(‖ŷ × y‖, ŷ·y)/u, |‖ŷ‖² - 1|/(2u))`, the angle to the reference and the drift off the
-/// sphere, which the angle cannot see.
+/// `NUMERICS.md` §11's direction metric (`0063` decision 5) on the `n`-vector `field`:
+/// `max(atan2(‖ŷ ∧ y‖, ŷ·y)/u, |‖ŷ‖² - 1|/(2u))`, the angle to the reference and the drift off the
+/// sphere, which the angle cannot see. `sign_free` (`0085`) reads `|ŷ·y|`: `ŷ` and `−ŷ` are one
+/// point, as `q` and `−q` are one rotation.
 ///
-/// Formed exactly as [`forward_u`] is: `ŷ × y`, `ŷ·y` and `‖ŷ‖²` are integers over one scale `S²`,
-/// so the tangent `‖ŷ × y‖/(ŷ·y)` and the drift are each rounded once. The angle is the tangent
-/// itself below `2^-26`, where `atan x = x(1 - x²/3 + …)` is `x` to the bit; above it the error is
-/// gross and `f64::atan` of the rounded tangent reads it.
+/// Formed exactly as [`forward_u`] is: `‖ŷ ∧ y‖² = ‖ŷ‖²‖y‖² − (ŷ·y)²` (Lagrange; `‖ŷ × y‖²` in ℝ³),
+/// `ŷ·y` and `‖ŷ‖²` are integers over one scale, so the tangent `‖ŷ ∧ y‖/(ŷ·y)` and the drift are
+/// each rounded once. The angle is the tangent itself below `2^-26`, where `atan x = x(1 - x²/3 +
+/// …)` is `x` to the bit; above it the error is gross and `f64::atan` of the rounded tangent reads
+/// it.
 fn direction(
     field: &str,
+    n: usize,
+    sign_free: bool,
     rec: &Record,
     out: &Output,
     precision: Precision,
 ) -> Result<Score, String> {
     let bits = unit_bits(precision);
-    let y = reference(rec, field, 3)?;
-    let Some(yh) = values(out, field, 3, precision)? else {
+    let y = reference(rec, field, n)?;
+    let Some(yh) = values(out, field, n, precision)? else {
         return Ok(Score::NonFinite);
     };
     let yh: Vec<Dyadic> = yh.iter().map(|&x| Dyadic::of(x)).collect();
     let ex = Exact::of(y, &yh);
     let a: Vec<BigInt> = yh.iter().map(|d| ex.dyadic(d)).collect();
     let b: Vec<BigInt> = y.iter().map(|d| ex.decimal(d)).collect();
-    let cross = [
-        &a[1] * &b[2] - &a[2] * &b[1],
-        &a[2] * &b[0] - &a[0] * &b[2],
-        &a[0] * &b[1] - &a[1] * &b[0],
-    ];
-    let c2: BigUint = cross.iter().map(square).sum();
-    let dot: BigInt = a.iter().zip(&b).map(|(p, q)| p * q).sum();
+    let n2: BigUint = a.iter().map(square).sum();
+    let m2: BigUint = b.iter().map(square).sum();
+    let mut dot: BigInt = a.iter().zip(&b).map(|(p, q)| p * q).sum();
+    if sign_free && dot.sign() == Sign::Minus {
+        dot = -dot;
+    }
+    // Cauchy–Schwarz: never negative, and exactly 0 for parallel vectors.
+    let wedge2 = &n2 * &m2 - square(&dot);
     let unit = (-(bits as f64)).exp2();
     let angle = if dot.sign() == Sign::Plus {
-        let t = ratio_u(&c2, &square(&dot), bits);
+        let t = ratio_u(&wedge2, &square(&dot), bits);
         if t * unit < (-26.0f64).exp2() {
             t
         } else {
@@ -838,12 +825,11 @@ fn direction(
         }
     } else {
         // At or past a right angle, a total loss, read as the angle it is: `π/2 + atan(|ŷ·y| /
-        // ‖ŷ × y‖)`, with an exactly antipodal `ŷ` (`ŷ × y = 0`) at `π`.
-        let t = sqrt_ratio(&square(&dot), &c2.max(BigUint::from(1u32)));
+        // ‖ŷ ∧ y‖)`, with an exactly antipodal `ŷ` (`ŷ ∧ y = 0`) at `π`.
+        let t = sqrt_ratio(&square(&dot), &wedge2.max(BigUint::from(1u32)));
         (core::f64::consts::FRAC_PI_2 + t.atan()) / unit
     };
     let s2 = ex.square();
-    let n2: BigUint = a.iter().map(square).sum();
     let excess = if n2 >= s2 { &n2 - &s2 } else { &s2 - &n2 };
     let excess = excess << (bits - 1);
     let drift = sqrt_ratio(&(&excess * &excess), &(&s2 * &s2));
@@ -1056,24 +1042,16 @@ mod tests {
         Ok(())
     }
 
-    #[test]
-    fn a_backward_only_record_is_checked_for_shape_and_finiteness() -> Result<(), String> {
-        let rec = record(&[], &[("q", &["1e0", "0e0"])])?;
-        let out = |q: Vec<f64>| Output::from([("q".to_string(), q)]);
-        assert_eq!(finiteness(&rec, &out(vec![9.0, 9.0]))?, Score::Unscored);
-        assert_eq!(
-            finiteness(&rec, &out(vec![f64::NAN, 0.0]))?,
-            Score::NonFinite
-        );
-        assert!(finiteness(&rec, &out(vec![1.0])).is_err());
-        assert!(finiteness(&rec, &Output::new()).is_err());
-        Ok(())
-    }
-
     fn direction_u(y: &[&str], yh: &[f64], precision: Precision) -> Result<f64, String> {
         let rec = record(&[], &[("m", y)])?;
         let out = Output::from([("m".to_string(), yh.to_vec())]);
-        finite(direction("m", &rec, &out, precision)?)
+        finite(Rule::Direction("m").score(&rec, &out, precision)?)
+    }
+
+    fn axis_u(y: &[&str], yh: &[f64]) -> Result<f64, String> {
+        let rec = record(&[], &[("q", y)])?;
+        let out = Output::from([("q".to_string(), yh.to_vec())]);
+        finite(Rule::Axis("q").score(&rec, &out, Precision::F64)?)
     }
 
     #[test]
@@ -1116,12 +1094,50 @@ mod tests {
         assert!(f > 0.0 && f < 1.0, "{f}");
         let rec = record(&[], &[("m", &y)])?;
         let nan = Output::from([("m".to_string(), vec![f64::NAN, 0.8, 0.0])]);
+        let direction = Rule::Direction("m");
         assert_eq!(
-            direction("m", &rec, &nan, Precision::F64)?,
+            direction.score(&rec, &nan, Precision::F64)?,
             Score::NonFinite
         );
         let short = Output::from([("m".to_string(), vec![0.6, 0.8])]);
-        assert!(direction("m", &rec, &short, Precision::F64).is_err());
+        assert!(direction.score(&rec, &short, Precision::F64).is_err());
+        Ok(())
+    }
+
+    #[test]
+    fn an_axis_is_a_direction_in_four_dimensions_that_forgives_the_sign() -> Result<(), String> {
+        let q = ["5e-1", "-5e-1", "5e-1", "5e-1"];
+        assert_eq!(axis_u(&q, &[0.5, -0.5, 0.5, 0.5])?, 0.0);
+        assert_eq!(axis_u(&q, &[-0.5, 0.5, -0.5, -0.5])?, 0.0);
+        // `Direction` reads the same answer as a total loss.
+        let rec = record(&[], &[("m", &q[..3])])?;
+        let flipped = Output::from([("m".to_string(), vec![-0.5, 0.5, -0.5])]);
+        let pi = finite(Rule::Direction("m").score(&rec, &flipped, Precision::F64)?)?;
+        near(pi, core::f64::consts::PI / U);
+        // (1, t, 0, 0) against e₀, either sign: the angle is the tangent t to the bit, 2^13 u.
+        let e = ["1e0", "0e0", "0e0", "0e0"];
+        let t = 2f64.powi(-40);
+        near(axis_u(&e, &[1.0, t, 0.0, 0.0])?, t / U);
+        near(axis_u(&e, &[-1.0, -t, 0.0, 0.0])?, t / U);
+        // The quarter turn about z, its two √½ one ulp below the nearest double each: no angle, a
+        // drift of (1 - ‖q̂‖²)/2u, formed exactly.
+        let h = ["7.07106781186547524400844362105e-1"];
+        let qz = ["7.07106781186547524400844362105e-1", "0e0", "0e0", h[0]];
+        let low = core::f64::consts::FRAC_1_SQRT_2.next_down();
+        // low = m 2^-53, so (1 - 2 low²)/2u = (2^105 - m²)/2^53, in integers.
+        let m = (low * 2f64.powi(53)) as u128;
+        let drift = ((1u128 << 105) - m * m) as f64 / 2f64.powi(53);
+        near(axis_u(&qz, &[low, 0.0, 0.0, low])?, drift);
+        assert!(drift > 0.79 && drift < 0.81, "{drift}");
+        // The reference is never rounded: √½ rounded to nearest scores its own rounding, under 1.
+        let nearest = core::f64::consts::FRAC_1_SQRT_2;
+        let f = axis_u(&qz, &[nearest, 0.0, 0.0, nearest])?;
+        assert!(f > 0.0 && f < 1.0, "{f}");
+        // A right angle in ℝ⁴ (a half turn apart as rotations) is a total loss, π/2.
+        near(
+            axis_u(&e, &[0.0, 1.0, 0.0, 0.0])?,
+            core::f64::consts::FRAC_PI_2 / U,
+        );
         Ok(())
     }
 
@@ -1199,7 +1215,7 @@ mod tests {
             (fields("sen3_exp_n3"), fields("sen3_exp"), fields("se2_exp")),
             (2, 2, 2)
         );
-        assert!(matches!(rule("so3_from_matrix"), Some(Rule::BackwardOnly)));
+        assert!(matches!(rule("so3_from_matrix"), Some(Rule::Axis("q"))));
         assert!(rule("sen3_exp_n4").is_none() && rule("nope").is_none());
     }
 
@@ -1366,12 +1382,12 @@ mod tests {
             };
             let own_test = matches!(
                 r,
-                BackwardOnly
-                    | Rule::Eigen
+                Rule::Eigen
                     | Rule::Roots
                     | Rule::Masked { .. }
                     | Rule::Adjugate
                     | Rule::Direction(_)
+                    | Rule::Axis(_)
             );
             assert!(own_test || wanted.iter().any(listed), "{family}");
         }
@@ -1617,13 +1633,14 @@ mod tests {
 
     #[test]
     fn the_new_rules_read_the_fields_they_name() {
-        let fields = |id| rule(id).and_then(Rule::reference_fields);
+        let fields = |id| rule(id).map(Rule::reference_fields);
         assert_eq!(fields("eig3"), Some(vec!["V", "lambda"]));
         assert_eq!(fields("solve_cubic"), Some(vec!["im", "re"]));
         assert_eq!(fields("chol_n6"), Some(vec!["L", "valid"]));
         assert_eq!(fields("chol_solve_n3"), Some(vec!["x"]));
         assert_eq!(fields("mat2_inverse_adj"), Some(vec!["det", "inv"]));
-        assert!(rule("chol_n4").is_none() && fields("so3_from_matrix").is_none());
+        assert_eq!(fields("so3_from_matrix"), Some(vec!["q"]));
+        assert!(rule("chol_n4").is_none());
     }
 
     /// `0061` decision 3: a singular reference expects a non-finite inverse and scores `det`

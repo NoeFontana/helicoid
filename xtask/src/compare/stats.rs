@@ -27,8 +27,6 @@ pub(crate) struct Tally {
     /// statistic, since a non-finite output is a conformance failure and not a magnitude.
     pub(crate) nonfinite_a: usize,
     pub(crate) nonfinite_b: usize,
-    /// A backward-only id's record (`metric::Rule::BackwardOnly`): no forward error to pair.
-    pub(crate) unscored: usize,
     /// `Σ ln(b/a)` and its count, over the records that differ with both errors positive.
     log_sum: f64,
     logs: usize,
@@ -59,15 +57,10 @@ impl Tally {
         self.n += 1;
         // A `Finite` NaN is not a score the metric emits; it is read as non-finite, not compared.
         let finite = |s: Score| match s {
-            Score::Finite(x) if x.is_finite() => Some(Some(x)),
-            Score::Finite(_) | Score::NonFinite => Some(None),
-            Score::Unscored => None,
+            Score::Finite(x) if x.is_finite() => Some(x),
+            Score::Finite(_) | Score::NonFinite => None,
         };
-        let (Some(a), Some(b)) = (finite(a), finite(b)) else {
-            self.unscored += 1;
-            return;
-        };
-        let (a, b) = match (a, b) {
+        let (a, b) = match (finite(a), finite(b)) {
             (Some(a), Some(b)) => (a, b),
             (a, b) => {
                 self.nonfinite_a += usize::from(a.is_none());
@@ -133,7 +126,6 @@ impl Tally {
         self.zero_sided += other.zero_sided;
         self.nonfinite_a += other.nonfinite_a;
         self.nonfinite_b += other.nonfinite_b;
-        self.unscored += other.unscored;
         self.log_sum += other.log_sum;
         self.logs += other.logs;
         let pick = |x: Option<f64>, y: Option<f64>| match (x, y) {
@@ -292,20 +284,15 @@ mod tests {
     }
 
     #[test]
-    fn a_nonfinite_or_unscored_record_is_counted_and_compared_with_nothing() {
+    fn a_nonfinite_record_is_counted_and_compared_with_nothing() {
         let nan = Score::Finite(f64::NAN);
         let t = tally(&[
             (Score::NonFinite, f(1.0)),
             (f(1.0), Score::NonFinite),
             (Score::NonFinite, Score::NonFinite),
             (nan, f(1.0)),
-            (Score::Unscored, f(1.0)),
-            (Score::Unscored, Score::Unscored),
         ]);
-        assert_eq!(
-            (t.n, t.nonfinite_a, t.nonfinite_b, t.unscored),
-            (6, 3, 2, 2)
-        );
+        assert_eq!((t.n, t.nonfinite_a, t.nonfinite_b), (4, 3, 2));
         assert_eq!((t.better, t.worse, t.ties), (0, 0, 0));
         assert_eq!((t.max_a, t.max_b, t.max_ratio()), (None, None, None));
         assert_eq!((t.geomean(), t.sign_p()), (None, 1.0));

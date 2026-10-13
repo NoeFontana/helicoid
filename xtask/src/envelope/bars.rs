@@ -12,13 +12,11 @@
 //!   fewer or more records) each fail.
 //! - **Non-finite**: any non-finite candidate output fails (`NUMERICS.md` §11, EA.11(e)).
 //!
-//! A candidate row with nothing scored is judged by none when its function is scored by backward
-//! error only (`metric::Rule::BackwardOnly`: `so3_from_matrix`, backward error owed); on any other
-//! function it fails, since nothing but a defect in the subject or the harness leaves one.
+//! A candidate row with nothing scored fails: every function is scored, so nothing but a defect in
+//! the subject or the harness leaves one.
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use crate::conformance::metric::{self, Rule};
 use crate::conformance::report::Row;
 
 use super::rows::{Baseline, Key, Subject};
@@ -90,8 +88,6 @@ pub(super) struct Verdict {
     /// Of those, the ones with a scored oracle row, and the ones without.
     pub(super) paired: usize,
     pub(super) unpaired: usize,
-    /// Candidate rows with nothing scored on a function that has no forward error yet.
-    pub(super) unscored: usize,
     /// Scored rows strictly under their baseline: the baseline is stale, not the candidate wrong.
     pub(super) improved: usize,
     /// Domination failures where the winning oracle shares our transcendental backend, so the
@@ -273,10 +269,6 @@ pub(super) fn judge_excepting(
         let key = Key::of(r);
         let max = match status(r) {
             Status::Scored(max) => max,
-            Status::Unscored if matches!(metric::rule(&r.fn_id), Some(Rule::BackwardOnly)) => {
-                v.unscored += 1;
-                continue;
-            }
             Status::Unscored => {
                 let text = format!(
                     "{key}: nothing is scored in {} records, none non-finite",
@@ -763,7 +755,7 @@ mod tests {
     }
 
     #[test]
-    fn a_non_finite_candidate_fails_and_only_a_backward_error_id_may_be_unscored() {
+    fn a_non_finite_candidate_fails_and_so_does_an_unscored_one() {
         // The harness leaves the finite records' maximum in a row with some non-finite ones.
         for max in [f64::NAN, 3.0] {
             let bad = Row {
@@ -776,21 +768,14 @@ mod tests {
             let text = &v.failures[0].text;
             assert!(text.contains("3 of 64 records are non-finite") && v.scored == 0);
         }
-        let nothing = |fn_id: &str| Row {
-            max_u: f64::NAN,
-            ..row("c", fn_id, S, 0.0)
-        };
-        let judged = |fn_id: &str| {
-            judge(
-                &subject("c", vec![nothing(fn_id)]),
-                &[],
-                Some(&Baseline::new()),
-            )
-        };
-        let v = judged("so3_from_matrix");
-        assert!(v.failures.is_empty() && v.unscored == 1);
-        // Any other function scored nothing only through a defect.
-        let v = judged("so3_exp");
-        assert_eq!((bars(&v), v.unscored), (vec!["unscored"], 0));
+        // A function scores nothing only through a defect; `so3_from_matrix` is scored (`0085`).
+        for fn_id in ["so3_from_matrix", "so3_exp"] {
+            let nothing = Row {
+                max_u: f64::NAN,
+                ..row("c", fn_id, S, 0.0)
+            };
+            let v = judge(&subject("c", vec![nothing]), &[], Some(&Baseline::new()));
+            assert_eq!(bars(&v), ["unscored"], "{fn_id}");
+        }
     }
 }

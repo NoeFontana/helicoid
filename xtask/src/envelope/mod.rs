@@ -281,8 +281,7 @@ fn summary(
     format!(
         "envelope: candidate `{name}` ({}), {} rows; oracles: {}\n  \
          domination: {} strata paired with an oracle, {} with none{split}{excepted}\n  \
-         no-regress: {no_regress}\n  \
-         not scored: {} rows\n",
+         no-regress: {no_regress}\n",
         c.version,
         c.rows.len(),
         if versions.is_empty() {
@@ -292,7 +291,6 @@ fn summary(
         },
         v.paired,
         v.unpaired,
-        v.unscored
     )
 }
 
@@ -722,23 +720,11 @@ mod tests {
         Ok(())
     }
 
-    /// The rows every candidate below has: three strata of `so3_exp`, and one of
-    /// `so3_from_matrix` with nothing scored (backward error is owed).
-    fn cand_rows(maxima: &[f64]) -> Vec<Row> {
-        let mut rows = strata("cand", maxima);
-        rows.push(Row {
-            max_u: f64::NAN,
-            p99_u: f64::NAN,
-            ..row("cand", "so3_from_matrix", "q:w0", 0.0)
-        });
-        rows
-    }
-
     #[test]
     fn a_candidate_is_judged_blessed_and_checked_and_the_report_is_a_function_of_the_files(
     ) -> Result<(), String> {
         let scratch = world("e2e")?;
-        put(&scratch, "cand", &cand_rows(&[1.0, 2.0, 3.0]))?;
+        put(&scratch, "cand", &strata("cand", &[1.0, 2.0, 3.0]))?;
         put(&scratch, "o1", &strata("o1", &[1.0, 2.5, 9.0]))?;
         put(&scratch, "o2", &strata("o2", &[4.0, 2.0, 3.5]))?;
         let run = |mode: &str| go(&scratch, "cand", &["o1", "o2"], mode);
@@ -762,7 +748,7 @@ mod tests {
             read(&scratch, BASELINE_OF_CAND)?,
             read(&scratch, evidence::PATH)?,
         );
-        // The unscored row is no baseline row (the next run would abort on it), and p99 is not max.
+        // p99 is not max.
         let mut want = String::from(report::HEADER) + "\n";
         let p99 = ["5e-1", "1e0", "1.5e0"];
         for ((m, p), k) in ["1e0", "2e0", "3e0"]
@@ -774,14 +760,12 @@ mod tests {
         }
         assert_eq!(baseline, want);
         assert!(page.contains("| `so3_exp` | `theta:1e-2` | f64 | 64 | 2.0000e0 | 1.0000e0 | `o2` | o2@1 | 2.0000e0 |"));
-        assert!(page.contains("| `so3_from_matrix` | `q:w0` | f64 | 64 | — | — | — | — | — |"));
         assert!(run("bless")?.failures.is_empty());
         assert_eq!(read(&scratch, BASELINE_OF_CAND)?, baseline);
         assert_eq!(read(&scratch, evidence::PATH)?, page);
         let (a, b) = (run("check")?, run("check")?);
         assert!(a.failures.is_empty() && a.text == b.text, "{}", a.text);
         assert!(a.text.contains("3 scored rows, 0 under their baseline"));
-        assert!(a.text.contains("not scored: 1 rows"));
         // The oracles' columns are the runners' on their own libm: a different best oracle and
         // fifth digit is not drift.
         put(&scratch, "o2", &strata("o2", &[4.0, 2.0625, 3.5]))?;

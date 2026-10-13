@@ -62,7 +62,8 @@ One JSONL file per function id, one record per line, compact JSON with sorted ke
 | `<S>@f32`, S each of the above | S's values rounded to nearest-even binary32 (`theta:subnormal@f32`: below) | as S |
 
 `@f32` strata (`docs/decisions/0016`) belong to the coefficient ids (`coeff_k`, `a`…`e`, `cos_half`,
-`r`, `alpha`), and to the ids of `docs/decisions/0056` (their own section), and follow every stratum of the ids they belong to, in the order of the strata they twin: no
+`r`, `alpha`), to the ids of `docs/decisions/0056` (their own section) and to `so3_from_matrix`
+(`docs/decisions/0085`, below), and follow every stratum of the ids they belong to, in the order of the strata they twin: no
 id, stratum name or record of the binary64 corpus moves. Each input is exactly a binary32, so a
 binary32 subject receives it by a lossless cast, and the reference is the function at that rounded
 input, at 120 digits (`to_f32` is integer arithmetic, and `corpus.require_binary32` asserts every
@@ -121,8 +122,12 @@ strata of their own, after the θ strata (`Stratum.quaternions`):
   exact input (Higham's iteration X ← (X + X⁻ᵀ)/2, the nearest rotation in Frobenius norm), then q
   with R(q) = Q by q ← q(1, d/2) with d = vee skew(R(q)ᵀQ) (cubic), sign w > 0, else the first
   nonzero of x, y, z positive. A rotation by exactly π (`q:w0` rounds to a symmetric matrix) has
-  w = 0 and either sign; |w| below 10⁻¹¹⁰ is that zero. `docs/NUMERICS.md` §11 scores this id by
-  backward error, so `q` is informational.
+  w = 0 and either sign; |w| below 10⁻¹¹⁰ is that zero. `docs/NUMERICS.md` §11 scores `q`
+  sign-free, so that sign is not read (`docs/decisions/0085`). After the quaternion strata,
+  `matrix:exact`: the 24 signed permutation matrices of determinant +1, built from integers (R(q)
+  of an mpf quaternion would leave residues that rounding keeps), whose references are exactly
+  0, ±½, ±√½, ±1 to 30 digits. Then the `@f32` twin of every stratum, in the same order: the
+  binary64 matrix rounded to binary32 (`theta:subnormal@f32` R(q) of its own decade's draw).
 
 ## SE_N(3)
 

@@ -251,7 +251,10 @@ below, are collected for decision, with a recommendation each, in the draft reco
   reference being undetermined below $O(d_M)$ (`PHASE1.md` §4.3's "`mp.logm`-consistent quaternion"
   has no value for a non-orthogonal double matrix) and by the floor $\mathcal B_M \ge d_M/u$ (EA.9(c),
   (d)), not by conditioning. §11 does not define this backward error; $\mathcal B_M$ (Frobenius,
-  absolute, EA.3) is a reading of "backward error only".
+  absolute, EA.3) is a reading of "backward error only". *Resolved by
+  [`0085`](../decisions/0085-from-matrix-is-measured-on-exact-rotations.md):* §11 scores
+  $\pm\hat q$ forward against the polar factor's quaternion, sign-free; the $O(d_M)$ gap is every
+  routine's, and its `matrix:exact` stratum has $d_M = 0$.
 - `NUMERICS.md` §11 and `PHASE1.md` §5 do not say how $\mathcal B$ is evaluated (it needs
   $\mathrm{Exp}$ at the subject's output, which the corpus cannot hold; EA.5 gives a first-order
   form from the stored $\varphi$, valid only for $\lVert e\rVert \ll 1$ and after reducing the

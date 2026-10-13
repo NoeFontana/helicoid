@@ -166,9 +166,16 @@ const RUNNERS: &[Runner] = &[
         launch: Launch::Container("docker/oracles/sophus"),
         // C++ on the image's glibc (`0072`).
         backend: Backend::HostStd,
-        // `Sophus::Sim3<float>` and Eigen's `SelfAdjointEigenSolver<Matrix3f>` (`0083`); no other
-        // id it answers has `@f32` strata.
-        answers_f32: &["sim3_exp", "sim3_log", "sim3_ad", "sim3_act", "eig3"],
+        // `Sophus::Sim3<float>`, `Sophus::SO3<float>` of a matrix (`0085`) and Eigen's
+        // `SelfAdjointEigenSolver<Matrix3f>` (`0083`); no other id it answers has `@f32` strata.
+        answers_f32: &[
+            "so3_from_matrix",
+            "sim3_exp",
+            "sim3_log",
+            "sim3_ad",
+            "sim3_act",
+            "eig3",
+        ],
         answers: &[
             "so2_exp",
             "so2_log",
@@ -973,8 +980,9 @@ mod tests {
                 let entry = entry.ok_or_else(|| format!("{}: {id}", runner.name))?;
                 let f32 = runner.answers_f32.contains(id);
                 let has_f32 = corpus::mentions_f32(&dir, entry)?;
-                // GTSAM is `double` throughout; every other runner answers every such id.
-                let binary64_library = runner.name == "gtsam";
+                // GTSAM is `double` throughout and `tf_tree_math` binary64 by construction; every
+                // other runner answers every such id.
+                let binary64_library = matches!(runner.name, "gtsam" | "tf_tree_math");
                 assert_eq!(f32, has_f32 && !binary64_library, "{}: {id}", runner.name);
             }
             for id in runner.answers_f32 {

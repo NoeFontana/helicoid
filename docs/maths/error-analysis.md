@@ -355,7 +355,8 @@ $\propto\lVert E\rVert$); $d_M^2$ from $K$ against $\lVert M - R_\star\rVert_F^2
 $\le10^{-44}$. (b) $\zeta = 10^{-2}, 10^{-6}, 10^{-12}$: quaternion distance to $w = 0$ equals
 $\zeta/2$, no random point of the great sphere closer,
 $\lVert R - R'\rVert_F/(\sqrt2\zeta) = 0.999996, 1, 1$. Scripts not committed. **Permanent:**
-planned, corpus `so3_from_matrix` (backward error).
+corpus `so3_from_matrix`, scored forward by (a)'s sign-free reading, its `matrix:exact` stratum at
+$d_M = 0$ (`0085`).
 
 **Proposition EA.10 ($J^{-1}$ near $2\pi$).** Let $\theta = 2\pi - \eta$, $0 < \eta \ll 1$. (a)–(c)
 are for SO(3), $N = 0$, where the singular values are $(1, s, s)$ (LG.16(a)); (d) says what

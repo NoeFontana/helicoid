@@ -220,7 +220,6 @@ fn cells(fn_id: &str, stratum: &str, t: &Tally) -> [String; 15] {
         (t.zero_sided, "zero-sided"),
         (t.nonfinite_a, "nonfinite-a"),
         (t.nonfinite_b, "nonfinite-b"),
-        (t.unscored, "unscored"),
     ] {
         if count > 0 {
             other.push(format!("{count} {what}"));
