@@ -136,6 +136,12 @@ J_r = I - a\,W + b\,W^2,\quad J_l = I + a\,W + b\,W^2,\quad
 J_r^{-1} = I + \tfrac12 W + c\,W^2,\quad J_l^{-1} = I - \tfrac12 W + c\,W^2,
 $$
 
+Where $b$ is on its exact arm, $J_r$'s diagonal is formed as $\sin\theta/\theta + b\varphi_i^2$, with the
+$\sin\theta/\theta$ that arm formed $b$ from: $1 + bW^2_{ii}$ is the same number, and near $\pi$ it
+cancels to $n_i^2$ where the two terms of the rewrite have one sign. Below that switch the identity's
+$1$ dominates and $1 + bW^2_{ii}$, one rounding, is the better reading. The off-diagonal is $W^2$'s
+either way (`0089`, draft).
+
 $\mathrm{Ad}_R = R$, $\mathrm{ad}_\varphi = W$.
 
 ### 3.6 Renormalization
@@ -174,13 +180,18 @@ by the generator**, as a cross-check, not typed into code.
 | Name | Definition | Exact arm computes | Series (leading four) | Naive cancellation | Prior |
 |---|---|---|---|---|---|
 | $k$ | $\sin(\theta/2)/\theta$ | definition (0/0 only) | $\tfrac12 - \tfrac{\theta^2}{48} + \tfrac{\theta^4}{3840} - \tfrac{\theta^6}{645120}$ | none | — |
-| $a$ | $(1 - \cos\theta)/\theta^2$ | $2k^2$ | $\tfrac12 - \tfrac{\theta^2}{24} + \tfrac{\theta^4}{720} - \tfrac{\theta^6}{40320}$ | $\sim 2u/\theta^2$ naive; none after rewrite | `tf_tree` D12: $\theta < 0.1$, 4 terms |
-| $b$ | $(\theta - \sin\theta)/\theta^3$ | definition — **no rewrite exists** | $\tfrac16 - \tfrac{\theta^2}{120} + \tfrac{\theta^4}{5040} - \tfrac{\theta^6}{362880}$ | $\sim 6u/\theta^2$ | `tf_tree` D12 |
-| $c$ | $1/\theta^2 - (1 + \cos\theta)/(2\theta\sin\theta)$ | $1/\theta^2 - \cot(\theta/2)/(2\theta)$ (exact at $\pi$) | $\tfrac1{12} + \tfrac{\theta^2}{720} + \tfrac{\theta^4}{30240} + \tfrac{\theta^6}{1209600}$ | $\sim 12u/\theta^2$ | `tf_tree` D12 |
-| $d$ | $(\theta^2 + 2\cos\theta - 2)/(2\theta^4)$ | $(\theta^2 - 4\sin^2(\theta/2))/(2\theta^4)$ | $\tfrac1{24} - \tfrac{\theta^2}{720} + \tfrac{\theta^4}{40320} - \tfrac{\theta^6}{3628800}$ | $\sim 24u/\theta^4$ naive, $\sim 24u/\theta^2$ rewritten | — |
+| $a$ | $(1 - \cos\theta)/\theta^2$ | $2\sin^2(\theta/2)/\theta^2$ (`0089`, draft) | $\tfrac12 - \tfrac{\theta^2}{24} + \tfrac{\theta^4}{720} - \tfrac{\theta^6}{40320}$ | $\sim 2u/\theta^2$ naive; none after rewrite | `tf_tree` D12: $\theta < 0.1$, 4 terms |
+| $b$ | $(\theta - \sin\theta)/\theta^3$ | $(1 - \sin\theta/\theta)/\theta^2$ (`0089`, draft) | $\tfrac16 - \tfrac{\theta^2}{120} + \tfrac{\theta^4}{5040} - \tfrac{\theta^6}{362880}$ | $\sim 6u/\theta^2$ | `tf_tree` D12 |
+| $c$ | $1/\theta^2 - (1 + \cos\theta)/(2\theta\sin\theta)$ | $(1 - \tfrac\theta2\cot\tfrac\theta2)/\theta^2$, regular at $\pi$ (`0089`, draft) | $\tfrac1{12} + \tfrac{\theta^2}{720} + \tfrac{\theta^4}{30240} + \tfrac{\theta^6}{1209600}$ | $\sim 12u/\theta^2$ | `tf_tree` D12 |
+| $d$ | $(\theta^2 + 2\cos\theta - 2)/(2\theta^4)$ | $(1 - 2a)/(2\theta^2)$, $a$ the row above's (`0089`, draft) | $\tfrac1{24} - \tfrac{\theta^2}{720} + \tfrac{\theta^4}{40320} - \tfrac{\theta^6}{3628800}$ | $\sim 24u/\theta^4$ naive, $\sim 24u/\theta^2$ rewritten | — |
 | $e$ | $(2\theta - 3\sin\theta + \theta\cos\theta)/(2\theta^5)$ | definition — **no rewrite exists** | $\tfrac1{120} - \tfrac{\theta^2}{2520} + \tfrac{\theta^4}{120960} - \tfrac{\theta^6}{9979200}$ | $\sim 360u/\theta^4$ | — |
 | $r$ | $2\,\mathrm{atan2}(n, w)/n$ | definition | $\tfrac{2}{w}\left(1 - \tfrac{s}{3} + \tfrac{s^2}{5} - \tfrac{s^3}{7}\right)$, $s = n^2/w^2$ | none (0/0) | — |
 | $\alpha$ | $\sin\theta/\theta$ | $2k\cos\tfrac\theta2$ on **both** arms of `exp_coeffs`: no switch, no series of its own | (those of $k$, $\cos\tfrac\theta2$) | none (0/0) | — |
+
+**The exact arms take $\theta^2$ as given** (`0089`, draft): every closed form above divides by the
+branch variable $z = \theta^2$, the one $W^2$ is formed from, never by the rounded root squared
+again, and $a$, $b$, $d$ are GTSAM's arithmetic in GTSAM's order, $c$ Sophus's. Each switch is the
+sweep's, regenerated against these arms.
 
 What the "naive cancellation" column means: evaluating the definition in the exact arm keeps
 $-\log_{10}$ of that relative error in digits. $e$ is the reason one global threshold is wrong by
@@ -283,9 +294,9 @@ that evaluation ([`0066`](./decisions/0066-gamma-shares-its-coefficients-and-a-g
 coefficients (GG.6): finite at $\varphi = 0$, subnormal included, and as accurate as the arm that
 runs — worse than the value by $\approx 2K/\theta$ on a $K$-term series arm, by $\approx u/\theta$
 ($m = 1$) or $u/\theta^2$ ($m = 2$) on an exact arm. **The exact arm runs on $\theta \le \pi$**:
-the generated switches are on $\theta^2$, at $8.35$ ($a$) and $9.65$ ($b$, $d$) in binary64 and
-$7.77$ ($b$) and $9.65$ ($a$, $d$) in binary32, so it takes $\theta$ from $2.89$ ($m = 1$) or $3.11$
-($m = 2$) in binary64 and from $2.79$ in binary32 ([`0066`](./decisions/0066-gamma-shares-its-coefficients-and-a-gaussian-factors-once.md) corrects `0064`, which read them
+the generated switches are on $\theta^2$, at $5.83$ ($a$), $7.77$ ($b$) and $8.35$ ($d$) in binary64
+and $8.98$ ($b$) and $9.65$ ($a$, $d$) in binary32 (`0089`, draft), so it takes $\theta$ from $2.41$
+($m = 1$) or $2.79$ ($m = 2$) in binary64 and from $3.00$ in binary32 ([`0066`](./decisions/0066-gamma-shares-its-coefficients-and-a-gaussian-factors-once.md) corrects `0064`, which read them
 as $\theta$). Measured within $4.9u$ of the §14 twin on $\theta \in [1, \pi]$, exact arm included.
 
 ## 8. S²

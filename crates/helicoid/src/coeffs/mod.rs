@@ -30,7 +30,7 @@
 //!   the sweep measures each alone (0015 (draft) NU.5, option (b)). No exact arm runs while every
 //!   member is on its series arm, i.e. below the group's smallest switch: at binary64 `θ² < 5.23`
 //!   for `exp_coeffs`, where `cos θ/2` switches, so `Exp` is on its series arms to `θ = 2.29`;
-//!   `8.35` for `jr_coeffs` (`a`), `8.98` for `q_coeffs` (`e`), `3.92` for `jr_inv_coeff`.
+//!   `5.83` for `jr_coeffs` (`a`), `7.77` for `q_coeffs` (`b`), `3.65` for `jr_inv_coeff`.
 //!   Above it the group's exact arms run once, at `select(all, 1, θ²)`, sharing `θ` and each
 //!   transcendental they can, and each member selects by its own mask; a scalar mask runs the
 //!   Horner of the members on their series arm alone. `(sqrt, sin_cos, sin)` calls, as
@@ -38,8 +38,9 @@
 //!   `jr_coeffs` **`(1, 0, 2)`** — no `sin_cos` at all, since both of its sines discard their
 //!   cosine (`0052`) — `jr_inv_coeff` `(1, 1, 0)`, `q_coeffs` **`(1, 1, 1)`** (`b` and `e` share
 //!   `sin θ` and `cos θ`; `d`'s half-angle sine is the `sin`). Evaluated for nothing: one `sin` of
-//!   `jr_coeffs` for `θ² ∈ [8.35, 9.65)` and `b`'s and `d`'s Horners beside `q_coeffs`' exact arm
-//!   for `[8.98, 9.65)` — and, across groups, `b` twice in `SEn3::jr` (`0047` *Further work*).
+//!   `jr_coeffs` for `θ² ∈ [5.83, 7.77)` and `d`'s and `e`'s Horners beside `q_coeffs`' exact arm
+//!   for `[7.77, 8.35)` and `[7.77, 8.98)` — and, across groups, `b` twice in `SEn3::jr` (`0047`
+//!   *Further work*).
 //! - `r` (`log_ratio`) takes its series iff `w > 0` and `s = n²/w² < switch`, `s` formed by a division
 //!   (0014 (draft) question 29, 0015 (draft) NU.6): the reading the sweep measures. Where `s`
 //!   overflows (a unit `q` with `w` below about `1e-154` at `f64`, `5e-20` at `f32`) the mask is false
@@ -72,7 +73,7 @@ mod sim3;
 #[cfg(test)]
 mod sim3_coeff_tests;
 pub(crate) use kernel::{
-    exp_coeffs, gamma2_coeffs, jr_coeffs, jr_inv_coeff, log_ratio, log_ratio_short,
+    exp_coeffs, gamma2_coeffs, jr_coeffs, jr_coeffs_sinc, jr_inv_coeff, log_ratio, log_ratio_short,
     log_ratio_takes_short_arm, q_coeffs,
 };
 pub(crate) use sim3::{

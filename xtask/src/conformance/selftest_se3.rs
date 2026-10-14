@@ -247,10 +247,10 @@ mod tests {
         // The correct kernel's max per id, in u (bit-deterministic, D16), and each defect's own
         // mechanism; the other defect's is not read.
         for line in [
-            "sen3_exp_n1 3.468e0 (rho:1e3/theta=pi-1e-6)",
-            "sen3_jl_n1 8.903e0 (rho:1e4/theta=pi-1e-6)",
+            "sen3_exp_n1 2.531e0 (theta:pi-1e-12)",
+            "sen3_jl_n1 3.802e0 (rho:1e3/theta=pi-1e-6)",
             "seeded:correct -> every rho:* stratum of sen3_exp fails -> silent ok 0 of 75 strata fail \
-             over 3 file(s), 4.5e-1 to 3.5e0 u",
+             over 3 file(s), 4.5e-1 to 2.2e0 u",
             "seeded:se3-exp-translation-first -> every rho:* stratum of sen3_exp fails -> detected ok \
              75 of 75 strata fail over 3 file(s), 8.9e15 to 2.8e22 u",
             "seeded:q-minus-half -> every stratum of sen3_jr, sen3_jl fails -> detected ok 312 of 312 \

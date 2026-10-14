@@ -185,6 +185,14 @@ first order, and its sampled maximum is $\hat C\,u\,\theta^{-p}$, with:
 | $e$ | $(2\theta - 3\sin\theta + \theta\cos\theta)/2\theta^5$ | $3\sin\theta$ ($3\theta \times 2$), $\theta\cos\theta$ ($\theta \times 2$) | 4 | 480 | 367 | 84 | 360 |
 | $k$; $a = 2k^2$ | $\sin(\theta/2)/\theta$; $2k\cdot k$ | none: products and quotients of accurate factors | 0 | $\le 2$; $\le 5$ | 1.5; 3.3 | | none |
 
+**Since `0089` (draft)** the shipped exact arms are not the rows above: $a = 2\sin^2(\theta/2)/z$,
+$b = (1 - \sin\theta/\theta)/z$, $d = (1 - 2a)/(2z)$ and $c = (1 - \tfrac\theta2\cot\tfrac\theta2)/\hat\theta^2$,
+each dividing by the branch variable $z$ rather than $\mathrm{fl}(\hat\theta\hat\theta)$. $b$, $c$ and $d$
+cancel at small $\theta$ in these forms, which the closing paragraph of this proposition warns of;
+the sweep runs them only above switches at $\theta \ge 1.9$, where none cancels, and the measured
+gain is near $\pi$. Their small-$\theta$ constants are not re-measured here; the self-test's D12
+prior, which runs them from $\theta = 0.1$, pins what they read there.
+
 *Proof.* The exponent is the gap between the size $\theta^\alpha$ of the rounded operands and the
 size $\theta^\beta$ of $N$ (the leading term of CO.2, CO.3): $p = \beta - \alpha$: $b$: $\theta$
 against $\theta^3$; $c$: $\theta^{-2}$ against $1$; naive $d$: $1$ against $\theta^4$; $e$: $\theta$
@@ -268,7 +276,7 @@ $\log\theta$) the fitted $p$ is $1.91$–$1.94$, inside the window but biased lo
 that stratum), so a tighter window would fail (open item in the index). Implemented as
 `seeded:b-no-series` (`just conformance --self-test`; test
 `the_window_the_decades_and_the_measured_exponent_are_pinned`): on the committed corpus, the `value`
-field's per-stratum maximum over the seven strata fits $p = 1.937$ (correct kernel: $-0.10$), as
+field's per-stratum maximum over the seven strata fits $p = 1.919$ ($1.937$ before `0089`, draft; correct kernel: $-0.10$), as
 predicted; the record maximum over `value` and `d_branch` fits $3.98$ (open question 7 of 0014 (draft)).
 
 ## 4. The series arm

@@ -194,24 +194,26 @@ pub(crate) fn horner<S: Real>(series: &[S], terms: usize, z: S) -> S {
 
 /// The exact arm at `z > 0`.
 fn exact<S: Real>(c: Coeff, z: S) -> S {
-    let (half, two, three, four) = (S::lit(0.5), S::lit(2.0), S::lit(3.0), S::lit(4.0));
+    let (half, two, three) = (S::lit(0.5), S::lit(2.0), S::lit(3.0));
     let th = z.sqrt();
     let t2 = th * th;
     let sin_half = || (half * th).sin_cos().0;
     match c {
         Coeff::K => sin_half() / th,
+        // `a`, `b`, `d` over the `z` given, in GTSAM's order, and `c` Sophus's (`0089`, draft).
         Coeff::A => {
-            let k = sin_half() / th;
-            two * k * k
+            let s = sin_half();
+            two * s * s / z
         }
-        Coeff::B => (th - th.sin_cos().0) / (t2 * th),
+        Coeff::B => (S::one() - th.sin_cos().0 / th) / z,
         Coeff::C => {
             let (s, co) = (half * th).sin_cos();
-            S::one() / t2 - co / (two * th * s)
+            (S::one() - half * th * co / s) / (th * th)
         }
         Coeff::D => {
             let s = sin_half();
-            (t2 - four * s * s) / (two * t2 * t2)
+            let a = two * s * s / z;
+            (S::one() - two * a) / (two * z)
         }
         Coeff::E => {
             let (s, co) = th.sin_cos();

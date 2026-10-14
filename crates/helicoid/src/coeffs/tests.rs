@@ -639,9 +639,9 @@ fn the_exact_arms_keep_their_operand_order<S: Real>(want: [[u64; 2]; 4]) {
 #[test]
 fn the_exact_arms_keep_their_operand_order_f64() {
     the_exact_arms_keep_their_operand_order::<f64>([
-        [0x3fc4_ce6a_066c_004e, 0x3fc3_4c7f_360a_49ab],
-        [0x3fb5_8364_a25d_38c0, 0x3fb6_1480_c86b_8714],
-        [0x3fa4_fb1e_8b34_487d, 0x3fa3_f5f6_8684_70ba],
+        [0x3fc4_ce6a_066c_0050, 0x3fc3_4c7f_360a_49ac],
+        [0x3fb5_8364_a25d_38df, 0x3fb6_1480_c86b_8717],
+        [0x3fa4_fb1e_8b34_4860, 0x3fa3_f5f6_8684_70b4],
         [0x3f80_aa1e_4aa8_9f22, 0x3f7f_03c7_2b08_aaec],
     ]);
 }
@@ -649,9 +649,9 @@ fn the_exact_arms_keep_their_operand_order_f64() {
 #[test]
 fn the_exact_arms_keep_their_operand_order_f32() {
     the_exact_arms_keep_their_operand_order::<f32>([
-        [0x3e26_7352, 0x3e1a_63fa],
-        [0x3dac_1b40, 0x3db0_a408],
-        [0x3d27_d901, 0x3d1f_afb5],
+        [0x3e26_7350, 0x3e1a_63f8],
+        [0x3dac_1b21, 0x3db0_a405],
+        [0x3d27_d910, 0x3d1f_afb8],
         [0x3c05_51ed, 0x3bf8_1e37],
     ]);
 }

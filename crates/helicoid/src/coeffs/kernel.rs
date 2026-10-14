@@ -160,6 +160,42 @@ fn grouped<S: Real, const G: usize>(
     )
 }
 
+/// [`grouped`] with one more value `exact` forms beside its members, `none` where no exact arm runs,
+/// and each member's "on its series arm" mask, for a caller that reads the extra value only where its
+/// member took the exact arm. The same branches in the same order, so every member is
+/// [`grouped`]'s to the bit.
+fn grouped_with<S: Real, const G: usize>(
+    arms: [Arm<'_>; G],
+    exact: impl FnOnce(S) -> ([S; G], S),
+    z: S,
+    none: S,
+) -> ([S; G], S, [S::Mask; G]) {
+    nonnegative(z);
+    let short_below = arms.iter().fold(f64::INFINITY, |m, a| m.min(a.short_below));
+    // Formed before the outer branch, since a mask is not a value `branch` blends; below the
+    // group's second switch every member's is set, which is what that arm reads.
+    let small = arms.map(|a| z.lt(a.below()));
+    let all = small.iter().fold(S::zero().le(S::zero()), |m, &s| m.and(s));
+    let (v, e) = S::branch(
+        z.lt(S::lit(short_below)),
+        || (arms.map(|a| a.short(z)), none),
+        || {
+            S::branch(
+                all,
+                || (arms.map(|a| a.horner(z)), none),
+                || {
+                    let (x, e) = exact(S::select(all, S::one(), z));
+                    let v = core::array::from_fn(|i| {
+                        S::branch(small[i], || arms[i].horner(z), || x[i])
+                    });
+                    (v, e)
+                },
+            )
+        },
+    );
+    (v, e, small)
+}
+
 /// `(k, cos(θ/2))` at `θ² = z`: `Exp`'s quaternion is `(cos(θ/2), k φ)` (`NUMERICS.md` §3.1).
 pub(crate) fn exp_coeffs<S: Real>(z: S) -> (S, S) {
     let arms = table::<S, _>(
@@ -195,6 +231,22 @@ pub(crate) fn jr_coeffs<S: Real>(z: S) -> (S, S) {
     (a, b)
 }
 
+/// `(a, b, sin θ/θ, far)` at `θ² = z`: [`jr_coeffs`]'s `(a, b)` to the bit, and where `far` (`b` on
+/// its closed arm) the `sin θ/θ` that arm's `b = (1 − sin θ/θ)/θ²` was formed from, for `J_r`'s
+/// diagonal (`0089`, draft). Elsewhere it is `1` and unread. No switch of its own: `far` is `b`'s.
+pub(crate) fn jr_coeffs_sinc<S: Real>(z: S) -> (S, S, S, S::Mask) {
+    let arms = table::<S, _>([A_F64.arm(), B_F64.arm()], [A_F32.arm(), B_F32.arm()]);
+    let ([a, b], sinc, small) = grouped_with(arms, exact_a_b_sinc, z, S::one());
+    (a, b, sinc, small[1].not())
+}
+
+/// [`exact_a_b`] and the `sin θ/θ` its `b` divides by, one root and the same two sines.
+fn exact_a_b_sinc<S: Real>(z: S) -> ([S; 2], S) {
+    let th = z.sqrt();
+    let sinc = th.sin() / th;
+    ([a_from(z, half_angle_sin(th)), (S::one() - sinc) / z], sinc)
+}
+
 /// `(a, b)` sharing one `θ = sqrt z`, which is what `grouped`'s contract asks of an exact arm and
 /// what `exact_b_d_e` and `exact_k_cos_half` already do. `exact_a(z)` and `exact_b(z)` each take
 /// their own root, so the pair cost two; sharing it is a common subexpression on the same `z` and
@@ -207,8 +259,7 @@ pub(crate) fn jr_coeffs<S: Real>(z: S) -> (S, S) {
 /// `sin_cos` because each discards its cosine, which changes no bit and drops a kernel (`0052`).
 fn exact_a_b<S: Real>(z: S) -> [S; 2] {
     let th = z.sqrt();
-    let k = half_angle_sin(th) / th;
-    [S::lit(2.0) * k * k, b_from(th, th.sin())]
+    [a_from(z, half_angle_sin(th)), b_from(z, th, th.sin())]
 }
 
 /// `c` at `θ² = z`: `J⁻¹ = I ± W/2 + cW²` (`NUMERICS.md` §3.5).
@@ -254,7 +305,7 @@ pub(crate) fn gamma2_coeffs<S: Real>(z: S) -> (S, S) {
 /// one group over the swept arms of `k`, `cos θ/2`, `a`, `b`, `d`, so no switch of its own, and each
 /// member is its own group's to the bit (`groups_are_their_members_own_arm`); `sin θ/θ` is
 /// `alpha_value`'s `2k cos(θ/2)`. The exact arm takes one root, one `sin_cos(θ/2)` for `k`,
-/// `cos θ/2`, `a = 2k²` and `d`, and one `sin θ` for `b`.
+/// `cos θ/2`, `a = 2 sin²(θ/2)/θ²` and `d`, and one `sin θ` for `b`.
 pub(crate) fn sinc_a_b_d<S: Real>(z: S) -> (S, S, S, S) {
     let arms = table::<S, _>(
         [
@@ -277,15 +328,13 @@ pub(crate) fn sinc_a_b_d<S: Real>(z: S) -> (S, S, S, S) {
 }
 
 /// `[k, cos θ/2, a, b, d]` from one `sin_cos(θ/2)` and one `sin θ`: `exact_k_cos_half`'s `k` and
-/// `cos θ/2`, `exact_a_b`'s `2k²` (its `half_angle_sin` is this `sin_cos`'s first half to the bit,
+/// `cos θ/2`, `exact_a_b`'s `a` (its `half_angle_sin` is this `sin_cos`'s first half to the bit,
 /// `0052`), `b_from` and `d_from`'s arithmetic on the same half-angle sine.
 fn exact_k_cos_half_a_b_d<S: Real>(z: S) -> [S; 5] {
     let th = z.sqrt();
     let (s, c) = half_angle(th);
-    let k = s / th;
-    let t2 = th * th;
-    let d = (t2 - S::lit(4.0) * s * s) / (S::lit(2.0) * t2 * t2);
-    [k, c, S::lit(2.0) * k * k, b_from(th, th.sin()), d]
+    let a = a_from(z, s);
+    [s / th, c, a, b_from(z, th, th.sin()), d_from(z, a)]
 }
 
 /// Whether [`log_ratio`] would take its **short** arm at `(n2, w)`: `w > 0` and
@@ -395,38 +444,41 @@ fn exact_k_cos_half<S: Real>(z: S) -> [S; 2] {
     [s / th, c]
 }
 
-/// `2k²`, exact where `(1 - cos θ)/θ²` is not (`NUMERICS.md` §4).
 #[cfg(any(test, feature = "__sweep"))]
 pub(super) fn exact_a<S: Real>(z: S) -> S {
-    let k = exact_k(z);
-    S::lit(2.0) * k * k
+    a_from(z, half_angle_sin(z.sqrt()))
 }
 
 #[cfg(any(test, feature = "__sweep"))]
 pub(super) fn exact_b<S: Real>(z: S) -> S {
     let th = z.sqrt();
-    b_from(th, th.sin_cos().0)
+    b_from(z, th, th.sin())
 }
 
-/// `(θ - sin θ)/θ³` from `θ` and `s = sin θ`.
-fn b_from<S: Real>(th: S, s: S) -> S {
-    let t2 = th * th;
-    (th - s) / (t2 * th)
+// The closed arms divide by `z`, the `θ²` they were given and the one `W²` is formed from, never
+// by the rounded root squared again, and each is GTSAM's arithmetic in GTSAM's order:
+// `a = 2 sin²(θ/2)/θ²`, `b = (1 - sin θ/θ)/θ²`, `d = (1 - 2a)/(2θ²)` (`0089`, draft).
+
+/// `(1 - cos θ)/θ²` as `2 sin²(θ/2)/θ²`, from `z = θ²` and `sh = sin(θ/2)`.
+fn a_from<S: Real>(z: S, sh: S) -> S {
+    S::lit(2.0) * sh * sh / z
 }
 
-/// `1/θ² - cot(θ/2)/(2θ)`, regular at `π`.
+/// `(θ - sin θ)/θ³` as `(1 - sin θ/θ)/θ²`, from `z = θ²`, `θ` and `s = sin θ`.
+fn b_from<S: Real>(z: S, th: S, s: S) -> S {
+    (S::one() - s / th) / z
+}
+
+/// `1/θ² - cot(θ/2)/(2θ)`, regular at `π`, as Sophus's `(1 - (θ/2) cot(θ/2))/θ²` (`0089`, draft).
 pub(super) fn exact_c<S: Real>(z: S) -> S {
     let th = z.sqrt();
-    let t2 = th * th;
     let (s, co) = half_angle(th);
-    S::one() / t2 - co / (S::lit(2.0) * th * s)
+    (S::one() - S::lit(0.5) * th * co / s) / (th * th)
 }
 
-/// `(θ² - 4 sin²(θ/2))/(2θ⁴)` from `θ`.
-fn d_from<S: Real>(th: S) -> S {
-    let t2 = th * th;
-    let s = half_angle_sin(th);
-    (t2 - S::lit(4.0) * s * s) / (S::lit(2.0) * t2 * t2)
+/// `(θ² - 4 sin²(θ/2))/(2θ⁴)` as `(1 - 2a)/(2θ²)`, from `z = θ²` and `a` (`0089`, draft).
+fn d_from<S: Real>(z: S, a: S) -> S {
+    (S::one() - S::lit(2.0) * a) / (S::lit(2.0) * z)
 }
 
 /// `(2θ - 3 sin θ + θ cos θ)/(2θ⁵)` from `θ`, `s = sin θ` and `co = cos θ`.
@@ -439,18 +491,20 @@ fn e_from<S: Real>(th: S, s: S, co: S) -> S {
 fn exact_b_d_e<S: Real>(z: S) -> [S; 3] {
     let th = z.sqrt();
     let (s, co) = th.sin_cos();
-    [b_from(th, s), d_from(th), e_from(th, s, co)]
+    let a = a_from(z, half_angle_sin(th));
+    [b_from(z, th, s), d_from(z, a), e_from(th, s, co)]
 }
 
 /// `(b, d)` sharing one `θ`: `sin θ` alone, since no member needs `cos θ` (`0052`).
 fn exact_b_d<S: Real>(z: S) -> [S; 2] {
     let th = z.sqrt();
-    [b_from(th, th.sin()), d_from(th)]
+    let a = a_from(z, half_angle_sin(th));
+    [b_from(z, th, th.sin()), d_from(z, a)]
 }
 
 #[cfg(any(test, feature = "__sweep"))]
 pub(super) fn exact_d<S: Real>(z: S) -> S {
-    d_from(z.sqrt())
+    d_from(z, a_from(z, half_angle_sin(z.sqrt())))
 }
 
 #[cfg(any(test, feature = "__sweep"))]

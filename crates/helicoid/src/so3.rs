@@ -18,7 +18,7 @@ mod gamma;
 pub use gamma::{gamma1, gamma2, gamma_apply_jacobians};
 
 use crate::coeffs::{
-    exp_coeffs, jr_coeffs, jr_inv_coeff, log_ratio, log_ratio_short, log_ratio_takes_short_arm,
+    exp_coeffs, jr_coeffs_sinc, jr_inv_coeff, log_ratio, log_ratio_short, log_ratio_takes_short_arm,
 };
 use crate::quat::Quat;
 use crate::side::Side;
@@ -148,6 +148,23 @@ impl<S: Real> HatSq<S> {
             Vector([s0 + s2 * d0, -wz + qxy, wy + qxz]),
             Vector([wz + qxy, s0 + s2 * d1, -wx + qyz]),
             Vector([-wy + qxz, wx + qyz, s0 + s2 * d2]),
+        ])
+    }
+
+    /// [`HatSq::poly`], whose diagonal is `s0 + s2 W²ᵢᵢ`, except where `far`: there it is
+    /// `t0 + s2 φᵢ²`, `W² = φφᵗ − θ²I` with `s0 − s2θ²` taken whole as `t0`, a sum of two terms of one
+    /// sign where `s0 + s2 W²ᵢᵢ` cancels (`0089`, draft). The off-diagonal is `poly`'s to the bit.
+    #[inline]
+    pub(crate) fn poly_far(&self, s0: S, s1: S, s2: S, t0: S, far: S::Mask) -> Mat3<S> {
+        let [x, y, z] = self.phi.0;
+        let [d0, d1, d2] = self.diag;
+        let (wx, wy, wz) = (s1 * x, s1 * y, s1 * z);
+        let [qxy, qxz, qyz] = self.off.map(|o| s2 * o);
+        let diag = |p: S, d: S| S::select(far, t0 + s2 * (p * p), s0 + s2 * d);
+        Matrix::from_rows([
+            Vector([diag(x, d0), -wz + qxy, wy + qxz]),
+            Vector([wz + qxy, diag(y, d1), -wx + qyz]),
+            Vector([-wy + qxz, wx + qyz, diag(z, d2)]),
         ])
     }
 }
@@ -841,14 +858,11 @@ impl<S: Real> LieGroup<S> for SO3<S> {
     #[inline]
     fn jr(tau: &SO3Tangent<S>) -> Mat3<S> {
         let w2 = HatSq::of(tau.phi);
-        let (a, b) = jr_coeffs(norm_sq(tau.phi));
-        // `W²` is `mul_hat`'s rounding, through `HatSq`, and *not* the closed `φφᵗ − θ²I`. The
-        // closed form lowers `so3_jr`'s worst row from 4.097 to 3.439 `u`, but it is a different
-        // rounding (13.8% of entries differ over 20 000 samples) and the corpus says it is worse
-        // where it is not better: 6 of 28 `so3_jr` strata regress, up to 1.34x, and `so3_jr_inv`
-        // keeps its 2.112 maximum while **12 of 28** strata regress, up to 1.39x. `0006` says the
-        // bar is the max, per stratum, never a mean.
-        w2.poly(S::one(), -a, b)
+        let (a, b, sinc, far) = jr_coeffs_sinc(norm_sq(tau.phi));
+        // Where `b` is on its closed arm, `1 + bW²ᵢᵢ` is `sin θ/θ + bφᵢ²` with the `sin θ/θ` that arm
+        // formed `b` from, two non-negative terms where the first cancels to `nᵢ²` near `π`; below
+        // it the identity's `1` dominates and one rounding is the better reading (`0089`, draft).
+        w2.poly_far(S::one(), -a, b, sinc, far)
     }
     /// `J_r⁻¹ = I + W/2 + cW²` (`NUMERICS.md` §3.5).
     ///
