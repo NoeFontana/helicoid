@@ -72,15 +72,45 @@ worst strata fall almost everywhere:
 - `sim3_exp` 8.17 → 4.69 and `sim3_log` 4.88 → 2.94 (`f64`);
 - `coeff_c` 94.5 → 36.3 and `coeff_b` 5.67 → 3.57 (value and derivative).
 
-The rises:
-- `sim3_jr` and `sim3_jr_inv` at `sigma:-700/theta:3`, 138.8 → 176.9 and 94.1 → 120.0. At
-  `θ² = 9`, `b` moves from its series to its closed arm. That is not attributed further, and
-  `σ = −700` is the extreme of Sim(3)'s scale range.
-- `coeff_c` at `theta:pi-1e-4`, 0.45 → 6.96, and `coeff_c@f32` at `pi-1e-1`, 1.46 → 4.85. These
-  are the derivative lane of a coefficient no `Dual` caller differentiates.
-- Per-stratum rises up to 0.9 `u` in the SE_N(3) Jacobians.
+The rises, none of them a resolved or gross loss:
 
-None of them is a resolved or gross loss.
+- **`sim3_jr` and `sim3_jr_inv` at `sigma:-700/theta:3`**, 138.8 → 176.9 and 94.1 → 120.0.
+  - **Attribution.** It is `d`'s formula alone. Restoring `d`'s old closed arm in `sinc_a_b_d`
+    (Sim(3)'s group, read by nothing else) gives 137.4 and 93.2; restoring `a` or `b` changes
+    nothing; and `b`'s move from series to closed arm at `θ² = 9` is not it.
+  - **Where `d` enters.** Only in the derivative block, `da = −½(b − 2d)`. Every candidate's `da`
+    is within 1.8 `u` of mpmath at `θ = 3`.
+  - **Mechanism.** The assembly at `σ = −700` amplifies sub-ulp coefficient differences
+    hundredsfold; `main` already reads 138.8 there. Forming `da` instead as `(2a − sin θ/θ)/θ²`,
+    0.40 `u` and the most accurate, reads 402 on the deep tier, against 401 for `(1 − 2a)/(2θ²)`.
+    So the reading is which way the roundings correlate with `v₂`'s, not any coefficient's
+    accuracy.
+  - **Deep tier, 64 records.** `main` reads 328.5 and this record 401.4. The swap test gives
+    `p = 0.125`. Of the 122 deep Sim(3) strata, none is resolved worse, and 13 (`sim3_jr`) and 4
+    (`sim3_jr_inv`) are resolved better. 49 of the 64 records read worse, but they share 3
+    distinct `fl(θ²)`, so that is three draws of one rounding, not 64. The `σ = −700` strata at
+    other `θ` do not move.
+  - **Verdict.** A same-size reshuffle of an ill-conditioned assembly. The lever is Sim(3)'s
+    closed form at large `|σ|`, outside this record.
+- **`coeff_c`'s derivative lane.**
+  - `f64`: 10 strata fall and 2 rise, `pi-1e-2` 2.17 → 13.62 and `pi-1e-4` 0.45 → 6.96; the
+    function's maximum goes 94.5 → 36.3.
+  - `f32`: 7 strata rise, to 5.84, against a maximum of 3.93; the value stays at most 1.25 `u`.
+  - `c′` near `π` is itself a cancellation, `−2/θ³ + csc²(θ/2)/(4θ)`. Re-associating Sophus's form,
+    `(θ/2)(cos/sin)`, reads worse at both precisions.
+  - **The consumer does not regress.** Over 240 random rotations, near `π` and on `[2, 3.1]`,
+    `∂J_r⁻¹/∂φ` through `Dual<S, 3>` against mpmath reads:
+
+    | | `main` | this |
+    |---|---|---|
+    | `f64` near `π` | 1.69 | 1.75 |
+    | `f64` on `[2, 3.1]` | 3.33 | 2.25 |
+    | `f32` near `π` | 1.98 | 1.35 |
+    | `f32` on `[2, 3.1]` | 2.36 | 1.83 |
+
+    `SO3::jr_inv` and `SEn3`'s `jr_inv` and `Log` are the only readers of `c`'s derivative, and no
+    corpus id differentiates them.
+- **Per-stratum rises up to 0.9 `u`** in the SE_N(3) Jacobians.
 
 **What lost:**
 - **The cancellation-free diagonal at every `θ`** (`sin θ/θ = 2k cos(θ/2)`): it fails five
@@ -92,16 +122,25 @@ None of them is a resolved or gross loss.
 
 **Cost**, by x86-64 instruction count of `#[inline(never)]` wrappers, against `main`:
 
-| function | instructions | divisions | jumps |
-|---|---|---|---|
-| `jr` | 181 → 192 | 2 → 2 | 6 → 9 |
-| `jr_inv` | 139 → 135 | 1 → 2 | 4 → 4 |
-| `gamma2` | 151 → 174 | 1 → 3 | 4 → 5 |
+| function | instructions | divisions | multiplies | add/sub | jumps |
+|---|---|---|---|---|---|
+| `jr` | 181 → 189 | 2 → 2 | 39 → 36 | 36 → 34 | 6 → 6 |
+| `jr_inv` | 139 → 135 | 1 → 2 | 28 → 28 | 26 → 26 | 4 → 4 |
+| `gamma2` | 151 → 174 | 1 → 3 | 28 → 36 | 24 → 35 | 4 → 5 |
 
 No `sqrt`, call or stack spill is added. The added divisions are on the exact arms, which now run
-from `θ² ≥ 5.83` to `8.35` rather than `8.35` to `9.65`. `jr`'s three jumps are the diagonal's
-`select`, lowered to a branch on a mask that is constant per call. The latency gate is owed (open
-question 1).
+from `θ² ≥ 5.83` to `8.35` rather than `8.35` to `9.65`.
+
+`poly_far` selects the diagonal's operands, `select(far, t0, s0) + s2·select(far, φᵢ², W²ᵢᵢ)`, not
+its two sums. Selecting the sums let LLVM sink each into a branch: three jumps. The operand form is
+blends of values already formed and the same bits (116 of 116 `cargo xtask determinism` digests).
+
+**The latency gate**, measured before that change, against `main`:
+- `jr`: `f64` 1.06× near `π` and near the identity, 0.93× generic; `f32` 1.07–1.075×;
+- `jr_inv`: at most 1.03×;
+- `gamma2`: 1.07–1.08× near `π`;
+- `gamma_apply_jacobians::<2>`: `f32` 1.15× near `π`;
+- `rminus_jacobians`: unchanged.
 
 ## Consequences
 
@@ -133,10 +172,9 @@ question 1).
    switches and `NUMERICS.md`. Verified by:
    - `just thresholds-check`, `just test`, `just lint` and `cargo xtask conformance --self-test`;
    - `cargo xtask envelope` against `main` on the same oracle rows;
-   - `cargo xtask bench-gate --only so3/jr` (owed).
+   - `cargo xtask bench-gate --only so3/jr` (*Cost*).
 
 ## Open questions
 
-1. **Latency.** `jr`, `jr_inv` and `gamma2` against `main` on a quiet host.
-2. **`sim3_jr` at `σ = −700`.** Whether the rise is `b`'s arm or its formula, and whether it is
-   worth an exception or a fix.
+None. The latency gate and the two rises are measured above. Sim(3)'s conditioning at large
+`|σ|` is the lever for `sigma:-700/theta:3` and is not this record's.
