@@ -1,9 +1,10 @@
 # 0088: The domination bar must tell worse from equal
 
-**Status:** draft
+**Status:** ready
 **Owner:** @NoeFontana
-**Implementation:** proposes a `PHASE1.md` §8 and `0006` decision 4 change, a deep corpus tier, and
-a fix queue; no code change.
+**Implementation:** this record's PR: the resolved bar in `cargo xtask envelope`, the records file,
+the deep tier, and the amendments to `0006` decision 4, `0038` decision 1 and `PHASE1.md` §8. The
+fix queue is the records that follow.
 
 ## Context
 
@@ -13,8 +14,8 @@ current corpus, `just envelope` reads **2656 strata paired with an oracle and 79
 failures**, plus the 3 that `conformance/baseline/exceptions.toml` excepts. `--bless` writes nothing
 while one stands, so **no baseline has ever been blessed**, and the no-regress bar judges none of
 the 4417 scored rows. Every numerics change since Phase 3 has therefore been argued by a study of
-its own, outside the envelope, and some of those studies were wrong (`0086`, a draft in #162,
-printed a table the rows did not reproduce).
+its own, outside the envelope, and some of those studies were wrong (`0086`'s first draft, in
+#162, printed a table the rows did not reproduce).
 
 [`0046`](./0046-explained-by-record-needs-a-record-to-point-at.md) gave the bar a hatch: a row in
 the exception table that cites a `ready` record. Its item 6 refuses to use the hatch for ordinary
@@ -122,7 +123,7 @@ The corpus is 62.3 MiB against [`0071`](./0071-the-corpus-budget-is-64-mib.md)'s
 
 ## Decision
 
-Proposed, not settled.
+Settled by the owner on 2026-10-14 (*Open questions*).
 
 1. **Domination fails only when the loss is resolved.** A paired stratum fails when two things hold:
    - `helicoid`'s maximum exceeds the best oracle's, as today;
@@ -208,7 +209,7 @@ and a floor measured beside the comparison.
 
   `so3_from_matrix` is 12 of the 31. `tf_tree_math`, on the same `libm`, reads 0.49 `u` where
   `helicoid` reads 0.9–1.4 on six decade strata, so this is the program and not D16. That is
-  evidence for `0086` (draft, #162).
+  evidence for `0086`, which has since landed (#162).
 - **D16 costs no resolved stratum.** `so3_log`'s two are the only candidates, and `0032` (draft)
   already attributes them to `atan2`. `0032` option 1 becomes unnecessary for the gate.
 - **Under the deep tier,** Sim(3), SE_N(3), the SE(3) charts and SE(2) are judged for the first
@@ -220,34 +221,85 @@ and a floor measured beside the comparison.
 - `ENVELOPE.md` gains a section of unresolved excesses with their `p`, beside the exceptions
   section. That keeps every number `0046` item 5 wanted visible.
 
+## Measured on landing
+
+`just envelope` on `main` at `bb38f24` (`0086`'s kernel), the six oracles rerun on the committed
+corpus so each wrote its records file:
+
+- **19 domination failures, every one resolved,** where finding 3 had 32. The 12
+  `so3_from_matrix` strata are gone with `0086`; the 19 are the rest of the fix queue above, to the
+  stratum: `so3_jr` and `so3_jl` 4 + 4 near `π`, `sen3_log` 5, `so3_gamma2` 2, `so3_jr_inv` and
+  `so3_jl_inv` 1 + 1, `so3_log` 2. Their p-values run from `1.5 × 10⁻⁵` to `9.8 × 10⁻⁴`.
+- **156 unresolved excesses and 608 unresolvable strata,** printed and not failed, against
+  finding 3's 156 and 609.
+- **The exception table:** judged without it, one more stratum fails, `so3_act/q:nonunit`, which
+  `0076` excepts. Its other two rows, `so3_exp/theta:1e-5` (the `0046` tie) and
+  `sen3_ad_n1/q:nonunit`, do not resolve, so the bar would pass them without a row.
+
 ## Implementation plan
 
-1. **Per-record errors as a harness output:** `cargo xtask conformance --records`, one line per
-   record and subject, beside the result CSV. They are read by the envelope only and never by
-   no-regress. Verified by a test that their per-stratum maximum is the row's `max_u`, bit for bit.
+1. **Per-record errors as a harness output,** one line per record and subject, beside the result
+   CSV. They are read by the envelope only and never by no-regress. Verified by a test that their
+   per-stratum maximum is the row's `max_u`, bit for bit. **Done,** with one change from the plan:
+   the file, `<name>.records.csv` (`fn,stratum,precision,id,err_u`, `inf` for a non-finite output),
+   is written by every `conformance` run rather than behind a `--records` flag, so an oracle run
+   cannot leave the swap test nothing to pair; it costs disk under the git-ignored results alone.
+   Verified by `report::tests::the_records_are_what_the_row_is_the_maximum_of`.
 2. **The swap test in `envelope/bars.rs`,** with its seeded draw. Verified by:
    - a unit test that two exchangeable subjects never fail;
    - a planted defect, `seeded:correct` with one stratum's errors doubled, that fails at
      `n = 64` and is "unresolvable" at `n = 4`;
    - reproducing this record's 32 / 156 / 609 split on today's rows.
+
+   **Done** in `envelope/swap.rs`, read by `bars::Mode::Resolved`, which `just envelope` applies.
+   `bars::Mode::Strict`, the maxima alone, stays the self-test's reading of its planted defects,
+   whose strata include 4- and 6-record ones the resolved bar calls unresolvable. Under the
+   resolved bar a stratum whose records were not read cannot be tested, and fails as the strict
+   bar would, saying so. Verified by `swap::tests` (the floor `2^-n`, exchangeable pairs, the
+   stream), `bars::tests::a_doubled_stratum_fails_at_64_records_and_is_unresolvable_at_4` and
+   `two_equally_good_programs_never_fail_the_resolved_bar`, the end-to-end
+   `envelope::tests::a_four_record_loss_is_unresolvable_and_the_deep_tier_judges_it`, and the
+   self-test's envelope half: the planted `c` loses 10 strata of `coeff_c` and the resolved bar
+   resolves all 10, the correct kernel none. The split on today's rows is under *Measured on
+   landing*.
 3. **The deep tier:** `just corpus-deep`, `corpus-deep-check`, the manifest, and the oracles and
    envelope reading it. Verified by the nested prefix being byte-identical to the committed corpus,
    and by `corpus-deep-check` on a second run.
-4. **The fix queue,** one record per id where the fix is a formula, starting with `so3_from_matrix`
-   (`0086`, draft), then `so3_jr`/`so3_jl` near π.
+
+   **Done.** Where the plan is silent, the simplest reading was taken:
+   - `HELICOID_CORPUS_DEEP=1` raises the sample counts below 64 to 64: `SEN3_SAMPLES` (6),
+     `SE2_SAMPLES` (8), `N_SIM3` (4), `N_MAT2` (6), `N_CHOL`, `N_GAUSS` and `N_GAP` (32). Three
+     stay: `GEO_SAMPLES`, paired with a six-entry table of pose scales; `N_RAY`, which divides the
+     circle, so raising it would move every sample; and every fixed stratum (`theta:exact0`, the
+     `theta:pi-1e-k` scalars, `matrix:exact`), which has no more records to draw.
+   - `gen deep --committed ../corpus --out ../corpus-deep` keeps the ids whose record count grows,
+     refuses one whose committed strata are not each its deep namesake's prefix (the records but
+     their ids, `corpus.check_prefix`), and writes their manifest, committed as
+     `conformance/MANIFEST-deep.json`.
+   - `cargo xtask conformance --deep` reads `conformance/corpus-deep/` and writes
+     `conformance/results-deep/`, both git-ignored; `just conformance-deep` runs the candidate and
+     the six oracles there; `cargo xtask envelope --deep` judges on those rows the strata the
+     committed tier leaves unresolvable, and only those.
+   - **Measured:** the first draw took 43 minutes on 8 cores and wrote 382 MiB in 50 files: the
+     SE_N(3) ids (21 files), Sim(3) (8), SE(2) (7), the SE(3) charts (6), `chol` (4), `gaussian`
+     (2), `eig3` and `mat2_inverse_adj`. Every committed stratum of the 50 is its deep namesake's
+     prefix. The committed corpus is unchanged to the byte with the switch off; only
+     `MANIFEST.json`'s generator hash moved. Running the six oracles over the deep tier is left to
+     the owner's first `just conformance-deep`.
+4. **The fix queue,** one record per id where the fix is a formula. `so3_from_matrix` is `0086`,
+   landed; `so3_jr`/`so3_jl` near π are next.
 5. **Bless,** owner only: the baseline and `ENVELOPE.md`, when the bar and coverage pass.
 
 ## Open questions
 
-1. **Does the owner accept a resolved-loss domination bar** (decision 1)? It changes `0006`
-   decision 4 and `PHASE1.md` §8. The hard rule's words, "on the max — never a mean", hold, and the
-   bar no longer fails a coin flip. Rejecting it leaves the hatch, 763 exception rows, as the
-   only route to a blessed baseline.
-2. **`α = 0.001` or `0.01`?** That is about 2 or about 20 stable false failures, against 77% or 95%
-   power at 64 records.
-3. **The deep tier at 64 records, git-ignored with committed hashes,** or a larger committed budget
-   than 64 MiB? The latter costs 245 MiB more of clone and `corpus-check` time for a bar that runs
-   only locally.
+None. Answered by the owner on 2026-10-14:
+
+1. **The resolved-loss domination bar is accepted** (decision 1). `0006` decision 4, `0038`
+   decision 1 and `PHASE1.md` §8 are amended; the hard rule's words, "on the max — never a mean",
+   hold.
+2. **`α = 0.001`,** about 2 stable false failures, at 77% power at 64 records.
+3. **The deep tier, at 64 records, git-ignored with committed hashes,** not a larger committed
+   budget.
 
 ## Further work
 

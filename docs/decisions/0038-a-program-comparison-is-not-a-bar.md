@@ -86,7 +86,10 @@ so the 33× I quoted there was bought with all of the power. Corrected below.
 1. **`0006`'s domination bar stays on the max.** A maximum is the right *gate*: a consumer feels the
    worst case, and a bar that passes a program because it is typically fine is the failure mode
    `0006` was written against. Nothing here argues for changing it, and `0037` open question 6
-   should be read as answered *no*.
+   should be read as answered *no*. **Reopened by [`0088`](./0088-the-domination-bar-must-tell-worse-from-equal.md):** the bar stays on the
+   maximum and still fails a stratum lost on its worst records, but only where the paired swap test
+   on `max c − max o` resolves the loss at `p ≤ 0.001`. A bar on the maxima alone fails a program
+   exactly as good as its oracle on half its strata at every `n`, which this record did not have.
 2. **A program comparison is a separate instrument, and it is paired and pooled.** Choosing between
    two readings of a formula — which `0014` (draft) questions 19, 24 and 25 and `0036` all require —
    is a question about two programs on the same inputs, not about either program's worst case. It

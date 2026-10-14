@@ -23,8 +23,10 @@ code already does.
    precision, on the max (p99 reported).
 3. **Oracle envelope.** `tf_tree_math`, sophus-rs, Sophus, manif, GTSAM through one file protocol;
    pinned versions; their errors recorded.
-4. **Bars.** Domination: `helicoid`'s max ≤ the best oracle's max. No-regress: ≤ the committed
-   baseline, compared exactly (D16). Coverage: every public numeric id has a corpus file.
+4. **Bars.** Domination: `helicoid`'s max ≤ the best oracle's max, unless the paired swap test on
+   the records does not resolve the excess at `p ≤ 0.001`; a stratum under 10 records is judged on
+   the deep tier (amended by [`0088`](./0088-the-domination-bar-must-tell-worse-from-equal.md)). No-regress: ≤ the committed baseline,
+   compared exactly (D16). Coverage: every public numeric id has a corpus file.
 5. **Seeded defects** prove the instrument detects what it claims to (`PHASE1.md` §10).
 6. **Evidence** is generated into `docs/evidence/ENVELOPE.md` on every bless.
 
