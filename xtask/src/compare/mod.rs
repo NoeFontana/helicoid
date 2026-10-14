@@ -505,11 +505,9 @@ mod tests {
         assert!(text.contains("*: strata by max_b/max_a: 1 b better, 1 b worse, 1 equal"));
     }
 
-    /// The task's own control (`0078` decision 5): `0038`'s tally of the `W²` form twin by the
-    /// maximum over the nine `sen3_*` ids, reproduced from the per-stratum rows. `0038` published 21
-    /// strata better and 104 worse; since `0089` (draft) moved the seeded kernels' closed arms the
-    /// same comparison reads 36 and 94, every id still net worse, and the `sen3_exp` ratio floors
-    /// published as 0.73 and 0.64 read 0.77, 0.96 and 0.90.
+    /// The task's own control (`0078` decision 5): `0038`'s comparison of the `W²` form twin by the
+    /// maximum over the nine `sen3_*` ids, from the per-stratum rows, on the seeded kernels' current
+    /// arms (`0089`, draft, re-pins the counts): every id is net worse.
     #[test]
     fn the_task_reproduces_the_tally_of_0038() -> Result<(), String> {
         let dir = corpus_dir()?;

@@ -69,7 +69,7 @@ const DECADES: std::ops::RangeInclusive<i32> = 2..=8;
 /// not depend on `u`. The top
 /// stratum, `[0.1, 1)`, is above D12's switch, where the defect and the D12 kernel this reading was
 /// made against ran one exact arm; the `f32` sweep leaves the range as it is, and the two strata
-/// below it fit `p = 2.188` (0014 (draft) question 26).
+/// below it fit `p = 2.291` (0014 (draft) question 26).
 const DECADES_F32: std::ops::RangeInclusive<i32> = 1..=3;
 /// A candidate is dominated when its objective is more than this factor above the chosen one's.
 const DOMINATED_BY: f64 = 1e6;
@@ -846,8 +846,7 @@ mod tests {
     #[test]
     fn the_f32_half_detects_its_defects_and_the_correct_kernel_is_silent() -> Result<(), String> {
         // Fitted `p`: binary64 1.919 (seven strata, the plateau one of them), binary32 2.086
-        // (three, above the plateau; 2.134 before `0089` (draft) moved `b`'s closed arm); the
-        // correct kernel's curve does not fit at either.
+        // (three, above the plateau); the correct kernel's curve does not fit at either.
         let report = run_f32(cases_f32(), WINDOW)?;
         assert_eq!(report.failures, Vec::<String>::new());
         let (curve, zero) = ("b value curve fits theta^-p", "nonfinite in theta:exact0");
@@ -905,8 +904,8 @@ mod tests {
         };
         assert_eq!(fit(&[4, 3, 2, 1]), Some(1.648));
         assert_eq!(fit(&[3, 2, 1]), Some(2.086));
-        // `theta:1e-1@f32` is above D12's switch: the two strata below it fit 2.291 (2.188 before
-        // `0089` (draft); 0014 (draft) question 26).
+        // `theta:1e-1@f32` is above D12's switch: the two strata below it fit 2.291 (0014 (draft)
+        // question 26).
         assert_eq!(fit(&[3, 2]), Some(2.291));
         Ok(())
     }

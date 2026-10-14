@@ -1,8 +1,8 @@
 //! The exact arms, the series arms and the call-site groups (`super`).
 //!
 //! An exact arm is the "Exact arm computes" column of `NUMERICS.md` §4 at `z > 0`, in the operand
-//! order `docs/maths/coefficients.md` CO.6 measured: `θ²` inside a cancelling sum is `fl(θ̂·θ̂)`,
-//! not `z`, which raises the constants. A group evaluates it at the safe argument (`0003` item 3).
+//! order stated beside each: `a`, `b` and `d` divide by `z`, `c` and `e` by powers of `θ̂ = fl(√z)`
+//! (`0089`, draft). A group evaluates it at the safe argument (`0003` item 3).
 //! `z = θ² >= 0` is the domain of every function here, `debug_assert!`ed; `θ²` overflowing is
 //! CO.15(c), open. A lane evaluates the series arm it does not select at the raw `z`, so that arm is
 //! not finite once its Horner form overflows, far beyond any rotation.
@@ -233,7 +233,7 @@ pub(crate) fn jr_coeffs<S: Real>(z: S) -> (S, S) {
 
 /// `(a, b, sin θ/θ, far)` at `θ² = z`: [`jr_coeffs`]'s `(a, b)` to the bit, and where `far` (`b` on
 /// its closed arm) the `sin θ/θ` that arm's `b = (1 − sin θ/θ)/θ²` was formed from, for `J_r`'s
-/// diagonal (`0089`, draft). Elsewhere it is `1` and unread. No switch of its own: `far` is `b`'s.
+/// diagonal (`0089`, draft); elsewhere it is unread. No switch of its own: `far` is `b`'s.
 pub(crate) fn jr_coeffs_sinc<S: Real>(z: S) -> (S, S, S, S::Mask) {
     let arms = table::<S, _>([A_F64.arm(), B_F64.arm()], [A_F32.arm(), B_F32.arm()]);
     let ([a, b], sinc, small) = grouped_with(arms, exact_a_b_sinc, z, S::one());
@@ -455,9 +455,10 @@ pub(super) fn exact_b<S: Real>(z: S) -> S {
     b_from(z, th, th.sin())
 }
 
-// The closed arms divide by `z`, the `θ²` they were given and the one `W²` is formed from, never
-// by the rounded root squared again, and each is GTSAM's arithmetic in GTSAM's order:
-// `a = 2 sin²(θ/2)/θ²`, `b = (1 - sin θ/θ)/θ²`, `d = (1 - 2a)/(2θ²)` (`0089`, draft).
+// `a`, `b` and `d` divide by `z`, the `θ²` they were given and the one `W²` is formed from, not by
+// the rounded root squared again, each in GTSAM's arithmetic: `a = 2 sin²(θ/2)/θ²`,
+// `b = (1 - sin θ/θ)/θ²`, `d = (1 - 2a)/(2θ²)`. `c` and `e` keep `θ̂·θ̂`, which measured better for
+// them (`0089`, draft).
 
 /// `(1 - cos θ)/θ²` as `2 sin²(θ/2)/θ²`, from `z = θ²` and `sh = sin(θ/2)`.
 fn a_from<S: Real>(z: S, sh: S) -> S {
@@ -476,9 +477,10 @@ pub(super) fn exact_c<S: Real>(z: S) -> S {
     (S::one() - S::lit(0.5) * th * co / s) / (th * th)
 }
 
-/// `(θ² - 4 sin²(θ/2))/(2θ⁴)` as `(1 - 2a)/(2θ²)`, from `z = θ²` and `a` (`0089`, draft).
+/// `(θ² - 4 sin²(θ/2))/(2θ⁴)` as `(1 - 2a)/(2θ²)`, from `z = θ²` and `a` (`0089`, draft), written
+/// `(1/2 - a)/z`: a factor of two is exact in both operands, so the same bits, two multiplies fewer.
 fn d_from<S: Real>(z: S, a: S) -> S {
-    (S::one() - S::lit(2.0) * a) / (S::lit(2.0) * z)
+    (S::lit(0.5) - a) / z
 }
 
 /// `(2θ - 3 sin θ + θ cos θ)/(2θ⁵)` from `θ`, `s = sin θ` and `co = cos θ`.

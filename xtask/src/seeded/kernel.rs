@@ -213,7 +213,7 @@ fn exact<S: Real>(c: Coeff, z: S) -> S {
         Coeff::D => {
             let s = sin_half();
             let a = two * s * s / z;
-            (S::one() - two * a) / (two * z)
+            (half - a) / z
         }
         Coeff::E => {
             let (s, co) = th.sin_cos();

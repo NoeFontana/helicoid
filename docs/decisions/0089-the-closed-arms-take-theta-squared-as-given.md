@@ -31,7 +31,8 @@ product. The losses are in two places:
 1. **The closed arms divide by the `z` they were given,** in GTSAM's arithmetic and order:
    - `a = 2 sin²(θ/2)/z`;
    - `b = (1 − sin θ/θ)/z`;
-   - `d = (1 − 2a)/(2z)`.
+   - `d = (1 − 2a)/(2z)`, written `(½ − a)/z`: a factor of two is exact in both operands, so the
+     same bits with two multiplies fewer.
 
    `c` becomes Sophus's `(1 − (θ/2) cot(θ/2))/(θ·θ)`. `e` is unchanged. Every group that holds a
    member computes it the same way, so each member is still its own group's to the bit. No new
@@ -41,6 +42,8 @@ product. The losses are in two places:
 3. **`SO3::jr` takes `sin θ/θ + bφᵢ²` on its diagonal where `b` is on its closed arm,** with the
    `sin θ/θ` that arm formed `b` from (`jr_coeffs_sinc`), and `1 + bW²ᵢᵢ` below it.
    - The choice is a `select` on `b`'s own mask (`HatSq::poly_far`), so there is no new switch.
+   - `jr_coeffs` is `jr_coeffs_sinc`'s `(a, b)`, so every other reader of `(a, b)` takes the same
+     bits by construction.
    - The off-diagonal is `W²`'s either way, so `jl = jr(−φ)` and `rminus_jacobians`'s transpose
      stay bit-exact.
    - Below the switch the identity's `1` dominates. There `1 + bW²ᵢᵢ` rounds once at the 1-scale,
@@ -119,6 +122,11 @@ The rises, none of them a resolved or gross loss:
 - **`c` over `z`:** 7 resolved failures in `so3_jr_inv`.
 - **`b` as `(θ − sin θ)/(zθ)`:** `so3_gamma2` fails `pi-1e-7` and `pi-1e-9`.
 - **Sophus's `(1 − cos θ)/z` for `a`:** `so3_jr` fails `pi-1e-7` and `pi-1e-9`.
+- **`J_r⁻¹`'s diagonal as `(θ/2) cot(θ/2) + cφᵢ²`,** the same rewrite on `c`'s closed arm.
+  - `so3_jr_inv` near `π` rises at every stratum: `pi-1e-6` 1.104 → 1.670 and `pi-1e-10`
+    1.107 → 2.066, against Sophus's 0.896 and 0.822.
+  - `c` divides by `θ̂·θ̂`, not by `z`, so `(θ/2) cot(θ/2)` is not `1 − cz`. That mismatch costs as
+    much as the cancellation it removes, and the bar is normwise.
 
 **Cost**, by x86-64 instruction count of `#[inline(never)]` wrappers, against `main`:
 
@@ -131,16 +139,32 @@ The rises, none of them a resolved or gross loss:
 No `sqrt`, call or stack spill is added. The added divisions are on the exact arms, which now run
 from `θ² ≥ 5.83` to `8.35` rather than `8.35` to `9.65`.
 
-`poly_far` selects the diagonal's operands, `select(far, t0, s0) + s2·select(far, φᵢ², W²ᵢᵢ)`, not
-its two sums. Selecting the sums let LLVM sink each into a branch: three jumps. The operand form is
-blends of values already formed and the same bits (116 of 116 `cargo xtask determinism` digests).
+`jr`'s row is the operand-blend layout below. The shipped layout, which selects the diagonal's two
+sums, reads 195 instructions, 39 multiplies, 38 add/sub and 9 jumps, and is the faster of the two.
+`d`'s closed arm has since dropped two multiplies at the same bits (*Decision* 1).
 
-**The latency gate**, measured before that change, against `main`:
-- `jr`: `f64` 1.06× near `π` and near the identity, 0.93× generic; `f32` 1.07–1.075×;
-- `jr_inv`: at most 1.03×;
-- `gamma2`: 1.07–1.08× near `π`;
-- `gamma_apply_jacobians::<2>`: `f32` 1.15× near `π`;
+**The latency gate,** `cargo xtask bench-gate --against` `main`'s binary, pinned to one core, each
+row past its own concurrent A/A floor:
+- `jr`: `f64` 1.06× near the identity, 0.93× generic, near `π` inside a 0.26 floor; `f32` 1.07×
+  near the identity and generic, 0.97× near `π`;
+- `jr_inv`: 1.03× at `f64` near `π`, else within noise;
+- `gamma2`: 1.03–1.04× near `π`;
+- `gamma_apply_jacobians::<2>`: `f32` 1.08× near `π`; `::<1>` within noise;
 - `rminus_jacobians`: unchanged.
+
+These microbenchmarks read codegen as much as arithmetic, so each layout that failed was
+disassembled:
+- **Blending the diagonal's operands** instead of its two sums: three jumps fewer, but `jr` reads
+  1.09–1.13× near the identity. Selecting the sums stays.
+- **A select-free diagonal,** `t + (vφᵢ² + uW²ᵢᵢ)` with the selects on scalars: the same bits, and
+  1.17–1.29×.
+- **A `branch` between `poly` and the rewritten matrix:** 2.27×; each arm's matrix goes through the
+  stack.
+- **`grouped` written as `grouped_with` with no extra value:** `gamma_apply_jacobians::<1>` at
+  `f64` reads 1.30–1.58×. Out of line, `jr_coeffs_sinc::<Dual<f64, 1>>` loaded its argument with
+  one 16-byte load across the caller's two 8-byte stores, which stalls store-to-load forwarding.
+  Forcing it inline moved the stall to `f32` (1.58×). `grouped_with` stays a second copy of
+  `grouped`'s branches, and `jr_coeffs_sinc_is_b_s_own` pins its `(a, b)` to `jr_coeffs`' bits.
 
 ## Consequences
 
@@ -162,9 +186,12 @@ blends of values already formed and the same bits (116 of 116 `cargo xtask deter
     derivative lane, where it beat it on two.
 - **`gamma_apply_jacobians::<1>`** takes the same diagonal, so its third output stays `gamma1`
   to the bit.
-- **The laws' `probe` inverts `Ad_Y`, not `J_r`.** `J_r`'s determinant `2(1 − cos θ)/θ²` reads 0 at
-  `θ ~ 1e132`, which `Jac::inverse`'s domain excludes. The old diagonal's rounding residue had
-  kept it nonzero by accident.
+- **The laws' `probe` inverts `J_r` at a tangent of sines,** `θ ≤ √3`, inside `Jac::inverse`'s
+  domain, and `Ad_Y` beside it.
+  - At `θ ~ 1e63`, `J_r` reads `nnᵗ`, rank 1.
+  - The old diagonal's rounding residue had kept its determinant nonzero by accident.
+- **`gamma_apply_jacobians::<1>`'s value keeps `v + a φ×v + b φ×(φ×v)`**, which cancels like the
+  old diagonal near `π`. No corpus id scores that value, so it is not rewritten (`0006`).
 
 ## Implementation plan
 
@@ -177,4 +204,5 @@ blends of values already formed and the same bits (116 of 116 `cargo xtask deter
 ## Open questions
 
 None. The latency gate and the two rises are measured above. Sim(3)'s conditioning at large
-`|σ|` is the lever for `sigma:-700/theta:3` and is not this record's.
+`|σ|` is the lever for `sigma:-700/theta:3` and is not this record's. Accepting the gate's 1.06–1.07×
+on `jr` near the identity is the owner's call.

@@ -20,7 +20,9 @@ use super::kernel::{
     exact_a, exact_b, exact_c, exact_cos_half, exact_d, exact_e, exact_k, exact_r, series_a,
     series_b, series_c, series_cos_half, series_d, series_e, series_k, series_r,
 };
-use super::{exp_coeffs, gamma2_coeffs, jr_coeffs, jr_inv_coeff, log_ratio, q_coeffs, Switch};
+use super::{
+    exp_coeffs, gamma2_coeffs, jr_coeffs, jr_coeffs_sinc, jr_inv_coeff, log_ratio, q_coeffs, Switch,
+};
 
 /// The order of the coefficients everywhere below, and of `coeff_series.jsonl`.
 const NAMES: [&str; 8] = ["k", "a", "b", "c", "d", "e", "cos_half", "r"];
@@ -1284,4 +1286,42 @@ fn the_provided_round_from_f64_rounds_at_the_lane_s_precision() {
         Lane::<false, bool>::round_from_f64(x).0.to_bits(),
         x.to_bits()
     );
+}
+
+/// `jr_coeffs_sinc`'s `(a, b)` are `jr_coeffs`' to the bit, its `far` is `b`'s own switch, and there
+/// its `sin θ/θ` is the one `b`'s closed arm formed `b = (1 − sin θ/θ)/θ²` from (`0089`, draft).
+fn jr_coeffs_sinc_is_b_s_own<S: Real<Mask = bool>>() {
+    let (below, ..) = chosen::<S>()[2];
+    for z in samples::<S>() {
+        let (a, b, sinc, far) = jr_coeffs_sinc(z);
+        let (a0, b0) = jr_coeffs(z);
+        assert_eq!(
+            (bits(a), bits(b)),
+            (bits(a0), bits(b0)),
+            "{:e}",
+            z.value_f64()
+        );
+        assert_eq!(far, !z.lt(S::lit(below)), "{:e}", z.value_f64());
+        if far {
+            let th = z.sqrt();
+            let want = th.sin() / th;
+            let b_want = (S::one() - want) / z;
+            assert_eq!(
+                (bits(sinc), bits(b)),
+                (bits(want), bits(b_want)),
+                "{:e}",
+                z.value_f64()
+            );
+        }
+    }
+}
+
+#[test]
+fn jr_coeffs_sinc_is_b_s_own_f64() {
+    jr_coeffs_sinc_is_b_s_own::<f64>();
+}
+
+#[test]
+fn jr_coeffs_sinc_is_b_s_own_f32() {
+    jr_coeffs_sinc_is_b_s_own::<f32>();
 }

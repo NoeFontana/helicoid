@@ -88,14 +88,14 @@ pub fn gamma_apply_jacobians<const M: usize, S: Real>(
     let pdotv = p.dot(v);
     let z = Dual::<S, 1>::variable(norm_sq(p), 0);
     // `M` is a const: one arm survives monomorphization.
-    // `M = 1` takes `SO3::jl`'s diagonal where `b` is on its closed arm, so the third output is
-    // `gamma1` to the bit (`0089`, draft); `M = 2` has no such rewrite and `far` is never set.
-    let (s0, s1, s2, t0, far) = if M == 1 {
+    // `M = 1` takes `SO3::jl`'s diagonal, so the third output is `gamma1` to the bit
+    // (`0089`, draft); `M = 2` has no such rewrite.
+    let (s0, s1, s2, far) = if M == 1 {
         let (a, b, sinc, far) = jr_coeffs_sinc(z);
-        (S::one(), a, b, sinc.v, far)
+        (S::one(), a, b, Some((sinc.v, far)))
     } else {
         let (b, d) = gamma2_coeffs(z);
-        (S::lit(0.5), b, d, S::lit(0.5), S::one().lt(S::zero()))
+        (S::lit(0.5), b, d, None)
     };
     let (ds1, ds2, s1, s2) = (s1.d[0], s2.d[0], s1.v, s2.v);
     let value = (v.scale(s0) + pv.scale(s1)) + ppv.scale(s2);
@@ -117,5 +117,9 @@ pub fn gamma_apply_jacobians<const M: usize, S: Real>(
             }
         }))
     }));
-    (value, jac, w2.poly_far(s0, s1, s2, t0, far))
+    let g = match far {
+        Some((sinc, far)) => w2.poly_far(s0, s1, s2, sinc, far),
+        None => w2.poly(s0, s1, s2),
+    };
+    (value, jac, g)
 }
