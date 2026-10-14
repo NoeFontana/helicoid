@@ -185,7 +185,7 @@ first order, and its sampled maximum is $\hat C\,u\,\theta^{-p}$, with:
 | $e$ | $(2\theta - 3\sin\theta + \theta\cos\theta)/2\theta^5$ | $3\sin\theta$ ($3\theta \times 2$), $\theta\cos\theta$ ($\theta \times 2$) | 4 | 480 | 367 | 84 | 360 |
 | $k$; $a = 2k^2$ | $\sin(\theta/2)/\theta$; $2k\cdot k$ | none: products and quotients of accurate factors | 0 | $\le 2$; $\le 5$ | 1.5; 3.3 | | none |
 
-**The shipped exact arms are not the rows above** (`0089`, draft): $a = 2\sin^2(\theta/2)/z$,
+**The shipped exact arms are not the rows above** (`0089`): $a = 2\sin^2(\theta/2)/z$,
 $b = (1 - \sin\theta/\theta)/z$ and $d = (1 - 2a)/(2z)$, dividing by the branch variable $z$ rather
 than $\mathrm{fl}(\hat\theta\hat\theta)$, and $c = (1 - \tfrac\theta2\cot\tfrac\theta2)/\hat\theta^2$. $b$, $c$ and $d$
 cancel at small $\theta$ in these forms, which the closing paragraph of this proposition warns of;

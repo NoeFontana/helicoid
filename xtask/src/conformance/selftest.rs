@@ -877,7 +877,7 @@ mod tests {
     #[test]
     fn the_plateau_stratum_would_pull_the_f32_fit_below_the_window() -> Result<(), String> {
         // `theta:1e-4@f32` holds `sqrt(6u) = 6e-4`: `1 - sin θ/θ` is rounding residue there, the
-        // error `2.09e7` past `1/u` (`0089`, draft), and with it the four strata fit `p = 1.65`;
+        // error `2.09e7` past `1/u` (`0089`), and with it the four strata fit `p = 1.65`;
         // the three above it fit 2.086.
         let dir = corpus_dir()?;
         let b = Seeded::planted(Defect::BNoSeries).registered();

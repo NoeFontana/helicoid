@@ -507,7 +507,7 @@ mod tests {
 
     /// The task's own control (`0078` decision 5): `0038`'s comparison of the `W²` form twin by the
     /// maximum over the nine `sen3_*` ids, from the per-stratum rows, on the seeded kernels' current
-    /// arms (`0089`, draft, re-pins the counts): every id is net worse.
+    /// arms (`0089`, re-pins the counts): every id is net worse.
     #[test]
     fn the_task_reproduces_the_tally_of_0038() -> Result<(), String> {
         let dir = corpus_dir()?;

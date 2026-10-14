@@ -1290,7 +1290,7 @@ fn the_provided_round_from_f64_rounds_at_the_lane_s_precision() {
 }
 
 /// `jr_coeffs_sinc`'s `(a, b)` are `jr_coeffs`' to the bit, its `far` is `b`'s own switch, and there
-/// its `sin θ/θ` is the one `b`'s closed arm formed `b = (1 − sin θ/θ)/θ²` from (`0089`, draft).
+/// its `sin θ/θ` is the one `b`'s closed arm formed `b = (1 − sin θ/θ)/θ²` from (`0089`).
 fn jr_coeffs_sinc_is_b_s_own<S: Real<Mask = bool>>() {
     let (below, ..) = chosen::<S>()[2];
     for z in samples::<S>() {
@@ -1327,7 +1327,7 @@ fn jr_coeffs_sinc_is_b_s_own_f32() {
     jr_coeffs_sinc_is_b_s_own::<f32>();
 }
 
-/// `log_ratio_scale` is `r u` (`0090`, draft): on the exact arm to the bit, so `SO3::log` there is
+/// `log_ratio_scale` is `r u` (`0090`): on the exact arm to the bit, so `SO3::log` there is
 /// the `r · u` it was; on a series arm within `3u` of `r u` rounded once, in value and derivative,
 /// `r`'s own rounding and the correction's being of that size; and a `−1` sign negates it to the
 /// bit. The tail Horner starts at the series' second term, so this also fails if `R`'s first term

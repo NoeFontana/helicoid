@@ -1581,7 +1581,7 @@ mod tests {
     ///
     /// What is left is near `π`, where the prior's four-term series below `θ = 0.1` is not what
     /// decides. A stratum's maximum is what the bars compare (D8), the sweep's objective one
-    /// maximum over all of them: open, 0014 (draft) question 30. Since `0089` (draft) the two that
+    /// maximum over all of them: open, 0014 (draft) question 30. Since `0089` the two that
     /// were left, `b` at `f64` and `d` at `f32`, are gone, and one is new: `c` at `f32`, whose
     /// switch the sweep lifted to `z = 9.65`, so `helicoid` is on its series at `θ = π − 0.1` and
     /// the prior on its exact arm, the margin in the derivative lane.

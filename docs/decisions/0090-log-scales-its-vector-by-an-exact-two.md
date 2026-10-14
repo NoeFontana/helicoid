@@ -1,6 +1,6 @@
 # 0090: `Log` scales its vector by an exact two
 
-**Status:** draft
+**Status:** ready
 **Owner:** @NoeFontana
 **Implementation:** this record's PR
 
@@ -131,5 +131,5 @@ Draft [`0032`](./0032-domination-charges-helicoid-for-d16.md) read `so3_log`'s f
 
 ## Open questions
 
-1. **Latency.** `Log` near the identity costs +0.4 ns, about 10%, for its last `u`; generic and
-   near-`π` rotations gain 5%. Accepting the trade is the owner's call.
+None. Answered by the owner on 2026-10-14: `Log`'s +0.4 ns near the identity, for its last `u`,
+is accepted, with generic and near-`π` rotations 5% faster.
