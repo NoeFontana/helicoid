@@ -21,7 +21,8 @@ use super::kernel::{
     series_b, series_c, series_cos_half, series_d, series_e, series_k, series_r,
 };
 use super::{
-    exp_coeffs, gamma2_coeffs, jr_coeffs, jr_coeffs_sinc, jr_inv_coeff, log_ratio, q_coeffs, Switch,
+    exp_coeffs, gamma2_coeffs, jr_coeffs, jr_coeffs_sinc, jr_inv_coeff, log_ratio, log_ratio_scale,
+    q_coeffs, Switch,
 };
 
 /// The order of the coefficients everywhere below, and of `coeff_series.jsonl`.
@@ -1324,4 +1325,67 @@ fn jr_coeffs_sinc_is_b_s_own_f64() {
 #[test]
 fn jr_coeffs_sinc_is_b_s_own_f32() {
     jr_coeffs_sinc_is_b_s_own::<f32>();
+}
+
+/// `log_ratio_scale` is `r u` (`0090`, draft): on the exact arm to the bit, so `SO3::log` there is
+/// the `r · u` it was; on a series arm within `3u` of `r u` rounded once, in value and derivative,
+/// `r`'s own rounding and the correction's being of that size; and a `−1` sign negates it to the
+/// bit. The tail Horner starts at the series' second term, so this also fails if `R`'s first term
+/// is not 1.
+fn log_ratio_scale_is_r_u<S: Real<Mask = bool> + Into<f64>>(tol: f64) {
+    let (below, _, _) = chosen::<S>()[7];
+    let u = (at::<S>(0.6), at::<S>(-0.3), at::<S>(1e-3));
+    for &w in &[1.0, 0.999_999_9, 0.99, 0.9, 0.7, 0.5, 0.05, 0.0, -0.5, -1.0] {
+        for &n2 in &[
+            0.0, 1e-30, 1e-14, 1e-8, 1e-6, 1e-4, 1e-3, 0.01, 0.05, 0.2, 0.5, 0.99,
+        ] {
+            if n2 <= 0.0 && w <= 0.0 {
+                continue;
+            }
+            let (n2, w) = (D::variable(at::<S>(n2), 0), D::constant(at::<S>(w)));
+            let small = S::zero()
+                .lt(w.v)
+                .and((n2.v / (w.v * w.v)).lt(S::lit(below)));
+            let v = (D::constant(u.0), D::constant(u.1), D::constant(u.2));
+            let got = log_ratio_scale(n2, w, D::one(), v);
+            let r = log_ratio(n2, w);
+            let want = (r * v.0, r * v.1, r * v.2);
+            let at = (n2.v.value_f64(), w.v.value_f64());
+            let neg = log_ratio_scale(n2, w, -D::one(), v);
+            for (g, n) in [(got.0, neg.0), (got.1, neg.1), (got.2, neg.2)] {
+                assert_eq!(
+                    (bits(g.v), bits(g.d[0])),
+                    (bits(-n.v), bits(-n.d[0])),
+                    "{at:?}"
+                );
+            }
+            for (g, e) in [(got.0, want.0), (got.1, want.1), (got.2, want.2)] {
+                if small {
+                    for (x, y) in [(g.v, e.v), (g.d[0], e.d[0])] {
+                        let (x, y) = (x.value_f64(), y.value_f64());
+                        assert!(
+                            (x - y).abs() <= tol * y.abs(),
+                            "{at:?}: {x:e} against {y:e}"
+                        );
+                    }
+                } else {
+                    assert_eq!(
+                        (bits(g.v), bits(g.d[0])),
+                        (bits(e.v), bits(e.d[0])),
+                        "{at:?}"
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn log_ratio_scale_is_r_u_f64() {
+    log_ratio_scale_is_r_u::<f64>(3.0 * f64::EPSILON);
+}
+
+#[test]
+fn log_ratio_scale_is_r_u_f32() {
+    log_ratio_scale_is_r_u::<f32>(3.0 * f64::from(f32::EPSILON));
 }

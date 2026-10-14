@@ -152,28 +152,32 @@ fn log_is_scale_invariant_across_the_unchecked_domain() {
     // `from_wxyz_unchecked` admits, `|‖q‖² − 1| <= 2^-40` (§3.6). A carried quaternion beyond
     // that bound, inside the drift band, is `carried::each_operation_errs_by_its_first_order_term_across_the_drift_band`'s
     // case (`0058`).
-    let (s, c) = 0.5_f64.sin_cos();
-    for lambda in [1.0, 1.0 + 2f64.powi(-42), 1.0 - 2f64.powi(-42)] {
-        let mut out = [0.0; 3];
-        SO3::from_quat_unchecked(Quat::from_wxyz_unchecked(c * lambda, s * lambda, 0.0, 0.0))
-            .log()
-            .write_dense(&mut out);
-        close(&out, &[1.0, 0.0, 0.0], 1e-15);
-    }
-    // Through the normalizing constructor, every scale is legal and must give the same tangent.
-    // The quaternion is built from its fields, not by `Quat::from_wxyz_normalized`, which would
-    // divide `lambda` out before `SO3::from_quat_normalized` -- the method under test -- ever saw
-    // a non-unit input, and would handle the subnormal `‖q‖²` case itself.
-    for lambda in [0.5, 2.0, 1e3, 1.4e-154] {
-        let mut out = [0.0; 3];
-        let q = Quat {
-            w: c * lambda,
-            x: s * lambda,
-            y: 0.0,
-            z: 0.0,
-        };
-        SO3::from_quat_normalized(q).log().write_dense(&mut out);
-        close(&out, &[1.0, 0.0, 0.0], 1e-15);
+    // `θ = 1` is `r`'s exact arm; `0.1` and `1e-4` are its two series arms, where `1 − w` is not
+    // homogeneous in `q` and the tangent is invariant within rounding (`0090`, draft).
+    for theta in [1.0_f64, 0.1, 1e-4] {
+        let (s, c) = (0.5 * theta).sin_cos();
+        for lambda in [1.0, 1.0 + 2f64.powi(-42), 1.0 - 2f64.powi(-42)] {
+            let mut out = [0.0; 3];
+            SO3::from_quat_unchecked(Quat::from_wxyz_unchecked(c * lambda, s * lambda, 0.0, 0.0))
+                .log()
+                .write_dense(&mut out);
+            close(&out, &[theta, 0.0, 0.0], 1e-15 * theta);
+        }
+        // Through the normalizing constructor, every scale is legal and must give the same
+        // tangent. The quaternion is built from its fields, not by `Quat::from_wxyz_normalized`,
+        // which would divide `lambda` out before `SO3::from_quat_normalized` -- the method under
+        // test -- ever saw a non-unit input, and would handle the subnormal `‖q‖²` case itself.
+        for lambda in [0.5, 2.0, 1e3, 1.4e-154] {
+            let mut out = [0.0; 3];
+            let q = Quat {
+                w: c * lambda,
+                x: s * lambda,
+                y: 0.0,
+                z: 0.0,
+            };
+            SO3::from_quat_normalized(q).log().write_dense(&mut out);
+            close(&out, &[theta, 0.0, 0.0], 1e-15 * theta);
+        }
     }
 }
 

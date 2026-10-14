@@ -85,6 +85,25 @@ impl Arm<'_> {
             Terms::F32(t) => horner(t.get(..head).unwrap_or(t), z),
         }
     }
+
+    /// [`Self::horner`] less its constant term, over `z`: `(series(z) − t₀)/z`, the same terms from
+    /// the second on, so `t₀ + z · tail(z)` is the series and the tail never meets `t₀`
+    /// (`0090`, draft).
+    fn horner_tail<S: Real>(&self, z: S) -> S {
+        match self.terms {
+            Terms::F64(t) => horner(t.get(1..).unwrap_or(t), z),
+            Terms::F32(t) => horner(t.get(1..).unwrap_or(t), z),
+        }
+    }
+
+    /// [`Self::short`]'s tail, as [`Self::horner_tail`] is [`Self::horner`]'s.
+    fn short_tail<S: Real>(&self, z: S) -> S {
+        let head = self.short_terms;
+        match self.terms {
+            Terms::F64(t) => horner(t.get(1..head).unwrap_or(t), z),
+            Terms::F32(t) => horner(t.get(1..head).unwrap_or(t), z),
+        }
+    }
 }
 
 /// `Σ terms[j] zʲ` as `p_j = t_j + z p_{j+1}` from the last term (CO.9); no `mul_add`. Under `Dual`
@@ -414,6 +433,58 @@ pub(crate) fn log_ratio<S: Real>(n2: S, w: S) -> S {
             )
         },
     )
+}
+
+/// `sign · r u` for [`log_ratio`]'s `r`, the vector scaled inside each arm (`0090`, draft).
+///
+/// On a series arm it is `t + (t/w)·(d + s·tail(s))`, with `t = 2 sign u` exact and `d = 1 − w`:
+/// `r/2 = (1 + s·tail(s))/w`, so the second term is `t (r/2 − 1)`. Each component rounds once at
+/// full size, where `r · u` rounds `r` first, and `r` sits just above `2`, where a rounding costs a
+/// whole `u`. `d` is exact for `w` in `[½, 2]` (Sterbenz), which every series lane is, and
+/// `d + s·tail(s)` is `O(θ²)`, so the second term's roundings are `O(θ²)` of `u`. `1/w` is divided
+/// beside `s`, as [`log_ratio`] divides `2/w`, so after the Horner it is two operations, as there.
+///
+/// The exact arm is `r · (sign u)`: there the quotient `atan2(n, w)/n` rounds whatever the
+/// arrangement, and a split would add a rounding without removing one. `sign` is the caller's
+/// `±1` flip, exact, applied in each arm: on `t`'s factor, and on `u` off `atan2`'s path. The arms,
+/// their masks and `s` are [`log_ratio`]'s; each arm returns scalars, captured by `move`.
+pub(crate) fn log_ratio_scale<S: Real>(n2: S, w: S, sign: S, (x, y, z): (S, S, S)) -> (S, S, S) {
+    nonnegative(n2);
+    let r = table::<S, _>(R_F64.arm(), R_F32.arm());
+    let positive = S::zero().lt(w);
+    let s = n2 / S::select(positive, w * w, S::one());
+    let tiny = positive.and(s.lt(r.short_below()));
+    S::branch(
+        tiny,
+        move || {
+            let s = S::select(tiny, s, S::zero());
+            let st = s * r.short_tail(s);
+            scale_series(sign + sign, S::select(tiny, w, S::one()), st, (x, y, z))
+        },
+        move || {
+            let small = positive.and(s.lt(r.below()));
+            S::branch(
+                small,
+                move || {
+                    let s = S::select(small, s, S::zero());
+                    let st = s * r.horner_tail(s);
+                    scale_series(sign + sign, S::select(small, w, S::one()), st, (x, y, z))
+                },
+                move || {
+                    let r = exact_r(S::select(small, S::one(), n2), w);
+                    (r * (sign * x), r * (sign * y), r * (sign * z))
+                },
+            )
+        },
+    )
+}
+
+/// `t + (t/w)·((1 − w) + st)`, `t = c u` exact for `c = ±2`: [`log_ratio_scale`]'s series arms.
+fn scale_series<S: Real>(c: S, w: S, st: S, (x, y, z): (S, S, S)) -> (S, S, S) {
+    let iw = S::one() / w;
+    let g = (S::one() - w) + st;
+    let (tx, ty, tz) = (c * x, c * y, c * z);
+    (tx + (tx * iw) * g, ty + (ty * iw) * g, tz + (tz * iw) * g)
 }
 
 /// `sin(θ/2)` alone, through [`Real::sin`]: `half_angle`'s first half at the same argument and the

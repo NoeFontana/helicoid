@@ -99,7 +99,11 @@ $\cos\tfrac{\theta}{2}$ from its own series (generated alongside $k$).
    **at exactly $\theta = \pi$, `Log` is a function of the quaternion, not of the rotation** — $q$
    and $-q$ return $\pm\pi\hat n$.
 2. $n^2 = x^2 + y^2 + z^2$; $\theta = 2\,\mathrm{atan2}(n, w)$.
-3. $\varphi = r(n^2, w)\,u$ with $r = 2\,\mathrm{atan2}(n, w)/n$ (§4).
+3. $\varphi = r(n^2, w)\,u$ with $r = 2\,\mathrm{atan2}(n, w)/n$ (§4). On $r$'s series arms it is
+   evaluated as $t + (t/w)\,(d + s\,\tau(s))$ with $t = 2u$, $d = 1 - w$ and $\tau$ the series less
+   its constant term: $t$ and $d$ are exact (Sterbenz), and $r$ lies just above $2$, where rounding
+   it costs a whole $u$, so this rounds once at full size instead. The exact arm is $r\,u$
+   ([`0090`](./decisions/0090-log-scales-its-vector-by-an-exact-two.md), draft).
 
 `Log` is exactly scale-invariant in $q$ ($\mathrm{atan2}$ and $u/n$ are), so a non-unit input within
 rounding returns the `Log` of its normalization. **Never $\mathrm{acos}((\mathrm{tr}R - 1)/2)$**
