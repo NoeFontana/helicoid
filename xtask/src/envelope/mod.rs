@@ -45,10 +45,11 @@ pub(crate) mod exceptions;
 mod rows;
 mod swap;
 
+use std::collections::BTreeSet;
 use std::fmt::Write;
 use std::path::Path;
 
-use crate::conformance::report::{csv, precision_name, RecordErr, Row};
+use crate::conformance::report::{csv, precision_name, Row};
 use crate::conformance::{
     corpus, oracle_answers_f32, oracle_names, records_path, results_path, root, subject,
 };
@@ -194,7 +195,15 @@ fn read_at(
     let Some(mut subject) = subject else {
         return Ok(None);
     };
-    if let Some(records) = read_optional(root, &records_path(&rel), rows::parse_records)? {
+    let at = records_path(&rel);
+    if let Some(records) = read_optional(root, &at, rows::parse_records)? {
+        rows::check_records(&subject.rows, &records).map_err(|e| {
+            format!(
+                "{}: not the records of `{}`: {e}; rerun `conformance` for `{name}`",
+                root.join(&at).display(),
+                rel.display()
+            )
+        })?;
         subject.records = records;
     }
     Ok(Some(subject))
@@ -209,6 +218,7 @@ fn read_subject(root: &Path, results: &str, name: &str) -> Result<Option<Subject
         (Some(mut both), Some(f32)) => {
             both.rows.extend(f32.rows);
             both.records.extend(f32.records);
+            both.revs.extend(f32.revs);
             Some(both)
         }
         (one, None) | (None, one) => one,
@@ -296,9 +306,12 @@ fn summary(
     let excesses = match (v.unresolved.len(), v.unresolvable.len()) {
         (0, 0) => String::new(),
         (a, b) => format!(
-            "\n  not failed: {a} excesses the swap test does not resolve at p <= {}, {b} on \
-             fewer than 10 records, which none can (`0088`); listed below",
-            swap::ALPHA
+            "\n  not failed: {a} excesses the swap test does not resolve at p <= {}, {b} whose \
+             records cannot reach it, too few or too many tied (`0088`); none is above {} times the \
+             oracle's plus {} u; listed below",
+            swap::ALPHA,
+            swap::GROSS_FACTOR,
+            swap::GROSS_SLACK
         ),
     };
     // An excepted stratum is a stratum an oracle wins, printed where the reader is counting
@@ -333,6 +346,7 @@ fn summary(
 pub(crate) fn beaten_strata(candidate: &[Row], oracle: &[Row]) -> Vec<String> {
     let subject = |rows: &[Row]| Subject {
         records: Default::default(),
+        revs: Default::default(),
         name: rows.first().map_or_else(String::new, |r| r.subject.clone()),
         version: rows.first().map_or_else(String::new, |r| r.version.clone()),
         rows: rows.to_vec(),
@@ -345,14 +359,17 @@ pub(crate) fn beaten_strata(candidate: &[Row], oracle: &[Row]) -> Vec<String> {
         .collect()
 }
 
-/// `0088` decision 2: the strata `verdict` leaves unresolvable, judged again on the deep tier's
-/// rows, which `cargo xtask conformance --deep` writes for the candidate and each oracle. A stratum
-/// the deep tier answers leaves `verdict.unresolvable` for a failure, an unresolved excess or a
-/// pass; one it does not answer stays. No-regress never reads the deep tier. Returns the line
-/// that says what was read.
+/// `0088` decision 2: the excesses `verdict` does not fail -- unresolvable and unresolved --
+/// judged again on the deep tier's rows, which `cargo xtask conformance --deep` writes for the
+/// candidate and each oracle, against the best deep oracle by the committed tier's rule. A stratum
+/// the deep tier pairs leaves `verdict` for a failure, an excess or a pass; one it does not pair
+/// stays where it was. The deep candidate rows must come from the build the committed tier's did
+/// (`revs`), or the deep judgement would be of another program. No-regress never reads the deep
+/// tier. Returns the line that says what was read.
 fn judge_deep(
     root: &Path,
     options: &Options,
+    revs: &BTreeSet<String>,
     verdict: &mut bars::Verdict,
     excepted: &exceptions::Exceptions,
 ) -> Result<Option<String>, String> {
@@ -364,8 +381,19 @@ fn judge_deep(
              `cargo xtask conformance --deep` (and `--precision f32 --deep`)"
         ));
     };
-    let wanted: std::collections::BTreeSet<String> =
-        verdict.unresolvable.iter().map(|e| e.key.clone()).collect();
+    if &candidate.revs != revs {
+        return Err(format!(
+            "`{deep}`'s `{name}` rows were written at {:?} and `{RESULTS}`'s at {revs:?}: the deep \
+             tier is stale; rerun `cargo xtask conformance --deep` (and `--precision f32 --deep`)",
+            candidate.revs
+        ));
+    }
+    let wanted: BTreeSet<String> = verdict
+        .unresolvable
+        .iter()
+        .chain(&verdict.unresolved)
+        .map(|e| e.key.clone())
+        .collect();
     let keep = |r: &Row| wanted.contains(&rows::Key::of(r).to_string());
     let candidate = Subject {
         rows: candidate.rows.iter().filter(|r| keep(r)).cloned().collect(),
@@ -388,18 +416,20 @@ fn judge_deep(
         excepted,
         bars::Mode::Resolved,
     );
-    let judged: std::collections::BTreeSet<String> = candidate
-        .rows
-        .iter()
-        .map(|r| rows::Key::of(r).to_string())
-        .collect();
+    let judged = &v.paired_keys;
     verdict.unresolvable.retain(|e| !judged.contains(&e.key));
+    verdict.unresolved.retain(|e| !judged.contains(&e.key));
     let kept = |f: &Failure| !matches!(f.bar, Bar::NoRegress | Bar::Shrunk | Bar::Exception);
     let failures: Vec<Failure> = v.failures.into_iter().filter(kept).collect();
+    let dirty = match revs.iter().any(|r| r.ends_with("-dirty")) {
+        true => " (a `-dirty` tree: the rev cannot vouch that the two tiers ran one program)",
+        false => "",
+    };
     let line = format!(
-        "  deep tier: {} unresolvable strata judged on `{deep}` against {} oracles: {} failed, \
-         {} unresolved, {} still unresolvable",
+        "  deep tier: {} of {} excesses judged on `{deep}` against {} oracles: {} failed, {} \
+         unresolved, {} still unresolvable{dirty}",
         judged.len(),
+        wanted.len(),
         oracles.len(),
         failures.iter().filter(|f| f.bar == Bar::Domination).count(),
         v.unresolved.len(),
@@ -415,34 +445,25 @@ fn judge_deep(
     Ok(Some(line))
 }
 
-/// [`beaten_strata`] under the resolved bar (`0088`), each subject with its per-record errors:
+/// [`beaten_strata`] under the resolved bar (`0088`), each subject with its records file's text:
 /// the self-test's check that a planted loss resolves and an equal program does not fail.
 pub(crate) fn resolved_beaten_strata(
-    candidate: (&[Row], &[RecordErr]),
-    oracle: (&[Row], &[RecordErr]),
-) -> Vec<String> {
-    let subject = |(rows, records): (&[Row], &[RecordErr])| {
-        let mut by_key = rows::Records::new();
-        for r in records {
-            let row = rows
-                .iter()
-                .find(|w| w.fn_id == r.fn_id && w.stratum == r.stratum);
-            if let Some(w) = row.filter(|w| w.precision == r.precision) {
-                by_key
-                    .entry(rows::Key::of(w))
-                    .or_default()
-                    .push((r.id, r.err));
-            }
-        }
-        Subject {
+    candidate: (&[Row], &str),
+    oracle: (&[Row], &str),
+) -> Result<Vec<String>, String> {
+    let subject = |(rows, text): (&[Row], &str)| -> Result<Subject, String> {
+        let records = rows::parse_records(text)?;
+        rows::check_records(rows, &records)?;
+        Ok(Subject {
             name: rows.first().map_or_else(String::new, |r| r.subject.clone()),
             version: rows.first().map_or_else(String::new, |r| r.version.clone()),
             rows: rows.to_vec(),
-            records: by_key,
-        }
+            records,
+            revs: Default::default(),
+        })
     };
     let none = exceptions::Exceptions::default();
-    let (c, o) = (subject(candidate), subject(oracle));
+    let (c, o) = (subject(candidate)?, subject(oracle)?);
     let verdict = bars::judge_excepting(
         &c,
         std::slice::from_ref(&o),
@@ -452,10 +473,10 @@ pub(crate) fn resolved_beaten_strata(
         bars::Mode::Resolved,
     );
     let beaten = verdict.failures.into_iter();
-    beaten
+    Ok(beaten
         .filter(|f| f.bar == Bar::Domination)
         .map(|f| f.text)
-        .collect()
+        .collect())
 }
 
 /// The function ids of the corpus whose file exists and has records: `MANIFEST.json` lists a
@@ -537,7 +558,13 @@ fn execute(root: &Path, options: &Options) -> Result<Report, String> {
     };
     let mut verdict = verdict;
     let deep = match options.deep {
-        true => judge_deep(root, options, &mut verdict, &excepted)?,
+        true => {
+            let revs = candidate
+                .as_ref()
+                .map(|c| c.revs.clone())
+                .unwrap_or_default();
+            judge_deep(root, options, &revs, &mut verdict, &excepted)?
+        }
         false => None,
     };
     let registered = options.registered.iter().any(|r| r == name);
@@ -587,17 +614,7 @@ fn execute(root: &Path, options: &Options) -> Result<Report, String> {
     // What `--bless` writes, and what `--check` holds the committed files to.
     let mut files = vec![(
         evidence::PATH.to_string(),
-        evidence::page(
-            name,
-            candidate.as_ref(),
-            &oracles,
-            &verdict.excepted,
-            &verdict
-                .unresolved
-                .iter()
-                .chain(&verdict.unresolvable)
-                .collect::<Vec<_>>(),
-        ),
+        evidence::page(name, candidate.as_ref(), &oracles, &verdict.excepted),
     )];
     if let Some(c) = &candidate {
         let scored: Vec<Row> = c
@@ -797,32 +814,36 @@ mod tests {
         subject: &str,
         errors: &[f64],
     ) -> Result<(), String> {
-        let mut r = row(
-            subject,
-            "so3_exp",
-            "theta:1e-3",
-            errors.iter().copied().fold(0.0, f64::max),
-        );
-        r.n = errors.len();
+        put_strata(scratch, results, subject, &[("theta:1e-3", errors)], "rev")
+    }
+
+    /// `subject`'s `so3_exp` rows, one per `(stratum, errors)`, with their records file, under
+    /// `results`, as a run at `rev` writes them.
+    fn put_strata(
+        scratch: &Scratch,
+        results: &str,
+        subject: &str,
+        strata: &[(&str, &[f64])],
+        rev: &str,
+    ) -> Result<(), String> {
+        let mut rows = Vec::new();
+        let mut text = format!("{}\n", report::RECORDS_HEADER);
+        for &(stratum, errors) in strata {
+            let mut r = row(
+                subject,
+                "so3_exp",
+                stratum,
+                errors.iter().copied().fold(0.0, f64::max),
+            );
+            r.n = errors.len();
+            rows.push(r);
+            for (i, &e) in errors.iter().enumerate() {
+                let _ = writeln!(text, "so3_exp,{stratum},f64,{i},{}", report::float(e));
+            }
+        }
         let rel = results_path(Path::new(results), subject, None, Precision::F64);
-        write_file(&scratch.0, &rel.to_string_lossy(), &csv(&[r], "rev"))?;
-        let records: Vec<RecordErr> = errors
-            .iter()
-            .enumerate()
-            .map(|(i, &err)| RecordErr {
-                fn_id: "so3_exp".into(),
-                stratum: "theta:1e-3".into(),
-                precision: Precision::F64,
-                id: i as u64,
-                err,
-            })
-            .collect();
-        let at = records_path(&rel);
-        write_file(
-            &scratch.0,
-            &at.to_string_lossy(),
-            &report::records_csv(&records),
-        )
+        write_file(&scratch.0, &rel.to_string_lossy(), &csv(&rows, rev))?;
+        write_file(&scratch.0, &records_path(&rel).to_string_lossy(), &text)
     }
 
     /// `0088` end to end: a loss on 4 records is unresolvable and passes, one on 64 records the
@@ -836,7 +857,7 @@ mod tests {
         put_records(&scratch, RESULTS, "cand", &doubled[..4])?;
         let r = go(&scratch, "cand", &["o1"], "")?;
         assert!(!bars(&r).contains(&"domination"), "{}", r.text);
-        assert!(r.text.contains("unresolvable at n = 4"), "{}", r.text);
+        assert!(r.text.contains("its 4 records cannot reach"), "{}", r.text);
         let deep = crate::conformance::RESULTS_DEEP;
         put_records(&scratch, deep, "o1", &oracle)?;
         put_records(&scratch, deep, "cand", &doubled)?;
@@ -855,11 +876,11 @@ mod tests {
             r.text
         );
         assert!(
-            r.text.contains("deep tier: 1 unresolvable strata judged"),
+            r.text.contains("deep tier: 1 of 1 excesses judged"),
             "{}",
             r.text
         );
-        assert!(!r.text.contains("unresolvable at n = 4"), "{}", r.text);
+        assert!(!r.text.contains("its 4 records cannot reach"), "{}", r.text);
         // An equal program on 64 records: its maximum is above, and nothing resolves.
         let equal: Vec<f64> = oracle.iter().rev().map(|e| e * (1.0 + 1e-3)).collect();
         put_records(&scratch, RESULTS, "o1", &oracle)?;
@@ -872,6 +893,110 @@ mod tests {
             "{}",
             r.text
         );
+        Ok(())
+    }
+
+    /// `--deep` re-judges unresolvable **and** unresolved excesses, removes only those the deep
+    /// tier pairs, keeps one no deep oracle answers where it was, and refuses deep candidate rows
+    /// another build wrote (`0088`).
+    #[test]
+    fn the_deep_tier_rejudges_what_it_pairs_and_refuses_another_builds_rows() -> Result<(), String>
+    {
+        let scratch = world("deep-scope")?;
+        let oracle: Vec<f64> = (0..64).map(|i| 1.0 + f64::from(i) / 64.0).collect();
+        let doubled: Vec<f64> = oracle.iter().map(|e| 2.0 * e).collect();
+        let equal: Vec<f64> = oracle.iter().rev().map(|e| e * (1.0 + 1e-3)).collect();
+        let (a, b, c) = ("theta:1e-3", "theta:1e-4", "theta:1e-5");
+        put_strata(
+            &scratch,
+            RESULTS,
+            "o1",
+            &[(a, &oracle[..4]), (b, &oracle), (c, &oracle[..4])],
+            "rev",
+        )?;
+        put_strata(
+            &scratch,
+            RESULTS,
+            "cand",
+            &[(a, &doubled[..4]), (b, &equal), (c, &doubled[..4])],
+            "rev",
+        )?;
+        let r = go(&scratch, "cand", &["o1"], "")?;
+        assert!(!bars(&r).contains(&"domination"), "{}", r.text);
+        let deep = crate::conformance::RESULTS_DEEP;
+        // The deep oracle answers `a` and `b`, not `c`.
+        put_strata(&scratch, deep, "o1", &[(a, &oracle), (b, &oracle)], "rev")?;
+        put_strata(
+            &scratch,
+            deep,
+            "cand",
+            &[(a, &doubled), (b, &doubled), (c, &doubled)],
+            "rev",
+        )?;
+        let r = go(&scratch, "cand", &["o1"], "deep")?;
+        let dominated: Vec<&str> = r
+            .failures
+            .iter()
+            .filter(|f| f.bar == Bar::Domination)
+            .map(|f| f.text.as_str())
+            .collect();
+        assert_eq!(dominated.len(), 2, "{}", r.text);
+        assert!(
+            dominated[0].starts_with("deep tier: so3_exp/theta:1e-3/f64"),
+            "{}",
+            r.text
+        );
+        assert!(
+            dominated[1].starts_with("deep tier: so3_exp/theta:1e-4/f64"),
+            "{}",
+            r.text
+        );
+        assert!(
+            r.text.contains("deep tier: 2 of 3 excesses judged"),
+            "{}",
+            r.text
+        );
+        assert!(
+            r.text.contains("excess so3_exp/theta:1e-5/f64"),
+            "{}",
+            r.text
+        );
+        // Rows another build wrote are refused, named.
+        put_strata(&scratch, deep, "cand", &[(a, &doubled)], "other")?;
+        let stale = go(&scratch, "cand", &["o1"], "deep")
+            .err()
+            .unwrap_or_default();
+        assert!(stale.contains("the deep tier is stale"), "{stale}");
+        Ok(())
+    }
+
+    /// A records file that is not its rows' (another count, another maximum) is an error naming
+    /// the file, not errors the swap test would pair silently (`0088`).
+    #[test]
+    fn a_records_file_that_is_not_its_rows_is_an_error() -> Result<(), String> {
+        let scratch = world("stale-records")?;
+        let oracle: Vec<f64> = (0..64).map(|i| 1.0 + f64::from(i) / 64.0).collect();
+        put_records(&scratch, RESULTS, "o1", &oracle)?;
+        put_records(&scratch, RESULTS, "cand", &oracle)?;
+        let rel = results_path(Path::new(RESULTS), "cand", None, Precision::F64);
+        let at = records_path(&rel);
+        let text = read(&scratch, &at.to_string_lossy())?;
+        let fewer: String = text.lines().take(10).map(|l| format!("{l}\n")).collect();
+        write_file(&scratch.0, &at.to_string_lossy(), &fewer)?;
+        let e = go(&scratch, "cand", &["o1"], "").err().unwrap_or_default();
+        assert!(
+            e.contains("not the records of") && e.contains("9 records"),
+            "{e}"
+        );
+        // The same count, one error raised past the row's maximum.
+        let mut lines: Vec<&str> = text.lines().collect();
+        let last = lines.pop().unwrap_or_default();
+        let head = last.rsplit_once(',').map_or(last, |(h, _)| h);
+        let raised: String =
+            lines.iter().map(|l| format!("{l}\n")).collect::<String>() + &format!("{head},9e0\n");
+        write_file(&scratch.0, &at.to_string_lossy(), &raised)?;
+        let e = go(&scratch, "cand", &["o1"], "").err().unwrap_or_default();
+        assert!(e.contains("not the records of"), "{e}");
         Ok(())
     }
 

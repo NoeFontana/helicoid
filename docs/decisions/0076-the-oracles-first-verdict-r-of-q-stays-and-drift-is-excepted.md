@@ -49,9 +49,9 @@ not of that kind, and each asks for a decision.
    ([`0046`](./0046-explained-by-record-needs-a-record-to-point-at.md)), citing this record: the
    reference is the rotation of `q/‖q‖`, Sophus's answer is that rotation, and `helicoid`'s is
    `0058`'s stated first-order term, `Rv + η(Rv - v)` for `act` and `(1 + η)R` in `Ad`'s blocks,
-   within `0058`'s measured bounds. (`sen3_ad_n1`'s row was deleted under
-   [`0088`](./0088-the-domination-bar-must-tell-worse-from-equal.md), whose bar does not fail its
-   unresolved excess; `so3_act`'s stays.) `sen3_log_n1/q:nonunit` (1.717 against 1.646) is **not**:
+   within `0058`'s measured bounds. Both rows stay under
+   [`0088`](./0088-the-domination-bar-must-tell-worse-from-equal.md): `so3_act`'s excess resolves,
+   and `sen3_ad_n1`'s is a gross loss. `sen3_log_n1/q:nonunit` (1.717 against 1.646) is **not**:
    `Log` is scale-invariant (§12), so drift does not explain it.
 
 ## Consequences

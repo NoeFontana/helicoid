@@ -65,7 +65,7 @@ use std::process::Command;
 use helicoid_linalg::Precision;
 
 use metric::Rule;
-use report::{Aggregate, RecordErr, Row};
+use report::{Aggregate, Row, RECORDS_HEADER};
 use subject::Registered;
 
 const USAGE: &str =
@@ -191,10 +191,13 @@ fn evaluate_into(
     subjects: &[Registered],
     precision: Precision,
     rule_of: &dyn Fn(&str) -> Option<&'static Rule>,
-    mut records: Option<&mut Vec<Vec<RecordErr>>>,
+    mut records: Option<&mut Vec<String>>,
 ) -> Result<Vec<Vec<Row>>, String> {
     if let Some(r) = records.as_deref_mut() {
-        *r = subjects.iter().map(|_| Vec::new()).collect();
+        *r = subjects
+            .iter()
+            .map(|_| format!("{RECORDS_HEADER}\n"))
+            .collect();
     }
     let mut rows: Vec<Vec<Row>> = subjects.iter().map(|_| Vec::new()).collect();
     for entry in entries {
@@ -234,7 +237,7 @@ fn evaluate_into(
                 aggregate.add(record.id, &record.stratum, score);
             }
             if let Some(r) = records.as_deref_mut() {
-                r[k].extend(aggregate.records(fn_id, precision));
+                aggregate.records_into(fn_id, precision, &mut r[k]);
             }
             let version = s.version_at(precision);
             out.extend(aggregate.rows(fn_id, precision, s.subject.name(), version));
@@ -379,8 +382,7 @@ fn run_with(
         // Beside every result CSV, always, so no run -- an oracle's included -- leaves the swap
         // test without its records (`0088` item 1).
         let at = records_path(&path);
-        std::fs::write(&at, report::records_csv(&records[k]))
-            .map_err(|e| format!("{}: {e}", at.display()))?;
+        std::fs::write(&at, &records[k]).map_err(|e| format!("{}: {e}", at.display()))?;
         println!(
             "{} {}\n{}",
             s.subject.name(),

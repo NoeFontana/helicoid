@@ -4,10 +4,11 @@
 //!
 //! - **Domination**: the candidate's `max_u` at most the smallest oracle `max_u`, ties passing; a
 //!   stratum with no scored oracle row is unpaired, not failed. Under [`Mode::Resolved`], the
-//!   envelope's, an excess fails only when the paired swap test on the records resolves it at
-//!   [`swap::ALPHA`]; an unresolved one is reported with its `p`, and one on fewer than 10 records,
-//!   which no test can resolve, is reported as unresolvable (`0088`). A stratum whose records were
-//!   not read cannot be tested and fails as the strict bar would. [`Mode::Strict`] is the bar on the
+//!   envelope's, an excess fails when it is a gross loss ([`swap::gross`]), resolved or not, or
+//!   when the paired swap test on the records resolves it at [`swap::ALPHA`]; an unresolved one is
+//!   reported with its `p`, and one whose pairs cannot reach [`swap::ALPHA`] whatever their errors
+//!   is reported as unresolvable (`0088`). A stratum whose records were not read cannot be tested
+//!   and fails as the strict bar would, unless it has fewer than 10 records. [`Mode::Strict`] is the bar on the
 //!   maxima alone, which the self-test's planted defects are read by. An oracle row that is non-finite
 //!   or unscored has no maximum, which is `+inf`: it is never the best, so a stratum where every
 //!   oracle is bad does not lower the bar (§7). Its row stays in the oracle's own CSV.
@@ -119,8 +120,10 @@ pub(super) struct Verdict {
     pub(super) dominated_host_std: usize,
     /// Excesses the swap test did not resolve: printed, not failed (`0088` decision 1).
     pub(super) unresolved: Vec<Excess>,
-    /// Excesses on fewer than 10 records, where no test can resolve a loss (`0088` decision 2).
+    /// Excesses whose pairs cannot resolve a loss whatever their errors (`0088` decision 2).
     pub(super) unresolvable: Vec<Excess>,
+    /// The keys paired with an oracle, as `Key`'s text: what a deep-tier judgement answered.
+    pub(super) paired_keys: BTreeSet<String>,
     /// Strata an oracle won that the exception table explains (`0046`). They are **not** failures
     /// and **not** `paired` wins: the maximum still goes to the baseline and still has to not
     /// regress, so an excepted stratum is watched more closely than a dominated one, not less.
@@ -143,7 +146,11 @@ impl Excess {
     pub(super) fn line(&self) -> String {
         let p = match self.p {
             Some(p) => format!("p = {p:.3e}"),
-            None => format!("unresolvable at n = {}; `--deep` judges it", self.n),
+            None => format!(
+                "unresolvable: its {} records cannot reach p <= {}; `--deep` judges it",
+                self.n,
+                swap::ALPHA
+            ),
         };
         format!(
             "{}: {:e} u over `{}` at {:e} u, {p}",
@@ -152,16 +159,16 @@ impl Excess {
     }
 }
 
-/// The swap test's p-value for `key` of `c` against `o`, over the records both scored; `None`
-/// when either subject has no records for it.
-fn swap_p(c: &Subject, o: &Subject, key: &Key) -> Option<f64> {
+/// The swap test for `key` of `c` against `o`, over the records both scored; `None` when either
+/// subject has no records for it.
+fn swap_of(c: &Subject, o: &Subject, key: &Key) -> Option<swap::Swap> {
     let mine = c.records.get(key)?;
     let theirs: BTreeMap<u64, f64> = o.records.get(key)?.iter().copied().collect();
     let pairs: Vec<(f64, f64)> = mine
         .iter()
         .filter_map(|(id, e)| theirs.get(id).map(|t| (*e, *t)))
         .collect();
-    (!pairs.is_empty()).then(|| swap::p_value(&pairs))
+    (!pairs.is_empty()).then(|| swap::test(&pairs))
 }
 
 /// One stratum the exception table explains, as the evidence page prints it.
@@ -353,6 +360,7 @@ pub(super) fn judge_excepting(
             None => v.unpaired += 1,
             Some((o, m)) => {
                 v.paired += 1;
+                v.paired_keys.insert(key.to_string());
                 if max > m {
                     if let Some(e) = exceptions.get(&key.to_string()) {
                         used.insert(e.key());
@@ -368,8 +376,9 @@ pub(super) fn judge_excepting(
                         no_regress(&mut v, &key, r, max, baseline);
                         continue;
                     }
-                    // Under the resolved bar, an excess is a failure only when the swap test
-                    // resolves it; one it cannot test (no records read) fails as before (`0088`).
+                    // Under the resolved bar, an excess is a failure when it is gross, resolved or
+                    // not, or when the swap test resolves it; one it cannot test (no records read)
+                    // fails as before unless no test could have resolved it (`0088`).
                     let mut resolved = String::new();
                     if mode == Mode::Resolved {
                         let excess = |p| Excess {
@@ -380,26 +389,42 @@ pub(super) fn judge_excepting(
                             n: r.n,
                             p,
                         };
-                        if !swap::resolvable(r.n) {
-                            v.unresolvable.push(excess(None));
+                        let pass = |v: &mut Verdict, e: Excess, unresolvable: bool| {
+                            match unresolvable {
+                                true => v.unresolvable.push(e),
+                                false => v.unresolved.push(e),
+                            }
                             if let Some(baseline) = baseline {
-                                no_regress(&mut v, &key, r, max, baseline);
+                                no_regress(v, &key, r, max, baseline);
                             }
-                            continue;
-                        }
-                        match swap_p(candidate, o, &key) {
-                            Some(p) if p > swap::ALPHA => {
-                                v.unresolved.push(excess(Some(p)));
-                                if let Some(baseline) = baseline {
-                                    no_regress(&mut v, &key, r, max, baseline);
+                        };
+                        if swap::gross(max, m) {
+                            resolved = format!(
+                                ", a gross loss: above {} times the oracle's plus {} u, resolved \
+                                 or not",
+                                swap::GROSS_FACTOR,
+                                swap::GROSS_SLACK
+                            );
+                        } else {
+                            match swap_of(candidate, o, &key) {
+                                Some(s) if s.floor > swap::ALPHA => {
+                                    pass(&mut v, excess(None), true);
+                                    continue;
                                 }
-                                continue;
-                            }
-                            Some(p) => resolved = format!(", resolved at p = {p:.3e}"),
-                            None => {
-                                resolved = " [no records to pair: rerun `conformance` for both \
-                                            subjects; failed as the strict bar would]"
-                                    .to_string()
+                                Some(s) if s.p > swap::ALPHA => {
+                                    pass(&mut v, excess(Some(s.p)), false);
+                                    continue;
+                                }
+                                Some(s) => resolved = format!(", resolved at p = {:.3e}", s.p),
+                                None if !swap::can_resolve(r.n) => {
+                                    pass(&mut v, excess(None), true);
+                                    continue;
+                                }
+                                None => {
+                                    resolved = " [no records to pair: rerun `conformance` for \
+                                                both subjects; failed as the strict bar would]"
+                                        .to_string()
+                                }
                             }
                         }
                     }
@@ -506,6 +531,7 @@ mod tests {
     fn subject(name: &str, rows: Vec<Row>) -> Subject {
         Subject {
             records: Default::default(),
+            revs: Default::default(),
             name: name.into(),
             version: format!("{name}@1"),
             rows,
@@ -587,7 +613,9 @@ mod tests {
                 assert!(v.unresolvable.is_empty());
             } else {
                 assert_eq!(v.unresolvable.len(), 1);
-                assert!(v.unresolvable[0].line().contains("unresolvable at n = 4"));
+                assert!(v.unresolvable[0]
+                    .line()
+                    .contains("its 4 records cannot reach"));
             }
             let strict = judge(&with_records("c", &c), &[with_records("o", &o)], None);
             assert!(strict.failures.iter().any(|f| f.bar == Bar::Domination));
@@ -616,6 +644,31 @@ mod tests {
                 .all(|e| e.p.is_some_and(|p| p > swap::ALPHA)));
         }
         assert!((15..45).contains(&excesses), "{excesses} of 60");
+    }
+
+    /// `0088`'s gross-loss bound: a stratum equal on 63 records and catastrophic on one is
+    /// invisible to the swap test (`p = ½`) and fails anyway; the same stratum without the
+    /// catastrophe passes.
+    #[test]
+    fn a_one_record_catastrophe_fails_and_an_equal_program_passes() {
+        let o = errs(64, 13);
+        let mut c = o.clone();
+        let v = resolved(&with_records("c", &c), &with_records("o", &o));
+        assert!(v.failures.iter().all(|f| f.bar != Bar::Domination));
+        c[17] = 1e6;
+        let v = resolved(&with_records("c", &c), &with_records("o", &o));
+        let domination: Vec<&Failure> = v
+            .failures
+            .iter()
+            .filter(|f| f.bar == Bar::Domination)
+            .collect();
+        assert_eq!(domination.len(), 1);
+        assert!(
+            domination[0].text.contains("a gross loss"),
+            "{}",
+            domination[0].text
+        );
+        assert!(v.unresolved.is_empty() && v.unresolvable.is_empty());
     }
 
     /// With no records read, an excess cannot be tested and fails as the strict bar would, saying

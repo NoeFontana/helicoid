@@ -42,6 +42,9 @@ pub(super) struct Subject {
     /// Per-record errors by key, from the records file beside the result CSV (`0088`); empty when
     /// none was read, and then the swap test has nothing to pair.
     pub(super) records: Records,
+    /// The `git_rev` cells of the files it was read from: which build wrote its rows, for
+    /// `--deep`'s check that the two tiers come from one (`0088`).
+    pub(super) revs: BTreeSet<String>,
 }
 
 /// Each key's `(record id, error)`, `+inf` for a non-finite output (`report::RecordErr`).
@@ -129,10 +132,11 @@ pub(super) fn parse_results(name: &str, text: &str) -> Result<Subject, String> {
     if lines.next() != Some(HEADER) {
         return Err(format!("the header is not `{HEADER}`"));
     }
-    let (mut rows, mut seen) = (Vec::new(), BTreeSet::new());
+    let (mut rows, mut seen, mut revs) = (Vec::new(), BTreeSet::new(), BTreeSet::new());
     for (i, line) in lines.enumerate() {
         let at = |e: String| format!("line {}: {e}", i + 2);
         let r = row(line).map_err(at)?;
+        revs.extend(cells(line).ok().and_then(|c| c.last().cloned()));
         if r.subject != name {
             return Err(at(format!("subject `{}`, expected `{name}`", r.subject)));
         }
@@ -153,6 +157,7 @@ pub(super) fn parse_results(name: &str, text: &str) -> Result<Subject, String> {
         version,
         rows,
         records: Records::new(),
+        revs,
     })
 }
 
@@ -191,6 +196,34 @@ pub(super) fn parse_records(text: &str) -> Result<Records, String> {
         out.entry(key).or_default().push((id, err));
     }
     Ok(out)
+}
+
+/// That `records` is the records file of `rows`' run (`0088`): per key, as many records as the
+/// row's `n`, and their finite maximum the row's `max_u` to the bit (`NaN` when none is finite),
+/// with no key the rows lack. A stale or partial file would otherwise feed the swap test errors the
+/// row does not hold.
+pub(super) fn check_records(rows: &[Row], records: &Records) -> Result<(), String> {
+    let mut keys = BTreeSet::new();
+    for r in rows {
+        let key = Key::of(r);
+        let mine = records.get(&key).map_or(&[][..], Vec::as_slice);
+        let finite = mine.iter().map(|e| e.1).filter(|e| e.is_finite());
+        let max = finite.fold(f64::NAN, f64::max);
+        let same = (max.is_nan() && r.max_u.is_nan()) || max.to_bits() == r.max_u.to_bits();
+        if mine.len() != r.n || !same {
+            return Err(format!(
+                "`{key}`: {} records with maximum {max:e}, where the row has {} and {:e}",
+                mine.len(),
+                r.n,
+                r.max_u
+            ));
+        }
+        keys.insert(key);
+    }
+    match records.keys().find(|k| !keys.contains(k)) {
+        Some(k) => Err(format!("records for `{k}`, which no row has")),
+        None => Ok(()),
+    }
 }
 
 /// The baseline `s` makes: per key the records and the maximum of each row. A row with no maximum
@@ -297,6 +330,7 @@ mod tests {
         let rows = vec![row("s", "f", "a", 0.1), row("s", "f", "z", 5e-324)];
         let subject = Subject {
             records: Records::new(),
+            revs: BTreeSet::new(),
             name: "s".into(),
             version: "s@1".into(),
             rows,

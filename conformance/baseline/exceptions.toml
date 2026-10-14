@@ -6,9 +6,10 @@
 # `cargo xtask lint` fails a row whose record is missing or is a draft; `just envelope` fails a row
 # whose stratum turns out to be dominated after all, and names it for deletion.
 #
-# Under `0088` the domination bar fails only a resolved loss, so a stratum whose excess does not
-# resolve needs no row. The `0046` tie (`so3_exp/theta:1e-5`) and `sen3_ad_n1/q:nonunit` were deleted
-# for that reason; `so3_act/q:nonunit` resolves, and `0076` still explains it.
+# Under `0088` the domination bar fails a resolved loss or a gross one (above 8 times the best
+# oracle's maximum plus 1 u), so a stratum whose excess is neither needs no row. The `0046` tie
+# (`so3_exp/theta:1e-5`) was deleted for that reason. `0076`'s two rows stay: `so3_act/q:nonunit`
+# resolves, and `sen3_ad_n1/q:nonunit` (256 u against 2.1 u on 6 records) is gross.
 
 [[exception]]
 fn = "so3_act"
@@ -16,3 +17,10 @@ stratum = "q:nonunit"
 precision = "f64"
 record = "0076"
 reason = "carried drift: helicoid returns 0058's Rv + eta(Rv - v), Sophus normalizes q at construction"
+
+[[exception]]
+fn = "sen3_ad_n1"
+stratum = "q:nonunit"
+precision = "f64"
+record = "0076"
+reason = "carried drift: helicoid's Ad blocks carry 0058's (1 + eta)R, Sophus normalizes q at construction"

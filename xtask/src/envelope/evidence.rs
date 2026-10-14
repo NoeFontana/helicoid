@@ -27,7 +27,6 @@ pub(super) fn page(
     candidate: Option<&Subject>,
     oracles: &[Subject],
     excepted: &[super::bars::Excepted],
-    excesses: &[&super::bars::Excess],
 ) -> String {
     let mut out = format!("{HEADER}\n\n# The envelope\n\n");
     let Some(c) = candidate else {
@@ -85,41 +84,6 @@ pub(super) fn page(
         let _ = writeln!(out, "| `{fn_id}` | `{stratum}` | {precision} | {n} | {max} | {p99} | {name} | {version} | {theirs} |");
     }
     out += &exceptions_section(excepted);
-    out += &excesses_section(excesses);
-    out
-}
-
-/// The strata whose maximum is above the best oracle's and which the domination bar does not fail
-/// (`0088`): the swap test does not resolve the excess, or the stratum has too few records for any
-/// test to. Printed so that no number `0046` item 5 wanted visible disappears.
-fn excesses_section(excesses: &[&super::bars::Excess]) -> String {
-    let mut out = String::from("\n## Unresolved excesses\n\n");
-    if excesses.is_empty() {
-        out += "None: no maximum is above the best oracle's without failing domination.\n";
-        return out;
-    }
-    let _ = write!(
-        out,
-        "{} strata whose maximum is above the best oracle's, which domination does not fail: the \
-         paired swap test on the records does not resolve the excess at `p <= {}`, or the stratum \
-         has fewer than 10 records and no test can (`0088`). They are judged by no-regress like \
-         every other.\n\n\
-         | function | stratum | precision | n | max u | best oracle | oracle max u | p |\n\
-         |---|---|---|---|---|---|---|---|\n",
-        excesses.len(),
-        super::swap::ALPHA
-    );
-    for e in excesses {
-        let (fn_id, rest) = e.key.split_once('/').unwrap_or((e.key.as_str(), ""));
-        let (stratum, precision) = rest.rsplit_once('/').unwrap_or((rest, ""));
-        let p =
-            e.p.map_or_else(|| "unresolvable".to_string(), |p| format!("{p:.3e}"));
-        let _ = writeln!(
-            out,
-            "| `{fn_id}` | `{stratum}` | {precision} | {} | {:.4e} | `{}` | {:.4e} | {p} |",
-            e.n, e.candidate, e.oracle_name, e.oracle
-        );
-    }
     out
 }
 
@@ -201,6 +165,7 @@ mod tests {
     fn subject(name: &str, rows: Vec<Row>) -> Subject {
         Subject {
             records: Default::default(),
+            revs: Default::default(),
             name: name.into(),
             version: format!("{name}@1"),
             rows,
@@ -225,7 +190,7 @@ mod tests {
             "fast",
             vec![row("fast", "f", "a", 2.5), row("fast", "g", "z", 1.0)],
         );
-        let text = page("c", Some(&cand), &[slow, fast], &[], &[]);
+        let text = page("c", Some(&cand), &[slow, fast], &[]);
         let rows: Vec<&str> = text.lines().filter(|l| l.starts_with("| `")).collect();
         assert_eq!(
             rows,
@@ -249,7 +214,7 @@ mod tests {
             subject("x", vec![row("x", "f", "a", 2.0)]),
             subject("y", vec![row("y", "f", "a", 2.0)]),
         );
-        let text = page("c", Some(&cand), &[first, second], &[], &[]);
+        let text = page("c", Some(&cand), &[first, second], &[]);
         let rows: Vec<&str> = text.lines().filter(|l| l.starts_with("| `")).collect();
         assert_eq!(
             rows,
@@ -265,7 +230,7 @@ mod tests {
         let cand = subject("c", vec![row("c", "f", "a", 1.5), row("c", "f", "b", 2.0)]);
         let with = |cand: &Subject, mx: f64, my: f64| {
             let of = |n: &str, m: f64| subject(n, vec![row(n, "f", "a", m), row(n, "f", "b", m)]);
-            page("c", Some(cand), &[of("x", mx), of("y", my)], &[], &[])
+            page("c", Some(cand), &[of("x", mx), of("y", my)], &[])
         };
         // Another best oracle and another fifth digit: the same view; another candidate max: not.
         let (a, b) = (with(&cand, 3.5625, 4.0), with(&cand, 4.0, 2.6875));
@@ -294,14 +259,14 @@ mod tests {
             nonfinite: 2,
             ..row("c", "f", "n", 0.0)
         };
-        let text = page("c", Some(&subject("c", vec![unscored, bad])), &[], &[], &[]);
+        let text = page("c", Some(&subject("c", vec![unscored, bad])), &[], &[]);
         assert!(text.contains("| `f` | `u` | f64 | 64 | — | — | — | — | — |"));
         assert!(text.contains("| `f` | `n` | f64 | 64 | 2 non-finite | — | — | — | — |"));
     }
 
     #[test]
     fn without_candidate_rows_the_page_says_nothing_is_compared_and_it_is_registered_output() {
-        let text = page("helicoid", None, &[], &[], &[]);
+        let text = page("helicoid", None, &[], &[]);
         assert!(text.starts_with(HEADER) && text.contains("for the candidate `helicoid`"));
         assert_eq!(
             text,
@@ -309,7 +274,6 @@ mod tests {
                 "helicoid",
                 None,
                 &[subject("o", vec![row("o", "f", "a", 1.0)])],
-                &[],
                 &[]
             )
         );

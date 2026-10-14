@@ -44,7 +44,6 @@ struct Group {
     stratum: String,
     n: usize,
     first_id: u64,
-    finite: Vec<(u64, f64)>,
     nonfinite: usize,
     first_nonfinite: u64,
     /// Every record's error in evaluation order, `+inf` for a non-finite one: the records file.
@@ -53,17 +52,6 @@ struct Group {
 
 /// The header of the records file (`0088`), exactly: one line per scored record.
 pub(crate) const RECORDS_HEADER: &str = "fn,stratum,precision,id,err_u";
-
-/// One record's error, the quantity its row's `max_u` is the maximum of; `+inf` for a non-finite
-/// output, which no maximum is taken over and which loses every comparison (`0088`).
-#[derive(Clone, Debug, PartialEq)]
-pub(crate) struct RecordErr {
-    pub(crate) fn_id: String,
-    pub(crate) stratum: String,
-    pub(crate) precision: Precision,
-    pub(crate) id: u64,
-    pub(crate) err: f64,
-}
 
 impl Aggregate {
     pub(crate) fn add(&mut self, id: u64, stratum: &str, score: Score) {
@@ -82,30 +70,30 @@ impl Aggregate {
             Score::NonFinite => f64::INFINITY,
         };
         g.all.push((id, err));
-        match score {
-            Score::Finite(f) => g.finite.push((id, f)),
-            Score::NonFinite => {
-                if g.nonfinite == 0 {
-                    g.first_nonfinite = id;
-                }
-                g.nonfinite += 1;
+        if matches!(score, Score::NonFinite) {
+            if g.nonfinite == 0 {
+                g.first_nonfinite = id;
             }
+            g.nonfinite += 1;
         }
     }
 
-    /// Every record's error, strata in order of first appearance and records in evaluation order.
-    pub(crate) fn records(&self, fn_id: &str, precision: Precision) -> Vec<RecordErr> {
-        let mut out = Vec::new();
+    /// The records file's lines for this function (`0088`): one per record, strata in order of
+    /// first appearance and records in evaluation order, each error the shortest decimal that
+    /// reads back as the same binary64 and `inf` for a non-finite output. The first three cells are
+    /// formatted once per stratum.
+    pub(crate) fn records_into(&self, fn_id: &str, precision: Precision, out: &mut String) {
         for g in &self.groups {
-            out.extend(g.all.iter().map(|&(id, err)| RecordErr {
-                fn_id: fn_id.to_string(),
-                stratum: g.stratum.clone(),
-                precision,
-                id,
-                err,
-            }));
+            let head = format!(
+                "{},{},{},",
+                quoted(fn_id),
+                quoted(&g.stratum),
+                precision_name(precision)
+            );
+            for &(id, err) in &g.all {
+                let _ = writeln!(out, "{head}{id},{}", float(err));
+            }
         }
-        out
     }
 
     /// One row per stratum, in order of first appearance.
@@ -119,18 +107,16 @@ impl Aggregate {
         self.groups
             .into_iter()
             .map(|g| {
-                let mut sorted: Vec<f64> = g.finite.iter().map(|&(_, f)| f).collect();
+                let finite = || g.all.iter().filter(|e| e.1.is_finite());
+                let mut sorted: Vec<f64> = finite().map(|&(_, f)| f).collect();
                 sorted.sort_by(f64::total_cmp);
                 let p99_u = match sorted.len() {
                     0 => f64::NAN,
                     m => sorted[(99 * m).div_ceil(100) - 1],
                 };
-                let worst = g
-                    .finite
-                    .iter()
-                    .fold(None, |best: Option<(u64, f64)>, &(id, f)| {
-                        best.filter(|&(_, m)| f <= m).or(Some((id, f)))
-                    });
+                let worst = finite().fold(None, |best: Option<(u64, f64)>, &(id, f)| {
+                    best.filter(|&(_, m)| f <= m).or(Some((id, f)))
+                });
                 Row {
                     fn_id: fn_id.to_string(),
                     stratum: g.stratum,
@@ -194,24 +180,6 @@ pub(crate) fn csv(rows: &[Row], git_rev: &str) -> String {
             r.argmax_id.to_string(),
             r.nonfinite.to_string(),
             quoted(git_rev),
-        ];
-        out.push_str(&cells.join(","));
-        out.push('\n');
-    }
-    out
-}
-
-/// The records file (`0088`): [`RECORDS_HEADER`], then `records` in the order given, each error
-/// the shortest decimal that reads back as the same binary64, `inf` for a non-finite output.
-pub(crate) fn records_csv(records: &[RecordErr]) -> String {
-    let mut out = format!("{RECORDS_HEADER}\n");
-    for r in records {
-        let cells = [
-            quoted(&r.fn_id),
-            quoted(&r.stratum),
-            precision_name(r.precision).to_string(),
-            r.id.to_string(),
-            float(r.err),
         ];
         out.push_str(&cells.join(","));
         out.push('\n');
@@ -314,22 +282,36 @@ mod tests {
         for (i, (stratum, s)) in scores.iter().enumerate() {
             a.add(i as u64, stratum, *s);
         }
-        let records = a.records("f", Precision::F64);
+        let mut text = format!("{RECORDS_HEADER}\n");
+        a.records_into("f", Precision::F64, &mut text);
         let rows = a.rows("f", Precision::F64, "s", "v");
+        let records: Vec<(&str, u64, f64)> = text
+            .lines()
+            .skip(1)
+            .map(|l| {
+                let c: Vec<&str> = l.split(',').collect();
+                let err = if c[4] == "inf" {
+                    f64::INFINITY
+                } else {
+                    c[4].parse().unwrap_or(f64::NAN)
+                };
+                (c[1], c[3].parse().unwrap_or(u64::MAX), err)
+            })
+            .collect();
         for row in &rows {
-            let mine: Vec<&RecordErr> = records
+            let mine: Vec<f64> = records
                 .iter()
-                .filter(|r| r.stratum == row.stratum)
+                .filter(|r| r.0 == row.stratum)
+                .map(|r| r.2)
                 .collect();
-            let max = mine.iter().map(|r| r.err).filter(|e| e.is_finite());
+            let max = mine.iter().copied().filter(|e| e.is_finite());
             let max = max.fold(f64::NEG_INFINITY, f64::max);
             assert_eq!(max.to_bits(), row.max_u.to_bits(), "{}", row.stratum);
             assert_eq!(mine.len(), row.n, "{}", row.stratum);
         }
-        let ids: Vec<u64> = records.iter().map(|r| r.id).collect();
+        let ids: Vec<u64> = records.iter().map(|r| r.1).collect();
         assert_eq!(ids, [0, 2, 4, 1, 3]);
-        assert_eq!(records[3].err, f64::INFINITY);
-        let text = records_csv(&records);
+        assert_eq!(records[3].2, f64::INFINITY);
         assert!(
             text.starts_with("fn,stratum,precision,id,err_u\nf,a,f64,0,2.5e-1\n"),
             "{text}"

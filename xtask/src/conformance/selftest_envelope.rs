@@ -51,8 +51,9 @@ pub(super) fn check(dir: &Path, planted: Seeded) -> Result<Report, String> {
         beaten_strata(&defect, &correct),
     );
     let resolved_own =
-        resolved_beaten_strata((&correct, &correct_records), (&correct, &correct_records));
-    let resolved = resolved_beaten_strata((&defect, &defect_records), (&correct, &correct_records));
+        resolved_beaten_strata((&correct, &correct_records), (&correct, &correct_records))?;
+    let resolved =
+        resolved_beaten_strata((&defect, &defect_records), (&correct, &correct_records))?;
     let mut text = format!(
         "envelope: domination over {} on coeff_c, {} strata\n",
         names[0],
