@@ -188,10 +188,11 @@ by the generator**, as a cross-check, not typed into code.
 | $r$ | $2\,\mathrm{atan2}(n, w)/n$ | definition | $\tfrac{2}{w}\left(1 - \tfrac{s}{3} + \tfrac{s^2}{5} - \tfrac{s^3}{7}\right)$, $s = n^2/w^2$ | none (0/0) | — |
 | $\alpha$ | $\sin\theta/\theta$ | $2k\cos\tfrac\theta2$ on **both** arms of `exp_coeffs`: no switch, no series of its own | (those of $k$, $\cos\tfrac\theta2$) | none (0/0) | — |
 
-**The exact arms take $\theta^2$ as given** (`0089`, draft): every closed form above divides by the
-branch variable $z = \theta^2$, the one $W^2$ is formed from, never by the rounded root squared
-again, and $a$, $b$, $d$ are GTSAM's arithmetic in GTSAM's order, $c$ Sophus's. Each switch is the
-sweep's, regenerated against these arms.
+**$a$, $b$ and $d$ take $\theta^2$ as given** (`0089`, draft): their closed forms divide by the
+branch variable $z = \theta^2$, the one $W^2$ is formed from, not by the rounded root squared again,
+in GTSAM's arithmetic. $c$ is Sophus's form over $\hat\theta\hat\theta$, $\hat\theta = \mathrm{fl}(\sqrt z)$,
+and $e$ divides by powers of $\hat\theta$: $c$ over $z$ measured worse. Each switch is the sweep's,
+regenerated against these arms.
 
 What the "naive cancellation" column means: evaluating the definition in the exact arm keeps
 $-\log_{10}$ of that relative error in digits. $e$ is the reason one global threshold is wrong by

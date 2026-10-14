@@ -658,9 +658,16 @@ pub(crate) fn probe<S: Real, G: LieGroup<S>, const D: usize>(
         jb.apply_transpose(&tb),
     ];
     let mut j = Vec::from([x.adjoint(), G::ad(&ta), ja, G::jr_inv(&ta), G::jl(&ta)]);
-    // `Jac::inverse`'s domain is `det != 0`: `Ad_Y` is in it for every `Y`, and `J_r` is not at
-    // every `f64` (its determinant `2(1 - cos θ)/θ²` reads 0 at `θ ~ 1e132`; `0089`, draft).
-    j.extend([G::jl_inv(&ta), ja.mul(&jb), jb.inverse(), jb.neg()]);
+    // `Jac::inverse`'s domain is an invertible matrix: `Ad_Y` is one for every `Y`, and `J_r` is
+    // where `θ < 2π`, which a tangent of `sin`s keeps (`θ ≤ √3`); at `θ ~ 1e63` it reads `nnᵗ`.
+    let jc = G::jr(&<T<S, G> as Tangent<S>>::read_dense(&a.map(|x| x.sin())));
+    j.extend([
+        G::jl_inv(&ta),
+        ja.mul(&jb),
+        jc.inverse(),
+        jb.inverse(),
+        jb.neg(),
+    ]);
     j.push(<G::Jac as Jac<S, G::Tangent>>::identity());
     for (p, q) in [
         x.rplus_jacobians(&tb),

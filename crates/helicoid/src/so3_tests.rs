@@ -696,6 +696,32 @@ fn hat_poly_is_the_three_matrix_sum() {
     );
 }
 
+/// `HatSq::poly_far` is `poly` to the bit where `far` is clear; where it is set only the diagonal
+/// moves, to `t0 + s2 φᵢ²` (`0089`, draft).
+#[test]
+fn poly_far_is_poly_but_its_diagonal() {
+    use crate::so3::HatSq;
+    let (s0, s1, s2, t0) = (1.0, -0.3, 0.11, 0.07);
+    for phi in [[0.3, -1.1, 0.7], [2.9, 0.1, -0.4], [0.0, -0.0, 3.1]] {
+        let w2 = HatSq::of(Vector(phi));
+        let p = w2.poly(s0, s1, s2);
+        let (near, far) = (
+            w2.poly_far(s0, s1, s2, t0, false),
+            w2.poly_far(s0, s1, s2, t0, true),
+        );
+        for i in 0..9 {
+            let (r, c) = (i / 3, i % 3);
+            let want = if r == c {
+                t0 + s2 * (phi[r] * phi[r])
+            } else {
+                p.get(r, c)
+            };
+            assert!(same(near.get(r, c), p.get(r, c)), "{phi:?} ({r}, {c})");
+            assert!(same(far.get(r, c), want), "{phi:?} ({r}, {c})");
+        }
+    }
+}
+
 /// `hat_mul` against the generic `hat(v) * Mat3`, the mirror of
 /// `the_structured_product_is_the_generic_one_to_the_bit` and held to the same licence: finite
 /// entries exactly, and the degenerate cases counted.

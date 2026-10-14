@@ -160,10 +160,9 @@ impl<S: Real> HatSq<S> {
         let [d0, d1, d2] = self.diag;
         let (wx, wy, wz) = (s1 * x, s1 * y, s1 * z);
         let [qxy, qxz, qyz] = self.off.map(|o| s2 * o);
-        // The operands are selected, not the two sums: the same bits, and each select is a blend
-        // of values already formed, where selecting the sums let LLVM sink each into a branch.
-        let s = S::select(far, t0, s0);
-        let diag = |p: S, d: S| s + s2 * S::select(far, p * p, d);
+        // The two sums are selected: blending their operands instead read 1.09-1.13x `main` near
+        // the identity against 1.06-1.07x (`0089`, draft).
+        let diag = |p: S, d: S| S::select(far, t0 + s2 * (p * p), s0 + s2 * d);
         Matrix::from_rows([
             Vector([diag(x, d0), -wz + qxy, wy + qxz]),
             Vector([wz + qxy, diag(y, d1), -wx + qyz]),
