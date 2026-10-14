@@ -234,7 +234,7 @@ corpus so each wrote its records file:
   finding 3's 156 and 609.
 - **The exception table:** judged without it, one more stratum fails, `so3_act/q:nonunit`, which
   `0076` excepts. Its other two rows, `so3_exp/theta:1e-5` (the `0046` tie) and
-  `sen3_ad_n1/q:nonunit`, do not resolve, so the bar would pass them without a row.
+  `sen3_ad_n1/q:nonunit`, do not resolve, so the bar passes them without a row; both are deleted.
 
 ## Implementation plan
 
