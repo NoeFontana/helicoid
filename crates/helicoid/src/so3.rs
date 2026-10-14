@@ -18,7 +18,8 @@ mod gamma;
 pub use gamma::{gamma1, gamma2, gamma_apply_jacobians};
 
 use crate::coeffs::{
-    exp_coeffs, jr_coeffs_sinc, jr_inv_coeff, log_ratio, log_ratio_short, log_ratio_takes_short_arm,
+    exp_coeffs, jr_coeffs_sinc, jr_inv_coeff, log_ratio_scale, log_ratio_short,
+    log_ratio_takes_short_arm,
 };
 use crate::quat::Quat;
 use crate::side::Side;
@@ -766,15 +767,13 @@ impl<S: Real> LieGroup<S> for SO3<S> {
     #[inline]
     fn log(&self) -> SO3Tangent<S> {
         let flip = S::one().copysign(self.0.w);
-        let (w, x, y, z) = (
-            flip * self.0.w,
-            flip * self.0.x,
-            flip * self.0.y,
-            flip * self.0.z,
-        );
-        let r = log_ratio((x * x + y * y) + z * z, w);
+        let (x, y, z) = (self.0.x, self.0.y, self.0.z);
+        // `r u` of the flipped `q`, the flip applied inside `r`'s arms; `n²` needs none
+        // (`0090`, draft).
+        let (px, py, pz) =
+            log_ratio_scale((x * x + y * y) + z * z, flip * self.0.w, flip, (x, y, z));
         SO3Tangent {
-            phi: Vector([r * x, r * y, r * z]),
+            phi: Vector([px, py, pz]),
         }
     }
 
