@@ -153,7 +153,7 @@ fn log_is_scale_invariant_across_the_unchecked_domain() {
     // that bound, inside the drift band, is `carried::each_operation_errs_by_its_first_order_term_across_the_drift_band`'s
     // case (`0058`).
     // `θ = 1` is `r`'s exact arm; `0.1` and `1e-4` are its two series arms, where `1 − w` is not
-    // homogeneous in `q` and the tangent is invariant within rounding (`0090`, draft).
+    // homogeneous in `q` and the tangent is invariant within rounding (`0090`).
     for theta in [1.0_f64, 0.1, 1e-4] {
         let (s, c) = (0.5 * theta).sin_cos();
         for lambda in [1.0, 1.0 + 2f64.powi(-42), 1.0 - 2f64.powi(-42)] {
@@ -701,7 +701,7 @@ fn hat_poly_is_the_three_matrix_sum() {
 }
 
 /// `HatSq::poly_far` is `poly` to the bit where `far` is clear; where it is set only the diagonal
-/// moves, to `t0 + s2 φᵢ²` (`0089`, draft).
+/// moves, to `t0 + s2 φᵢ²` (`0089`).
 #[test]
 fn poly_far_is_poly_but_its_diagonal() {
     use crate::so3::HatSq;

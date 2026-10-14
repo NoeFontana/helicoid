@@ -200,7 +200,7 @@ fn exact<S: Real>(c: Coeff, z: S) -> S {
     let sin_half = || (half * th).sin_cos().0;
     match c {
         Coeff::K => sin_half() / th,
-        // `a`, `b`, `d` over the `z` given, in GTSAM's order, and `c` Sophus's (`0089`, draft).
+        // `a`, `b`, `d` over the `z` given, in GTSAM's order, and `c` Sophus's (`0089`).
         Coeff::A => {
             let s = sin_half();
             two * s * s / z

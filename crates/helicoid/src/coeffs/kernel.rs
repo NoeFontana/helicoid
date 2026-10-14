@@ -2,7 +2,7 @@
 //!
 //! An exact arm is the "Exact arm computes" column of `NUMERICS.md` §4 at `z > 0`, in the operand
 //! order stated beside each: `a`, `b` and `d` divide by `z`, `c` and `e` by powers of `θ̂ = fl(√z)`
-//! (`0089`, draft). A group evaluates it at the safe argument (`0003` item 3).
+//! (`0089`). A group evaluates it at the safe argument (`0003` item 3).
 //! `z = θ² >= 0` is the domain of every function here, `debug_assert!`ed; `θ²` overflowing is
 //! CO.15(c), open. A lane evaluates the series arm it does not select at the raw `z`, so that arm is
 //! not finite once its Horner form overflows, far beyond any rotation.
@@ -88,7 +88,7 @@ impl Arm<'_> {
 
     /// [`Self::horner`] less its constant term, over `z`: `(series(z) − t₀)/z`, the same terms from
     /// the second on, so `t₀ + z · tail(z)` is the series and the tail never meets `t₀`
-    /// (`0090`, draft).
+    /// (`0090`).
     fn horner_tail<S: Real>(&self, z: S) -> S {
         match self.terms {
             Terms::F64(t) => horner(t.get(1..).unwrap_or(t), z),
@@ -252,7 +252,7 @@ pub(crate) fn jr_coeffs<S: Real>(z: S) -> (S, S) {
 
 /// `(a, b, sin θ/θ, far)` at `θ² = z`: [`jr_coeffs`]'s `(a, b)` to the bit, and where `far` (`b` on
 /// its closed arm) the `sin θ/θ` that arm's `b = (1 − sin θ/θ)/θ²` was formed from, for `J_r`'s
-/// diagonal (`0089`, draft); elsewhere it is unread. No switch of its own: `far` is `b`'s.
+/// diagonal (`0089`); elsewhere it is unread. No switch of its own: `far` is `b`'s.
 pub(crate) fn jr_coeffs_sinc<S: Real>(z: S) -> (S, S, S, S::Mask) {
     let arms = table::<S, _>([A_F64.arm(), B_F64.arm()], [A_F32.arm(), B_F32.arm()]);
     let ([a, b], sinc, small) = grouped_with(arms, exact_a_b_sinc, z, S::one());
@@ -435,7 +435,7 @@ pub(crate) fn log_ratio<S: Real>(n2: S, w: S) -> S {
     )
 }
 
-/// `sign · r u` for [`log_ratio`]'s `r`, the vector scaled inside each arm (`0090`, draft).
+/// `sign · r u` for [`log_ratio`]'s `r`, the vector scaled inside each arm (`0090`).
 ///
 /// On a series arm it is `t + (t/w)·(d + s·tail(s))`, with `t = 2 sign u` exact and `d = 1 − w`:
 /// `r/2 = (1 + s·tail(s))/w`, so the second term is `t (r/2 − 1)`. Each component rounds once at
@@ -529,7 +529,7 @@ pub(super) fn exact_b<S: Real>(z: S) -> S {
 // `a`, `b` and `d` divide by `z`, the `θ²` they were given and the one `W²` is formed from, not by
 // the rounded root squared again, each in GTSAM's arithmetic: `a = 2 sin²(θ/2)/θ²`,
 // `b = (1 - sin θ/θ)/θ²`, `d = (1 - 2a)/(2θ²)`. `c` and `e` keep `θ̂·θ̂`, which measured better for
-// them (`0089`, draft).
+// them (`0089`).
 
 /// `(1 - cos θ)/θ²` as `2 sin²(θ/2)/θ²`, from `z = θ²` and `sh = sin(θ/2)`.
 fn a_from<S: Real>(z: S, sh: S) -> S {
@@ -541,14 +541,14 @@ fn b_from<S: Real>(z: S, th: S, s: S) -> S {
     (S::one() - s / th) / z
 }
 
-/// `1/θ² - cot(θ/2)/(2θ)`, regular at `π`, as Sophus's `(1 - (θ/2) cot(θ/2))/θ²` (`0089`, draft).
+/// `1/θ² - cot(θ/2)/(2θ)`, regular at `π`, as Sophus's `(1 - (θ/2) cot(θ/2))/θ²` (`0089`).
 pub(super) fn exact_c<S: Real>(z: S) -> S {
     let th = z.sqrt();
     let (s, co) = half_angle(th);
     (S::one() - S::lit(0.5) * th * co / s) / (th * th)
 }
 
-/// `(θ² - 4 sin²(θ/2))/(2θ⁴)` as `(1 - 2a)/(2θ²)`, from `z = θ²` and `a` (`0089`, draft), written
+/// `(θ² - 4 sin²(θ/2))/(2θ⁴)` as `(1 - 2a)/(2θ²)`, from `z = θ²` and `a` (`0089`), written
 /// `(1/2 - a)/z`: a factor of two is exact in both operands, so the same bits, two multiplies fewer.
 fn d_from<S: Real>(z: S, a: S) -> S {
     (S::lit(0.5) - a) / z

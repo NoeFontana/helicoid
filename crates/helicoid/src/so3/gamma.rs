@@ -89,7 +89,7 @@ pub fn gamma_apply_jacobians<const M: usize, S: Real>(
     let z = Dual::<S, 1>::variable(norm_sq(p), 0);
     // `M` is a const: one arm survives monomorphization.
     // `M = 1` takes `SO3::jl`'s diagonal, so the third output is `gamma1` to the bit
-    // (`0089`, draft); `M = 2` has no such rewrite.
+    // (`0089`); `M = 2` has no such rewrite.
     let (s0, s1, s2, far) = if M == 1 {
         let (a, b, sinc, far) = jr_coeffs_sinc(z);
         (S::one(), a, b, Some((sinc.v, far)))

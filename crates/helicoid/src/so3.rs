@@ -154,7 +154,7 @@ impl<S: Real> HatSq<S> {
 
     /// [`HatSq::poly`], whose diagonal is `s0 + s2 W²ᵢᵢ`, except where `far`: there it is
     /// `t0 + s2 φᵢ²`, `W² = φφᵗ − θ²I` with `s0 − s2θ²` taken whole as `t0`, a sum of two terms of one
-    /// sign where `s0 + s2 W²ᵢᵢ` cancels (`0089`, draft). The off-diagonal is `poly`'s to the bit.
+    /// sign where `s0 + s2 W²ᵢᵢ` cancels (`0089`). The off-diagonal is `poly`'s to the bit.
     #[inline]
     pub(crate) fn poly_far(&self, s0: S, s1: S, s2: S, t0: S, far: S::Mask) -> Mat3<S> {
         let [x, y, z] = self.phi.0;
@@ -162,7 +162,7 @@ impl<S: Real> HatSq<S> {
         let (wx, wy, wz) = (s1 * x, s1 * y, s1 * z);
         let [qxy, qxz, qyz] = self.off.map(|o| s2 * o);
         // The two sums are selected: blending their operands instead read 1.09-1.13x `main` near
-        // the identity against 1.06-1.07x (`0089`, draft).
+        // the identity against 1.06-1.07x (`0089`).
         let diag = |p: S, d: S| S::select(far, t0 + s2 * (p * p), s0 + s2 * d);
         Matrix::from_rows([
             Vector([diag(x, d0), -wz + qxy, wy + qxz]),
@@ -769,7 +769,7 @@ impl<S: Real> LieGroup<S> for SO3<S> {
         let flip = S::one().copysign(self.0.w);
         let (x, y, z) = (self.0.x, self.0.y, self.0.z);
         // `r u` of the flipped `q`, the flip applied inside `r`'s arms; `n²` needs none
-        // (`0090`, draft).
+        // (`0090`).
         let (px, py, pz) =
             log_ratio_scale((x * x + y * y) + z * z, flip * self.0.w, flip, (x, y, z));
         SO3Tangent {
@@ -862,7 +862,7 @@ impl<S: Real> LieGroup<S> for SO3<S> {
         let (a, b, sinc, far) = jr_coeffs_sinc(norm_sq(tau.phi));
         // Where `b` is on its closed arm, `1 + bW²ᵢᵢ` is `sin θ/θ + bφᵢ²` with the `sin θ/θ` that arm
         // formed `b` from, two non-negative terms where the first cancels to `nᵢ²` near `π`; below
-        // it the identity's `1` dominates and one rounding is the better reading (`0089`, draft).
+        // it the identity's `1` dominates and one rounding is the better reading (`0089`).
         w2.poly_far(S::one(), -a, b, sinc, far)
     }
     /// `J_r⁻¹ = I + W/2 + cW²` (`NUMERICS.md` §3.5).

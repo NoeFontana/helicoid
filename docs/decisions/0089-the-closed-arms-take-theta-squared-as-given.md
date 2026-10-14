@@ -1,6 +1,6 @@
 # 0089: The closed arms take θ² as given, and `J_r`'s diagonal does not cancel
 
-**Status:** draft
+**Status:** ready
 **Owner:** @NoeFontana
 **Implementation:** this record's PR
 
@@ -204,5 +204,5 @@ disassembled:
 ## Open questions
 
 None. The latency gate and the two rises are measured above. Sim(3)'s conditioning at large
-`|σ|` is the lever for `sigma:-700/theta:3` and is not this record's. Accepting the gate's 1.06–1.07×
-on `jr` near the identity is the owner's call.
+`|σ|` is the lever for `sigma:-700/theta:3` and is not this record's. Answered by the owner on
+2026-10-14: the gate's 1.06–1.07× on `jr` near the identity is accepted.
