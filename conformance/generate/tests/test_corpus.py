@@ -61,6 +61,14 @@ class DeepTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp, self.assertRaises(SystemExit):
             corpus.write_deep(Path(tmp), COMMITTED, jobs=1)
 
+    def test_the_committed_corpus_refuses_the_deep_switch(self):
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            mock.patch.object(corpus, "DEEP", True),
+            self.assertRaises(SystemExit),
+        ):
+            corpus.write(Path(tmp), jobs=1)
+
 
 class RecheckTest(unittest.TestCase):
     def test_disagreement_fails_generation(self):

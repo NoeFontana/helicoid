@@ -198,7 +198,13 @@ def write_deep(out_dir: Path, committed: Path, jobs: int | None = None) -> dict[
 
 
 def write(out_dir: Path, jobs: int | None = None) -> dict[str, Built]:
-    """Write every file and the manifest; a `*.jsonl` no function id owns any more is removed."""
+    """Write every file and the manifest; a `*.jsonl` no function id owns any more is removed.
+    Refused under HELICOID_CORPUS_DEEP=1, whose sample counts would rewrite the committed corpus at
+    the deep tier's size (docs/decisions/0088)."""
+    if DEEP:
+        raise SystemExit(
+            "gen all writes the committed corpus: unset HELICOID_CORPUS_DEEP, or run `gen deep`"
+        )
     out_dir.mkdir(parents=True, exist_ok=True)
     files = {f"{name}.jsonl": Built(*built) for name, built in build_all(jobs).items()}
     files["coeff_series.jsonl"] = Built(*series.build(), kind="series")
