@@ -32,9 +32,9 @@ from mpmath import mp, mpf
 
 from . import sim3coeff, so3
 from .fmt import Mat
-from .strata import Draw, drawn_strata
+from .strata import Draw, deep, drawn_strata
 
-N_SIM3 = 4  # 0071: six would be 17 MB, past the budget
+N_SIM3 = deep(4)  # 0071: six would be 17 MB, past the budget; 0088: 64 deep
 GRID_SIGMA = ("0", "1e-8", "-1e-8", "1e-4", "-1e-4", "1e-2", "-1e-2", "0.3", "-0.3", "1", "-1", "3", "-3")
 GRID_THETA = ("1e-8", "1e-4", "1e-2", "0.3", "1", "3", "pi-1e-6")
 RAYS = ("1e-12", "1e-8", "1e-4", "1e-2", "0.3", "0.8", "1.6")

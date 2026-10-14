@@ -6,7 +6,7 @@ use std::fmt;
 
 use helicoid_linalg::Precision;
 
-use crate::conformance::report::{precision_name, Row, HEADER};
+use crate::conformance::report::{precision_name, Row, HEADER, RECORDS_HEADER};
 
 use super::bars::is_scored;
 
@@ -39,7 +39,13 @@ pub(super) struct Subject {
     pub(super) name: String,
     pub(super) version: String,
     pub(super) rows: Vec<Row>,
+    /// Per-record errors by key, from the records file beside the result CSV (`0088`); empty when
+    /// none was read, and then the swap test has nothing to pair.
+    pub(super) records: Records,
 }
+
+/// Each key's `(record id, error)`, `+inf` for a non-finite output (`report::RecordErr`).
+pub(super) type Records = BTreeMap<Key, Vec<(u64, f64)>>;
 
 /// What a baseline holds per key: the records the maximum is over, and the maximum.
 pub(super) type Baseline = BTreeMap<Key, (usize, f64)>;
@@ -146,7 +152,45 @@ pub(super) fn parse_results(name: &str, text: &str) -> Result<Subject, String> {
         name: name.to_string(),
         version,
         rows,
+        records: Records::new(),
     })
+}
+
+/// The records file `conformance` writes beside a result CSV (`report::records_csv`): an error
+/// is finite and non-negative, or `inf` for a non-finite output; a record twice is an error.
+pub(super) fn parse_records(text: &str) -> Result<Records, String> {
+    let mut lines = text.lines();
+    if lines.next() != Some(RECORDS_HEADER) {
+        return Err(format!("the header is not `{RECORDS_HEADER}`"));
+    }
+    let mut out = Records::new();
+    let mut seen = BTreeSet::new();
+    for (i, line) in lines.enumerate() {
+        let at = |e: String| format!("line {}: {e}", i + 2);
+        let all = cells(line).map_err(at)?;
+        let n = all.len();
+        let Ok([fn_id, stratum, prec, id, err]) = <[String; 5]>::try_from(all) else {
+            return Err(at(format!("{n} cells, expected 5")));
+        };
+        let key = Key {
+            fn_id,
+            stratum,
+            precision: precision_name(precision(&prec).map_err(at)?),
+        };
+        let id: u64 = count("id", &id).map_err(at)?;
+        let err: f64 = match err.as_str() {
+            "inf" => f64::INFINITY,
+            e => error("err_u", e).map_err(at)?,
+        };
+        if err.is_nan() {
+            return Err(at("err_u is NaN".into()));
+        }
+        if !seen.insert((key.clone(), id)) {
+            return Err(at(format!("`{key}` record {id} twice")));
+        }
+        out.entry(key).or_default().push((id, err));
+    }
+    Ok(out)
 }
 
 /// The baseline `s` makes: per key the records and the maximum of each row. A row with no maximum
@@ -252,6 +296,7 @@ mod tests {
     fn a_baseline_is_the_scored_rows_of_a_subject() -> Result<(), String> {
         let rows = vec![row("s", "f", "a", 0.1), row("s", "f", "z", 5e-324)];
         let subject = Subject {
+            records: Records::new(),
             name: "s".into(),
             version: "s@1".into(),
             rows,

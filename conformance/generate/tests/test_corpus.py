@@ -33,6 +33,35 @@ def noisy_spec(noise: str, n: int = 1, bad=range(1)) -> FunctionSpec:
     return FunctionSpec("t", (stratum,), lambda st: [{"i": i} for i in range(n)], evaluate)
 
 
+class DeepTest(unittest.TestCase):
+    """docs/decisions/0088: the deep tier nests the committed corpus, stratum by stratum."""
+
+    @staticmethod
+    def lines(*records: tuple[str, int]) -> bytes:
+        out = [
+            fmt.dumps({"id": i, "in": {"x": [str(x)]}, "out": {"y": ["1"]}, "stratum": s}) + "\n"
+            for i, (s, x) in enumerate(records)
+        ]
+        return "".join(out).encode()
+
+    def test_a_committed_stratum_must_be_its_deep_namesakes_prefix(self):
+        committed = self.lines(("a", 1), ("a", 2), ("b", 7))
+        # Ids move in the deep file and are not compared; the records are.
+        deep = self.lines(("a", 1), ("a", 2), ("a", 3), ("b", 7), ("b", 8))
+        corpus.check_prefix("f", committed, deep)
+        for bad in (
+            self.lines(("a", 2), ("a", 1), ("a", 3), ("b", 7)),
+            self.lines(("a", 1), ("a", 2), ("b", 7), ("c", 1)),
+            self.lines(("b", 7), ("a", 1), ("a", 2)),
+        ):
+            with self.assertRaises(corpus.PrefixError):
+                corpus.check_prefix("f", committed, bad)
+
+    def test_the_deep_tier_needs_its_switch(self):
+        with tempfile.TemporaryDirectory() as tmp, self.assertRaises(SystemExit):
+            corpus.write_deep(Path(tmp), COMMITTED, jobs=1)
+
+
 class RecheckTest(unittest.TestCase):
     def test_disagreement_fails_generation(self):
         ok, bad = noisy_spec("1e-45"), noisy_spec("1e-30")

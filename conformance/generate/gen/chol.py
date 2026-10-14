@@ -10,9 +10,9 @@ uniform on S^(n-1), rounded once to the stratum's precision (the upper triangle,
 from mpmath import mp, mpf
 
 from .dense import exact, from_mat, ldlt_pivots, round_symmetric, to_mat, unit_vector
-from .strata import Draw, drawn_strata
+from .strata import Draw, deep, drawn_strata
 
-N_CHOL = 32
+N_CHOL = deep(32)
 COND_K = {False: (4, 8, 12), True: (2, 4, 6)}
 DIAG_SCALE = {False: 100, True: 15}  # S log-uniform in [10^-s, 10^s]
 INDEFINITE = 100  # the negative eigenvalue is -max D / INDEFINITE

@@ -65,11 +65,16 @@ use std::process::Command;
 use helicoid_linalg::Precision;
 
 use metric::Rule;
-use report::{Aggregate, Row};
+use report::{Aggregate, RecordErr, Row};
 use subject::Registered;
 
 const USAGE: &str =
-    "usage: cargo xtask conformance [--subject NAME | --oracle NAME] [--fn ID] [--precision f64|f32] | --self-test";
+    "usage: cargo xtask conformance [--subject NAME | --oracle NAME] [--fn ID] [--precision f64|f32] [--deep] | --self-test";
+
+/// The deep tier (`0088`): `just corpus-deep` draws it, `--deep` runs over it, and its results stay
+/// apart from the committed tier's, so no-regress never reads them.
+pub(crate) const CORPUS_DEEP: &str = "conformance/corpus-deep";
+pub(crate) const RESULTS_DEEP: &str = "conformance/results-deep";
 
 #[derive(Default)]
 struct Options {
@@ -79,6 +84,8 @@ struct Options {
     /// `f64` when absent.
     precision: Option<Precision>,
     self_test: bool,
+    /// Over the deep tier (`0088`) instead of the committed corpus.
+    deep: bool,
 }
 
 fn parse_precision(name: &str) -> Result<Precision, String> {
@@ -101,6 +108,10 @@ fn parse_args(args: &[String]) -> Result<Options, String> {
             options.self_test = true;
             continue;
         }
+        if flag == "--deep" && inline.is_none() {
+            options.deep = true;
+            continue;
+        }
         if !matches!(flag, "--subject" | "--oracle" | "--fn" | "--precision") {
             return Err(format!("unknown argument `{arg}`; {USAGE}"));
         }
@@ -116,7 +127,8 @@ fn parse_args(args: &[String]) -> Result<Options, String> {
     let other = options.subject.is_some()
         || options.oracle.is_some()
         || options.fn_id.is_some()
-        || options.precision.is_some();
+        || options.precision.is_some()
+        || options.deep;
     if options.self_test && other {
         return Err(format!("`--self-test` takes no other argument; {USAGE}"));
     }
@@ -168,14 +180,30 @@ fn evaluate_by(
     precision: Precision,
     rule_of: &dyn Fn(&str) -> Option<&'static Rule>,
 ) -> Result<Vec<Vec<Row>>, String> {
+    evaluate_into(dir, entries, subjects, precision, rule_of, None)
+}
+
+/// [`evaluate_by`], also gathering each subject's per-record errors into `records` when given:
+/// what the domination bar's swap test pairs (`0088`).
+fn evaluate_into(
+    dir: &Path,
+    entries: &[corpus::Entry],
+    subjects: &[Registered],
+    precision: Precision,
+    rule_of: &dyn Fn(&str) -> Option<&'static Rule>,
+    mut records: Option<&mut Vec<Vec<RecordErr>>>,
+) -> Result<Vec<Vec<Row>>, String> {
+    if let Some(r) = records.as_deref_mut() {
+        *r = subjects.iter().map(|_| Vec::new()).collect();
+    }
     let mut rows: Vec<Vec<Row>> = subjects.iter().map(|_| Vec::new()).collect();
     for entry in entries {
         let fn_id = entry.fn_id.as_str();
         let rule = rule_of(fn_id).ok_or_else(|| {
             format!("no metric rule for `{fn_id}`: add its row to `metric::TABLE`")
         })?;
-        let records = corpus::read(dir, entry)?;
-        for (s, out) in subjects.iter().zip(&mut rows) {
+        let corpus_records = corpus::read(dir, entry)?;
+        for (k, (s, out)) in subjects.iter().zip(&mut rows).enumerate() {
             if !s.subject.supports(fn_id) {
                 continue;
             }
@@ -183,7 +211,7 @@ fn evaluate_by(
             if let (true, Some(why)) = (f32, &s.no_f32) {
                 return Err(format!("{} has no f32 kernel: {why}", s.subject.name()));
             }
-            let scored = records.iter().filter(|r| r.is_f32_stratum() == f32);
+            let scored = corpus_records.iter().filter(|r| r.is_f32_stratum() == f32);
             let mut scored = scored.peekable();
             if f32 && scored.peek().is_none() {
                 return Err(format!(
@@ -204,6 +232,9 @@ fn evaluate_by(
                     format!("{} on {fn_id} record {}: {e}", s.subject.name(), record.id)
                 })?;
                 aggregate.add(record.id, &record.stratum, score);
+            }
+            if let Some(r) = records.as_deref_mut() {
+                r[k].extend(aggregate.records(fn_id, precision));
             }
             let version = s.version_at(precision);
             out.extend(aggregate.rows(fn_id, precision, s.subject.name(), version));
@@ -272,6 +303,11 @@ pub(crate) fn results_path(
     })
 }
 
+/// The records file beside the result CSV `csv`: `<name>.records.csv` for `<name>.csv` (`0088`).
+pub(crate) fn records_path(csv: &Path) -> PathBuf {
+    csv.with_extension("records.csv")
+}
+
 /// Selects by `options`, evaluates, writes one CSV per subject under `results` and prints its
 /// table. The files are written before the verdict, so a failing run leaves its rows to read.
 #[allow(clippy::print_stdout)]
@@ -313,7 +349,15 @@ fn run_with(
         }
         entries = with;
     }
-    let per_subject = evaluate(corpus_dir, &entries, &subjects, precision)?;
+    let mut records = Vec::new();
+    let per_subject = evaluate_into(
+        corpus_dir,
+        &entries,
+        &subjects,
+        precision,
+        &metric::rule,
+        Some(&mut records),
+    )?;
     if per_subject.iter().all(Vec::is_empty) {
         return Err(if subjects.is_empty() {
             format!(
@@ -326,12 +370,17 @@ fn run_with(
         });
     }
     let mut failing = 0;
-    for (s, rows) in subjects.iter().zip(&per_subject) {
+    for (k, (s, rows)) in subjects.iter().zip(&per_subject).enumerate() {
         let fn_id = options.fn_id.as_deref();
         let path = results_path(results, s.subject.name(), fn_id, precision);
         std::fs::create_dir_all(results).map_err(|e| format!("{}: {e}", results.display()))?;
         std::fs::write(&path, report::csv(rows, rev))
             .map_err(|e| format!("{}: {e}", path.display()))?;
+        // Beside every result CSV, always, so no run -- an oracle's included -- leaves the swap
+        // test without its records (`0088` item 1).
+        let at = records_path(&path);
+        std::fs::write(&at, report::records_csv(&records[k]))
+            .map_err(|e| format!("{}: {e}", at.display()))?;
         println!(
             "{} {}\n{}",
             s.subject.name(),
@@ -358,13 +407,23 @@ fn run_with(
 
 pub(crate) fn run(args: &[String]) -> Result<(), String> {
     let root = root()?;
-    let results = root.join("conformance/results");
     let options = parse_args(args)?;
     if options.self_test {
         return selftest::run(&corpus_dir()?);
     }
     let rev = git_rev(&root);
-    let corpus = corpus_dir()?;
+    let (corpus, results) = match options.deep {
+        false => (corpus_dir()?, root.join("conformance/results")),
+        true => {
+            let deep = root.join(CORPUS_DEEP);
+            if !deep.join("MANIFEST.json").is_file() {
+                return Err(format!(
+                    "`--deep` reads `{CORPUS_DEEP}`, which `just corpus-deep` draws; there is none"
+                ));
+            }
+            (deep, root.join(RESULTS_DEEP))
+        }
+    };
     let precision = options.precision.unwrap_or(Precision::F64);
     let subjects = match &options.oracle {
         Some(name) => {
@@ -410,8 +469,12 @@ mod tests {
         assert_eq!(p(&[]), Ok(None));
         let o = parse_args(&args(&["--oracle=tf_tree_math", "--fn", "so2_exp"]))?;
         assert_eq!(o.oracle.as_deref(), Some("tf_tree_math"));
+        assert!(parse_args(&args(&["--oracle", "gtsam", "--deep"]))?.deep);
+        assert!(!parse_args(&args(&["--fn", "so2_exp"]))?.deep);
         for bad in [
             &["--subject"][..],
+            &["--deep=yes"],
+            &["--self-test", "--deep"],
             &["--nope"],
             &["--self-test=x"],
             &["--self-test", "--fn", "so2_exp"],

@@ -536,7 +536,7 @@
       "sha256": "3780fb0bfac76491d5c03b5ebbeb52fc333c95edaf3784bf6e805add3f219f2b"
     }
   },
-  "generator": "sha256:2a1116302a1b5e1833c77cbe5211eb85a33b735949a538ca175dc8de199b1646",
+  "generator": "sha256:d640ad6c523591693df3576581dc989e8d507962d8ce423dfa16ecd9435e7f13",
   "mpmath": "1.4.1",
   "python": "3.12",
   "recheck": {

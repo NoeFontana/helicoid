@@ -16,10 +16,10 @@ from . import so3
 from .dense import exact, from_mat, round_symmetric, to_mat
 from .fmt import Mat
 from .rng import unit_quaternion_s3
-from .strata import Draw, drawn_strata
+from .strata import Draw, deep, drawn_strata
 
 N_RANDOM = 64
-N_GAP = 32
+N_GAP = deep(32)
 GAP_K = {False: range(13), True: range(7)}
 SCALE = {False: 70, True: 8}  # eig:scale-up/down: 10^(+-SCALE), the rustdoc's narrower range
 
