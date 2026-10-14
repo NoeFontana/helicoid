@@ -38,9 +38,9 @@ from . import sen3, so3
 from .chol import INDEFINITE, _householder, _log10_uniform
 from .dense import exact, from_mat, gaussian, ldlt_pivots, round_symmetric, unit_vector
 from .rng import unit_quaternion_s3
-from .strata import Draw, drawn_strata
+from .strata import Draw, deep, drawn_strata
 
-N_GAUSS = 32
+N_GAUSS = deep(32)
 COND_K = {False: (4, 8), True: (2, 4)}
 SIGMA = (-3, 0)  # log10 range of sigma_phi and sigma_rho
 LEVER = 1000

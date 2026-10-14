@@ -2,8 +2,10 @@
 //! correct seeded kernel". Both run over `coeff_c` with the harness's rule, a record scored by the
 //! larger of its fields, as `just conformance` writes them, and the domination bar of
 //! `crate::envelope` reads the correct kernel as the oracle: the planted subject must lose on some
-//! stratum, and the correct one on none against itself. The other half of the defect, the sweep's
-//! ranking, is `selftest`'s.
+//! stratum, and the correct one on none against itself. Both again under the resolved bar, with
+//! the records the swap test pairs (`0088`): the planted subject must lose a stratum the test
+//! resolves, and the correct kernel none. The other half of the defect, the sweep's ranking, is
+//! `selftest`'s.
 
 use std::fmt::Write;
 use std::path::Path;
@@ -12,8 +14,8 @@ use helicoid_linalg::Precision;
 
 use super::report::Row;
 use super::selftest::Report;
-use super::{corpus, evaluate};
-use crate::envelope::beaten_strata;
+use super::{corpus, evaluate_into, metric};
+use crate::envelope::{beaten_strata, resolved_beaten_strata};
 use crate::seeded::{Defect, Seeded};
 
 /// The subject this half plants.
@@ -31,13 +33,27 @@ pub(super) fn check(dir: &Path, planted: Seeded) -> Result<Report, String> {
         .iter()
         .map(|s| s.subject.name().to_string())
         .collect();
-    let per_subject = evaluate(dir, &entries, &subjects, Precision::F64)?;
+    let mut records = Vec::new();
+    let per_subject = evaluate_into(
+        dir,
+        &entries,
+        &subjects,
+        Precision::F64,
+        &metric::rule,
+        Some(&mut records),
+    )?;
     let [correct, defect] = <[Vec<Row>; 2]>::try_from(per_subject)
+        .map_err(|_| "the envelope half runs two subjects".to_string())?;
+    let [correct_records, defect_records] = <[_; 2]>::try_from(records)
         .map_err(|_| "the envelope half runs two subjects".to_string())?;
     let (own, beaten) = (
         beaten_strata(&correct, &correct),
         beaten_strata(&defect, &correct),
     );
+    let resolved_own =
+        resolved_beaten_strata((&correct, &correct_records), (&correct, &correct_records))?;
+    let resolved =
+        resolved_beaten_strata((&defect, &defect_records), (&correct, &correct_records))?;
     let mut text = format!(
         "envelope: domination over {} on coeff_c, {} strata\n",
         names[0],
@@ -54,6 +70,27 @@ pub(super) fn check(dir: &Path, planted: Seeded) -> Result<Report, String> {
     );
     if let Some(first) = beaten.first() {
         let _ = writeln!(text, "  first: {first}");
+    }
+    let _ = writeln!(
+        text,
+        "  resolved (0088): {} loses on {} strata, {} on {}",
+        names[1],
+        resolved.len(),
+        names[0],
+        resolved_own.len()
+    );
+    if !beaten.is_empty() && resolved.is_empty() {
+        failures.push(format!(
+            "{}: the resolved bar (`0088`) resolves no stratum of coeff_c it loses",
+            names[1]
+        ));
+    }
+    if !resolved_own.is_empty() {
+        failures.push(format!(
+            "{}: the resolved bar fails the correct kernel against itself on {} strata",
+            names[0],
+            resolved_own.len()
+        ));
     }
     if beaten.is_empty() {
         failures.push(format!(
@@ -83,6 +120,13 @@ mod tests {
         assert!(report
             .text
             .contains("seeded:c-two-terms-1e-8 loses on 10 strata"));
+        assert!(
+            report
+                .text
+                .contains("resolved (0088): seeded:c-two-terms-1e-8 loses on "),
+            "{}",
+            report.text
+        );
         assert!(
             report.text.contains("seeded:correct on 0"),
             "{}",

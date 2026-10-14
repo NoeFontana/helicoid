@@ -164,6 +164,8 @@ mod tests {
 
     fn subject(name: &str, rows: Vec<Row>) -> Subject {
         Subject {
+            records: Default::default(),
+            revs: Default::default(),
             name: name.into(),
             version: format!("{name}@1"),
             rows,

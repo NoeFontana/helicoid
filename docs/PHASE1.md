@@ -419,7 +419,14 @@ sample count by an edit to this list, never silently.
 **NORMATIVE.**
 
 - **Domination.** For every `(fn, stratum, precision)` with at least one oracle row:
-  `helicoid.max_u ≤ min(oracle.max_u)`. Ties pass.
+  `helicoid.max_u ≤ min(oracle.max_u)`, ties passing, or the excess is not resolved: the paired
+  swap test on `T = max c − max o` over the records both scored does not reject exchangeability at
+  `p ≤ 0.001` (enumerated to 16 records, `2^16` seeded `splitmix64` draws above). An unresolved
+  excess is listed with its `p`, never dropped. A stratum under 10 records cannot resolve one and
+  is judged on the deep tier (`just corpus-deep`, `just conformance-deep`, `just envelope
+  --deep`). `conformance` writes each result CSV's per-record errors beside it,
+  `<name>.records.csv`; nothing else reads them
+  ([`0088`](./decisions/0088-the-domination-bar-must-tell-worse-from-equal.md)).
 - **No-regress.** `helicoid.max_u ≤ baseline.max_u`, compared **exactly** (D16 makes outputs
   deterministic). A PR that improves a max updates `conformance/baseline/` in the same PR with
   `just envelope --bless`; the diff is reviewed.

@@ -1,5 +1,7 @@
 """Corpus assembly: one JSONL file per function id, records in canonical stratum order."""
 
+import json
+
 import os
 from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
@@ -11,7 +13,7 @@ from .fmt import Mat
 from .manifest import Built
 from .precision import RECHECK_DIGITS, RECHECK_DPS, is_binary32, setup
 from .registry import FUNCTIONS, FunctionSpec
-from .strata import Stratum
+from .strata import DEEP, Stratum
 
 
 class RecheckError(Exception):
@@ -146,8 +148,63 @@ def build_all(jobs: int | None = None) -> dict[str, tuple[bytes, int, int]]:
     return {name: _assemble(p) for name, p in parts.items()}
 
 
+class PrefixError(Exception):
+    pass
+
+
+def _by_stratum(data: bytes) -> dict[str, list[str]]:
+    """A file's records per stratum, in order, each without its `id`: what nesting compares."""
+    out: dict[str, list[str]] = {}
+    for line in data.decode().splitlines():
+        record = json.loads(line)
+        record.pop("id")
+        out.setdefault(record["stratum"], []).append(fmt.dumps(record))
+    return out
+
+
+def check_prefix(name: str, committed: bytes, deep: bytes) -> None:
+    """Every committed stratum of `name` is the first records of its deep namesake, byte for byte
+    but the id, and the deep file has no stratum the committed one lacks (docs/decisions/0088)."""
+    wide, narrow = _by_stratum(deep), _by_stratum(committed)
+    if list(wide) != list(narrow):
+        raise PrefixError(f"{name}: strata {list(narrow)} committed, {list(wide)} deep")
+    for stratum, records in narrow.items():
+        if wide[stratum][: len(records)] != records:
+            raise PrefixError(f"{name} {stratum}: the committed records are not the deep prefix")
+
+
+def write_deep(out_dir: Path, committed: Path, jobs: int | None = None) -> dict[str, Built]:
+    """The deep tier (docs/decisions/0088): every id whose records grow under
+    HELICOID_CORPUS_DEEP=1, each checked against the committed corpus with [`check_prefix`], and
+    the manifest of those files alone. The series and switch references do not grow."""
+    if not DEEP:
+        raise SystemExit("gen deep draws the deep tier: run it with HELICOID_CORPUS_DEEP=1")
+    listed = json.loads((committed / "MANIFEST.json").read_text())["files"]
+    files: dict[str, Built] = {}
+    for name, built in build_all(jobs).items():
+        file = f"{name}.jsonl"
+        if built[1] == listed[file]["records"]:
+            continue
+        check_prefix(name, (committed / file).read_bytes(), built[0])
+        files[file] = Built(*built)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    for stale in out_dir.glob("*.jsonl"):
+        if stale.name not in files:
+            stale.unlink()
+    for name, built in files.items():
+        (out_dir / name).write_bytes(built.data)
+    (out_dir / "MANIFEST.json").write_bytes(manifest.render(files))
+    return files
+
+
 def write(out_dir: Path, jobs: int | None = None) -> dict[str, Built]:
-    """Write every file and the manifest; a `*.jsonl` no function id owns any more is removed."""
+    """Write every file and the manifest; a `*.jsonl` no function id owns any more is removed.
+    Refused under HELICOID_CORPUS_DEEP=1, whose sample counts would rewrite the committed corpus at
+    the deep tier's size (docs/decisions/0088)."""
+    if DEEP:
+        raise SystemExit(
+            "gen all writes the committed corpus: unset HELICOID_CORPUS_DEEP, or run `gen deep`"
+        )
     out_dir.mkdir(parents=True, exist_ok=True)
     files = {f"{name}.jsonl": Built(*built) for name, built in build_all(jobs).items()}
     files["coeff_series.jsonl"] = Built(*series.build(), kind="series")

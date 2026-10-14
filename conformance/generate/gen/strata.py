@@ -4,6 +4,7 @@ A stratum draws at the working precision (`precision.DPS`) whatever `mp.dps` the
 bounds are evaluated when it is drawn, never at import.
 """
 
+import os
 from collections.abc import Callable
 from dataclasses import dataclass, replace
 
@@ -13,6 +14,18 @@ from .precision import DPS, to_f32, to_f64
 from .rng import SEED, SplitMix64, log_uniform, stream, unit_quaternion_s3, unit_vector_s2
 
 N_RANDOM = 64  # samples per random stratum
+
+# The deep tier (docs/decisions/0088): with HELICOID_CORPUS_DEEP=1 every sample count below 64 that
+# a stratum's draw extends without moving its first samples is 64 (`just corpus-deep`). The
+# committed corpus is drawn without it, and `gen deep` checks that it is each deep stratum's prefix.
+DEEP = os.environ.get("HELICOID_CORPUS_DEEP") == "1"
+DEEP_N = 64
+
+
+def deep(n: int) -> int:
+    """`n`, or 64 in the deep tier when `n` is smaller."""
+    return max(n, DEEP_N) if DEEP else n
+
 N_AXES = 64  # axes per axis-carrying stratum, for vector-valued ids
 DENSE_PER_DECADE = 200
 DENSE_DECADES = 4  # theta in [1e-4, 1]
@@ -177,7 +190,7 @@ QUAT_STRATA = (*SCALAR_THETA_STRATA, *Q_STRATA)
 # crossed with five fixed thetas, each named `rho:<scale>/theta=<value>`. The two ids that take a
 # quaternion, `sen3_log` and `sen3_ad`, also see `Q_STRATA`. A stratum is SEN3_SAMPLES records: 64
 # would be 190 MB of dense matrices against a 50 MB corpus (docs/PHASE1.md section 4.4).
-SEN3_SAMPLES = 6
+SEN3_SAMPLES = deep(6)
 RHO_EXPONENTS = (-6, -3, 0, 3, 4)
 CELL_THETAS = (
     ("1e-8", lambda: mpf(10) ** -8),
@@ -200,7 +213,7 @@ SEN3_QUAT_STRATA = (*SEN3_STRATA, *Q_STRATA)
 # SE(2) ids (`se2_*`) see SE_N(3)'s strata, `theta:dense` excluded for the same reason, with the
 # angle's sign alternating along the samples: even records +theta, odd -theta. A stratum is
 # SE2_SAMPLES records. The `so2_*` ids see `SCALAR_THETA_STRATA`, each theta in both signs.
-SE2_SAMPLES = 8
+SE2_SAMPLES = deep(8)
 SE2_STRATA = SEN3_STRATA
 
 

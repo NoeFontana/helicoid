@@ -164,6 +164,41 @@ oracle-manif:
 # build takes minutes.
 oracles: oracle-tf-tree-math oracle-sophus-rs oracle-nalgebra oracle-sophus oracle-gtsam oracle-manif
 
+# The deep tier (`docs/decisions/0088`): every stratum whose sample count is below 64 and whose draw
+# extends without moving its first samples, raised to 64, into the git-ignored
+# conformance/corpus-deep/. Each committed stratum is checked to be its deep namesake's prefix; the
+# manifest is committed as conformance/MANIFEST-deep.json. Local only, like the oracles and the
+# envelope that read it.
+corpus-deep:
+    cd conformance/generate && HELICOID_CORPUS_DEEP=1 uv run --frozen python -m gen deep --committed ../corpus --out ../corpus-deep
+    cp conformance/corpus-deep/MANIFEST.json conformance/MANIFEST-deep.json
+
+# Draw the deep tier again into a temporary directory: its manifest must be the committed one, and
+# a local conformance/corpus-deep/, where there is one, the same bytes.
+corpus-deep-check:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    tmp=$(mktemp -d)
+    trap 'rm -rf "$tmp"' EXIT
+    (cd conformance/generate && HELICOID_CORPUS_DEEP=1 uv run --frozen python -m gen deep --committed ../corpus --out "$tmp")
+    diff -q "$tmp/MANIFEST.json" conformance/MANIFEST-deep.json
+    if [ -d conformance/corpus-deep ]; then diff -rq "$tmp" conformance/corpus-deep; fi
+
+# The candidate and every oracle over the deep tier, into conformance/results-deep/ (`0088`), for
+# `just envelope --deep`, which judges there the strata the committed tier cannot resolve. The
+# runners as `just oracles` built them; needs docker.
+conformance-deep:
+    cargo xtask conformance --deep
+    cargo xtask conformance --deep --precision f32
+    cargo xtask conformance --oracle tf_tree_math --deep
+    cargo xtask conformance --oracle sophus_rs --deep
+    cargo xtask conformance --oracle nalgebra --deep
+    cargo xtask conformance --oracle nalgebra --deep --precision f32
+    cargo xtask conformance --oracle sophus --deep
+    cargo xtask conformance --oracle sophus --deep --precision f32
+    cargo xtask conformance --oracle gtsam --deep
+    cargo xtask conformance --oracle manif --deep
+
 # The one-variable twins (`0037`, draft): a candidate's program at a scalar whose transcendentals
 # are the host's `std` instead of the `libm` crate, into conformance/results/*-host-std.csv. Both
 # are planted subjects, so a plain `conformance` run skips them; `envelope` reads the rows of the
@@ -185,7 +220,10 @@ compare *args:
 
 # The bars of `docs/PHASE1.md` §8 over conformance/results: domination over the best oracle and exact
 # no-regress against conformance/baseline, per (fn, stratum, precision) on the max, then coverage of
-# the corpus. It first reruns the in-process subjects at both precisions, so the candidate's rows are
+# the corpus. Domination fails a maximum above the best oracle's only where the paired swap test on
+# the records resolves it at p <= 0.001, and lists the others with their p; a stratum under 10
+# records is unresolvable, and `--deep` judges it on `just conformance-deep`'s rows
+# (`docs/decisions/0088`). It first reruns the in-process subjects at both precisions, so the candidate's rows are
 # current (`docs/decisions/0077`: an oracle's `f32` rows pair with the candidate's `@f32` ones); the
 # oracles' rows are what `oracle-tf-tree-math`, `oracle-sophus-rs`, `oracle-nalgebra`, `oracle-sophus`, `oracle-gtsam`, `oracle-manif` last wrote. `--check` also fails on
 # a baseline or docs/evidence/ENVELOPE.md (its oracle columns aside) that `--bless` would write

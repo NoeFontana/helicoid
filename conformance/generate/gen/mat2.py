@@ -17,9 +17,9 @@ from mpmath import mp, mpf
 
 from .dense import exact, to_mat
 from .fmt import Mat
-from .strata import Draw, drawn_strata
+from .strata import Draw, deep, drawn_strata
 
-N_MAT2 = 6
+N_MAT2 = deep(6)
 # cond:1e{k}, cond:1 at k = 0. binary32 stops at 1e4: at kappa = 1e8 > 1/u the two products of `det`
 # round equal on a nonsingular input (4 of 6 records), and a zero `det` there is a non-finite
 # inverse that section 11 counts as a failure; chol's `COND_K` narrows its range at f32 the same way.

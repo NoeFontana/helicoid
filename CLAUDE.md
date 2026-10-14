@@ -52,7 +52,9 @@ lowest MSRV among consumers (D17).
 - **Instrument before algorithm** ([`0006`](./docs/decisions/0006-the-instrument-comes-first.md)):
   a routine without a corpus stratum is unverified and does not ship. The bars are **domination**
   over the oracle envelope and **no-regress** against the committed baseline, per function, per
-  stratum, per precision, on the **max** — never a mean.
+  stratum, per precision, on the **max** — never a mean. Domination fails a maximum above the best
+  oracle's that the paired swap test resolves at `p ≤ 0.001`
+  ([`0088`](./docs/decisions/0088-the-domination-bar-must-tell-worse-from-equal.md)).
 - **Reference plus fast, forever** (D6): every row of `NUMERICS.md` §14 keeps its reference twin
   and its `*_matches_reference` proptest. Do not delete a twin because the fast version "is
   obviously right".
@@ -104,6 +106,7 @@ Single test: `cargo nextest run -p helicoid -- so3_exp_log_roundtrip`. The gener
 | `just oracle-gtsam` | the same for GTSAM C++ (`docker/oracles/gtsam`), the library built in the image under the runner's flags (`0074`) |
 | `just oracle-manif` | the same for the manif container (`docker/oracles/manif`): SO(2), SE(2), SO(3), SE(3), SE₂(3) and the screw and world charts (`0075`) |
 | `just oracles` | every `oracle-*` recipe above, in order; local only (docker, a source-built GTSAM), no CI job runs it |
+| `just corpus-deep` / `corpus-deep-check` / `conformance-deep` | `0088`'s 64-record deep tier, git-ignored, its manifest committed; the candidate's and oracles' rows over it, for `just envelope --deep` |
 | `just envelope` | merge results, apply the domination and no-regress bars, then coverage; each domination failure says whether it is the program's, D16's or neither (`0037`, draft, via `conformance-twin`); `--check` also fails on a baseline or `docs/evidence/ENVELOPE.md` that `--bless` would change; `--bless` (for `helicoid`) writes both, and nothing while a bar or coverage fails |
 | `just compare` | `--a X --b Y [--fn ID] [--precision f64\|f32]`: a paired comparison of two in-process subjects — direction, sign test, geometric mean and extremes of the per-record ratio, ratio of maxima — per stratum, per id, then pooled (`0038`, `0078`). Printed only; **not a bar**. Choose between two programs with this, never by counting domination failures |
 | `just determinism` | the shipped subject's output digests over the corpus, this host against `wasm32-wasip1` (wasmtime); CI adds aarch64 (`PHASE6.md` §3) |

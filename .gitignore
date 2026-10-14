@@ -11,6 +11,10 @@
 
 # Conformance run output (`docs/PHASE1.md` §1); the corpus, sweeps and baseline are committed.
 /conformance/results/
+# The deep tier and its results (`0088`): drawn locally by `just corpus-deep`, read only by the
+# local oracles and envelope; `conformance/MANIFEST-deep.json` holds its hashes.
+/conformance/corpus-deep/
+/conformance/results-deep/
 
 # Runners are workspace-excluded, so cargo gives each its own `target/`.
 /runners/*/target/

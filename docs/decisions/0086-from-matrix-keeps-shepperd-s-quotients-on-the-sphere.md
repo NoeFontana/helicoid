@@ -20,7 +20,7 @@ the polar factor and the drift off the sphere, on a `matrix:exact` stratum and a
 Its first run put `0079` above the best oracle on 18 of 31 `f64` strata. `tf_tree_math`, whose
 `quat_from_rot3` is Shepperd's quotients with no normalization on the same `libm`, reads 0.49 `u`
 on the `θ` decades where `0079` reads 0.9 to 1.4.
-[`0088`](./0088-the-domination-bar-must-tell-worse-from-equal.md) (draft) resolves 11 of those 18
+[`0088`](./0088-the-domination-bar-must-tell-worse-from-equal.md) resolves 11 of those 18
 as real losses and attributes all 11 to the program, not to D16.
 
 ## Decision
@@ -77,7 +77,7 @@ precisions. "Above the best oracle" is a stratum's maximum against the smallest 
   factor (up to `7/4 ε` per component) is common to all; what differs there is rounding. Where
   the trace pivot and an axis pivot compete, the gap is not common, and a stratum maximum ranks
   conventions as well as rounding. `0079` has no committed baseline under `0085`'s metric, so no
-  no-regress bar applies. Whether any of them is a real loss is for `0088` (draft) to say, at its
+  no-regress bar applies. Whether any of them is a real loss is for `0088` to say, at its
   64-record tier.
 - **Rejected candidates:**
   - **The first draft's `c_j` order,** `((1 − R00) + R11) − R22` and `((1 − R00) − R11) + R22`:
@@ -126,7 +126,7 @@ precisions. "Above the best oracle" is a stratum's maximum against the smallest 
 
 ## Open questions
 
-1. **The `π` strata against `0079`.** They wait on the 64-record tier of `0088` (draft).
+1. **The `π` strata against `0079`.** They wait on the 64-record tier of `0088`.
 
 Answered by the owner, on merging this record's PR: the `f32` latency, 1.63–1.85× 0.0.3, is
 accepted for 9 strata above the oracles instead of 14 and exact rotations on the sphere.

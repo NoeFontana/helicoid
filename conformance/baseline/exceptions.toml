@@ -6,25 +6,10 @@
 # `cargo xtask lint` fails a row whose record is missing or is a draft; `just envelope` fails a row
 # whose stratum turns out to be dominated after all, and names it for deletion.
 #
-# Measured 2026-10-05, over 117 domination failures. `0046` item 6 excepts "the ten-digit ties" on
-# two stated conditions — both programs' maxima below 1/2 u, and a relative margin of about 5e-11 —
-# and on today's corpus **exactly one** row satisfies both. The record was written before `0039`'s
-# two PRs regenerated every switch, so the set it describes as three has moved; item 6's "Only
-# those strata" is taken literally here rather than stretched to the near misses:
-#
-#   sen3_log_n1/rho:1e-6/theta=pi-1e-6/f64  0.62868 vs 0.62868  relative margin 1.4e-13
-#       Thirteen digits, the tightest of all 117 — but both maxima are above 1/2 u, so the
-#       record's stated ground does not cover it. Left to `0038` decision 2's paired instrument.
-#   sen3_log_n1/rho:1e-3/theta=pi-1e-6/f64  0.79550 vs 0.79550  relative margin 6.6e-8
-#   sen3_log_n1/theta:1e-4/f64              0.39677 vs 0.39677  relative margin 8.0e-6
-#       Below 1/2 u but three to five orders looser than ten digits: not a tie.
-
-[[exception]]
-fn = "so3_exp"
-stratum = "theta:1e-5"
-precision = "f64"
-record = "0046"
-reason = "ten-digit tie: 0.4952463054990 against 0.4952463054734, both under 1/2 u, margin 5.2e-11 relative"
+# Under `0088` the domination bar fails a resolved loss or a gross one (above 8 times the best
+# oracle's maximum plus 1 u), so a stratum whose excess is neither needs no row. The `0046` tie
+# (`so3_exp/theta:1e-5`) was deleted for that reason. `0076`'s two rows stay: `so3_act/q:nonunit`
+# resolves, and `sen3_ad_n1/q:nonunit` (256 u against 2.1 u on 6 records) is gross.
 
 [[exception]]
 fn = "so3_act"
