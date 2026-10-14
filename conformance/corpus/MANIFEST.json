@@ -157,6 +157,12 @@
       "records": 640,
       "sha256": "7941f139fb6ee22171c07c8366c4b2ce0575bc0b7b6aacfc4ce63a5b79621c4b"
     },
+    "real_round_from_f64.jsonl": {
+      "kind": "corpus",
+      "rechecked": 7,
+      "records": 448,
+      "sha256": "91e1e17dc5d583b5af9fb7108a2e180778c38514d04db3f4811f270712c4473d"
+    },
     "real_sin_cos.jsonl": {
       "kind": "corpus",
       "rechecked": 10,
@@ -530,7 +536,7 @@
       "sha256": "3780fb0bfac76491d5c03b5ebbeb52fc333c95edaf3784bf6e805add3f219f2b"
     }
   },
-  "generator": "sha256:89c5dad49a422344486f711cb1c0dea513313a66077d75cd82f619381f927a51",
+  "generator": "sha256:2a1116302a1b5e1833c77cbe5211eb85a33b735949a538ca175dc8de199b1646",
   "mpmath": "1.4.1",
   "python": "3.12",
   "recheck": {

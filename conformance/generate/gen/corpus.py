@@ -34,9 +34,14 @@ def recheck_indices(n: int) -> set[int]:
     return {(2 * j + 1) * n // (2 * m) for j in range(m)}
 
 
-def recheck(spec: FunctionSpec, inputs: dict, out: dict) -> None:
+def evaluate(spec: FunctionSpec, inputs: dict, f32: bool) -> dict:
+    """The reference: of the inputs alone, or for a conversion (0087) at the precision too."""
+    return spec.evaluate(inputs, f32) if spec.converts else spec.evaluate(inputs)
+
+
+def recheck(spec: FunctionSpec, inputs: dict, out: dict, f32: bool = False) -> None:
     with mp.workdps(RECHECK_DPS):
-        hi = spec.evaluate(inputs)
+        hi = evaluate(spec, inputs, f32)
     if out.keys() != hi.keys():
         raise RecheckError(f"{spec.name} {inputs}: outputs {sorted(out)} vs {sorted(hi)}")
     tol = mpf(10) ** -RECHECK_DIGITS
@@ -49,11 +54,13 @@ def recheck(spec: FunctionSpec, inputs: dict, out: dict) -> None:
                 raise RecheckError(f"{spec.name} {key} {inputs}: dps disagreement, {a} vs {b}")
 
 
-def recheck_stratum(spec: FunctionSpec, inputs: list[dict], outs: list[dict]) -> int:
+def recheck_stratum(
+    spec: FunctionSpec, inputs: list[dict], outs: list[dict], f32: bool = False
+) -> int:
     """Recheck the picked records of one stratum; how many is what the manifest reports."""
     picks = sorted(recheck_indices(len(inputs)))
     for i in picks:
-        recheck(spec, inputs[i], outs[i])
+        recheck(spec, inputs[i], outs[i], f32)
     return len(picks)
 
 
@@ -85,10 +92,10 @@ def _build_stratum(spec: FunctionSpec, stratum: Stratum) -> tuple[list[dict], in
     """The records of one stratum (without their ids) and how many were rechecked."""
     setup()
     inputs = spec.inputs(stratum)
-    if stratum.f32:
+    if stratum.f32 and not spec.converts:
         require_binary32(spec, stratum, inputs)
-    outs = [spec.evaluate(inp) for inp in inputs]
-    rechecked = recheck_stratum(spec, inputs, outs)
+    outs = [evaluate(spec, inp, stratum.f32) for inp in inputs]
+    rechecked = recheck_stratum(spec, inputs, outs, stratum.f32)
     if spec.check is not None:
         for inp, out in zip(inputs, outs, strict=True):
             spec.check(inp, out)

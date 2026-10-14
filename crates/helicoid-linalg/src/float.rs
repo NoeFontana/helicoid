@@ -41,13 +41,17 @@ impl Mask for bool {
 }
 
 macro_rules! impl_real {
-    ($t:ty, $prec:expr, $sqrt:ident, $cbrt:ident, $sincos:ident, $sin:ident, $cos:ident, $acos:ident, $exp:ident, $expm1:ident, $atan2:ident, $fabs:ident, $copysign:ident, $lit:ident) => {
+    ($t:ty, $prec:expr, $sqrt:ident, $cbrt:ident, $sincos:ident, $sin:ident, $cos:ident, $acos:ident, $exp:ident, $expm1:ident, $atan2:ident, $fabs:ident, $copysign:ident, $lit:ident, $round:ident) => {
         impl Real for $t {
             type Mask = bool;
             const PRECISION: Precision = $prec;
             #[inline]
             fn lit(x: f64) -> Self {
                 $lit(x)
+            }
+            #[inline]
+            fn round_from_f64(x: f64) -> Self {
+                $round(x)
             }
             #[inline]
             fn zero() -> Self {
@@ -126,6 +130,16 @@ fn lit_f64(x: f64) -> f64 {
     x
 }
 
+fn round_f64(x: f64) -> f64 {
+    x
+}
+
+/// Rust's `as` from `f64` to `f32` is IEEE 754's conversion under roundTiesToEven, overflowing to
+/// `±inf` (the Reference, *Numeric cast*): one instruction on every target D16 names.
+fn round_f32(x: f64) -> f32 {
+    x as f32
+}
+
 fn lit_f32(x: f64) -> f32 {
     let y = x as f32;
     debug_assert!(
@@ -149,7 +163,8 @@ impl_real!(
     atan2,
     fabs,
     copysign,
-    lit_f64
+    lit_f64,
+    round_f64
 );
 impl_real!(
     f32,
@@ -165,5 +180,6 @@ impl_real!(
     atan2f,
     fabsf,
     copysignf,
-    lit_f32
+    lit_f32,
+    round_f32
 );

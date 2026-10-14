@@ -81,3 +81,4 @@
 - [0046: "Explained by record" needs a record to point at](decisions/0046-explained-by-record-needs-a-record-to-point-at.md)
 - [0047: The second arm is admitted by agreement, not by the objective](decisions/0047-the-second-arm-is-admitted-by-agreement-not-by-the-objective.md)
 - [0085: `from_matrix` is measured on exact rotations](decisions/0085-from-matrix-is-measured-on-exact-rotations.md)
+- [0087: `Real` rounds a runtime `f64`](decisions/0087-real-rounds-a-runtime-f64.md)

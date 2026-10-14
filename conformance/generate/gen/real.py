@@ -2,11 +2,16 @@
 the working precision. The derivative is the calculus one (1/(2 sqrt x), 1/(3 cbrt(x)^2),
 -1/sqrt(1 - x^2), (cos, -sin), (x, -y)/(x^2 + y^2), (1/d, -n/d^2), e^x for both `exp` and `expm1`):
 textbook, not a closed form of docs/NUMERICS.md. `check_real` holds it against `mp.diff`.
+`round_from_f64` is a constant (0087): its derivative is 0 and its value the precision's rounding.
 """
+
+import math
+from collections.abc import Callable
 
 from mpmath import mp, mpf
 
-from .rng import SplitMix64
+from .precision import to_f32
+from .rng import SplitMix64, log_uniform
 from .strata import Draw, drawn_strata, log_uniform_at
 
 N_RANDOM = 64
@@ -326,3 +331,86 @@ def exp(inputs: dict) -> dict:
 def expm1(inputs: dict) -> dict:
     x = mpf(inputs["x"])
     return {"value": mp.expm1(x), "d": mp.exp(x)}
+
+
+# --- real_round_from_f64 (0087) ----------------------------------------------------------------
+#
+# Inputs are binary64 at both precisions; an `@f32` stratum's are not binary32, by design. The
+# reference is the input correctly rounded to the stratum's precision, ties to even: the input
+# itself at binary64, `to_f32` of it at binary32.
+#
+# x:generic    |x| log-uniform in [1e-300, 1e300], both signs (binary32: [1e-37, 3e38])
+# x:subnormal  |x| log-uniform in the binary64 subnormals [1e-320, 1e-308], both signs
+# x:tie        binary32 only: the midpoint (2m + 1) 2^(e - 24) of two adjacent normal binary32,
+#              m uniform in [2^23, 2^24), e uniform in [-126, 127], below the overflow edge
+# x:near-tie   binary32 only: such a midpoint's binary64 neighbour, above and below alternately
+# x:overflow   binary32 only: MAX + k 2^75 for k uniform in [-2^29, 2^28), 2^75 being the binary64
+#              spacing there: from MAX's lower neighbour up to the edge (2 - 2^-24) 2^127, a tie
+#              that rounds to inf and so is not scored; the first record is the binary64 below it
+# x:underflow  binary32 only: |x| log-uniform in [2^-155, 2^-125] and, every other record, a tie
+#              k 2^-150 for an odd k in [1, 2^24); the first two are 2^-150 (to 0) and 3 2^-150
+
+ROUND_GENERIC = {False: ("1e-300", "1e300"), True: ("1e-37", "3e38")}
+ROUND_SUBNORMAL = ("1e-320", "1e-308")
+F32_MAX = (2**24 - 1) * 2**104
+UNDERFLOW = (-155, -125)
+
+
+def _signed(one: Callable[[SplitMix64, int], float]):
+    """`one(rng, i)` for record `i`, the sign alternating along the records."""
+
+    def make(draw: Draw, n: int) -> list[dict]:
+        rng = draw.stream("x")
+        return [{"x": _sign(i) * one(rng, i)} for i in range(n)]
+
+    return make
+
+
+def _log_uniform(lo, hi):
+    a, b = mpf(lo), mpf(hi)
+    return lambda rng, i: log_uniform(rng, a, b)
+
+
+def _tie(rng: SplitMix64, i: int) -> float:
+    """(2m + 1) 2^(e - 24): exact in binary64, which has 29 more bits than it needs."""
+    e = -126 + rng.next_u64() % 254
+    top = 2**24 - 1 if e == 127 else 2**24
+    m = 2**23 + rng.next_u64() % (top - 2**23)
+    return math.ldexp(2 * m + 1, e - 24)
+
+
+def _near_tie(rng: SplitMix64, i: int) -> float:
+    return math.nextafter(_tie(rng, i), math.inf if (i // 2) % 2 == 0 else 0.0)
+
+
+def _overflow(rng: SplitMix64, i: int) -> float:
+    k = 2**28 - 1 if i == 0 else -(2**29) + rng.next_u64() % (2**29 + 2**28)
+    return float(F32_MAX + k * 2**75)
+
+
+def _underflow(rng: SplitMix64, i: int) -> float:
+    if i < 2:
+        return math.ldexp(2 * i + 1, -150)
+    if i % 2:
+        return math.ldexp(2 * (rng.next_u64() % 2**23) + 1, -150)
+    return log_uniform(rng, mpf(2) ** UNDERFLOW[0], mpf(2) ** UNDERFLOW[1])
+
+
+ROUND_STRATA = drawn_strata(
+    [
+        ("x:generic", _signed(_log_uniform(*ROUND_GENERIC[False])), N_RANDOM),
+        ("x:subnormal", _signed(_log_uniform(*ROUND_SUBNORMAL)), N_RANDOM),
+    ],
+    [
+        ("x:generic", _signed(_log_uniform(*ROUND_GENERIC[True])), N_RANDOM, False),
+        ("x:tie", _signed(_tie), N_RANDOM, False),
+        ("x:near-tie", _signed(_near_tie), N_RANDOM, False),
+        ("x:overflow", _signed(_overflow), N_RANDOM, False),
+        ("x:underflow", _signed(_underflow), N_RANDOM, False),
+    ],
+)
+
+
+def round_from_f64(inputs: dict, f32: bool) -> dict:
+    x = mpf(inputs["x"])
+    return {"value": mpf(to_f32(x)) if f32 else x, "d": mpf(0)}

@@ -55,6 +55,15 @@ impl Record {
     }
 }
 
+/// The ids whose input is binary64 at every precision, an `@f32` stratum's included: a conversion
+/// from `f64` is measured on the values it rounds (`0087`).
+const CONVERSIONS: [&str; 1] = ["real_round_from_f64"];
+
+/// Whether `fn_id`'s `@f32` inputs stay binary64 ([`CONVERSIONS`]); every other id's are binary32.
+pub(crate) fn converts(fn_id: &str) -> bool {
+    CONVERSIONS.contains(&fn_id)
+}
+
 /// The suffix of the `f32`-exact strata's names (`docs/decisions/0016`).
 pub(crate) const F32_SUFFIX: &str = "@f32";
 

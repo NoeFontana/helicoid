@@ -11,8 +11,10 @@
   `atan2` form and d^2 (1 - x^2) = 1, d < 0 (`acos`), `atan` of y/x by quadrant,
   y d_y + x d_x = 0 and x d_y - y d_x = 1 (`atan2`), v d = n, d d_n = 1, d d_d = -v (`div`),
   v e^-x = 1 and d = v (`exp`), d - v = 1 and d e^-x = 1 (`expm1`).
+- `round_from_f64` (0087) against the platform's own binary32 conversion, which `to_f32` avoids.
 """
 
+import struct
 from collections.abc import Callable
 
 from mpmath import mp, mpf
@@ -132,6 +134,20 @@ def real_exp(inputs: dict, out: dict) -> None:
         _within("real_exp: v e^-x - 1", v * mp.exp(-x) - 1, 1)
         _within("real_exp: d - v", d - v, v)
     against_diff("real_exp: d", mp.exp, x, d)
+
+
+def real_round_from_f64(inputs: dict, out: dict) -> None:
+    """The value is the input, or the platform's own binary32 conversion of it (`struct`'s, a C
+    `(float)` under round-to-nearest), which `to_f32` does not use; the derivative is 0 (0087)."""
+    x, v = inputs["x"], out["value"]
+    try:
+        narrow = struct.unpack("<f", struct.pack("<f", x))[0]
+    except OverflowError:  # past binary32's range: only the binary64 identity can hold
+        narrow = x
+    if v not in (mpf(x), mpf(narrow)):
+        raise CrossCheckError(f"real_round_from_f64: {x!r} gave {v}, not it or {narrow!r}")
+    if out["d"] != 0:
+        raise CrossCheckError(f"real_round_from_f64: derivative {out['d']} at {x!r}")
 
 
 def real_expm1(inputs: dict, out: dict) -> None:
