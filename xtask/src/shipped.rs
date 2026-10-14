@@ -1572,7 +1572,7 @@ mod tests {
         Ok(wins)
     }
 
-    /// **Two strata, both at `θ = π − 0.1`, and no other.** `0039` lifted the sweep's grid to span
+    /// **One stratum, at `θ = π − 0.1`, and no other.** `0039` lifted the sweep's grid to span
     /// the domain and the term cap to the corpus's series length, and the nine strata where the
     /// `tf_tree` D12 prior used to beat `helicoid` — all of them `cos θ/2`, where the old switch
     /// sat at `θ < 7.5e-8` because every candidate under `theta:1e0`'s objective tied — are gone:
@@ -1580,15 +1580,14 @@ mod tests {
     /// strata the prior used to win.
     ///
     /// What is left is near `π`, where the prior's four-term series below `θ = 0.1` is not what
-    /// decides: both candidates are on their exact arms there and the margin is the assembly's.
-    /// A stratum's maximum is what the bars compare (D8), the sweep's objective one maximum over
-    /// all of them: open, 0014 (draft) question 30.
+    /// decides. A stratum's maximum is what the bars compare (D8), the sweep's objective one
+    /// maximum over all of them: open, 0014 (draft) question 30. Since `0089` (draft) the two that
+    /// were left, `b` at `f64` and `d` at `f32`, are gone, and one is new: `c` at `f32`, whose
+    /// switch the sweep lifted to `z = 9.65`, so `helicoid` is on its series at `θ = π − 0.1` and
+    /// the prior on its exact arm, the margin in the derivative lane.
     #[test]
-    fn the_prior_beats_helicoid_near_pi_on_two_strata_and_on_no_other() -> Result<(), String> {
-        let want = [
-            ("b", Precision::F64, "theta:pi-1e-1"),
-            ("d", Precision::F32, "theta:pi-1e-1@f32"),
-        ];
+    fn the_prior_beats_helicoid_near_pi_on_one_stratum_and_on_no_other() -> Result<(), String> {
+        let want = [("c", Precision::F32, "theta:pi-1e-1@f32")];
         let mut got = prior_wins()?;
         got.sort_by(|a, b| (a.0, a.2.clone()).cmp(&(b.0, b.2.clone())));
         let mut want = want.map(|(c, p, s)| (c, p, s.to_string())).to_vec();

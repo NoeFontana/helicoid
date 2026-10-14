@@ -63,9 +63,10 @@ const WINDOW: (f64, f64) = (1.8, 2.2);
 /// The strata `theta:1e-8` to `theta:1e-2` (§10).
 const DECADES: std::ops::RangeInclusive<i32> = 2..=8;
 /// At `f32`, `theta:1e-3@f32` to `theta:1e-1@f32`: the strata wholly above `√(6u)`, `6.0e-4`,
-/// below which `b` by its definition is 0 and its error a plateau of `1/u`. `DECADES` keeps the
-/// one stratum that holds `2.6e-8`, its plateau one point of seven (`p = 1.937`); here it would be
-/// one of four and fit `p = 1.64`, outside §10's window, which does not depend on `u`. The top
+/// below which `b`'s closed arm is rounding residue and its error a plateau at or past `1/u`.
+/// `DECADES` keeps the one stratum that holds `2.6e-8`, its plateau one point of seven
+/// (`p = 1.919`); here it would be one of four and fit `p = 1.65`, outside §10's window, which does
+/// not depend on `u`. The top
 /// stratum, `[0.1, 1)`, is above D12's switch, where the defect and the D12 kernel this reading was
 /// made against ran one exact arm; the `f32` sweep leaves the range as it is, and the two strata
 /// below it fit `p = 2.188` (0014 (draft) question 26).
@@ -585,14 +586,14 @@ mod tests {
     #[test]
     fn the_window_the_decades_and_the_measured_exponent_are_pinned() -> Result<(), String> {
         // §10: `theta:1e-8` to `theta:1e-2`, p in [1.8, 2.2]; seven points, the saturated first
-        // one included, `p` = 1.937 (`docs/maths/index.md`, the open item on the `b` window).
+        // one included, `p` = 1.919 (`docs/maths/index.md`, the open item on the `b` window).
         assert_eq!(WINDOW, (1.8, 2.2));
         assert_eq!(DECADES, 2..=8);
         let report = run_cases(cases(), WINDOW)?;
         let curve = lines(&report, "seeded:b-no-series 9.01e15");
         let points = curve.first().map(|l| l.split(' ').count());
         assert_eq!(points, Some(1 + 7), "{curve:?}");
-        let fit = "seeded:b-no-series -> b value curve fits theta^-p -> detected ok p = 1.937";
+        let fit = "seeded:b-no-series -> b value curve fits theta^-p -> detected ok p = 1.919";
         assert_eq!(lines(&report, fit).len(), 1, "{}", report.text);
         Ok(())
     }
@@ -656,9 +657,9 @@ mod tests {
         let want = [
             "coeff_k value 1.315e0 (theta:dense) d_branch 8.689e3 (theta:dense)",
             "coeff_a value 4.523e1 (theta:dense) d_branch 2.225e5 (theta:dense)",
-            "coeff_b value 3.660e2 (theta:1e-1) d_branch 1.159e6 (theta:dense)",
-            "coeff_c value 2.144e3 (theta:dense) d_branch 2.750e7 (theta:dense)",
-            "coeff_d value 2.826e3 (theta:dense) d_branch 1.166e7 (theta:dense)",
+            "coeff_b value 4.016e2 (theta:dense) d_branch 1.086e6 (theta:dense)",
+            "coeff_c value 1.105e3 (theta:dense) d_branch 1.183e7 (theta:dense)",
+            "coeff_d value 2.728e3 (theta:dense) d_branch 8.850e6 (theta:dense)",
             "coeff_e value 2.131e6 (theta:dense) d_branch 9.221e9 (theta:dense)",
         ];
         assert_eq!(lines(&report, "coeff_"), want);
@@ -844,13 +845,14 @@ mod tests {
 
     #[test]
     fn the_f32_half_detects_its_defects_and_the_correct_kernel_is_silent() -> Result<(), String> {
-        // Fitted `p`: binary64 1.937 (seven strata, the plateau one of them), binary32 2.134
-        // (three, above the plateau); the correct kernel's curve does not fit at either.
+        // Fitted `p`: binary64 1.919 (seven strata, the plateau one of them), binary32 2.086
+        // (three, above the plateau; 2.134 before `0089` (draft) moved `b`'s closed arm); the
+        // correct kernel's curve does not fit at either.
         let report = run_f32(cases_f32(), WINDOW)?;
         assert_eq!(report.failures, Vec::<String>::new());
         let (curve, zero) = ("b value curve fits theta^-p", "nonfinite in theta:exact0");
         let want = [
-            format!("seeded:b-no-series -> {curve} -> detected ok p = 2.134, r2 = 1.000"),
+            format!("seeded:b-no-series -> {curve} -> detected ok p = 2.086, r2 = 0.997"),
             format!("seeded:correct -> {curve} -> silent ok p = -0.021, r2 = 0.920"),
             format!("seeded:correct -> {zero} -> silent ok nonfinite = 0"),
             format!("seeded:k-sqrt-unsafe -> {zero} -> detected ok coeff_k d_branch: 1"),
@@ -875,8 +877,9 @@ mod tests {
 
     #[test]
     fn the_plateau_stratum_would_pull_the_f32_fit_below_the_window() -> Result<(), String> {
-        // `theta:1e-4@f32` holds `sqrt(6u) = 6e-4`: `b` is 0 there, the error `1/u` = 2^24, and
-        // with it the four strata fit `p = 1.64`; the three above it fit 2.134.
+        // `theta:1e-4@f32` holds `sqrt(6u) = 6e-4`: `1 - sin θ/θ` is rounding residue there, the
+        // error `2.09e7` past `1/u` (`0089`, draft), and with it the four strata fit `p = 1.65`;
+        // the three above it fit 2.086.
         let dir = corpus_dir()?;
         let b = Seeded::planted(Defect::BNoSeries).registered();
         let entries: Vec<_> = corpus::manifest(&dir)?
@@ -890,7 +893,7 @@ mod tests {
             let name = format!("theta:1e-{k}@f32");
             rows[0].iter().find(|r| r.stratum == name).map(|r| r.max_u)
         };
-        assert_eq!(max(4), Some(16_777_216.0));
+        assert_eq!(max(4), Some(20_885_186.600_000_02));
         let fit = |ks: &[i32]| {
             let points: Option<Vec<(f64, f64)>> = ks
                 .iter()
@@ -900,11 +903,11 @@ mod tests {
                 .and_then(|p| power_law(&p))
                 .map(|(p, _)| (p * 1e3).round() / 1e3)
         };
-        assert_eq!(fit(&[4, 3, 2, 1]), Some(1.644));
-        assert_eq!(fit(&[3, 2, 1]), Some(2.134));
-        // `theta:1e-1@f32` is above D12's switch: the two strata below it fit 0.012 from the
-        // window's edge (0014 (draft) question 26).
-        assert_eq!(fit(&[3, 2]), Some(2.188));
+        assert_eq!(fit(&[4, 3, 2, 1]), Some(1.648));
+        assert_eq!(fit(&[3, 2, 1]), Some(2.086));
+        // `theta:1e-1@f32` is above D12's switch: the two strata below it fit 2.291 (2.188 before
+        // `0089` (draft); 0014 (draft) question 26).
+        assert_eq!(fit(&[3, 2]), Some(2.291));
         Ok(())
     }
 }

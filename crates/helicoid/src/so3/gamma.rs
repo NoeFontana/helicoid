@@ -9,7 +9,7 @@
 use helicoid_linalg::{Dual, Mat3, Matrix, Real, Vec3, Vector};
 
 use super::{norm_sq, HatSq, SO3Tangent, SO3};
-use crate::coeffs::{gamma2_coeffs, jr_coeffs};
+use crate::coeffs::{gamma2_coeffs, jr_coeffs_sinc};
 use crate::traits::LieGroup;
 
 /// `Γ₁(φ) = Σ Wⁿ/(n+1)! = J_l(φ)` (GG.2(a)): [`SO3::jl`] itself, to the bit, so the velocity
@@ -46,8 +46,8 @@ pub fn gamma2<S: Real>(phi: &SO3Tangent<S>) -> Mat3<S> {
 ///
 /// The Jacobian is the derivative of the computed coefficients (GG.6(a)): finite at `φ = 0`,
 /// subnormal included, where it is `−v^/(M+1)!` (GG.5(b)); worse than the value by about `2K/θ`
-/// on a `K`-term series arm (GG.6(c)); and on the exact arm, which runs from `θ = 2.89` (`M = 1`)
-/// or `3.11` (`M = 2`) at `f64` and from `2.79` at `f32`, about `u/θ` (`M = 1`) or `u/θ²` (`M = 2`)
+/// on a `K`-term series arm (GG.6(c)); and on the exact arm, which runs from `θ = 2.41` (`M = 1`)
+/// or `2.79` (`M = 2`) at `f64` and from `3.00` at `f32`, about `u/θ` (`M = 1`) or `u/θ²` (`M = 2`)
 /// (GG.6(d)).
 ///
 /// `M` is const and checked at monomorphization; `M = 3` has coefficients but loses `2u/θ²` on its
@@ -88,12 +88,14 @@ pub fn gamma_apply_jacobians<const M: usize, S: Real>(
     let pdotv = p.dot(v);
     let z = Dual::<S, 1>::variable(norm_sq(p), 0);
     // `M` is a const: one arm survives monomorphization.
-    let (s0, s1, s2) = if M == 1 {
-        let (a, b) = jr_coeffs(z);
-        (S::one(), a, b)
+    // `M = 1` takes `SO3::jl`'s diagonal where `b` is on its closed arm, so the third output is
+    // `gamma1` to the bit (`0089`, draft); `M = 2` has no such rewrite and `far` is never set.
+    let (s0, s1, s2, t0, far) = if M == 1 {
+        let (a, b, sinc, far) = jr_coeffs_sinc(z);
+        (S::one(), a, b, sinc.v, far)
     } else {
         let (b, d) = gamma2_coeffs(z);
-        (S::lit(0.5), b, d)
+        (S::lit(0.5), b, d, S::lit(0.5), S::one().lt(S::zero()))
     };
     let (ds1, ds2, s1, s2) = (s1.d[0], s2.d[0], s1.v, s2.v);
     let value = (v.scale(s0) + pv.scale(s1)) + ppv.scale(s2);
@@ -115,5 +117,5 @@ pub fn gamma_apply_jacobians<const M: usize, S: Real>(
             }
         }))
     }));
-    (value, jac, w2.poly(s0, s1, s2))
+    (value, jac, w2.poly_far(s0, s1, s2, t0, far))
 }
