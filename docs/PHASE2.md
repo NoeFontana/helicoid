@@ -65,6 +65,8 @@ pub trait Real:
     /// Exactly representable constants only (0.5, 2, 3, …). Anything that must be correctly
     /// rounded per precision is generated (`coeffs::generated`).
     fn lit(x: f64) -> Self;
+    /// A runtime f64 rounded to nearest-even at this precision; a `Dual` constant (0087).
+    fn round_from_f64(x: f64) -> Self;
     fn zero() -> Self;
     fn one() -> Self;
     fn lt(self, rhs: Self) -> Self::Mask;
@@ -101,7 +103,10 @@ pub trait Blend<S: Real>: Sized {
   other depends on the identity, and `libm` is a caret dependency whose two functions are *not* the
   same expression — `sin` and `sincos` cut their small-argument fast path at different thresholds,
   and at binary32 their octant arms are exact negations of each other.
-  `sin_tests` enforces it, exhaustively over all `2^32` binary32 patterns. `Mask = bool`. **`impl Mask for bool` is the
+  `sin_tests` enforces it, exhaustively over all `2^32` binary32 patterns. `round_from_f64` is
+  the identity at `f64` and Rust's `as f32` at `f32`, IEEE's conversion under roundTiesToEven, so
+  it is no `libm` call and the same bits on every target ([`0087`](./decisions/0087-real-rounds-a-runtime-f64.md)).
+  `Mask = bool`. **`impl Mask for bool` is the
   only place in the workspace where a float comparison's result reaches an `if`.**
 - **`Blend`** is implemented for `S`, tuples up to arity 8, `[T; N]` where `T: Blend<S>`, `Vector`,
   `Matrix`, `Point`, and (in `helicoid`) every value type.

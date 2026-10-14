@@ -52,6 +52,9 @@ class FunctionSpec:
     inputs: Callable[[Stratum], list[dict]]  # exact binary64 inputs: float or list[float] values
     evaluate: Callable[[dict], dict]  # definition at the current mp.dps: mpf or list[mpf] values
     check: Callable[[dict, dict], None] | None = None  # (inputs, out), raises on a disagreement
+    # docs/decisions/0087: a conversion from binary64. Its inputs are binary64 at every precision,
+    # an `@f32` stratum's included, and `evaluate(inputs, f32)` is the value at the stratum's own.
+    converts: bool = False
 
 
 FUNCTIONS: dict[str, FunctionSpec] = {
@@ -258,5 +261,14 @@ FUNCTIONS: dict[str, FunctionSpec] = {
             "real_atan2", real.ATAN2_STRATA, drawn_inputs, real.atan2, check_real.real_atan2
         ),
         FunctionSpec("real_div", real.DIV_STRATA, drawn_inputs, real.div, check_real.real_div),
+        # 0087: `Real::round_from_f64`, the value at the stratum's precision.
+        FunctionSpec(
+            "real_round_from_f64",
+            real.ROUND_STRATA,
+            drawn_inputs,
+            real.round_from_f64,
+            check_real.real_round_from_f64,
+            converts=True,
+        ),
     )
 }

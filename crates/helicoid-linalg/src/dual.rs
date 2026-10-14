@@ -157,6 +157,11 @@ impl<S: Real, const N: usize> Real for Dual<S, N> {
     fn lit(x: f64) -> Self {
         Self::constant(S::lit(x))
     }
+    /// A constant: a value read at run time carries no derivative (`0087`).
+    #[inline]
+    fn round_from_f64(x: f64) -> Self {
+        Self::constant(S::round_from_f64(x))
+    }
     #[inline]
     fn zero() -> Self {
         Self::constant(S::zero())

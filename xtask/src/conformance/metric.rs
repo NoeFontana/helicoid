@@ -28,7 +28,8 @@
 //! - **Overflow.** An `F` that does not fit in binary64 (a gross error against a zero or tiny
 //!   reference) is [`Score::NonFinite`]: a finite output that wrong fails the run like a NaN.
 //! - **`f32`** (`docs/decisions/0016` item 2) is scored in units of `u = 2^-24` on the `@f32` strata,
-//!   whose inputs are exactly binary32 and whose references are the function at those inputs. The
+//!   whose inputs are exactly binary32 and whose references are the function at those inputs
+//!   (`real_round_from_f64`'s are binary64 and its reference their binary32, `0087`). The
 //!   smallest-normal floor is `2^-126`, `EA.4(b)`'s; an output that is not exactly a binary32 is an
 //!   error, not a score: a subject that computed in binary64 has not been measured at `f32`.
 
@@ -357,6 +358,7 @@ const TABLE: &[(&str, Rule)] = &[
     ("real_sin_cos", Forward(REAL_SIN_COS)),
     ("real_atan2", Forward(REAL_ATAN2)),
     ("real_div", Forward(REAL_DIV)),
+    ("real_round_from_f64", Forward(REAL_UNARY)),
 ];
 
 /// The rule of function id `fn_id`, if the table has one.
@@ -1335,6 +1337,7 @@ mod tests {
             "real_acos",
             "real_exp",
             "real_expm1",
+            "real_round_from_f64",
         ] {
             add(&[name], "value", Want::Tiny, false);
             add(&[name], "d", Want::Tiny, false);

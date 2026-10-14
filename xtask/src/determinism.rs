@@ -66,7 +66,8 @@ fn digests(dir: &Path) -> Result<String, String> {
             let mut hash = Sha256::new();
             let mut n = 0_usize;
             for record in records.iter().filter(|r| r.is_f32_stratum() == f32) {
-                if f32 {
+                // A conversion id's `@f32` inputs stay binary64: the conversion is what it measures.
+                if f32 && !corpus::converts(fn_id) {
                     record
                         .require_binary32()
                         .map_err(|e| format!("{fn_id} record {}: {e}", record.id))?;

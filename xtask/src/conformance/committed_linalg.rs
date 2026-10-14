@@ -11,8 +11,9 @@ use helicoid_linalg::Precision;
 use super::{corpus, corpus_dir, evaluate};
 use crate::shipped;
 
-/// The ids of `0056` decision 1.
-const IDS: [&str; 13] = [
+/// The ids of `0056` decision 1, and `0087`'s, whose rows are the reference's own 30-digit
+/// rounding: a binary32 off by a tie reads at least 0.5.
+const IDS: [&str; 14] = [
     "solve_cubic",
     "eig3",
     "chol_n3",
@@ -26,6 +27,7 @@ const IDS: [&str; 13] = [
     "real_acos",
     "real_atan2",
     "real_div",
+    "real_round_from_f64",
 ];
 
 /// `(fn, stratum, max_u)` of the binary64 strata.
@@ -111,6 +113,8 @@ const F64: &[(&str, &str, f64)] = &[
     ("real_cbrt", "x:subnormal", 2.6404449005484603),
     ("real_div", "nd:generic", 1.4167055841482492),
     ("real_div", "nd:wide", 1.205283488858324),
+    ("real_round_from_f64", "x:generic", 3.043570041907251e-14),
+    ("real_round_from_f64", "x:subnormal", 1.6808842303950776e-15),
     ("real_sin_cos", "x:tiny", 8.624328434579866e-8),
     ("real_sin_cos", "x:small", 0.8560314598447317),
     ("real_sin_cos", "x:moderate", 1.019543605711025),
@@ -233,6 +237,27 @@ const F32: &[(&str, &str, f64)] = &[
     ("real_cbrt", "x:subnormal@f32", 2.4466267805138995),
     ("real_div", "nd:generic@f32", 1.329488952532492),
     ("real_div", "nd:wide@f32", 1.4416723978949668),
+    (
+        "real_round_from_f64",
+        "x:generic@f32",
+        6.099185987342212e-23,
+    ),
+    ("real_round_from_f64", "x:tie@f32", 5.072362272360116e-23),
+    (
+        "real_round_from_f64",
+        "x:near-tie@f32",
+        5.0403962575656807e-23,
+    ),
+    (
+        "real_round_from_f64",
+        "x:overflow@f32",
+        2.381741608780625e-23,
+    ),
+    (
+        "real_round_from_f64",
+        "x:underflow@f32",
+        5.0617197809190593e-23,
+    ),
     ("real_sin_cos", "x:tiny@f32", 0.010809019401828107),
     ("real_sin_cos", "x:small@f32", 0.8967256490819028),
     ("real_sin_cos", "x:moderate@f32", 0.8976687850517485),

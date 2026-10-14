@@ -86,6 +86,26 @@ pub trait Real:
     /// `x` is exactly representable at this precision; the `f32` impl checks it in debug builds.
     /// Release builds round.
     fn lit(x: f64) -> Self;
+    /// A runtime `f64` correctly rounded to this precision, ties to even: the identity at `f64`,
+    /// IEEE 754's binary64-to-binary32 conversion at `f32` (Rust's `as`, not `libm`), and a
+    /// constant for a [`Dual`](crate::Dual), its derivative lanes zero (`0087`).
+    ///
+    /// # Domain
+    ///
+    /// Every `f64`; nothing is asserted. At `f32` a value at or past `(2 - 2^-24) 2^127` is `±inf`,
+    /// one at or below `2^-150` in magnitude is `±0` (the sign kept), the binary32 subnormals are
+    /// reached in between, and NaN stays NaN (D16 does not cover its payload).
+    ///
+    /// Provided, so an implementation outside this crate keeps compiling: [`lit`](Self::lit) of
+    /// the value at [`PRECISION`](Self::PRECISION), which is exactly representable there. `f64`,
+    /// `f32` and `Dual` override it with the cast alone, without `lit`'s debug check.
+    #[inline]
+    fn round_from_f64(x: f64) -> Self {
+        match Self::PRECISION {
+            Precision::F64 => Self::lit(x),
+            Precision::F32 => Self::lit(f64::from(x as f32)),
+        }
+    }
     /// Additive identity, `+0`.
     fn zero() -> Self;
     /// Multiplicative identity.

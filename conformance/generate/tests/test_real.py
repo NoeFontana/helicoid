@@ -70,6 +70,8 @@ class StrataTest(unittest.TestCase):
     def test_f32_inputs_are_binary32_and_every_output_is_a_normal_number(self):
         for name in REAL:
             spec = FUNCTIONS[name]
+            if spec.converts:
+                continue  # binary64 inputs and edge outputs by design (0087), held below
             for s in spec.strata:
                 top, low = (mpf(2) ** 128, 2.0**-126) if s.f32 else (mpf(2) ** 1024, 2.0**-1022)
                 if name == "real_exp" and s.name.startswith("x:subnormal"):
@@ -98,6 +100,56 @@ class StrataTest(unittest.TestCase):
                 rounded = to_f32(out["value"]) if f32 else to_f64(out["value"])
                 self.assertEqual(rounded, -1.0, r)
                 self.assertTrue(tiny <= out["d"], r)
+
+    def test_the_round_strata_hold_what_they_are_named_for(self):
+        """0087: at binary32 the inputs are binary64 that are not binary32, the reference is
+        `to_f32` of them and finite, and each stratum reaches its edge."""
+        strata = by_name(real.ROUND_STRATA)
+        self.assertEqual(
+            list(strata),
+            [
+                "x:generic",
+                "x:subnormal",
+                *(
+                    f"x:{n}@f32"
+                    for n in ("generic", "tie", "near-tie", "overflow", "underflow")
+                ),
+            ],
+        )
+        for r in strata["x:subnormal"].records():
+            self.assertTrue(0 < abs(r["x"]) < 2.0**-1022, r)
+        edge = mpf(2) ** 128 - mpf(2) ** 103
+        values = {}
+        for name, s in strata.items():
+            records = s.records()
+            self.assertEqual([r["x"] < 0 for r in records[:2]], [False, True], name)
+            values[name] = [real.round_from_f64(r, s.f32)["value"] for r in records]
+            if not s.f32:
+                self.assertEqual(values[name], [mpf(r["x"]) for r in records])
+                continue
+            for r, v in zip(records, values[name], strict=True):
+                self.assertEqual(v, mpf(to_f32(r["x"])))
+                self.assertLess(abs(mpf(r["x"])), edge, (name, r))
+            self.assertFalse(any(is_binary32(r["x"]) for r in records), name)
+        tie = [mpf(r["x"]) for r in strata["x:tie@f32"].records()]
+        for x, v in zip(tie, values["x:tie@f32"], strict=True):
+            # halfway: the result is one of the two neighbours, at half a spacing either way
+            self.assertEqual(abs(v - x), abs(mpf(to_f32(2 * x - v)) - x), x)
+        over = [abs(v) for v in values["x:overflow@f32"]]
+        self.assertEqual(max(over), (2**24 - 1) * mpf(2) ** 104)
+        self.assertEqual(min(over), (2**24 - 2) * mpf(2) ** 104)
+        under = [abs(v) for v in values["x:underflow@f32"]]
+        self.assertEqual(under[:2], [0, mpf(2) ** -148])
+        self.assertTrue(any(0 < v < 2.0**-126 for v in under))
+
+    def test_round_cross_check_refuses_another_rounding(self):
+        x = 1 + 2.0**-24 + 2.0**-40  # nearest binary32 is 1 + 2^-23
+        check_real.real_round_from_f64({"x": x}, real.round_from_f64({"x": x}, True))
+        check_real.real_round_from_f64({"x": x}, real.round_from_f64({"x": x}, False))
+        for bad in ({"value": mpf(1), "d": mpf(0)}, {"value": mpf(x), "d": mpf(1)}):
+            with self.assertRaises(check_real.CrossCheckError):
+                check_real.real_round_from_f64({"x": x}, bad)
+
 
 EXAMPLES = {
     "real_sqrt": {"x": 0.7},

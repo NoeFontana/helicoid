@@ -511,10 +511,11 @@ enum Linalg {
     SinCos,
     Atan2,
     Div,
+    RoundFromF64,
 }
 
 impl Linalg {
-    const ALL: [(&'static str, Linalg); 16] = [
+    const ALL: [(&'static str, Linalg); 17] = [
         ("solve_cubic", Linalg::SolveCubic),
         ("eig3", Linalg::Eig3),
         ("chol_n3", Linalg::Chol3),
@@ -531,6 +532,7 @@ impl Linalg {
         ("real_sin_cos", Linalg::SinCos),
         ("real_atan2", Linalg::Atan2),
         ("real_div", Linalg::Div),
+        ("real_round_from_f64", Linalg::RoundFromF64),
     ];
 
     fn of_fn(fn_id: &str) -> Option<Self> {
@@ -637,6 +639,18 @@ impl Linalg {
                     ("value".to_string(), vec![r.v.into()]),
                     (names[0].to_string(), vec![r.d[0].into()]),
                     (names[1].to_string(), vec![r.d[1].into()]),
+                ])
+            }
+            Linalg::RoundFromF64 => {
+                // The input as stored, binary64 at both precisions: the rounding is the subject
+                // (`corpus::converts`).
+                let Some(&[x]) = record.input("x") else {
+                    return Output::new();
+                };
+                let r = Dual::<S, 1>::round_from_f64(x);
+                Output::from([
+                    ("value".to_string(), vec![r.v.into()]),
+                    ("d".to_string(), vec![r.d[0].into()]),
                 ])
             }
         }

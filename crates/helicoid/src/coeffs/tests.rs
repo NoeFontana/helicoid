@@ -1270,3 +1270,18 @@ fn sinc_at_zero_is_one_and_minus_a_sixth() {
     assert_eq!(v.to_bits(), 1.0_f32.to_bits());
     assert_eq!(d.to_bits(), (-1.0_f32 / 6.0).to_bits());
 }
+
+/// `0087`: `Real::round_from_f64`'s provided body, which a lane outside `helicoid-linalg` gets,
+/// rounds at the lane's precision: `1 + 2^-24` is a binary32 tie, so `1` at `f32`, itself at `f64`.
+#[test]
+fn the_provided_round_from_f64_rounds_at_the_lane_s_precision() {
+    let x = 1.0 + f64::from(f32::EPSILON) / 2.0;
+    assert_eq!(
+        Lane::<true, bool>::round_from_f64(x).0.to_bits(),
+        1.0_f64.to_bits()
+    );
+    assert_eq!(
+        Lane::<false, bool>::round_from_f64(x).0.to_bits(),
+        x.to_bits()
+    );
+}

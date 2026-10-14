@@ -188,6 +188,7 @@ side of `docs/maths/coefficients.md` CO.12.
 | `mat2_inverse_adj` | $A$, $2\times2$ | `det` and `inv` $= \mathrm{adj}(A)/\det$ of the stored entries in rationals, exactly; `inv` zeros where $\det = 0$ ([`0061`](./decisions/0061-mat2-keeps-its-adjugate.md)) |
 | `gaussian_mahalanobis_se3`, `gaussian_mahalanobis_se23` | $(\mu, x, \text{side}, \Sigma)$ | `valid` as `chol`'s, exactly; $d^2 = \delta^\top\Sigma^{-1}\delta$ by `mp.lu_solve`, $\delta = x \ominus_{\text{side}} \mu$ by the geometric $\mathrm{Log}$ ([`0065`](./decisions/0065-a-gaussian-names-its-side-and-is-stored-symmetric.md)) |
 | `real_sqrt`, `real_cbrt`, `real_acos`, `real_sin_cos`, `real_atan2`, `real_div`, `real_exp`, `real_expm1` | $x$; $(y, x)$; $(n, d)$ | the value and its calculus derivative(s), what `Dual` carries; `mp.diff` at a relative step is the cross-check. `real_exp` and `real_expm1` ([`0068`](./decisions/0068-real-owes-exp-and-exp-m1.md)) also hold $ve^{-x} = 1$, $d = v$ and $d - v = 1$, over strata reaching the overflow onset, the subnormal outputs of `exp` and the saturation of `expm1` |
+| `real_round_from_f64` | $x$, binary64 in every stratum | $x$ rounded to nearest-even at the stratum's precision: $x$ itself, or `to_f32(x)` in an `@f32` stratum; `d` is 0, a `Dual` constant ([`0087`](./decisions/0087-real-rounds-a-runtime-f64.md)) |
 
 A `coeff_k`…`coeff_e`, `coeff_cos_half` or `coeff_r` record's outputs are `value` and `d_branch`:
 the derivative with respect to the branch variable of `NUMERICS.md` §4 (θ² for `cos_half`), by
@@ -253,6 +254,12 @@ Series are summed until the term's norm is below $10^{-110}$ relative. Phase 2's
   recomputed at those inputs. `theta:subnormal@f32` is its own decade $[10^{-40}, 10^{-39})$
   (rounding $[10^{-310}, 10^{-309})$ gives 64 zeros); `theta:pi-1e-8`…`theta:pi-1e-12` round to one
   binary32, kept five times.
+- `real_round_from_f64`'s ([`0087`](./decisions/0087-real-rounds-a-runtime-f64.md)): `x:generic` and `x:subnormal` in binary64;
+  `x:generic@f32`, `x:tie@f32` (binary32 midpoints), `x:near-tie@f32` (a midpoint's binary64
+  neighbour), `x:overflow@f32` (up to the edge $(2 - 2^{-24})2^{127}$, excluded) and
+  `x:underflow@f32` (around and below the binary32 subnormals). **The one id whose `@f32` inputs
+  are not binary32**: it converts a binary64, so its input is one at every precision, and its
+  reference is the input at the stratum's precision rather than the function at a rounded input.
 - The `cubic:*`, `eig:*`, `chol:*`, `renorm:*`, `x:*`, `yx:*` and `nd:*` strata of `0056`'s ids
   ([`0056`](./decisions/0056-the-routines-d7-does-not-reach.md) decision 2, which lists each):
   planted roots, spectra and conditioning, the drift band of `NUMERICS.md` §3.6, and `Dual`'s

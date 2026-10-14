@@ -194,7 +194,7 @@ fn evaluate_by(
             }
             let mut aggregate = Aggregate::default();
             for record in scored {
-                if f32 {
+                if f32 && !corpus::converts(fn_id) {
                     record
                         .require_binary32()
                         .map_err(|e| format!("{fn_id} record {}: {e}", record.id))?;

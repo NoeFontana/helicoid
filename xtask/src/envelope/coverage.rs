@@ -73,6 +73,8 @@ pub(super) fn required() -> Vec<String> {
         ]
         .map(String::from),
     );
+    // `0087`'s, with its corpus file in the same step.
+    ids.push("real_round_from_f64".to_string());
     // `0061`'s, with its corpus file in the same step.
     ids.push("mat2_inverse_adj".to_string());
     // `0064`'s, out of `OWED` with its corpus file in the same step.

@@ -133,7 +133,7 @@ fn compare(
             .iter()
             .filter(|r| r.is_f32_stratum() == f32)
         {
-            if f32 {
+            if f32 && !corpus::converts(fn_id) {
                 record
                     .require_binary32()
                     .map_err(|e| format!("{fn_id} record {}: {e}", record.id))?;

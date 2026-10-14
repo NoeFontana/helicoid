@@ -68,7 +68,7 @@ constructors normalize.
 | Item | Kind | Notes |
 |---|---|---|
 | `Mask` | trait | `and`, `or`, `not`, `all`, `any`, `decide`. `impl Mask for bool`. |
-| `Real` | trait | `PRECISION`, `lit`, `zero`, `one`, `lt`, `le`, `select`, `branch` (provided), `sqrt`, `cbrt`, `sin_cos`, `sin`, `cos`, `acos`, `exp`, `exp_m1` ([`0068`](./decisions/0068-real-owes-exp-and-exp-m1.md)), `atan2`, `abs`, `copysign`, `value_f64`. `impl` for `f64`, `f32`, `Dual<S, N>`. |
+| `Real` | trait | `PRECISION`, `lit`, `round_from_f64` ([`0087`](./decisions/0087-real-rounds-a-runtime-f64.md)), `zero`, `one`, `lt`, `le`, `select`, `branch` (provided), `sqrt`, `cbrt`, `sin_cos`, `sin`, `cos`, `acos`, `exp`, `exp_m1` ([`0068`](./decisions/0068-real-owes-exp-and-exp-m1.md)), `atan2`, `abs`, `copysign`, `value_f64`. `impl` for `f64`, `f32`, `Dual<S, N>`. |
 | `Blend<S>` | trait | Lane-wise select for tuples, arrays, `Vector`, `Matrix` and every `helicoid` value type. |
 | `Precision` | enum | `F32`, `F64`; selects generated constants. |
 | `Dual<S, const N: usize>` | struct | `{ v: S, d: [S; N] }`; `variable(v, i)`, `constant(v)`; nests. |

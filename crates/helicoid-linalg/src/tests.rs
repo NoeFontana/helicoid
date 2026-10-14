@@ -176,6 +176,70 @@ fn lit_rejects_inexact_f32_constant() {
     let _ = f32::lit(0.1);
 }
 
+/// `2^e`, exact for `-1022 <= e <= 1023`.
+fn p2(e: i32) -> f64 {
+    crate::real::pow2(e)
+}
+
+/// The next binary64 above a positive finite `x`.
+fn up(x: f64) -> f64 {
+    f64::from_bits(x.to_bits() + 1)
+}
+
+/// The next binary64 below a positive finite `x`.
+fn down(x: f64) -> f64 {
+    f64::from_bits(x.to_bits() - 1)
+}
+
+/// `0087`: nearest, ties to even, at both binary32 edges and at a tie in the middle of the range.
+#[test]
+fn round_from_f64_rounds_to_nearest_even_at_binary32() {
+    let r = |x: f64| f32::round_from_f64(x).to_bits();
+    let (one, eps) = (1.0_f32.to_bits(), f32::EPSILON);
+    // `1 + 2^-24` is halfway between `1` and `1 + 2^-23`: the even one. `1 + 3 2^-24` is halfway
+    // between `1 + 2^-23` and `1 + 2^-22`: the even one again, upward this time.
+    assert_eq!(r(1.0 + p2(-24)), one);
+    assert_eq!(r(1.0 + 3.0 * p2(-24)), (1.0 + 2.0 * eps).to_bits());
+    assert_eq!(r(up(1.0 + p2(-24))), (1.0 + eps).to_bits());
+    assert_eq!(r(down(1.0 + 3.0 * p2(-24))), (1.0 + eps).to_bits());
+    assert_eq!(r(-(1.0 + p2(-24))), (-1.0_f32).to_bits());
+    // Overflow: `(2 - 2^-24) 2^127 = MAX + 2^103` is halfway between `MAX`, whose significand is
+    // odd, and `2^128`, so it and everything past it is `inf`; just below it is `MAX`.
+    let edge = f64::from(f32::MAX) + p2(103);
+    assert_eq!(r(down(edge)), f32::MAX.to_bits());
+    assert_eq!(r(edge), f32::INFINITY.to_bits());
+    assert_eq!(r(-edge), f32::NEG_INFINITY.to_bits());
+    assert_eq!(r(f64::MAX), f32::INFINITY.to_bits());
+    assert_eq!(r(f64::INFINITY), f32::INFINITY.to_bits());
+    // Underflow: `2^-150` is halfway between `0` and the smallest subnormal `2^-149`: `0`, its
+    // sign kept. Just above it is `2^-149`; `3 2^-150` is halfway to `2^-148`, the even one.
+    assert_eq!(r(p2(-150)), 0);
+    assert_eq!(r(-p2(-150)), (-0.0_f32).to_bits());
+    assert_eq!(r(up(p2(-150))), 1);
+    assert_eq!(r(3.0 * p2(-150)), 2);
+    assert_eq!(r(f64::from_bits(1)), 0);
+    // `2^-126 - 2^-150`, halfway between the largest subnormal (odd) and the smallest normal.
+    assert_eq!(r(p2(-126) - p2(-150)), f32::MIN_POSITIVE.to_bits());
+    assert_eq!(r(-0.0), (-0.0_f32).to_bits());
+    assert!(f32::round_from_f64(f64::NAN).is_nan());
+}
+
+/// `0087`: the identity at `f64`, bit for bit, NaN included; a constant for a `Dual`.
+#[test]
+fn round_from_f64_is_the_identity_at_f64_and_a_constant_for_dual() {
+    for x in F64_GRID
+        .into_iter()
+        .chain([f64::from_bits(1), f64::MAX, f64::NEG_INFINITY, f64::NAN])
+    {
+        assert_eq!(bits(f64::round_from_f64(x)), bits(x));
+    }
+    let d = crate::Dual::<f32, 2>::round_from_f64(1.0 + p2(-24));
+    assert_eq!(d.v.to_bits(), 1.0_f32.to_bits());
+    assert_eq!(d.d.map(f32::to_bits), [0, 0]);
+    let d = crate::Dual::<f64, 1>::round_from_f64(0.1);
+    assert_eq!((bits(d.v), bits(d.d[0])), (bits(0.1), 0));
+}
+
 #[test]
 fn value_f64_widens_exactly() {
     assert_eq!(bits(0.1_f32.value_f64()), bits(f64::from(0.1_f32)));
