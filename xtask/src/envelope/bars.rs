@@ -136,6 +136,7 @@ pub(super) struct Excess {
     pub(super) candidate: f64,
     pub(super) oracle: f64,
     pub(super) oracle_name: String,
+    /// Its independent draws (`0091`, draft).
     pub(super) n: usize,
     /// The swap test's p-value; `None` where the stratum is unresolvable.
     pub(super) p: Option<f64>,
@@ -147,7 +148,7 @@ impl Excess {
         let p = match self.p {
             Some(p) => format!("p = {p:.3e}"),
             None => format!(
-                "unresolvable: its {} records cannot reach p <= {}; `--deep` judges it",
+                "unresolvable: its {} independent draws cannot reach p <= {}; `--deep` judges it",
                 self.n,
                 swap::ALPHA
             ),
@@ -159,16 +160,31 @@ impl Excess {
     }
 }
 
-/// The swap test for `key` of `c` against `o`, over the records both scored; `None` when either
-/// subject has no records for it.
+/// The swap test for `key` of `c` against `o`, over the records both scored, one pair per unit of
+/// `c`'s corpus, each side's maximum over the unit's records (`0091`, draft): a unit's records
+/// swap together, so the maxima are what a swap moves. `None` when either subject has no records
+/// for it.
 fn swap_of(c: &Subject, o: &Subject, key: &Key) -> Option<swap::Swap> {
     let mine = c.records.get(key)?;
     let theirs: BTreeMap<u64, f64> = o.records.get(key)?.iter().copied().collect();
-    let pairs: Vec<(f64, f64)> = mine
-        .iter()
-        .filter_map(|(id, e)| theirs.get(id).map(|t| (*e, *t)))
-        .collect();
+    let mut units: BTreeMap<u64, (f64, f64)> = BTreeMap::new();
+    for (id, e) in mine {
+        if let Some(t) = theirs.get(id) {
+            let unit = c.units.of(key.fn_id(), key.stratum(), *id);
+            let pair = units.entry(unit).or_insert((*e, *t));
+            *pair = (pair.0.max(*e), pair.1.max(*t));
+        }
+    }
+    let pairs: Vec<(f64, f64)> = units.into_values().collect();
     (!pairs.is_empty()).then(|| swap::test(&pairs))
+}
+
+/// The independent draws among `c`'s records for `key` (`0091`, draft); `n` where none were read.
+fn draws(c: &Subject, key: &Key, n: usize) -> usize {
+    c.records.get(key).map_or(n, |rs| {
+        c.units
+            .count(key.fn_id(), key.stratum(), rs.iter().map(|(id, _)| *id))
+    })
 }
 
 /// One stratum the exception table explains, as the evidence page prints it.
@@ -386,7 +402,7 @@ pub(super) fn judge_excepting(
                             candidate: max,
                             oracle: m,
                             oracle_name: o.name.clone(),
-                            n: r.n,
+                            n: draws(candidate, &key, r.n),
                             p,
                         };
                         let pass = |v: &mut Verdict, e: Excess, unresolvable: bool| {
@@ -532,6 +548,7 @@ mod tests {
         Subject {
             records: Default::default(),
             revs: Default::default(),
+            units: Default::default(),
             name: name.into(),
             version: format!("{name}@1"),
             rows,
@@ -590,6 +607,35 @@ mod tests {
         )
     }
 
+    /// `0091` (draft): twelve records in six twin pairs are six draws. A loss the swap test resolves
+    /// at `2^-10` over twelve independent records cannot resolve over six (its floor is `2^-6`), and
+    /// twins with the same errors give the same verdict as the six alone.
+    #[test]
+    fn a_twin_pair_is_one_draw() {
+        let o: Vec<f64> = errs(6, 5).into_iter().flat_map(|e| [e, e]).collect();
+        let c: Vec<f64> = o.iter().map(|e| 2.0 * e).collect();
+        let (mut cs, os) = (with_records("c", &c), with_records("o", &o));
+        assert_eq!(
+            resolved(&cs, &os)
+                .failures
+                .iter()
+                .filter(|f| f.bar == Bar::Domination)
+                .count(),
+            1
+        );
+        let key = Key::of(&cs.rows[0]);
+        cs.units = super::super::units::Units::twins(key.fn_id(), key.stratum(), 12);
+        let v = resolved(&cs, &os);
+        assert!(v.failures.iter().all(|f| f.bar != Bar::Domination));
+        assert_eq!(v.unresolvable.len(), 1);
+        assert!(v.unresolvable[0].line().contains("its 6 independent draws"));
+        let six = resolved(
+            &with_records("c", &c.iter().step_by(2).copied().collect::<Vec<_>>()),
+            &with_records("o", &o.iter().step_by(2).copied().collect::<Vec<_>>()),
+        );
+        assert_eq!(six.unresolvable.len(), 1);
+    }
+
     /// `0088` item 2: one stratum's errors doubled fails at 64 records, with its p-value in the
     /// line, and is unresolvable at 4; the strict bar fails both.
     #[test]
@@ -615,7 +661,7 @@ mod tests {
                 assert_eq!(v.unresolvable.len(), 1);
                 assert!(v.unresolvable[0]
                     .line()
-                    .contains("its 4 records cannot reach"));
+                    .contains("its 4 independent draws cannot reach"));
             }
             let strict = judge(&with_records("c", &c), &[with_records("o", &o)], None);
             assert!(strict.failures.iter().any(|f| f.bar == Bar::Domination));
