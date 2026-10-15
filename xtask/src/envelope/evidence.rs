@@ -166,6 +166,7 @@ mod tests {
         Subject {
             records: Default::default(),
             revs: Default::default(),
+            units: Default::default(),
             name: name.into(),
             version: format!("{name}@1"),
             rows,

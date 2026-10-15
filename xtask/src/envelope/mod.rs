@@ -44,6 +44,7 @@ mod evidence;
 pub(crate) mod exceptions;
 mod rows;
 mod swap;
+mod units;
 
 use std::collections::BTreeSet;
 use std::fmt::Write;
@@ -347,6 +348,7 @@ pub(crate) fn beaten_strata(candidate: &[Row], oracle: &[Row]) -> Vec<String> {
     let subject = |rows: &[Row]| Subject {
         records: Default::default(),
         revs: Default::default(),
+        units: Default::default(),
         name: rows.first().map_or_else(String::new, |r| r.subject.clone()),
         version: rows.first().map_or_else(String::new, |r| r.version.clone()),
         rows: rows.to_vec(),
@@ -397,6 +399,7 @@ fn judge_deep(
     let keep = |r: &Row| wanted.contains(&rows::Key::of(r).to_string());
     let candidate = Subject {
         rows: candidate.rows.iter().filter(|r| keep(r)).cloned().collect(),
+        units: units::Units::read(&root.join(crate::conformance::CORPUS_DEEP))?,
         ..candidate
     };
     let names = options.oracles.clone();
@@ -460,6 +463,7 @@ pub(crate) fn resolved_beaten_strata(
             rows: rows.to_vec(),
             records,
             revs: Default::default(),
+            units: Default::default(),
         })
     };
     let none = exceptions::Exceptions::default();
@@ -500,7 +504,13 @@ fn execute(root: &Path, options: &Options) -> Result<Report, String> {
     let cover = coverage::check(&corpus_ids(root)?, &|phase, row| {
         coverage::landed_in(root, phase, row)
     });
-    let candidate = read_subject(root, RESULTS, name)?.filter(|s| !s.rows.is_empty());
+    let candidate = match read_subject(root, RESULTS, name)?.filter(|s| !s.rows.is_empty()) {
+        Some(c) => Some(Subject {
+            units: units::Units::read(&root.join(CORPUS))?,
+            ..c
+        }),
+        None => None,
+    };
     let baseline_rel = results_path(Path::new(BASELINE), name, None, Precision::F64);
     let baseline = read_optional(root, &baseline_rel, |text| {
         rows::baseline_of(&rows::parse_results(name, text)?)
@@ -857,7 +867,11 @@ mod tests {
         put_records(&scratch, RESULTS, "cand", &doubled[..4])?;
         let r = go(&scratch, "cand", &["o1"], "")?;
         assert!(!bars(&r).contains(&"domination"), "{}", r.text);
-        assert!(r.text.contains("its 4 records cannot reach"), "{}", r.text);
+        assert!(
+            r.text.contains("its 4 independent draws cannot reach"),
+            "{}",
+            r.text
+        );
         let deep = crate::conformance::RESULTS_DEEP;
         put_records(&scratch, deep, "o1", &oracle)?;
         put_records(&scratch, deep, "cand", &doubled)?;
@@ -880,7 +894,11 @@ mod tests {
             "{}",
             r.text
         );
-        assert!(!r.text.contains("its 4 records cannot reach"), "{}", r.text);
+        assert!(
+            !r.text.contains("its 4 independent draws cannot reach"),
+            "{}",
+            r.text
+        );
         // An equal program on 64 records: its maximum is above, and nothing resolves.
         let equal: Vec<f64> = oracle.iter().rev().map(|e| e * (1.0 + 1e-3)).collect();
         put_records(&scratch, RESULTS, "o1", &oracle)?;

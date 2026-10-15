@@ -19,6 +19,16 @@ pub(super) struct Key {
 }
 
 impl Key {
+    /// The function id.
+    pub(super) fn fn_id(&self) -> &str {
+        &self.fn_id
+    }
+
+    /// The stratum.
+    pub(super) fn stratum(&self) -> &str {
+        &self.stratum
+    }
+
     pub(super) fn of(r: &Row) -> Self {
         Self {
             fn_id: r.fn_id.clone(),
@@ -45,6 +55,9 @@ pub(super) struct Subject {
     /// The `git_rev` cells of the files it was read from: which build wrote its rows, for
     /// `--deep`'s check that the two tiers come from one (`0088`).
     pub(super) revs: BTreeSet<String>,
+    /// Which of its records are one draw (`0091`, draft); empty, each record its own, until the
+    /// corpus its records came from is read.
+    pub(super) units: super::units::Units,
 }
 
 /// Each key's `(record id, error)`, `+inf` for a non-finite output (`report::RecordErr`).
@@ -158,6 +171,7 @@ pub(super) fn parse_results(name: &str, text: &str) -> Result<Subject, String> {
         rows,
         records: Records::new(),
         revs,
+        units: Default::default(),
     })
 }
 
@@ -331,6 +345,7 @@ mod tests {
         let subject = Subject {
             records: Records::new(),
             revs: BTreeSet::new(),
+            units: Default::default(),
             name: "s".into(),
             version: "s@1".into(),
             rows,

@@ -302,7 +302,7 @@
       "sha256": "1d66614b523802d7d6eec759da6bc56c7cc9f342b9bab2f0fd4416743c2cd4f5"
     }
   },
-  "generator": "sha256:50e069ffc5e4da17c55b778ca1b982c560730a3c28dc568c7a9ea693f5e8be30",
+  "generator": "sha256:8cdd7e423c28ab92be887dcc05f3f1833074f1b48e226d71bf4069f501f71ef2",
   "mpmath": "1.4.1",
   "python": "3.12",
   "recheck": {
