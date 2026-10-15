@@ -117,7 +117,7 @@ impl So3 {
                 else {
                     return Output::new();
                 };
-                // §3.3 as written, so a non-unit `q` gives the scaled rotation §1 defines rather
+                // §3.3 as written, so a non-unit `q` gives `to_matrix`'s `(1 + η)R − ηI` rather
                 // than its normalization; `SO3::act`'s *Domain* has the measured gap.
                 let rp = SO3::from_quat_unchecked(q).act(p);
                 Output::from([("Rp".to_string(), rp.0.map(Into::into).to_vec())])

@@ -768,33 +768,33 @@ fn product_and_norm_sum_left_to_right() {
 /// regrouping.
 ///
 /// The quaternion below is unit to `2^-52` (inside the domain of `from_wxyz_unchecked`), and
-/// `(1 - 2y²) - 2z²` and `(1 - 2z²) - 2y²` each move two of the three diagonal entries of
-/// `1 - (2y² + 2z²)` by one ulp (`0092`, draft).
+/// both other groupings, `(1 - 2y²) - 2z²` and `(1 - 2z²) - 2y²`, move each of the three diagonal
+/// entries of `1 - (2y² + 2z²)` by an ulp (`0092`, draft).
 #[test]
 fn matrix_sums_group_as_written() {
     let q = Quat::from_wxyz_unchecked(
-        f64::from_bits(0x3fdb_04b1_d1e9_1bff),
-        f64::from_bits(0xbfe9_74eb_499d_dec2),
-        f64::from_bits(0x3fc4_c888_1ff2_cebf),
-        f64::from_bits(0xbfd9_cdd1_8fcb_04d6),
+        f64::from_bits(0x3fc1_da65_da6f_7bb3),
+        f64::from_bits(0x3fef_91f4_ff54_eb4a),
+        f64::from_bits(0xbfb5_9d87_48c5_c736),
+        f64::from_bits(0x3f84_b69a_c017_d4d0),
     );
     assert_eq!(
         mbits(rows(&q)),
         [
             [
-                0x3fe3_e8ac_0881_c992,
-                0x3fb5_035f_615d_dd40,
-                0x3fe8_ea23_6537_6268
+                0x3fef_8984_ad47_c8d3,
+                0xbfc5_afa5_5a31_bd98,
+                0xbf6d_785d_e908_0a90,
             ],
             [
-                0xbfe3_2906_030c_e70c,
-                0xbfe2_e817_44c2_c5d4,
-                0x3fe1_4dcc_d231_0ee0
+                0xbfc4_f6bf_5811_5f82,
+                0xbfee_4c75_df12_d8d6,
+                0xbfd1_b8fc_92eb_b26e,
             ],
             [
-                0x3fe0_2403_b077_ebf8,
-                0xbfe9_aef8_6040_c380,
-                0xbfd4_6150_026a_1564
+                0x3fa6_46e5_cb80_1452,
+                0x3fd1_8105_5ed0_9b1c,
+                0xbfee_bf97_1cee_3b36,
             ],
         ]
     );

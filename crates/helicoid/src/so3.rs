@@ -351,14 +351,13 @@ impl<S: Real> SO3<S> {
     ///
     /// # Domain
     ///
-    /// A unit `q`. The formula equals `R(q)v` only there: it expands to
-    /// `(1 − 2‖u‖²)v + 2w(u×v) + 2u(u·v)`, where `R(q)` has `w² − ‖u‖²` in place of `1 − 2‖u‖²`.
-    /// Off the unit sphere the three candidate readings are measurably different, and the corpus's
-    /// `so3_act` reference takes the **normalized** one: at the `q:nonunit` stratum
-    /// (`η = ‖q‖² − 1 = 2^-45`) this formula scores `510.3 u` against it and `to_matrix() * v`,
-    /// the scaled rotation of §1, scores `257.8 u` — which are `2·2^-45/u` and `2^-45/u` exactly.
-    /// This method is §3.3 as written and normalizes nothing: `0076` keeps it and excepts that
-    /// stratum, the gap being `0058`'s first-order drift term `Rv + η(Rv − v)`.
+    /// A unit `q`. The formula equals the rotation of `q/‖q‖` only there: it expands to
+    /// `(1 − 2‖u‖²)v + 2w(u×v) + 2u(u·v)`, which is [`to_matrix`](Self::to_matrix)`() * v`, one map
+    /// on every `q` (`0092`, draft). Off the unit sphere the corpus's `so3_act` reference takes the
+    /// **normalized** rotation: at the `q:nonunit` stratum (`η = ‖q‖² − 1 = 2^-45`) this formula
+    /// scores `510.3 u` against it, `2·2^-45/u` exactly. This method is §3.3 as written and
+    /// normalizes nothing: `0076` keeps it and excepts that stratum, the gap being `0058`'s
+    /// first-order drift term `Rv + η(Rv − v)`.
     #[inline]
     pub fn act(&self, v: Vec3<S>) -> Vec3<S> {
         let two = S::lit(2.0);

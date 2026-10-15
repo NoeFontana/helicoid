@@ -74,9 +74,19 @@ adjoint goes from 5.13 to 5.00 ns at `f64` and from 6.51 to 7.35 at `f32`.
   `R(q)` as a matrix.
 - **`0076` decision 1 is superseded** when this record is `ready`; its decision 2 (the two
   exception rows) stands. `Quat::to_matrix`'s rustdoc now states this record, not `0076`.
+- **A public behaviour change for a non-unit `q`.** `Quat::to_matrix` is no longer a scaled
+  rotation there: `q = 2i` gives `diag(1, −7, −7)`, where it gave `4·diag(1, −1, −1)`. A consumer
+  that recovers `R` as `to_matrix() / ‖q‖²` must normalize `q` instead. On `0.0.x` the release
+  notes say so.
+- **`to_matrix` and `act` are one map.** The unit form is exactly the matrix of §3.3's vector form,
+  since `[u]×² = uuᵀ − ‖u‖²I`. `docs/maths/so3.md` SO.2(d) and SO.14(c) say so, and `act`'s and
+  `to_matrix`'s *Domain* give the shared error, `η(Rv − v)`.
+- **The `f32` `Ad` cost is codegen.** The disassembly is branch-free with no stack traffic either
+  way. LLVM's vectorizer packs the new diagonal with 45 `shufps` against 33, and regrouping the
+  sums in the source does not change its choice.
 - **`quat_tests::matrix_hand_cases`** pins the non-unit contract: `2·1 ↦ I`, `2i ↦ diag(1, −7, −7)`.
-  **`matrix_sums_group_as_written`** pins the new grouping, where `(1 − 2y²) − 2z²` and
-  `(1 − 2z²) − 2y²` each move two diagonal entries by an ulp.
+  **`matrix_sums_group_as_written`** pins the new grouping on a quaternion where `(1 − 2y²) − 2z²` and
+  `(1 − 2z²) − 2y²` each move all three diagonal entries by an ulp.
 
 ## Implementation plan
 

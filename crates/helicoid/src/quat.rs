@@ -194,8 +194,8 @@ impl<S: Real> Quat<S> {
     /// # Domain
     ///
     /// None is asserted. The rotation reading needs `q` unit to the tolerance of
-    /// [`from_wxyz_unchecked`](Quat::from_wxyz_unchecked): the matrix errs by
-    /// `| ‖q‖² - 1 | ‖v‖` when applied to `v`.
+    /// [`from_wxyz_unchecked`](Quat::from_wxyz_unchecked): the matrix errs by `η(Rv − v)` when
+    /// applied to `v`, at most `2|η| ‖v‖`, nothing on the axis.
     #[inline]
     pub fn to_matrix(&self) -> Mat3<S> {
         let (w, x, y, z) = (self.w, self.x, self.y, self.z);
@@ -205,7 +205,7 @@ impl<S: Real> Quat<S> {
         let one = S::one();
         // Nine distinct products, bound once each: the six off-diagonal ones appear in two entries
         // apiece, so spelling them twice doubles the sign sites to keep in step and, for `Dual`,
-        // the `1 + 2N` multiplies each one costs. The sums below are unchanged (D16).
+        // the `1 + 2N` multiplies each one costs. Each sum below is grouped as written (D16).
         let (xx, yy, zz) = (tx * x, ty * y, tz * z);
         let (xy, xz, yz) = (tx * y, tx * z, ty * z);
         let (wx, wy, wz) = (tw * x, tw * y, tw * z);

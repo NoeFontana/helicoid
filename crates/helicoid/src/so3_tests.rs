@@ -1172,7 +1172,7 @@ mod carried {
     /// its first-order statement, across the band. The protocol: 4 000 draws per point of the band
     /// from `Rng(0x0058)`, `η` uniform in `±2^e`, rotations `Exp` of a uniform `[-3, 3)^3`, vectors
     /// uniform `[-1, 1)^3`. The worst errors, in `u`: `log` (relative) 3.959, `act` 12.961,
-    /// `to_matrix` 10.885 (both against the unit `act`, so two roundings of the sandwich), `Mul`'s
+    /// `to_matrix` 11.566 (both against `act`'s term, so two roundings of the sandwich), `Mul`'s
     /// `η` 6.000. `inverse` keeps `η` to the bit. The bounds are twice those, rounded up.
     #[test]
     fn each_operation_errs_by_its_first_order_term_across_the_drift_band() {
@@ -1207,7 +1207,7 @@ mod carried {
                 assert!(same(ei, ea), "inverse moved η: {ei} from {ea}");
             }
         }
-        let bound = [8.0, 26.0, 22.0, 12.0];
+        let bound = [8.0, 26.0, 24.0, 12.0];
         for (w, b) in worst.iter().zip(bound) {
             assert!(*w <= b, "worst {worst:?} against {bound:?}");
         }
