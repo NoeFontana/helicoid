@@ -299,6 +299,13 @@ pub(crate) fn jr_inv_coeff<S: Real>(z: S) -> S {
     )
 }
 
+/// `(c, dc/dz)` at `θ² = z`: [`jr_inv_coeff`]'s value to the bit, and the `Dual` lane of that same
+/// evaluation, the derivative of the arm taken, as `alpha`'s (`0062`). No switch of its own.
+pub(crate) fn jr_inv_coeff_dz<S: Real>(z: S) -> (S, S) {
+    let c = jr_inv_coeff(Dual::<S, 1>::variable(z, 0));
+    (c.v, c.d[0])
+}
+
 /// `(b, d, e)` at `θ² = z`: Barfoot's `Q` block (`NUMERICS.md` §5.3).
 // SE_N(3)'s alone: `SEn3::jr` and `jr_inv` are its only consumers (`PHASE3.md` §5).
 pub(crate) fn q_coeffs<S: Real>(z: S) -> (S, S, S) {

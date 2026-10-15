@@ -583,13 +583,14 @@ mod group {
         );
     }
 
-    /// The fused `rminus_jacobians` against the two inversions it replaces, **on the bits**.
+    /// The fused `rminus_jacobians` against the two inversions it replaces, and `jl_inv` against the
+    /// provided `J_r⁻¹(−τ)`, **on the bits**.
     ///
     /// `laws::jacobian_rows` bounds this row at `0 u`, which is an *error* bound and so cannot see
     /// a signed zero: `laws::e` scores `+0` against `−0` as zero. This compares `to_bits`, over a
     /// random sweep and over the degenerate case the fusion is most likely to part company on — a
-    /// pure translation, `φ = 0`, where every word of `Q` is a zero matrix and only its signs are
-    /// left to disagree about.
+    /// pure translation, `φ = 0`, where every product is a zero and only its sign is left to
+    /// disagree about.
     #[test]
     fn the_fused_inverses_are_the_separate_ones_to_the_bit() {
         let mut st = 0x2545_F491_4F6C_DD1D_u64;
@@ -608,8 +609,8 @@ mod group {
             out
         };
         // Case 0 is a pair with the *same* rotation, whose `rminus` is a pure translation:
-        // `y⁻¹x = (I, Rᵗ(c_x − c_y))`, so `φ = 0`, every word of `Q` is a zero matrix, and only
-        // the signs of those zeros are left to disagree about.
+        // `y⁻¹x = (I, Rᵗ(c_x − c_y))`, so `φ = 0` and only the signs of zeros are left to
+        // disagree about.
         let r = SE3::<f64>::exp(&twist([0.3, -0.7, 1.1, 0.0, 0.0, 0.0])).rotation();
         let mut differing = 0usize;
         for case in 0..2001 {
@@ -630,7 +631,9 @@ mod group {
                 Jac::<f64, Twist<f64>>::neg(&SE3::<f64>::jl_inv(&tau)),
             );
             let got = x.rminus_jacobians(&y);
-            for (g, w) in [(&got.0, &want.0), (&got.1, &want.1)] {
+            // `jl_inv`'s override against the provided body it replaces, `J_r⁻¹(−τ)`.
+            let (left, provided) = (SE3::<f64>::jl_inv(&tau), SE3::<f64>::jr_inv(&tau.neg()));
+            for (g, w) in [(&got.0, &want.0), (&got.1, &want.1), (&left, &provided)] {
                 let (dg, dw) = (dense(g), dense(w));
                 let same = dg
                     .as_flattened()
@@ -645,13 +648,10 @@ mod group {
                 }
             }
         }
-        // Recorded, not asserted at zero: the random sweep agrees to the bit, and the pure
-        // translation is where a zero's sign is all that is left of `Q`.
-        // An exactness claim, and it keeps no headroom: every one of the 4002 blocks matches.
-        // It is `0` *because* each side builds its own `X` with `hat`: negating the other's gave
-        // the `½ρ^` diagonal `−0` where the unfused path has the `+0` `hat` writes, which this
-        // test sees and `laws::jacobian_rows`'s error bound cannot.
-        assert_eq!(differing, 0, "of 4002 blocks");
+        // An exactness claim with no headroom: every one of the 6003 blocks matches. The hat's zero
+        // diagonal is never added (`Sym::plus_hat`), so no side writes a `−0` where another writes
+        // `+0`; this test sees such a sign and `laws::jacobian_rows`'s error bound cannot.
+        assert_eq!(differing, 0, "of 6003 blocks");
     }
 
     fn twist(v: [f64; 6]) -> Twist<f64> {

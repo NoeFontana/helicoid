@@ -205,7 +205,7 @@ $-\log_{10}$ of that relative error in digits. $e$ is the reason one global thre
 construction: at $\theta = 10^{-2}$ it keeps about five digits, at $10^{-3}$ about one.
 
 **Call sites evaluate coefficients in groups, inside one `branch`:** `exp_coeffs` → $(k, \cos\tfrac\theta2)$;
-`jr_coeffs` → $(a, b)$; `jr_inv_coeff` → $c$; `q_coeffs` → $(b, d, e)$; `gamma2_coeffs` → $(b, d)$;
+`jr_coeffs` → $(a, b)$; `jr_inv_coeff` → $c$, and `jr_inv_coeff_dz` → $(c, \mathrm dc/\mathrm dz)$ on its `Dual` lane (§5.4); `q_coeffs` → $(b, d, e)$; `gamma2_coeffs` → $(b, d)$;
 `log_ratio` → $r$. A call site never evaluates one coefficient from the catalogue on its own.
 
 **One public coefficient.** `helicoid::sinc(z)` returns $(\alpha, \mathrm d\alpha/\mathrm dz)$ at
@@ -254,10 +254,20 @@ which is what `col[i]` holds. The block for each $\rho_i$ is independent of the 
 
 ### 5.4 Inverses
 
-$J_r^{-1}(\tau)$ and $J_l^{-1}(\tau)$ are **not separate formulas**: they are the dual-matrix inverse
-(§2.2) of §5.3 with $A^{-1}$ from §3.5's closed form:
-$J_r^{-1}(\tau) = J_r^{-1}(\varphi) - \epsilon\,J_r^{-1}(\varphi)\,Q(-\rho_i, -\varphi)\,J_r^{-1}(\varphi)$.
-The dense Gauss–Jordan inverse of $J_r(\tau)$ is the reference twin (§14).
+$J_r^{-1}(\tau)$ and $J_l^{-1}(\tau)$ are the dual-matrix inverse (§2.2) of §5.3,
+$J_r^{-1}(\varphi) - \epsilon\,J_r^{-1}(\varphi)\,Q(-\rho_i, -\varphi)\,J_r^{-1}(\varphi)$, **evaluated in
+the four words it reduces to** (`docs/maths/se3.md` SE.17; [`0093`](./decisions/0093-the-inverse-jacobian-column-is-four-words.md), draft):
+$$
+J_r^{-1}(\tau) = J_r^{-1}(\varphi) + \epsilon\,\big(\tfrac12\rho_i^\wedge + S(\rho_i)\big),\qquad
+J_l^{-1}(\tau) = J_l^{-1}(\varphi) + \epsilon\,\big(-\tfrac12\rho_i^\wedge + S(\rho_i)\big),
+$$
+$S(\rho) = c\,(\varphi^\wedge\rho^\wedge + \rho^\wedge\varphi^\wedge) + 2c'\,(\varphi\cdot\rho)\,\varphi^\wedge\varphi^\wedge$,
+with $c$ of §4 and $c' = \mathrm dc/\mathrm d\theta^2$ the `Dual` lane of $c$'s own evaluation (no
+switch of its own, as `sinc`'s derivative). $\varphi^\wedge\rho^\wedge + \rho^\wedge\varphi^\wedge =
+\varphi\rho^\top + \rho\varphi^\top - 2(\varphi\cdot\rho)I$; each diagonal entry of $S$ is evaluated as
+$-\big(2c(\varphi_j\rho_j + \varphi_k\rho_k) + 2c'(\varphi\cdot\rho)(\varphi_j^2 + \varphi_k^2)\big)$, so
+neither $\varphi\cdot\rho$ nor $\theta^2$ cancels on it. The dense Gauss–Jordan inverse of $J_r(\tau)$ is
+the reference twin (§14).
 
 ### 5.5 Action (N = 1)
 
