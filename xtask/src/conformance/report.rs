@@ -46,15 +46,20 @@ struct Group {
     first_id: u64,
     nonfinite: usize,
     first_nonfinite: u64,
-    /// Every record's error in evaluation order, `+inf` for a non-finite one: the records file.
-    all: Vec<(u64, f64)>,
+    /// Every record's id, draw and error in evaluation order, `+inf` for a non-finite one: the
+    /// records file.
+    all: Vec<(u64, u64, f64)>,
 }
 
-/// The header of the records file (`0088`), exactly: one line per scored record.
-pub(crate) const RECORDS_HEADER: &str = "fn,stratum,precision,id,err_u";
+/// The header of the records file (`0088`), exactly: one line per scored record, with its draw,
+/// the smallest id of the records that are one draw with it (`0091`, draft).
+pub(crate) const RECORDS_HEADER: &str = "fn,stratum,precision,id,err_u,draw";
+
+/// `0088`'s header, without the draw: each record read as its own draw.
+pub(crate) const RECORDS_HEADER_0088: &str = "fn,stratum,precision,id,err_u";
 
 impl Aggregate {
-    pub(crate) fn add(&mut self, id: u64, stratum: &str, score: Score) {
+    pub(crate) fn add(&mut self, id: u64, draw: u64, stratum: &str, score: Score) {
         let at = *self.index.entry(stratum.to_string()).or_insert_with(|| {
             self.groups.push(Group {
                 stratum: stratum.to_string(),
@@ -69,7 +74,7 @@ impl Aggregate {
             Score::Finite(f) => f,
             Score::NonFinite => f64::INFINITY,
         };
-        g.all.push((id, err));
+        g.all.push((id, draw, err));
         if matches!(score, Score::NonFinite) {
             if g.nonfinite == 0 {
                 g.first_nonfinite = id;
@@ -90,8 +95,8 @@ impl Aggregate {
                 quoted(&g.stratum),
                 precision_name(precision)
             );
-            for &(id, err) in &g.all {
-                let _ = writeln!(out, "{head}{id},{}", float(err));
+            for &(id, draw, err) in &g.all {
+                let _ = writeln!(out, "{head}{id},{},{draw}", float(err));
             }
         }
     }
@@ -107,14 +112,14 @@ impl Aggregate {
         self.groups
             .into_iter()
             .map(|g| {
-                let finite = || g.all.iter().filter(|e| e.1.is_finite());
-                let mut sorted: Vec<f64> = finite().map(|&(_, f)| f).collect();
+                let finite = || g.all.iter().filter(|e| e.2.is_finite());
+                let mut sorted: Vec<f64> = finite().map(|&(_, _, f)| f).collect();
                 sorted.sort_by(f64::total_cmp);
                 let p99_u = match sorted.len() {
                     0 => f64::NAN,
                     m => sorted[(99 * m).div_ceil(100) - 1],
                 };
-                let worst = finite().fold(None, |best: Option<(u64, f64)>, &(id, f)| {
+                let worst = finite().fold(None, |best: Option<(u64, f64)>, &(id, _, f)| {
                     best.filter(|&(_, m)| f <= m).or(Some((id, f)))
                 });
                 Row {
@@ -262,7 +267,7 @@ mod tests {
     fn agg(scores: &[(&str, Score)]) -> Vec<Row> {
         let mut a = Aggregate::default();
         for (i, (stratum, s)) in scores.iter().enumerate() {
-            a.add(i as u64, stratum, *s);
+            a.add(i as u64, i as u64, stratum, *s);
         }
         a.rows("f", Precision::F64, "s", "v")
     }
@@ -280,7 +285,7 @@ mod tests {
             ("a", Score::Finite(1.0)),
         ];
         for (i, (stratum, s)) in scores.iter().enumerate() {
-            a.add(i as u64, stratum, *s);
+            a.add(i as u64, i as u64, stratum, *s);
         }
         let mut text = format!("{RECORDS_HEADER}\n");
         a.records_into("f", Precision::F64, &mut text);
@@ -313,10 +318,10 @@ mod tests {
         assert_eq!(ids, [0, 2, 4, 1, 3]);
         assert_eq!(records[3].2, f64::INFINITY);
         assert!(
-            text.starts_with("fn,stratum,precision,id,err_u\nf,a,f64,0,2.5e-1\n"),
+            text.starts_with("fn,stratum,precision,id,err_u,draw\nf,a,f64,0,2.5e-1,0\n"),
             "{text}"
         );
-        assert!(text.contains("f,b,f64,1,inf\n"), "{text}");
+        assert!(text.contains("f,b,f64,1,inf,1\n"), "{text}");
     }
 
     #[test]

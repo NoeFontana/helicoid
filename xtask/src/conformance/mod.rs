@@ -206,6 +206,7 @@ fn evaluate_into(
             format!("no metric rule for `{fn_id}`: add its row to `metric::TABLE`")
         })?;
         let corpus_records = corpus::read(dir, entry)?;
+        let draws = corpus::draws(&corpus_records);
         for (k, (s, out)) in subjects.iter().zip(&mut rows).enumerate() {
             if !s.subject.supports(fn_id) {
                 continue;
@@ -234,7 +235,8 @@ fn evaluate_into(
                 let score = rule.score(record, &output, precision).map_err(|e| {
                     format!("{} on {fn_id} record {}: {e}", s.subject.name(), record.id)
                 })?;
-                aggregate.add(record.id, &record.stratum, score);
+                let draw = draws.get(&record.id).copied().unwrap_or(record.id);
+                aggregate.add(record.id, draw, &record.stratum, score);
             }
             if let Some(r) = records.as_deref_mut() {
                 aggregate.records_into(fn_id, precision, &mut r[k]);

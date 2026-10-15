@@ -197,7 +197,7 @@ fn read_at(
         return Ok(None);
     };
     let at = records_path(&rel);
-    if let Some(records) = read_optional(root, &at, rows::parse_records)? {
+    if let Some((records, units)) = read_optional(root, &at, rows::parse_records)? {
         rows::check_records(&subject.rows, &records).map_err(|e| {
             format!(
                 "{}: not the records of `{}`: {e}; rerun `conformance` for `{name}`",
@@ -206,6 +206,7 @@ fn read_at(
             )
         })?;
         subject.records = records;
+        subject.units = units;
     }
     Ok(Some(subject))
 }
@@ -399,7 +400,6 @@ fn judge_deep(
     let keep = |r: &Row| wanted.contains(&rows::Key::of(r).to_string());
     let candidate = Subject {
         rows: candidate.rows.iter().filter(|r| keep(r)).cloned().collect(),
-        units: units::Units::read(&root.join(crate::conformance::CORPUS_DEEP))?,
         ..candidate
     };
     let names = options.oracles.clone();
@@ -455,7 +455,7 @@ pub(crate) fn resolved_beaten_strata(
     oracle: (&[Row], &str),
 ) -> Result<Vec<String>, String> {
     let subject = |(rows, text): (&[Row], &str)| -> Result<Subject, String> {
-        let records = rows::parse_records(text)?;
+        let (records, units) = rows::parse_records(text)?;
         rows::check_records(rows, &records)?;
         Ok(Subject {
             name: rows.first().map_or_else(String::new, |r| r.subject.clone()),
@@ -463,7 +463,7 @@ pub(crate) fn resolved_beaten_strata(
             rows: rows.to_vec(),
             records,
             revs: Default::default(),
-            units: Default::default(),
+            units,
         })
     };
     let none = exceptions::Exceptions::default();
@@ -504,13 +504,7 @@ fn execute(root: &Path, options: &Options) -> Result<Report, String> {
     let cover = coverage::check(&corpus_ids(root)?, &|phase, row| {
         coverage::landed_in(root, phase, row)
     });
-    let candidate = match read_subject(root, RESULTS, name)?.filter(|s| !s.rows.is_empty()) {
-        Some(c) => Some(Subject {
-            units: units::Units::read(&root.join(CORPUS))?,
-            ..c
-        }),
-        None => None,
-    };
+    let candidate = read_subject(root, RESULTS, name)?.filter(|s| !s.rows.is_empty());
     let baseline_rel = results_path(Path::new(BASELINE), name, None, Precision::F64);
     let baseline = read_optional(root, &baseline_rel, |text| {
         rows::baseline_of(&rows::parse_results(name, text)?)
@@ -848,7 +842,7 @@ mod tests {
             r.n = errors.len();
             rows.push(r);
             for (i, &e) in errors.iter().enumerate() {
-                let _ = writeln!(text, "so3_exp,{stratum},f64,{i},{}", report::float(e));
+                let _ = writeln!(text, "so3_exp,{stratum},f64,{i},{},{i}", report::float(e));
             }
         }
         let rel = results_path(Path::new(results), subject, None, Precision::F64);
@@ -867,11 +861,7 @@ mod tests {
         put_records(&scratch, RESULTS, "cand", &doubled[..4])?;
         let r = go(&scratch, "cand", &["o1"], "")?;
         assert!(!bars(&r).contains(&"domination"), "{}", r.text);
-        assert!(
-            r.text.contains("its 4 independent draws cannot reach"),
-            "{}",
-            r.text
-        );
+        assert!(r.text.contains("its 4 draws cannot reach"), "{}", r.text);
         let deep = crate::conformance::RESULTS_DEEP;
         put_records(&scratch, deep, "o1", &oracle)?;
         put_records(&scratch, deep, "cand", &doubled)?;
@@ -894,11 +884,7 @@ mod tests {
             "{}",
             r.text
         );
-        assert!(
-            !r.text.contains("its 4 independent draws cannot reach"),
-            "{}",
-            r.text
-        );
+        assert!(!r.text.contains("its 4 draws cannot reach"), "{}", r.text);
         // An equal program on 64 records: its maximum is above, and nothing resolves.
         let equal: Vec<f64> = oracle.iter().rev().map(|e| e * (1.0 + 1e-3)).collect();
         put_records(&scratch, RESULTS, "o1", &oracle)?;
@@ -1009,9 +995,11 @@ mod tests {
         // The same count, one error raised past the row's maximum.
         let mut lines: Vec<&str> = text.lines().collect();
         let last = lines.pop().unwrap_or_default();
-        let head = last.rsplit_once(',').map_or(last, |(h, _)| h);
-        let raised: String =
-            lines.iter().map(|l| format!("{l}\n")).collect::<String>() + &format!("{head},9e0\n");
+        // The error is the line's next-to-last cell; the draw follows it.
+        let (rest, draw) = last.rsplit_once(',').unwrap_or((last, ""));
+        let head = rest.rsplit_once(',').map_or(rest, |(h, _)| h);
+        let raised: String = lines.iter().map(|l| format!("{l}\n")).collect::<String>()
+            + &format!("{head},9e0,{draw}\n");
         write_file(&scratch.0, &at.to_string_lossy(), &raised)?;
         let e = go(&scratch, "cand", &["o1"], "").err().unwrap_or_default();
         assert!(e.contains("not the records of"), "{e}");
