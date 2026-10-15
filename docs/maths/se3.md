@@ -28,11 +28,12 @@ Norms are spectral ($\lVert W\rVert = \theta$, $\lVert\Xi\rVert = \lVert\rho\rVe
 | SE.5–SE.8 | $J_l = \sum\mathrm{ad}^n/(n+1)!$: dual powers of $\mathrm{ad}$, the words $W^j\Xi W^k$, $W^3 = -zW$, the reductions among them; $Q(\rho,\varphi)$ with $b, d, e$ | §5.3, §4 | `q_coeffs`, `jl`, `jr` |
 | SE.9 | $J_r$ has $Q(-\rho,-\varphi)$ (expanded); $Q_l = [J_l\rho]_\times J_l + e^WQ_r$; $\partial_\varphi(J_l\rho) = Q - [J_l\rho]_\times J_l$; an equal five-term form | §5.3, §1 | `jr`, `jl` |
 | SE.10–SE.11 | dual matrices $A + \epsilon B$: closure, product ($27 + 54N$ multiplications), inverse, `apply`, `apply_transpose`, determinant | §2.2, §14 | `SEn3Jac::{mul, inverse, apply, apply_transpose, write_dense}` |
-| SE.12 | $J_r^{-1}$, $J_l^{-1}$ are the dual inverse of $J_r$, $J_l$: no second closed form | §5.4, §12 | `jr_inv`, `jl_inv` |
+| SE.12 | $J_r^{-1}$, $J_l^{-1}$ are the dual inverse of $J_r$, $J_l$ | §5.4, §12 | `jr_inv`, `jl_inv` |
 | SE.13 | SE(3) action Jacobians, both sides, and their relation through $\mathrm{Ad}$ | §2.4, §5.5 | `act_jacobians` |
 | SE.14 | rotation-first vs translation-first: $\Pi$, $\Pi M\Pi^\top$, covariances, gradients | §1, `0002` | `Twist::{from_translation_first, to_translation_first}` |
 | SE.15 | what the exact arms of $b, d, e$ cost `Exp` and $Q$: one power of $\theta$, not the coefficient's; the error at the switch | §4, §5.1, §5.3 | `exp_coeffs`, `q_coeffs` |
 | SE.16 | rounding on the inverse side: `Log`'s translation part ($\lVert \Lambda_i\rVert \le 1.29\lVert x_i\rVert$), the blocks of $J^{-1}$ (the scale $\lVert Q\rVert/s^2$, $1/s$ toward $2\pi$) | §5.1, §5.4, §11 | `log`, `jr_inv`, `jl_inv` |
+| SE.17 | the column of $J^{-1}$ in four words: $\pm\tfrac12\Xi + c(W\Xi + \Xi W) + 2c'(\varphi\cdot\rho)W^2$, $zc' = \tfrac18 - \tfrac32c + \tfrac12zc^2$ | §5.4, §4 | `jr_inv`, `jl_inv`, `jr_inv_coeff_dz` |
 
 ## 1. The group
 
@@ -345,13 +346,13 @@ J_r^{-1}(\tau) = J_r^{-1}(\varphi) - \epsilon\,J_r^{-1}(\varphi)\,Q(-\rho_i,-\va
 J_l^{-1}(\tau) = J_l^{-1}(\varphi) - \epsilon\,J_l^{-1}(\varphi)\,Q(\rho_i,\varphi)\,J_l^{-1}(\varphi),
 $$
 with $J_{r}^{-1}(\varphi) = I + \tfrac12W + cW^2$ and $J_l^{-1}(\varphi) = I - \tfrac12W + cW^2$ (SO.8).
-There is no separate closed form for the block: it is built from $Q$ and $c$.
+SE.17 reduces the block to four words in $\Xi$, $W$ and $c$; $Q$ drops out.
 
 *Proof.* SE.11(b) with $A = J_r(\varphi)$, invertible off $2\pi\mathbb Z_{>0}$ (LG.2(b)), and $B_i = Q(-\rho_i,-\varphi)$
 (SE.9(a)); $J_l$ likewise. $\square$
 
 *Consequences.* (i) The inverse block scales like $\lVert\rho_i\rVert$ and, near $2\pi$, like
-$(2\pi/(2\pi-\theta))^2$ (LG.16(d)); it costs $2N$ products of $3\times3$ blocks and no dense factorization; its rounding is SE.16(b).
+$(2\pi/(2\pi-\theta))^2$ (LG.16(d)); as written it costs $2N$ products of $3\times3$ blocks and no dense factorization, and its rounding is SE.16(b); SE.17 costs none.
 (ii) **The identity $J_r^{-1}J_r = I$ cannot detect a wrong $Q$**: SE.11(b) holds for *every* $B_i$, so a test
 of `jr_inv` against `jr` checks $A^{-1}$ only. $Q$ is pinned down by the ids `sen3_jr_n*`,
 `sen3_jl_n*` (defined by the series, not by $Q$) and by `jacobians_match_dual_*`; `jr_inv` by
@@ -528,6 +529,7 @@ ill-conditioned axis from a *matrix* near $\pi$ (`NUMERICS.md` §11: backward er
 $\lVert Q\rVert/s^2$ the sandwich adds only $2s\varepsilon_J$ to $Q$'s error; but $\lVert B_i\rVert \ge \lVert Q\rVert$ ($\lVert J\rVert = 1$), so
 against the block itself the loss is at most $1/s^2$: $\le 2.5$ for $\theta \le \pi$, unbounded toward $2\pi$, where
 $\varepsilon_J \approx 1.5\,u/s^2$ (measured): the conditioning of $c \approx 1/(2\pi(2\pi - \theta))$ (SO.8) at the rounded argument.
+(b) bounds the sandwich as SE.12 writes it; the program evaluates SE.17 instead (`0093`, draft).
 
 **Checked:** `f64`, references by mpmath 1.4.1 (160 digits) from the same double inputs, exact arms of $b, d, e, c$ at every $\theta$.
 (a) `Log` of `NUMERICS.md` §3.2 ($\hat\varphi = 2\,\mathrm{atan2}(n,w)\,q_{\mathrm v}/n$, $q_{\mathrm v}$ the vector part) then $\hat J_l^{-1}(\hat\varphi)x_i$, from a double quaternion and
@@ -542,3 +544,41 @@ side over $\lVert Q\rVert/s^2$ $\le 68.6, 10.6, 7.0, 7.2, 13.6, 25.8, 124, 903$ 
 first two) and over $\lVert B_i\rVert$ $\le 68.6, 10.6, 7.0, 8.0, 15.9, 47.7, 325, 1765$; $\varepsilon_Js^2 \le 3.08u$. Sampled maxima, not
 proved bounds; scripts not committed. **Permanent:** none specified; the strata of `sen3_jr_inv_n*`, `sen3_jl_inv_n*` measure the
 quantities themselves.
+
+## 11. The column of the inverse in closed form
+
+**Proposition SE.17 (`NUMERICS.md` §5.4).** For $\theta \notin 2\pi\mathbb Z_{>0}$, with $c$ of SO.8, $c' = \mathrm dc/\mathrm dz$
+and $p = \varphi\cdot\rho_i$,
+$$
+J_r^{-1}(\tau) = J_r^{-1}(\varphi) + \epsilon\,\big(\tfrac12\Xi + S\big),\qquad
+J_l^{-1}(\tau) = J_l^{-1}(\varphi) + \epsilon\,\big(-\tfrac12\Xi + S\big),\qquad
+S = c\,(W\Xi + \Xi W) + 2c'\,p\,W^2,
+$$
+$\Xi = \rho_i^\wedge$, and $c$ solves $zc' = \tfrac18 - \tfrac32c + \tfrac12zc^2$.
+
+*Proof.* By SE.12 the block of $J_l^{-1}$ is $-PQP$ with $P = I - \tfrac12W + cW^2$ and $Q$ of SE.8. Reversing the
+order of every word maps $P$ to $P$ and $Q$ to $Q$, so it maps $-PQP$ to itself; by SE.7 the reversal-invariant
+words span $\{\Xi,\ W\Xi + \Xi W,\ pW,\ pW^2\}$ ($W\Xi W = -pW$, $W^2\Xi + \Xi W^2 = -z\Xi - pW$,
+$W^2\Xi W + W\Xi W^2 = -2pW^2$, $W^2\Xi W^2 = zpW$). Expanding gives
+$-PQP = A_0\Xi + A_1(W\Xi + \Xi W) + p(A_2W + A_3W^2)$ with
+$A_0 = -\tfrac12 - \tfrac12bz + z(\tfrac c2 + d) - cdz^2$, $A_1 = \tfrac14 - b - \tfrac12dz + bcz$, and $A_2$, $A_3$ polynomials
+in $b, c, d, e, z$ of 15 and 12 terms. With the closed forms of `NUMERICS.md` §4, $A_0 = -\tfrac12$, $A_1 = c$, $A_2 = 0$ and
+$A_3 = 2c'$: e.g. $bz = 1 - \sin\theta/\theta$ and $dz = \tfrac12 - a$ turn $A_1 = c$ into $c = (\tfrac a2 - b)\,\theta/\sin\theta$, which
+is $c$'s definition. The ODE follows from $g = \tfrac\theta2\cot\tfrac\theta2 = 1 - zc$ and
+$\mathrm dg/\mathrm dz = (g(1 - g) - z/4)/(2z)$. $J_r^{-1}(\tau) = J_l^{-1}(-\tau)$ (LG.9(a)) negates $\Xi$ and $W$ and keeps $p$. $\square$
+
+*Consequences.* (i) No product of $3\times3$ matrices: $W\Xi + \Xi W = \varphi\rho^\top + \rho\varphi^\top - 2pI$ and
+$W^2 = \varphi\varphi^\top - zI$, so the diagonal of $S$ is $-\big(2c(\varphi_j\rho_j + \varphi_k\rho_k) + 2c'p(\varphi_j^2 + \varphi_k^2)\big)$,
+with neither $p$ nor $z$ cancelling against $\varphi_i\rho_i$, $\varphi_i^2$. (ii) The two sides share $S$; they differ by
+$\Xi$, which is $\mathrm{ad}_\tau$'s column (SE.12(iii)). (iii) $c'$'s exact arm loses digits to cancellation
+below $\theta \approx 1$ (the ODE's right side is $O(z)$), but $c$'s series arm runs to $\theta^2 = 3.65$ (`f64`) and
+$9.65$ (`f32`), where $c'$ is the derivative of a polynomial; above it the term $2c'pW^2$ is weighted by $\theta^3$.
+
+**Checked:** sympy 1.14: the expansion of $-PQP$ in the four words, as a polynomial identity in $\varphi_i$, $\rho_i$ and
+free $b, c, d, e$; then $A_0 + \tfrac12$, $A_1 - c$, $A_2$, $A_3 - 2c'$ and the ODE, each with denominators cleared, reduced modulo
+$\sin^2 + \cos^2 - 1$ to the zero polynomial in $(\theta, \sin\theta, \cos\theta)$; and through $z^{13}$ as series in exact rationals. mpmath 1.3.0,
+110 digits, 200 random $(\varphi, \rho)$ ($\theta \sim U[0, 6]$, $\rho_i \sim N(0, 2^2)$) plus 7 edge $\theta$ from $10^{-8}$ to $6.2$ and one
+$\rho \sim 10^6$: against SE.12's $-PQP$, $5.8\times10^{-96}$ (relative to $\max(1, \lVert\cdot\rVert_F)$; $c'$ by `mp.diff`); against
+`mp.inverse` of the dense series of $\mp\mathrm{ad}_\tau$ ($N = 1$, $\theta < 6$), $2.9\times10^{-104}$; the ODE $1.6\times10^{-96}$. Scripts not
+committed. **Permanent:** corpus `sen3_jr_inv_n{1,2,3}`, `sen3_jl_inv_n{1,2,3}`; proptest `sen3_jr_inv_matches_reference_*`;
+`the_fused_inverses_are_the_separate_ones_to_the_bit`.

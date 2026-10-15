@@ -63,6 +63,8 @@
 //! Every grouped entry point is on a default build's path: `exp_coeffs`, `jr_coeffs`,
 //! `jr_inv_coeff` and `log_ratio` from `SO3`, and `q_coeffs` — Barfoot's `Q` — from `SEn3`, which
 //! is `PHASE3.md` §5 and the last of the five to arrive.
+//! `jr_inv_coeff_dz` is `jr_inv_coeff` on the `Dual` lane, `(c, dc/dz)` for `SEn3`'s `J⁻¹` columns
+//! (`NUMERICS.md` §5.4): no group or switch of its own.
 
 use helicoid_linalg::Real;
 
@@ -73,8 +75,8 @@ mod sim3;
 #[cfg(test)]
 mod sim3_coeff_tests;
 pub(crate) use kernel::{
-    exp_coeffs, gamma2_coeffs, jr_coeffs, jr_coeffs_sinc, jr_inv_coeff, log_ratio, log_ratio_scale,
-    log_ratio_short, log_ratio_takes_short_arm, q_coeffs,
+    exp_coeffs, gamma2_coeffs, jr_coeffs, jr_coeffs_sinc, jr_inv_coeff, jr_inv_coeff_dz, log_ratio,
+    log_ratio_scale, log_ratio_short, log_ratio_takes_short_arm, q_coeffs,
 };
 pub(crate) use sim3::{
     sim3_coeffs, sim3_coeffs_scaled, sim3_coeffs_scaled_pair, sim3_v, sim3_v_scaled, unscale,
