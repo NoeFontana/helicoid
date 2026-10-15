@@ -1190,14 +1190,14 @@ mod carried {
                 let (l, l0) = (da.log().phi.0, qa.log().phi.0);
                 worst[0] = worst[0].max(norm(sub(l, l0)) / norm(l0) / u);
 
-                // §3.3's sandwich at `λq` is `Rv + η(Rv − v)`, §1's matrix `(1 + η)R`.
+                // §3.3's sandwich at `λq` is `Rv + η(Rv − v)`, and so is §1's matrix, `(1 + η)R − ηI`
+                // (`0092`, draft).
                 let v = rng.arr::<3>();
                 let r = qa.act(Vector(v)).0;
                 let sandwich = [0, 1, 2].map(|i| r[i] + ea * (r[i] - v[i]));
                 worst[1] = worst[1].max(norm(sub(da.act(Vector(v)).0, sandwich)) / norm(v) / u);
-                let scaled = r.map(|c| (1.0 + ea) * c);
                 let m = (da.to_matrix() * Vector(v)).0;
-                worst[2] = worst[2].max(norm(sub(m, scaled)) / norm(v) / u);
+                worst[2] = worst[2].max(norm(sub(m, sandwich)) / norm(v) / u);
 
                 // Norms multiply: `η_ab = η_a + η_b + η_a η_b`.
                 let eab = (da * db).quat().norm_sq() - 1.0;

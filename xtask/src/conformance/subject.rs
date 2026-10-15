@@ -63,7 +63,7 @@ pub(crate) fn registry() -> Vec<Registered> {
     // candidate's own (`seeded::TWIN_SUFFIX`).
     all.push(crate::shipped::host_std());
     // `R(q)` in the unit form, `0076` decision 1's variable, for `cargo xtask compare`.
-    all.push(crate::shipped::unit_r_twin());
+    all.push(crate::shipped::homogeneous_r_twin());
     all.extend(crate::seeded::registry());
     all
 }

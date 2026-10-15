@@ -439,7 +439,7 @@ mod tests {
             "--a",
             "helicoid",
             "--b",
-            "helicoid:unit-r",
+            "helicoid:homogeneous-r",
             "--fn",
             "so3_exp",
         ]);
@@ -542,16 +542,18 @@ mod tests {
     /// editing `Quat::to_matrix` and rerunning `conformance`, reproduced by this task to the
     /// stratum and to the two decimals of its ratio column.
     #[test]
-    fn the_unit_r_twin_reproduces_the_tally_of_0076() -> Result<(), String> {
+    fn the_homogeneous_r_twin_reproduces_the_tally_of_0076() -> Result<(), String> {
         let dir = corpus_dir()?;
         let mut all = subject::registry();
+        // `0076` measured the unit form against the homogeneous one; since `0092` (draft) the
+        // shipped form is the unit one, so the twin is `--a`.
         let (a, b) = (
+            pick(&mut all, "helicoid:homogeneous-r")?,
             pick(&mut all, "helicoid")?,
-            pick(&mut all, "helicoid:unit-r")?,
         );
         let entries: Vec<corpus::Entry> = corpus::manifest(&dir)?
             .into_iter()
-            .filter(|e| b.subject.supports(&e.fn_id))
+            .filter(|e| a.subject.supports(&e.fn_id))
             .collect();
         // (precision, ids pooled, strata better, worse, ratio range) as `0076` prints them.
         let table = [
