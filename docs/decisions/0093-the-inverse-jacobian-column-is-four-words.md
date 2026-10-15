@@ -10,7 +10,7 @@
 - **The cost.** Per column: Barfoot's `Q` from seven `3 x 3` hat products, then two `3 x 3`
   products for the sandwich. `jl_inv` is the provided `J_r⁻¹(−τ)`, and `rminus_jacobians` fuses
   the two sides through one set of `Q`'s words.
-- **The losses.** On the deep tier, after `0091` and `0092` (both drafts), 17 of the 36 resolved
+- **The losses.** On the deep tier, after `0091` and `0092` (both drafts), 17 of the 35 resolved
   domination failures were `sen3_jl_inv_n*` and `sen3_jr_inv_n*`, all near `π` (`θ` from `π − 10⁻²`
   to `π − 10⁻¹²`). In those strata `helicoid` read 1.7–2.5 `u` and GTSAM 1.4–1.7 `u`. On the
   committed tier the worst stratum reads 5.0 `u`, and on the deep tier 6.8.
@@ -58,7 +58,7 @@ closed forms of `b, d, e, c`, the four coefficients are `−½`, `c`, `0` and `2
 
 - **Against the oracles:** the six ids are at or below the best oracle on 619 of 624 strata over
   the two tiers. The other five are within 1.17×, and none is resolved.
-- **The deep envelope** goes from 36 domination failures to 19. The 17 removed are this family's,
+- **The deep envelope** goes from 35 domination failures to 18. The 17 removed are this family's,
   and none is added.
 
 **Latency.** Consumer loop, 4096 tangents per band, best of 40, one pinned core, `ρᵢ ~ U[−2, 2]`,
