@@ -57,7 +57,11 @@ $I + 2w[u]_\times + 2[u]_\times^2$, and:
   $\hat q = q/\lVert q\rVert$, the vector form errs by $\eta\,(R(\hat q) - I)v$ (norm
   $\le 2\lvert\eta\rvert\sin\frac\theta2\lVert v\rVert$) and $R_\square$ by $\eta R(\hat q)v$ (norm
   $\lvert\eta\rvert\lVert v\rVert$): **the two forms of `NUMERICS.md` §3.3 differ by $\eta v$ on a
-  non-unit $q$.**
+  non-unit $q$.** The vector form's matrix is
+  $R_1(q) = I + 2w[u]_\times + 2[u]_\times^2 = (1 - 2n^2)I + 2uu^\top + 2w[u]_\times
+  = R_\square(q) - (\lVert q\rVert^2 - 1)I$, and `to_matrix` evaluates $R_1$, so `to_matrix` and
+  `act` are one map on every $q$ ([`0092`](../decisions/0092-r-of-q-takes-the-unit-diagonal.md),
+  draft).
 
 *Proof.* $qv = (-u\cdot v,\ wv + u\times v)$, and multiplying by $q^* = (w, -u)$ gives scalar part
 $-w\,u\cdot v + w\,u\cdot v + (u\times v)\cdot u = 0$ and vector part
@@ -563,10 +567,10 @@ $\lVert\mathrm{fl}(pq)\rVert \le \lVert p\rVert\lVert q\rVert(1 + 2\gamma_4)$, a
 at most $\approx16\mathsf u$ per product. The bound $2^{-40} = 2^{13}\mathsf u$ is therefore reached
 after $\le 512$ compositions in the worst case (`f32`, $2^{-16} = 2^{8}\mathsf u$: 16); random data
 drift like $\sqrt m\,\mathsf u$.
-- (c) *Consumers.* Up to the bound, `Log` does not care (SO.5(c)); `act` errs by up to
-  $2\lvert\eta\rvert\lVert v\rVert$ and `to_matrix` by $\lvert\eta\rvert\lVert v\rVert$
-  ($\le 2^{14}\mathsf u\lVert v\rVert$ at the bound), and they differ from each other by $\eta v$
-  (SO.2(d)). Applying $q \mapsto q(3 - \lVert q\rVert^2)/2$ before use removes it.
+- (c) *Consumers.* Up to the bound, `Log` does not care (SO.5(c)); `act` and `to_matrix`, one map
+  since `0092` (draft), err by $\eta(R(\hat q) - I)v$, up to $2\lvert\eta\rvert\lVert v\rVert$
+  ($\le 2^{14}\mathsf u\lVert v\rVert$ at the bound) and nothing on the axis (SO.2(d)). Applying
+  $q \mapsto q(3 - \lVert q\rVert^2)/2$ before use removes it.
 
 **Checked:** mpmath 1.3.0, 120 digits: the closed form of SO.14, 200 random $\eta\in[-0.9,1.9]$,
 deviation $0$; iterates from $\eta_0 = 10^{-3}$:
