@@ -507,7 +507,8 @@ mod tests {
 
     /// The task's own control (`0078` decision 5): `0038`'s comparison of the `W²` form twin by the
     /// maximum over the nine `sen3_*` ids, from the per-stratum rows, on the seeded kernels' current
-    /// arms (`0089`, re-pins the counts): every id is net worse.
+    /// arms (`0089`) and the banded cells (`0094`, draft; each re-pins the counts): every id is net
+    /// worse by its strata's maxima.
     #[test]
     fn the_task_reproduces_the_tally_of_0038() -> Result<(), String> {
         let dir = corpus_dir()?;
@@ -524,23 +525,24 @@ mod tests {
         for id in &ids {
             let t = id.pooled();
             // "Every one of the nine ids is net worse on its own."
-            assert!(t.worse > t.better, "{}", id.fn_id);
+            assert!(t.strata_worse > t.strata_better, "{}", id.fn_id);
             pooled.merge(&t);
         }
-        assert_eq!((pooled.strata_better, pooled.strata_worse), (36, 94));
+        assert_eq!((pooled.strata_better, pooled.strata_worse), (34, 87));
         let low: Vec<String> = ids
             .iter()
             .filter(|i| i.fn_id.starts_with("sen3_exp"))
             .filter_map(|i| i.pooled().strata_ratio)
             .map(|(lo, _)| format!("{lo:.2}"))
             .collect();
-        assert_eq!(low, ["0.77", "0.96", "0.90"]);
+        assert_eq!(low, ["0.77", "0.94", "0.83"]);
         Ok(())
     }
 
     /// The twin's positive control (`0078` decision 3): `0076` decision 1's hand tally, made by
     /// editing `Quat::to_matrix` and rerunning `conformance`, reproduced by this task to the
-    /// stratum and to the two decimals of its ratio column.
+    /// stratum and to the two decimals of its ratio column, then re-pinned on the banded cells
+    /// (`0094`, draft).
     #[test]
     fn the_homogeneous_r_twin_reproduces_the_tally_of_0076() -> Result<(), String> {
         let dir = corpus_dir()?;
@@ -555,13 +557,14 @@ mod tests {
             .into_iter()
             .filter(|e| a.subject.supports(&e.fn_id))
             .collect();
-        // (precision, ids pooled, strata better, worse, ratio range) as `0076` prints them.
+        // (precision, ids pooled, strata better and worse per id, pooled ratio range).
+        let sen3: &[(usize, usize)] = &[(24, 18), (23, 19), (23, 19)];
         let table = [
-            (Precision::F64, "sen3_ad_n", 22, 20, "0.28-2.12"),
-            (Precision::F64, "sim3_ad", 36, 51, "0.28-2.02"),
-            (Precision::F32, "sim3_ad", 43, 32, "0.45-1.94"),
+            (Precision::F64, "sen3_ad_n", sen3, "0.24-2.04"),
+            (Precision::F64, "sim3_ad", &[(60, 38)], "0.35-2.38"),
+            (Precision::F32, "sim3_ad", &[(48, 31)], "0.29-1.82"),
         ];
-        for (precision, prefix, better, worse, range) in table {
+        for (precision, prefix, counts, range) in table {
             let f32 = precision == Precision::F32;
             let mut chosen = Vec::new();
             for e in &entries {
@@ -574,15 +577,12 @@ mod tests {
             }
             let (ids, _) = compare(&dir, &chosen, &a, &b, precision)?;
             let mut pooled = Tally::default();
-            for id in ids.iter().filter(|i| i.fn_id.starts_with(prefix)) {
+            let chosen: Vec<_> = ids.iter().filter(|i| i.fn_id.starts_with(prefix)).collect();
+            assert_eq!(chosen.len(), counts.len(), "{prefix}");
+            // Every width alone, not only their sum.
+            for (id, &want) in chosen.into_iter().zip(counts) {
                 let t = id.pooled();
-                // "22 each": every width alone, not only their sum.
-                assert_eq!(
-                    (t.strata_better, t.strata_worse),
-                    (better, worse),
-                    "{}",
-                    id.fn_id
-                );
+                assert_eq!((t.strata_better, t.strata_worse), want, "{}", id.fn_id);
                 pooled.merge(&t);
             }
             let (lo, hi) = pooled.strata_ratio.unwrap_or_default();

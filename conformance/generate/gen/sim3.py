@@ -17,7 +17,8 @@ s = e^sigma its scale. The references:
 
 Strata (N_SIM3 records each, eight per ray; the budget's trade, docs/decisions/0071):
 
-    sigma:<s>/theta:<t>   s in GRID_SIGMA, t in GRID_THETA: random axis, rho ~ N(0, I)
+    sigma:<s>/theta:<t>   s in GRID_SIGMA, t in GRID_THETA, each drawn in its band (gen.strata.band):
+                          random axis, rho ~ N(0, I)
     ray:<r>               the joint limit, sigma = r cos(lambda), theta = r sin(lambda), 8 angles
     sigma:<s>/theta:<t>   large |sigma| (LARGE_SIGMA), theta in LARGE_THETA
 
@@ -32,7 +33,8 @@ from mpmath import mp, mpf
 
 from . import sim3coeff, so3
 from .fmt import Mat
-from .strata import Draw, deep, drawn_strata
+from .rng import SplitMix64
+from .strata import Draw, band, deep, drawn_strata
 
 N_SIM3 = deep(4)  # 0071: six would be 17 MB, past the budget; 0088: 64 deep
 GRID_SIGMA = ("0", "1e-8", "-1e-8", "1e-4", "-1e-4", "1e-2", "-1e-2", "0.3", "-0.3", "1", "-1", "3", "-3")
@@ -46,8 +48,9 @@ SERIES_SIGMA = 3  # the dense series of ad, and gen.sim3coeff's series, up to |s
 EXPM_SIGMA = 30  # the blocks are checked against mp.expm([ad I; 0 0]) up to |sigma| = 30
 
 
-def value(s: str):
-    return mp.pi - mpf(10) ** -6 if s == "pi-1e-6" else mpf(s)
+def cell(s: str) -> tuple:
+    """`(base, offset)` of a grid value, the value their sum, for its `band`."""
+    return (mp.pi, -mpf(10) ** -6) if s == "pi-1e-6" else (0, mpf(s))
 
 
 # --- the algebra, rows of mpf ---------------------------------------------------------------------
@@ -252,11 +255,11 @@ def _normal(rng):
     return mp.sqrt(-2 * mp.log(1 - u1)) * mp.cos(2 * mp.pi * u2)
 
 
-def _taus(draw: Draw, count: int, cells: Callable[[int], tuple]) -> list[list[float]]:
-    ra, rr = draw.stream("axis"), draw.stream("rho")
+def _taus(draw: Draw, count: int, cells: Callable[[int, SplitMix64], tuple]) -> list[list[float]]:
+    ra, rr, rb = draw.stream("axis"), draw.stream("rho"), draw.stream("band")
     out = []
     for i in range(count):
-        sigma, theta = cells(i)
+        sigma, theta = cells(i, rb)
         axis = _axis(ra)
         phi = [draw.round(theta * a) for a in axis]
         rho = [draw.round(_normal(rr)) for _ in range(3)]
@@ -265,12 +268,12 @@ def _taus(draw: Draw, count: int, cells: Callable[[int], tuple]) -> list[list[fl
 
 
 def _cell(s: str, t: str):
-    return lambda i: (value(s), value(t))
+    return lambda i, rng: (band(rng, *cell(s)), band(rng, *cell(t)))
 
 
 def _ray(r: str):
-    return lambda i: (value(r) * mp.cos(mp.pi * (i + mpf(1) / 2) / N_RAY),
-                      value(r) * mp.sin(mp.pi * (i + mpf(1) / 2) / N_RAY))
+    return lambda i, rng: (mpf(r) * mp.cos(mp.pi * (i + mpf(1) / 2) / N_RAY),
+                           mpf(r) * mp.sin(mp.pi * (i + mpf(1) / 2) / N_RAY))
 
 
 def _catalogue(f32: bool) -> list:

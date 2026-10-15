@@ -320,7 +320,8 @@ mod tests {
     /// The twin's power, which is what makes "no change" a reading and not an absence.
     ///
     /// `sen3_jl_n1` is 52 strata of 6 records (`docs/PHASE1.md` §4.4, a stated budget trade-off),
-    /// and at one of its 312 records do the two libraries disagree on `sin` or `cos` at all. Near
+    /// and at five of its 312 records do the two libraries disagree on `sin` or `cos` at all, all
+    /// at `θ` near 1 (`theta:1e0` and the banded `theta=1` cells, `0094`, draft). Near
     /// `π` they never do — so on the `theta:pi-*` and `theta=pi-1e-6` strata, which is where 24 of
     /// this id's 25 domination failures are, the swap **cannot** change an answer, and a failure
     /// there is not D16's whatever else it is (`0037`, draft).
@@ -339,8 +340,15 @@ mod tests {
             }
         }
         let total: usize = per_stratum.values().map(|&(d, _)| d).sum();
-        assert_eq!(total, 1, "divergent records of sen3_jl_n1's 312");
+        assert_eq!(total, 5, "divergent records of sen3_jl_n1's 312");
         assert_eq!(per_stratum.get("theta:1e0").map(|&(d, _)| d), Some(1));
+        let at_one = |name: &str| name == "theta:1e0" || name.ends_with("/theta=1");
+        let near_one: usize = per_stratum
+            .iter()
+            .filter(|(s, _)| at_one(s))
+            .map(|(_, &(d, _))| d)
+            .sum();
+        assert_eq!(near_one, total);
         Ok(())
     }
 

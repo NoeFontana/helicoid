@@ -344,19 +344,19 @@ class InputsTest(unittest.TestCase):
         )
 
     def test_thetas(self):
+        """A cell's theta is drawn in its band (0094, draft): within 2^-10 of its offset, and no
+        two records alike."""
         by = {s.name: s for s in SEN3_STRATA}
-        want = {
-            "1e-8": 1e-8,
-            "1e-4": 1e-4,
-            "1e-1": 0.1,
-            "1": 1.0,
-            "pi-1e-6": 3.141592653589793 - 1e-6,
-        }
-        for name, theta in want.items():
-            (rec, *_) = sen3.tau_inputs(1)(by[f"rho:1e0/theta={name}"])
-            self.assertLess(
-                abs(so3.norm([mpf(c) for c in rec["tau"][:3]]) - mpf(theta)), theta * 1e-15
-            )
+        want = {"1e-8": 1e-8, "1e-4": 1e-4, "1e-1": 0.1, "1": 1.0, "pi-1e-6": -1e-6}
+        for name, offset in want.items():
+            base = mp.pi if offset < 0 else 0
+            thetas = [
+                so3.norm([mpf(c) for c in rec["tau"][:3]])
+                for rec in sen3.tau_inputs(1)(by[f"rho:1e0/theta={name}"])
+            ]
+            for theta in thetas:
+                self.assertLessEqual(abs(theta - base - offset), abs(offset) * (2**-10 + 1e-15))
+            self.assertEqual(len({mp.nstr(t, 30) for t in thetas}), SEN3_SAMPLES, name)
         (rec, *_) = sen3.tau_inputs(1)(by["theta:exact0"])
         self.assertEqual(rec["tau"][:3], [0.0, 0.0, 0.0])
         self.assertEqual(
