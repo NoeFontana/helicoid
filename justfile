@@ -214,7 +214,7 @@ conformance-twin:
 # per id and over every id, the records each is better on, an exact sign test, the geometric mean
 # and extremes of the per-record error ratio, and the ratio of the two maxima. Printed only: no
 # result CSV, no baseline, no bar reads it. Arguments: --a NAME --b NAME [--fn ID]
-# [--precision f64|f32], e.g. `just compare --a helicoid --b helicoid:unit-r`.
+# [--precision f64|f32], e.g. `just compare --a helicoid:homogeneous-r --b helicoid`.
 compare *args:
     cargo xtask compare {{args}}
 

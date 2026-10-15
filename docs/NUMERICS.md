@@ -24,7 +24,9 @@ computes from definitions (`PHASE1.md` §4.3), so a wrong line in this file fail
 
 - **Quaternions.** $q = (w, x, y, z) = w + x\,i + y\,j + z\,k$, Hamilton ($i^2 = j^2 = k^2 = ijk = -1$),
   stored `w` first. Active: $v' = q\,v\,q^*$. With $u = (x, y, z)$:
-  $R(q) = (w^2 - \|u\|^2)\,I + 2\,u u^\top + 2w\,[u]_\times$.
+  $R(q) = (w^2 - \|u\|^2)\,I + 2\,u u^\top + 2w\,[u]_\times$, evaluated as
+  $(1 - 2\|u\|^2)\,I + 2\,u u^\top + 2w\,[u]_\times$, equal for a unit $q$: the diagonal is
+  $1 - 2(u_j^2 + u_k^2)$ ([`0092`](./decisions/0092-r-of-q-takes-the-unit-diagonal.md), draft).
 - **SE_N(3).** $X = (R, x_1, \dots, x_N)$, i.e. the $(3+N)\times(3+N)$ matrix
   $\begin{bmatrix} R & x_1 \cdots x_N \\ 0 & I_N \end{bmatrix}$. Composition
   $XY = (R_X R_Y,\ R_X y_i + x_i)$; inverse $(R^\top, -R^\top x_i)$. SE(3) is $N = 1$ with $x_1 = t$;
@@ -497,7 +499,7 @@ $X(t) = X_0\,\mathrm{Exp}(t\,d)$ with $d = X_1 \ominus_R X_0$ and $\Delta = X_0^
 | `SO3::log` | all unit $q$; at $w = +0$ a function of $q$'s sign (§3.2) | — |
 | `jr_inv`, `jl_inv` (SO(3), SE_N(3)) | $\theta < 2\pi$ | unspecified finite value |
 | `from_wxyz_unchecked` | $\lvert\|q\|^2 - 1\rvert \le 2^{-40}$ (`f64`), $2^{-16}$ (`f32`) | garbage in, garbage out |
-| `SO3::from_quat_unchecked` (carried, §3.6) | $\lvert\eta\rvert \le 2^{-26.29}$ (`f64`), $2^{-11.79}$ (`f32`), $\eta = \|q\|^2 - 1$; nothing asserted, NaN propagates. To first order in $\eta$: `log` returns the `Log` of $q/\|q\|$; `act` returns $Rv + \eta(Rv - v)$; `to_matrix` returns $(1 + \eta)R$; `Mul` gives $\eta_{ab} = \eta_a + \eta_b + \eta_a\eta_b$; `inverse` keeps $\eta$; `geodesic` keeps both endpoints bit-exact and is scale-invariant below `r`'s second switch, while the blend tilts by $\sin((1-t)\alpha)\sin(t\alpha)/\sin\alpha \cdot \lvert\eta_1 - \eta_0\rvert$; SE_N(3)'s columns carry `act`'s term ([`0058`](./decisions/0058-a-drifted-quaternion-is-carried-not-vouched-for.md)) | garbage in, garbage out |
+| `SO3::from_quat_unchecked` (carried, §3.6) | $\lvert\eta\rvert \le 2^{-26.29}$ (`f64`), $2^{-11.79}$ (`f32`), $\eta = \|q\|^2 - 1$; nothing asserted, NaN propagates. To first order in $\eta$: `log` returns the `Log` of $q/\|q\|$; `act` returns $Rv + \eta(Rv - v)$; `to_matrix` returns $(1 + \eta)R - \eta I$, `act`'s term ([`0092`](./decisions/0092-r-of-q-takes-the-unit-diagonal.md), draft); `Mul` gives $\eta_{ab} = \eta_a + \eta_b + \eta_a\eta_b$; `inverse` keeps $\eta$; `geodesic` keeps both endpoints bit-exact and is scale-invariant below `r`'s second switch, while the blend tilts by $\sin((1-t)\alpha)\sin(t\alpha)/\sin\alpha \cdot \lvert\eta_1 - \eta_0\rvert$; SE_N(3)'s columns carry `act`'s term ([`0058`](./decisions/0058-a-drifted-quaternion-is-carried-not-vouched-for.md)) | garbage in, garbage out |
 | `from_wxyz_normalized` | $\|q\|^2$ normal (components within $\approx 10^{\pm154}$ `f64`, $10^{\pm19}$ `f32`); `debug_assert!` on the result (§3.6, [`0027`](./decisions/0027-a-normalizing-constructor-normalizes.md)) | NaN at $q = 0$; zero above the overflow |
 | `renormalize` | none; a normalization only for $\lvert\|q\|^2 - 1\rvert \le 2^{-26.29}$ (`f64`), $2^{-11.79}$ (`f32`) (§3.6) | defined everywhere; $0$ at $\|q\|^2 = 3$, $q$ reversed beyond |
 | `solve_cubic` | every input; the mask is the report: a non-finite coefficient, $a = 0$, or $1/a$, $b/a$, $c/a$ or $d/a$ overflowing gives no valid slot (§16) | — |

@@ -9,7 +9,8 @@
 # Under `0088` the domination bar fails a resolved loss or a gross one (above 8 times the best
 # oracle's maximum plus 1 u), so a stratum whose excess is neither needs no row. The `0046` tie
 # (`so3_exp/theta:1e-5`) was deleted for that reason. `0076`'s two rows stay: `so3_act/q:nonunit`
-# resolves, and `sen3_ad_n1/q:nonunit` (256 u against 2.1 u on 6 records) is gross.
+# resolves, and `sen3_ad_n1/q:nonunit` (419 u against 2.1 u on 6 records since `0092`, draft, which
+# makes `to_matrix` `act`'s term) is gross.
 
 [[exception]]
 fn = "so3_act"
@@ -23,4 +24,4 @@ fn = "sen3_ad_n1"
 stratum = "q:nonunit"
 precision = "f64"
 record = "0076"
-reason = "carried drift: helicoid's Ad blocks carry 0058's (1 + eta)R, Sophus normalizes q at construction"
+reason = "carried drift: helicoid's Ad blocks carry act's term (1 + eta)R - eta I (0058, 0092 draft), Sophus normalizes q at construction"

@@ -383,14 +383,14 @@ fn matrix_hand_cases() {
     assert_eq!(mbits(half(1.0, 0.0, 0.0)), mbits(diag(1.0, -1.0, -1.0)));
     assert_eq!(mbits(half(0.0, 1.0, 0.0)), mbits(diag(-1.0, 1.0, -1.0)));
     assert_eq!(mbits(half(0.0, 0.0, 1.0)), mbits(diag(-1.0, -1.0, 1.0)));
-    // Not unit: `R(q) = ‖q‖² R(q / ‖q‖)`.
+    // Not unit: `R(q) = ‖q‖² R(q / ‖q‖) − (‖q‖² − 1) I` (`0092`, draft).
     assert_eq!(
         mbits(rows(&raw(2.0_f64, 0.0, 0.0, 0.0))),
-        mbits(diag(4.0, 4.0, 4.0))
+        mbits(diag(1.0, 1.0, 1.0))
     );
     assert_eq!(
         mbits(rows(&raw(0.0_f64, 2.0, 0.0, 0.0))),
-        mbits(diag(4.0, -4.0, -4.0))
+        mbits(diag(1.0, -7.0, -7.0))
     );
 }
 
@@ -765,10 +765,11 @@ fn product_and_norm_sum_left_to_right() {
 
 /// `R(q)`'s grouping is part of the same contract, and `matrix_hand_cases` cannot pin it: those
 /// inputs (`0`, `±0.5`, `±1`, `±2`) make every intermediate exact, so they hold under any
-/// regrouping — including the `1 - 2(y² + z²)` diagonal that assumes a unit `q`.
+/// regrouping.
 ///
-/// The quaternion below is unit to `2^-52` (inside the domain of `from_wxyz_unchecked`) and chosen
-/// so that all three other groupings of `d = w² - ((x² + y²) + z²)` land one ulp away.
+/// The quaternion below is unit to `2^-52` (inside the domain of `from_wxyz_unchecked`), and
+/// `(1 - 2y²) - 2z²` and `(1 - 2z²) - 2y²` each move two of the three diagonal entries of
+/// `1 - (2y² + 2z²)` by one ulp (`0092`, draft).
 #[test]
 fn matrix_sums_group_as_written() {
     let q = Quat::from_wxyz_unchecked(
@@ -787,13 +788,13 @@ fn matrix_sums_group_as_written() {
             ],
             [
                 0xbfe3_2906_030c_e70c,
-                0xbfe2_e817_44c2_c5d3,
+                0xbfe2_e817_44c2_c5d4,
                 0x3fe1_4dcc_d231_0ee0
             ],
             [
                 0x3fe0_2403_b077_ebf8,
                 0xbfe9_aef8_6040_c380,
-                0xbfd4_6150_026a_1566
+                0xbfd4_6150_026a_1564
             ],
         ]
     );

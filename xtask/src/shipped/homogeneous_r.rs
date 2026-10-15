@@ -1,7 +1,8 @@
-//! `helicoid:unit-r`: the shipped `Ad` of SE_N(3) and Sim(3) with one variable changed, the
-//! rotation block `R(q)` in Eigen's unit form `(1 − 2‖u‖²) I + 2uuᵀ + 2w[u]×` in place of
-//! `Quat::to_matrix`'s homogeneous `(w² − ‖u‖²) I + …`. It is the twin `0076` decision 1 measured
-//! by editing the library, kept as a subject so `cargo xtask compare` can re-measure it (`0078`).
+//! `helicoid:homogeneous-r`: the shipped `Ad` of SE_N(3) and Sim(3) with one variable changed, the
+//! rotation block `R(q)` in the homogeneous form `(w² − ‖u‖²) I + 2uuᵀ + 2w[u]×` in place of
+//! `Quat::to_matrix`'s unit form `(1 − 2‖u‖²) I + …`. It is the form `0076` decision 1 kept and
+//! `0092` (draft) replaces, kept as a subject so `cargo xtask compare` can re-measure the choice
+//! (`0078`): with it as `--a`, the comparison is `0076`'s tally to the stratum.
 //!
 //! Assembled here from the public API, since the library's `SEn3Jac` and `Sim3Jac` blocks are
 //! crate-private (`0028`): the element parsed as [`Helicoid`] parses it, the blocks of
@@ -19,20 +20,20 @@ use super::{sen3_of, sim3_of, Helicoid, Sen3, Sim3Id};
 use crate::conformance::corpus::Record;
 use crate::conformance::subject::{Output, Registered, Subject};
 
-/// `R(q)` as Eigen's `Quaternion::toRotationMatrix` rounds it: the diagonal `1 − (2y² + 2z²)`,
-/// the off-diagonal entries `Quat::to_matrix`'s, from the same nine products.
-pub(crate) fn unit_form<S: Real>(q: &Quat<S>) -> Mat3<S> {
+/// `R(q)` as `Quat::to_matrix` rounded it before `0092` (draft): the diagonal
+/// `(w² − ‖u‖²) + 2uᵢ²`, the off-diagonal entries the shipped ones, from the same nine products.
+pub(crate) fn homogeneous_form<S: Real>(q: &Quat<S>) -> Mat3<S> {
     let (w, x, y, z) = (q.w, q.x, q.y, q.z);
     let two = S::lit(2.0);
     let (tw, tx, ty, tz) = (two * w, two * x, two * y, two * z);
+    let d = w * w - (x * x + y * y + z * z);
     let (xx, yy, zz) = (tx * x, ty * y, tz * z);
     let (xy, xz, yz) = (tx * y, tx * z, ty * z);
     let (wx, wy, wz) = (tw * x, tw * y, tw * z);
-    let one = S::one();
     Mat3::from_cols([
-        Vector([one - (yy + zz), xy + wz, xz - wy]),
-        Vector([xy - wz, one - (xx + zz), yz + wx]),
-        Vector([xz + wy, yz - wx, one - (xx + yy)]),
+        Vector([d + xx, xy + wz, xz - wy]),
+        Vector([xy - wz, d + yy, yz + wx]),
+        Vector([xz + wy, yz - wx, d + zz]),
     ])
 }
 
@@ -136,11 +137,11 @@ fn ad(
 /// The ids the twin answers: the four whose answer reads `R(q)` as a matrix.
 const IDS: [&str; 4] = ["sen3_ad_n1", "sen3_ad_n2", "sen3_ad_n3", "sim3_ad"];
 
-pub(crate) struct UnitR;
+pub(crate) struct HomogeneousR;
 
-impl Subject for UnitR {
+impl Subject for HomogeneousR {
     fn name(&self) -> &str {
-        "helicoid:unit-r"
+        "helicoid:homogeneous-r"
     }
 
     fn supports(&self, fn_id: &str) -> bool {
@@ -148,17 +149,17 @@ impl Subject for UnitR {
     }
 
     fn eval(&self, fn_id: &str, record: &Record, precision: Precision) -> Output {
-        ad(fn_id, record, precision, unit_form, unit_form)
+        ad(fn_id, record, precision, homogeneous_form, homogeneous_form)
     }
 }
 
 pub(crate) fn registered() -> Registered {
-    let version = format!("{}@unit-r", env!("CARGO_PKG_VERSION"));
+    let version = format!("{}@homogeneous-r", env!("CARGO_PKG_VERSION"));
     Registered {
         version: version.clone(),
         version_f32: version,
         no_f32: None,
-        subject: Box::new(UnitR),
+        subject: Box::new(HomogeneousR),
         planted: true,
     }
 }
@@ -193,8 +194,8 @@ mod tests {
                 assert!(!shipped.is_empty(), "{} {}", entry.fn_id, rec.id);
                 assert_eq!(bits(&twin), bits(&shipped), "{} {}", entry.fn_id, rec.id);
                 checked += 1;
-                let unit = UnitR.eval(&entry.fn_id, &rec, p);
-                moved += usize::from(bits(&unit) != bits(&shipped));
+                let other = HomogeneousR.eval(&entry.fn_id, &rec, p);
+                moved += usize::from(bits(&other) != bits(&shipped));
             }
         }
         // Every record of the four ids, and the variable is a variable on most of them.
@@ -233,7 +234,7 @@ mod tests {
                 z: h,
             },
         ] {
-            let (u, m) = (unit_form(&q), q.to_matrix());
+            let (u, m) = (homogeneous_form(&q), q.to_matrix());
             for (r, c) in (0..3).flat_map(|r| (0..3).map(move |c| (r, c))) {
                 assert!(
                     (u.get(r, c) - m.get(r, c)).abs() <= 4.0 * f64::EPSILON,

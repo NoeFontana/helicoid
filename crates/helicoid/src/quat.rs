@@ -182,13 +182,14 @@ impl<S: Real> Quat<S> {
         self.w * self.w + self.x * self.x + self.y * self.y + self.z * self.z
     }
 
-    /// The matrix `R(q) = (w² - ‖u‖²) I + 2 u uᵀ + 2w [u]×` of `NUMERICS.md` §1, `u = (x, y, z)`.
+    /// The matrix `R(q) = (1 - 2‖u‖²) I + 2 u uᵀ + 2w [u]×` of `NUMERICS.md` §1, `u = (x, y, z)`: its
+    /// diagonal is Eigen's `1 - 2(u_j² + u_k²)` (`0092`, draft).
     ///
     /// For a unit `q` it is the rotation `v ↦ q v q*`, orthogonal with determinant `+1`. For any
-    /// other `q` it is `‖q‖² R(q / ‖q‖)` (`docs/maths/so3.md` SO.2), a scaled rotation.
-    ///
-    /// Not Eigen's `1 - 2(y² + z²)` diagonal: on a rounded unit `q`, `‖q‖² = 1 + η`, this form errs
-    /// by `ηR` and that one by `η(R - I)`, so each wins one end of `θ` (`0076`).
+    /// other `q` it is `‖q‖² R(q / ‖q‖) − (‖q‖² − 1) I`: with `‖q‖² = 1 + η`, `(1 + η)R − ηI`,
+    /// which applied to `v` is [`SO3::act`](crate::SO3::act)'s `Rv + η(Rv − v)`. On a rounded unit
+    /// `q` it errs from `R(q/‖q‖)` by `η(R − I)`, nothing at the identity, where the homogeneous
+    /// `(w² - ‖u‖²) I + …` errs by `ηR` at every angle.
     ///
     /// # Domain
     ///
@@ -200,7 +201,8 @@ impl<S: Real> Quat<S> {
         let (w, x, y, z) = (self.w, self.x, self.y, self.z);
         let two = S::lit(2.0);
         let (tw, tx, ty, tz) = (two * w, two * x, two * y, two * z);
-        let d = w * w - (x * x + y * y + z * z);
+        // The unit-norm diagonal `1 − 2(u_j² + u_k²)` (`0092`, draft).
+        let one = S::one();
         // Nine distinct products, bound once each: the six off-diagonal ones appear in two entries
         // apiece, so spelling them twice doubles the sign sites to keep in step and, for `Dual`,
         // the `1 + 2N` multiplies each one costs. The sums below are unchanged (D16).
@@ -209,9 +211,9 @@ impl<S: Real> Quat<S> {
         let (wx, wy, wz) = (tw * x, tw * y, tw * z);
         // Column-major: `col(c)[r]`; `[u]×` is `[[0, -z, y], [z, 0, -x], [-y, x, 0]]`.
         Mat3::from_cols([
-            Vector([d + xx, xy + wz, xz - wy]),
-            Vector([xy - wz, d + yy, yz + wx]),
-            Vector([xz + wy, yz - wx, d + zz]),
+            Vector([one - (yy + zz), xy + wz, xz - wy]),
+            Vector([xy - wz, one - (xx + zz), yz + wx]),
+            Vector([xz + wy, yz - wx, one - (xx + yy)]),
         ])
     }
 
