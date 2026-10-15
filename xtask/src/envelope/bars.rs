@@ -136,8 +136,10 @@ pub(super) struct Excess {
     pub(super) candidate: f64,
     pub(super) oracle: f64,
     pub(super) oracle_name: String,
-    /// Its independent draws (`0091`, draft).
+    /// The draws the swap test was over (`0091`, draft), or the row's records where none were read.
     pub(super) n: usize,
+    /// Whether `n` counts draws.
+    pub(super) draws: bool,
     /// The swap test's p-value; `None` where the stratum is unresolvable.
     pub(super) p: Option<f64>,
 }
@@ -148,8 +150,9 @@ impl Excess {
         let p = match self.p {
             Some(p) => format!("p = {p:.3e}"),
             None => format!(
-                "unresolvable: its {} independent draws cannot reach p <= {}; `--deep` judges it",
+                "unresolvable: its {} {} cannot reach p <= {}; `--deep` judges it",
                 self.n,
+                if self.draws { "draws" } else { "records" },
                 swap::ALPHA
             ),
         };
@@ -160,31 +163,24 @@ impl Excess {
     }
 }
 
-/// The swap test for `key` of `c` against `o`, over the records both scored, one pair per unit of
-/// `c`'s corpus, each side's maximum over the unit's records (`0091`, draft): a unit's records
-/// swap together, so the maxima are what a swap moves. `None` when either subject has no records
-/// for it.
-fn swap_of(c: &Subject, o: &Subject, key: &Key) -> Option<swap::Swap> {
+/// The swap test for `key` of `c` against `o`, over the records both scored, one pair per draw
+/// of `c`'s records file, each side's maximum over the draw's records (`0091`, draft): a draw's
+/// records swap together, so the maxima are what a swap moves. With the number of pairs, the
+/// draws the test was over. `None` when either subject has no records for it.
+fn swap_of(c: &Subject, o: &Subject, key: &Key) -> Option<(swap::Swap, usize)> {
     let mine = c.records.get(key)?;
     let theirs: BTreeMap<u64, f64> = o.records.get(key)?.iter().copied().collect();
-    let mut units: BTreeMap<u64, (f64, f64)> = BTreeMap::new();
+    let draw_of = c.units.stratum(key.fn_id(), key.stratum());
+    let mut draws: BTreeMap<u64, (f64, f64)> = BTreeMap::new();
     for (id, e) in mine {
         if let Some(t) = theirs.get(id) {
-            let unit = c.units.of(key.fn_id(), key.stratum(), *id);
-            let pair = units.entry(unit).or_insert((*e, *t));
+            let draw = draw_of.and_then(|m| m.get(id)).copied().unwrap_or(*id);
+            let pair = draws.entry(draw).or_insert((*e, *t));
             *pair = (pair.0.max(*e), pair.1.max(*t));
         }
     }
-    let pairs: Vec<(f64, f64)> = units.into_values().collect();
-    (!pairs.is_empty()).then(|| swap::test(&pairs))
-}
-
-/// The independent draws among `c`'s records for `key` (`0091`, draft); `n` where none were read.
-fn draws(c: &Subject, key: &Key, n: usize) -> usize {
-    c.records.get(key).map_or(n, |rs| {
-        c.units
-            .count(key.fn_id(), key.stratum(), rs.iter().map(|(id, _)| *id))
-    })
+    let pairs: Vec<(f64, f64)> = draws.into_values().collect();
+    (!pairs.is_empty()).then(|| (swap::test(&pairs), pairs.len()))
 }
 
 /// One stratum the exception table explains, as the evidence page prints it.
@@ -397,12 +393,13 @@ pub(super) fn judge_excepting(
                     // fails as before unless no test could have resolved it (`0088`).
                     let mut resolved = String::new();
                     if mode == Mode::Resolved {
-                        let excess = |p| Excess {
+                        let excess = |p, n, draws| Excess {
                             key: key.to_string(),
                             candidate: max,
                             oracle: m,
                             oracle_name: o.name.clone(),
-                            n: draws(candidate, &key, r.n),
+                            n,
+                            draws,
                             p,
                         };
                         let pass = |v: &mut Verdict, e: Excess, unresolvable: bool| {
@@ -423,17 +420,17 @@ pub(super) fn judge_excepting(
                             );
                         } else {
                             match swap_of(candidate, o, &key) {
-                                Some(s) if s.floor > swap::ALPHA => {
-                                    pass(&mut v, excess(None), true);
+                                Some((s, n)) if s.floor > swap::ALPHA => {
+                                    pass(&mut v, excess(None, n, true), true);
                                     continue;
                                 }
-                                Some(s) if s.p > swap::ALPHA => {
-                                    pass(&mut v, excess(Some(s.p)), false);
+                                Some((s, n)) if s.p > swap::ALPHA => {
+                                    pass(&mut v, excess(Some(s.p), n, true), false);
                                     continue;
                                 }
-                                Some(s) => resolved = format!(", resolved at p = {:.3e}", s.p),
+                                Some((s, _)) => resolved = format!(", resolved at p = {:.3e}", s.p),
                                 None if !swap::can_resolve(r.n) => {
-                                    pass(&mut v, excess(None), true);
+                                    pass(&mut v, excess(None, r.n, false), true);
                                     continue;
                                 }
                                 None => {
@@ -628,7 +625,7 @@ mod tests {
         let v = resolved(&cs, &os);
         assert!(v.failures.iter().all(|f| f.bar != Bar::Domination));
         assert_eq!(v.unresolvable.len(), 1);
-        assert!(v.unresolvable[0].line().contains("its 6 independent draws"));
+        assert!(v.unresolvable[0].line().contains("its 6 draws"));
         let six = resolved(
             &with_records("c", &c.iter().step_by(2).copied().collect::<Vec<_>>()),
             &with_records("o", &o.iter().step_by(2).copied().collect::<Vec<_>>()),
@@ -661,7 +658,7 @@ mod tests {
                 assert_eq!(v.unresolvable.len(), 1);
                 assert!(v.unresolvable[0]
                     .line()
-                    .contains("its 4 independent draws cannot reach"));
+                    .contains("its 4 draws cannot reach"));
             }
             let strict = judge(&with_records("c", &c), &[with_records("o", &o)], None);
             assert!(strict.failures.iter().any(|f| f.bar == Bar::Domination));

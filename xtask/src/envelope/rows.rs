@@ -6,7 +6,11 @@ use std::fmt;
 
 use helicoid_linalg::Precision;
 
-use crate::conformance::report::{precision_name, Row, HEADER, RECORDS_HEADER};
+use crate::conformance::report::{
+    precision_name, Row, HEADER, RECORDS_HEADER, RECORDS_HEADER_0088,
+};
+
+use super::units::Units;
 
 use super::bars::is_scored;
 
@@ -177,26 +181,44 @@ pub(super) fn parse_results(name: &str, text: &str) -> Result<Subject, String> {
 
 /// The records file `conformance` writes beside a result CSV (`report::records_csv`): an error
 /// is finite and non-negative, or `inf` for a non-finite output; a record twice is an error.
-pub(super) fn parse_records(text: &str) -> Result<Records, String> {
+pub(super) fn parse_records(text: &str) -> Result<(Records, Units), String> {
     let mut lines = text.lines();
-    if lines.next() != Some(RECORDS_HEADER) {
-        return Err(format!("the header is not `{RECORDS_HEADER}`"));
-    }
-    let mut out = Records::new();
+    // A file in `0088`'s format carries no draw: each record is its own (`0091`, draft).
+    let cells_per = match lines.next() {
+        Some(RECORDS_HEADER) => 6,
+        Some(RECORDS_HEADER_0088) => 5,
+        _ => return Err(format!("the header is not `{RECORDS_HEADER}`")),
+    };
+    let (mut out, mut units) = (Records::new(), Units::default());
     let mut seen = BTreeSet::new();
     for (i, line) in lines.enumerate() {
         let at = |e: String| format!("line {}: {e}", i + 2);
-        let all = cells(line).map_err(at)?;
+        let mut all = cells(line).map_err(at)?;
         let n = all.len();
+        if n != cells_per {
+            return Err(at(format!("{n} cells, expected {cells_per}")));
+        }
+        let draw = (cells_per == 6).then(|| all.pop()).flatten();
         let Ok([fn_id, stratum, prec, id, err]) = <[String; 5]>::try_from(all) else {
-            return Err(at(format!("{n} cells, expected 5")));
+            return Err(at(format!("{n} cells, expected {cells_per}")));
         };
+        let id: u64 = count("id", &id).map_err(at)?;
+        let draw: u64 = match draw {
+            Some(d) => count("draw", &d).map_err(at)?,
+            None => id,
+        };
+        if draw > id {
+            return Err(at(format!("draw {draw} after its record {id}")));
+        }
+        // A record is its own draw unless said otherwise, so only the others are kept.
+        if draw != id {
+            units.insert(&fn_id, &stratum, id, draw);
+        }
         let key = Key {
             fn_id,
             stratum,
             precision: precision_name(precision(&prec).map_err(at)?),
         };
-        let id: u64 = count("id", &id).map_err(at)?;
         let err: f64 = match err.as_str() {
             "inf" => f64::INFINITY,
             e => error("err_u", e).map_err(at)?,
@@ -209,7 +231,7 @@ pub(super) fn parse_records(text: &str) -> Result<Records, String> {
         }
         out.entry(key).or_default().push((id, err));
     }
-    Ok(out)
+    Ok((out, units))
 }
 
 /// That `records` is the records file of `rows`' run (`0088`): per key, as many records as the
@@ -279,6 +301,25 @@ pub(super) mod testing {
 mod tests {
     use super::testing::row;
     use super::*;
+
+    /// `0091` (draft): the draw column is read, a `0088` file reads each record as its own draw,
+    /// and a draw after its record or a wrong cell count is an error.
+    #[test]
+    fn the_draw_column_is_read_and_0088_files_are_one_draw_per_record() -> Result<(), String> {
+        let new = "fn,stratum,precision,id,err_u,draw\nf,s,f64,0,1.5,0\nf,s,f64,1,1.5,0\n";
+        let (records, units) = parse_records(new)?;
+        assert_eq!(records.values().map(Vec::len).sum::<usize>(), 2);
+        let draws = units.stratum("f", "s").cloned().unwrap_or_default();
+        assert_eq!(draws.into_iter().collect::<Vec<_>>(), [(1, 0)]);
+        let old = "fn,stratum,precision,id,err_u\nf,s,f64,0,1.5\nf,s,f64,1,1.5\n";
+        let (_, units) = parse_records(old)?;
+        assert!(units.stratum("f", "s").is_none());
+        let late = "fn,stratum,precision,id,err_u,draw\nf,s,f64,0,1.5,1\n";
+        assert!(parse_records(late).is_err());
+        let short = "fn,stratum,precision,id,err_u,draw\nf,s,f64,0,1.5\n";
+        assert!(parse_records(short).is_err());
+        Ok(())
+    }
     use crate::conformance::report::csv;
 
     #[test]

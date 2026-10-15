@@ -11,8 +11,11 @@ pair of errors is exchangeable on its own. The corpus breaks that by design:
 - **Twins.** `gen/so3.py` and `gen/sen3.py` write every quaternion and then its negative, the half
   a `Log` without its flip gets wrong. `q` and `−q` are one rotation, and every program answers
   both through one arithmetic once it canonicalizes, so the two records carry one error twice.
-- **How many.** 53 of `sen3_log_n2`'s 54 strata are twin pairs, and so are most strata of every id
-  with a quaternion input.
+- **Where.** Twins occur in `so3_log` (29 of 30 strata) and `sen3_log_n1`, `_n2`, `_n3` (53 of
+  54 each), and nowhere else. The generator also writes some inputs more than once: in
+  `real_acos`, `x:near±1` holds 37 distinct inputs in 64 records, 22 and 20 at `@f32`; in
+  `real_sin_cos`, `x:near-k-pi/2` holds 61. A deterministic program answers a repeat as it answers
+  the first, so a repeat is no more evidence than a twin.
 - **What it does to the test.** Swapping one twin and not the other is no arrangement the null
   hypothesis allows. Counting both roughly squares the p-value, and lets a 6-draw stratum look as
   if it had 12.
@@ -36,18 +39,25 @@ Two arithmetic alternatives for `SEn3::log`'s translation were measured on the d
 
 ## Decision
 
-1. **The swap test's unit is a draw, not a record.** Two records of a stratum are one unit when
-   every input is equal, a quaternion input (`q`, `q0`, `q1`: four components) up to its sign.
-   - **Reading.** The units are read from the corpus inputs alone, never from an error, so the
-     grouping cannot lean on the answer it tests.
-   - **Pairing.** Each unit is one pair, each side's maximum over the unit's records. The units
+1. **The swap test's unit is a draw, not a record.** Two records of a stratum are one draw when
+   every input is equal, a quaternion input up to its sign.
+   - **Which inputs are quaternions:** they are declared once, as `corpus::QUATERNION_INPUTS`
+     (`q`, `q0`, `q1`), and a test holds the list to the corpus.
+   - **Pairing:** each draw is one pair, each side's maximum over the draw's records. The draws
      swap whole, so the maxima are what a swap moves.
-2. **Resolvability counts units.** `0088` decision 2's floor is computed over the units, so a
-   twinned stratum of 12 records is 6 draws. A stratum under 10 draws is unresolvable and is read
-   from the deep tier, as one under 10 records was.
-3. **Each tier reads its own corpus.** The committed tier groups by `conformance/corpus`, the deep
-   tier by `conformance/corpus-deep`. Where a tier has no manifest, each record is its own unit,
-   which is `0088` exactly.
+2. **The conformance run writes the draw.** It reads the corpus's validated inputs and writes the
+   draw beside each record's error, as a sixth cell of the records file: the smallest id of the
+   records one draw with it.
+   - **No stale grouping:** the grouping is the one the errors were scored under, so a corpus drawn
+     again after a run cannot regroup that run's records.
+   - **The envelope reads the corpus nowhere:** it parses no input and pays nothing.
+   - **Old files read as before:** a records file in `0088`'s five-cell format reads each record
+     as its own draw, which is `0088` exactly.
+3. **Resolvability counts the draws the test was over.** `0088` decision 2's floor is computed
+   over the draws both subjects scored, so a twinned stratum of 12 records is 6 draws. Under 10
+   draws it is unresolvable and read from the deep tier, as a stratum under 10 records was. The
+   excess line prints that count. Where no records were read it prints the row's records, and says
+   so.
 
 ## Rationale
 
@@ -60,12 +70,16 @@ Two arithmetic alternatives for `SEn3::log`'s translation were measured on the d
 | committed tier: unresolvable excesses | 726 | 691 |
 | deep tier: domination failures | 100 | 97 |
 
-- **Every committed-tier move is a twinned stratum.** None crosses `α` the other way, so no loss
-  appears.
+- **Every committed-tier move is a `Log` stratum.** None crosses `α` the other way, so no loss
+  appears. The repeats in `real_acos` and `real_sin_cos` move no verdict.
 - **The deep tier keeps its real losses.** 64 draws resolve them as before. The 97 are the next
   fix queue; 66 are `Ad`'s `R` block near the identity, which `0076` decision 1 kept.
 - **Rejected: twins as a separate stratum.** That moves corpus bytes, every baseline row and the
   sign coverage the twins exist for, to fix a statistics question.
+- **Rejected: the envelope reading the corpus (this record's first form).**
+  - **Staleness:** a corpus drawn again after the run regrouped the run's records with no error.
+  - **Two parsers:** it parsed the corpus a second time, without `corpus::read`'s checks.
+  - **Cost:** the envelope took 1.6 s where it had taken 0.16, before the deep tier's 382 MB.
 - **Rejected: grouping by equal errors.** It reads the answer the test is about. Two independent
   draws may tie by chance, and two twins of a program that does not canonicalize may differ.
 
@@ -73,20 +87,28 @@ Two arithmetic alternatives for `SEn3::log`'s translation were measured on the d
 
 - **`0088` decisions 1 and 2 read "draw" for "record"** when this record is `ready`.
   `PHASE1.md` §8's "per-record" pairing gains the same sentence.
-- **The envelope reads the corpus inputs once per run**: 63 MB committed, 382 MB deep, in seconds.
-- **The excess line says "independent draws"**, so a twinned stratum's report shows its real `n`.
+- **The records file gains a `draw` cell.** Every subject's file written from now on carries it.
+  Only the candidate's draws are read, so an oracle's older file still pairs.
+- **The excess line counts draws**, so a twinned stratum's report shows its real `n`.
 - **`MANIFEST-deep.json` is regenerated** in the same PR. It was stale (`0088`'s owed item), and
   the deep evidence above was drawn against it.
 
 ## Implementation plan
 
-1. `envelope::units` and the grouping in `bars::swap_of`:
-   - tests `a_quaternion_and_its_negative_are_one_unit_and_nothing_else_is`,
-     `only_q_named_four_vectors_are_quaternions` and `a_twin_pair_is_one_draw`;
+1. `corpus::draws`, the records file's `draw` cell, `envelope::units` and the grouping in
+   `bars::swap_of`:
+   - tests `a_quaternion_and_its_negative_are_one_draw`, `quaternion_inputs_are_four_vectors`,
+     `the_draw_column_is_read_and_0088_files_are_one_draw_per_record` and
+     `a_twin_pair_is_one_draw`;
    - the regenerated `MANIFEST-deep.json`.
 
    Verified by `cargo nextest run -p xtask`, `just lint`, `just corpus-deep-check`, and
    `cargo xtask envelope` with and without `--deep`.
+
+## Further work
+
+- **The generator's repeats.** `real_acos` writes 27 of 64 `x:near±1` inputs twice or more.
+  Drawing distinct inputs would give those strata their 64 draws back.
 
 ## Open questions
 

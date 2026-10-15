@@ -153,6 +153,37 @@ fn fields<T>(
     Ok(out)
 }
 
+/// The inputs that are quaternions, whose negative is the same rotation (`0091`, draft). The
+/// generator writes each quaternion of a `Log` id and then its negative (`gen/so3.py`,
+/// `gen/sen3.py`); `quaternion_inputs_are_four_vectors` holds this list to the corpus.
+pub(crate) const QUATERNION_INPUTS: [&str; 3] = ["q", "q0", "q1"];
+
+/// Each record's draw (`0091`, draft): the smallest id among the records of its stratum whose
+/// inputs are equal, a [`QUATERNION_INPUTS`] one up to its sign. Read from the inputs alone, never
+/// from an error, so the grouping cannot lean on the answer a test asks of it. Two records that are
+/// one draw are one rotation, or one input written twice, and a program answers both alike.
+pub(crate) fn draws(records: &[Record]) -> BTreeMap<u64, u64> {
+    // A record's stratum and its inputs by name as bit patterns, the quaternions sign-folded.
+    type Draw<'a> = (&'a str, Vec<(&'a str, Vec<u64>)>);
+    let mut first: BTreeMap<Draw, u64> = BTreeMap::new();
+    let mut out = BTreeMap::new();
+    for r in records {
+        let key: Vec<(&str, Vec<u64>)> = r
+            .inputs
+            .iter()
+            .map(|(name, t)| {
+                let neg = QUATERNION_INPUTS.contains(&name.as_str())
+                    && t.data.iter().find(|x| **x != 0.0).is_some_and(|x| *x < 0.0);
+                let bits = t.data.iter().map(|&x| if neg { -x } else { x }.to_bits());
+                (name.as_str(), bits.collect())
+            })
+            .collect();
+        let draw = *first.entry((r.stratum.as_str(), key)).or_insert(r.id);
+        out.insert(r.id, draw);
+    }
+    out
+}
+
 /// Parses one line of a function file.
 pub(crate) fn parse_line(line: &str) -> Result<Record, String> {
     let l: Line = serde_json::from_str(line).map_err(|e| e.to_string())?;
@@ -282,6 +313,67 @@ mod tests {
 
     use super::*;
     use crate::conformance::testkit::Scratch;
+
+    /// A record of `q` and `x`, through `parse_line` as the corpus is read.
+    fn rec(id: u64, q: [f64; 4], x: f64) -> Result<Record, String> {
+        let hex = |v: f64| {
+            let (bits, sign) = (v.to_bits(), if v.is_sign_negative() { "-" } else { "" });
+            let (biased, frac) = ((bits >> 52) & 0x7ff, bits & ((1 << 52) - 1));
+            match biased {
+                0 => format!("\"{sign}0x0.0p+0\""),
+                b => format!("\"{sign}0x1.{frac:013x}p{:+}\"", b as i64 - 1023),
+            }
+        };
+        let q = q.map(hex).join(",");
+        parse_line(&format!(
+            r#"{{"id":{id},"stratum":"s","in":{{"q":[{q}],"x":[{}]}},"out":{{"y":["0"]}}}}"#,
+            hex(x)
+        ))
+    }
+
+    /// `0091` (draft): `q` and `−q` are one draw, the sign read from the first nonzero component;
+    /// another input, or a quaternion differing other than by sign, is another draw; and one input
+    /// written twice is one draw.
+    #[test]
+    fn a_quaternion_and_its_negative_are_one_draw() -> Result<(), String> {
+        let q = [0.5, -0.5, 0.5, 0.5];
+        let w0 = [0.0, -0.6, 0.0, 0.8];
+        let neg = |q: [f64; 4]| q.map(|c| -c);
+        let records = [
+            rec(0, q, 1.0)?,
+            rec(1, neg(q), 1.0)?,
+            rec(2, neg(q), 2.0)?,
+            rec(3, [0.5, 0.5, 0.5, 0.5], 1.0)?,
+            rec(4, w0, 1.0)?,
+            rec(5, neg(w0), 1.0)?,
+            rec(6, w0, 1.0)?,
+        ];
+        let d: Vec<u64> = draws(&records).into_values().collect();
+        assert_eq!(d, [0, 0, 2, 3, 4, 4, 4]);
+        Ok(())
+    }
+
+    /// Every [`QUATERNION_INPUTS`] input of the committed corpus has four components, and the
+    /// `Log` ids the generator twins name theirs `q`.
+    #[test]
+    fn quaternion_inputs_are_four_vectors() -> Result<(), String> {
+        let dir = crate::conformance::corpus_dir()?;
+        let mut seen = BTreeSet::new();
+        for e in manifest(&dir)? {
+            for r in read(&dir, &e)? {
+                for (name, t) in &r.inputs {
+                    if QUATERNION_INPUTS.contains(&name.as_str()) {
+                        assert_eq!(t.data.len(), 4, "{} {name}", e.fn_id);
+                        seen.insert(e.fn_id.clone());
+                    }
+                }
+            }
+        }
+        for id in ["so3_log", "sen3_log_n1", "sen3_log_n2", "sen3_log_n3"] {
+            assert!(seen.contains(id), "{id}");
+        }
+        Ok(())
+    }
 
     const VECTOR: &str = r#"{"id":3,"in":{"phi":["0x1.8p+1","-0x0.0p+0","0x1.0000000000001p-1022"]},"out":{"q":["9.99999999999999999999999251527e-1","-1.06240087782203108924896608142e-13"]},"stratum":"theta:1e-12"}"#;
     const MATRIX: &str = r#"{"id":0,"in":{"R":["0x1p+0","0x0.0p+0","0x0.0p+0","0x0.0p+0","0x1p+0","0x0.0p+0"],"shape":[3,2]},"out":{"J":["1e0","0e0","0e0","0e0","1e0","2.5e-311"],"shape":[3,2],"s":"1e0"},"stratum":"s"}"#;
