@@ -167,7 +167,7 @@ side of `docs/maths/coefficients.md` CO.12.
 | `sim3_jr`, `sim3_jl` | $\tau$ | $\sum(\mp\mathrm{ad}_\tau)^k/(k+1)!$, dense $7\times7$, for $\lvert\sigma\rvert \le 3$; beyond, SM.10's blocks at $\lvert\sigma\rvert$ more digits. Cross-checks: the other route, `mp.expm` of $[\mathrm{ad}\ I; 0\ 0]$ to $\lvert\sigma\rvert = 30$, $J_l = \mathrm{Ad}\,J_r$ beyond |
 | `sim3_jr_inv`, `sim3_jl_inv` | $\tau$ | `mp.inverse` of the above, the zeros of $[A\ 0\ 0; B\ C\ f; 0\ 0\ e]$ exact |
 | `sim3_ad` | $(q, x, \sigma)$ | images of the basis under $\psi \mapsto (X\psi^\wedge X^{-1})^\vee$; cross-check SM.9's closed form |
-| `sim3_act` | $(q, x, \sigma, p)$ | $sRp + t$; cross-check the quaternion sandwich. The eight ids see the $\sigma\times\theta$ grid `sigma:<σ>/theta:<θ>`, the rays `ray:<r>` and the large-$\sigma$ strata, four records each (eight per ray), with `@f32` twins ([`0070`](./decisions/0070-sim3-a-structured-jacobian-and-a-series-on-delta.md), [`0071`](./decisions/0071-the-corpus-budget-is-64-mib.md)) |
+| `sim3_act` | $(q, x, \sigma, p)$ | $sRp + t$; cross-check the quaternion sandwich. The eight ids see the $\sigma\times\theta$ grid `sigma:<σ>/theta:<θ>`, the rays `ray:<r>` and the large-$\sigma$ strata, four records each (a cell's $\sigma$ and $\theta$ drawn in its band as the `rho:*` cells' $\theta$, §4.4) (eight per ray), with `@f32` twins ([`0070`](./decisions/0070-sim3-a-structured-jacobian-and-a-series-on-delta.md), [`0071`](./decisions/0071-the-corpus-budget-is-64-mib.md)) |
 | `sen3_exp_n{1,2,3}` | $\tau$ | `mp.expm` of the $(3+N)$-square hat matrix; the rotation as `so3_exp`'s quaternion series, asserted equal to the matrix's block |
 | `sen3_log_n{1,2,3}` | $X$ | the $\tau$ with $\|\varphi\| \le \pi$ and $\mathrm{Exp}(\tau) = X$: `so3_log`'s $\varphi$, then $\rho_i$ solving $J_l(\varphi)\rho_i = x_i$ with $J_l$ the series of the same exponential's translation block; `mp.logm` of the $(3+N)$-square matrix is a test cross-check only, since it is wrong near $\pi$ |
 | `sen3_ad_n{1,2,3}` | $X$ | images of the basis under $\sigma \mapsto (X\sigma^\wedge X^{-1})^\vee$ |
@@ -214,8 +214,10 @@ Series are summed until the term's norm is below $10^{-110}$ relative. Phase 2's
 - `theta:dense`: 200 points per decade over $[10^{-4}, 1]$ — switch-point continuity.
 - `rho:1e-6`, `rho:1e-3`, `rho:1e0`, `rho:1e3`, `rho:1e4` (translation scale) crossed with
   $\theta \in \{10^{-8}, 10^{-4}, 10^{-1}, 1, \pi - 10^{-6}\}$ for SE_N(3), $N \in \{1, 2, 3\}$.
-  Each cell is a stratum, `rho:1e4/theta=pi-1e-6`. The SE_N(3) ids also see the `theta:*` strata at
-  unit translation scale, all but `theta:dense`; `sen3_log` and `sen3_ad`, which take a quaternion,
+  Each cell is a stratum, `rho:1e4/theta=pi-1e-6`, and each record draws its $\theta$ in the
+  cell's band: the offset from $0$, or from $\pi$, times $1 + 2^{-10}(2u - 1)$
+  ([`0094`](./decisions/0094-a-grid-cell-is-a-band.md), draft). The SE_N(3) ids also see the
+  `theta:*` strata at unit translation scale, all but `theta:dense`; `sen3_log` and `sen3_ad`, which take a quaternion,
   also see `q:w0` and `q:nonunit`. Each SE_N(3) stratum is 6 records, not 64: five dense matrices
   per record at 64 would be 190 MB. 6 is a budget trade-off (the family is 18 of the 50 MB; the
   rest is left for the later phases' ids), not the largest count that fits.

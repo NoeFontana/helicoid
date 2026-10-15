@@ -36,6 +36,24 @@ class Sim3Test(unittest.TestCase):
         jr = sim3.jacobian("jr")(rec)
         check_sim3.jacobian("jr")(rec, jr)
 
+    def test_a_grid_cell_draws_sigma_and_theta_in_its_band(self):
+        """0094 (draft): no two records of a cell share sigma or theta; each is within 2^-10 of
+        the cell's offset; the `@f32` cell rounds the binary64 draw."""
+        by = {s.name: s for s in sim3.TAU_STRATA}
+        for name, s, t in (("sigma:1/theta:1e-4", 1, 1e-4), ("sigma:-700/theta:3", -700, 3)):
+            taus = [r["tau"] for r in by[name].records()]
+            sigmas = [r[6] for r in taus]
+            thetas = [so3.norm([mpf(c) for c in r[:3]]) for r in taus]
+            self.assertEqual(len(set(sigmas)), len(taus), name)
+            self.assertTrue(all(abs(x - s) <= abs(s) * 2**-10 for x in sigmas), name)
+            self.assertTrue(all(abs(x - t) <= t * (2**-10 + 1e-15) for x in thetas), name)
+        near_pi = [so3.norm([mpf(c) for c in r["tau"][:3]]) for r in by["sigma:0/theta:pi-1e-6"].records()]
+        self.assertTrue(all(abs(mp.pi - x - mpf(10) ** -6) <= 10**-6 * (2**-10 + 1e-9) for x in near_pi))
+        self.assertTrue(all(r["tau"][6] == 0 for r in by["sigma:0/theta:1"].records()))
+        f64 = [r["tau"][6] for r in by["sigma:1/theta:1e-4"].records()]
+        f32 = [r["tau"][6] for r in by["sigma:1/theta:1e-4@f32"].records()]
+        self.assertEqual(f32, [precision.to_f32(x) for x in f64])
+
     def test_planted_errors_fail_their_checks(self):
         rec = {"tau": [0.4, 0.1, -0.7, 1.5, -0.3, 0.8, -0.6]}
         out = sim3.exp(rec)

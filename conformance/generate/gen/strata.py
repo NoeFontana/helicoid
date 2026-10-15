@@ -83,6 +83,19 @@ class Stratum:
             return [unit_vector_s2(rng) for _ in range(n)]
 
 
+# `0094` (draft): a grid cell's value is a band, not a point. Pinned, the value is one input every
+# draw shares, and a program's rounding of it (`e^sigma`, `cos(theta/2)`) is one error the swap
+# test reads 64 times. A relative half-width of 2^-10 moves that rounding on every draw and keeps
+# the cell's regime: `pi - 1e-6` stays within 1e-9 of its gap, `sigma = 700` below `ln` of the
+# largest binary64.
+BAND = 2**-10
+
+
+def band(rng: SplitMix64, base, offset):
+    """`base + offset (1 + BAND (2u - 1))`, u uniform on `rng`: the cell `base + offset`'s band."""
+    return base + offset * (1 + BAND * (2 * mpf(rng.uniform()) - 1))
+
+
 def _log_uniform(name: str, bounds: Callable[[], tuple], count: int = N_RANDOM) -> Stratum:
     def draw(rng: SplitMix64) -> list[float]:
         lo, hi = bounds()
@@ -192,19 +205,28 @@ QUAT_STRATA = (*SCALAR_THETA_STRATA, *Q_STRATA)
 # would be 190 MB of dense matrices against a 50 MB corpus (docs/PHASE1.md section 4.4).
 SEN3_SAMPLES = deep(6)
 RHO_EXPONENTS = (-6, -3, 0, 3, 4)
-CELL_THETAS = (
-    ("1e-8", lambda: mpf(10) ** -8),
-    ("1e-4", lambda: mpf(10) ** -4),
-    ("1e-1", lambda: mpf(10) ** -1),
-    ("1", lambda: mpf(1)),
-    ("pi-1e-6", lambda: mp.pi - mpf(10) ** -6),
+CELL_THETAS = (  # (base, offset): the cell's theta is base + offset, drawn in its `band`
+    ("1e-8", lambda: (0, mpf(10) ** -8)),
+    ("1e-4", lambda: (0, mpf(10) ** -4)),
+    ("1e-1", lambda: (0, mpf(10) ** -1)),
+    ("1", lambda: (0, mpf(1))),
+    ("pi-1e-6", lambda: (mp.pi, -mpf(10) ** -6)),
 )
+
+
+def _cell(name: str, cell: Callable[[], tuple], rho_exp: int) -> Stratum:
+    def draw(rng: SplitMix64) -> list[float]:
+        return [to_f64(band(rng, *cell())) for _ in range(N_AXES)]
+
+    return Stratum(name, N_AXES, draw, rho_exp=rho_exp)
+
+
 SEN3_STRATA = (
     *(s for s in SCALAR_THETA_STRATA if s.name != "theta:dense"),
     *(
-        Stratum(f"rho:1e{e}/theta={name}", 1, lambda rng, v=value: [to_f64(v())], rho_exp=e)
+        _cell(f"rho:1e{e}/theta={name}", cell, e)
         for e in RHO_EXPONENTS
-        for name, value in CELL_THETAS
+        for name, cell in CELL_THETAS
     ),
 )
 SEN3_QUAT_STRATA = (*SEN3_STRATA, *Q_STRATA)
