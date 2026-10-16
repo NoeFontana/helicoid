@@ -315,8 +315,21 @@ pub(crate) fn jr_inv_coeff_dz<S: Real>(z: S) -> (S, S) {
     (c.v, c.d[0])
 }
 
+/// `([a, b, b − 2d, e], sin θ/θ, far)` at `θ² = z`: `SEn3::jr`'s column in SE.8 remark (ii)'s five
+/// words and its diagonal `J_r(φ)` (`NUMERICS.md` §5.3, `0097`, draft), from [`jr_coeffs_sinc`] and
+/// [`q_coeffs`], each member its own group's to the bit. On `b`'s exact arm `b − 2d` is
+/// `(2a − sin θ/θ)/z` (CO.4), which near `π` is two terms of one sign where `b − 2d` loses a factor of
+/// about 2.5; below it the difference loses at most about 2.3 and the quotient cancels.
+pub(crate) fn q_five_coeffs<S: Real>(z: S) -> ([S; 4], S, S::Mask) {
+    let (a, b, sinc, far) = jr_coeffs_sinc(z);
+    let (_, d, e) = q_coeffs(z);
+    let safe = S::select(far, z, S::one());
+    let t = S::select(far, ((a + a) - sinc) / safe, b - (d + d));
+    ([a, b, t, e], sinc, far)
+}
+
 /// `(b, d, e)` at `θ² = z`: Barfoot's `Q` block (`NUMERICS.md` §5.3).
-// SE_N(3)'s alone: `SEn3::jr` and `jr_inv` are its only consumers (`PHASE3.md` §5).
+// SE_N(3)'s alone, through `q_five_coeffs` (`PHASE3.md` §5).
 pub(crate) fn q_coeffs<S: Real>(z: S) -> (S, S, S) {
     let arms = table::<S, _>(
         [B_F64.arm(), D_F64.arm(), E_F64.arm()],

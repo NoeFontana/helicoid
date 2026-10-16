@@ -256,6 +256,16 @@ $$
 In Barfoot's translation-first order this block sits upper-right; rotation-first puts it lower-left,
 which is what `col[i]` holds. The block for each $\rho_i$ is independent of the others.
 
+The program evaluates the same block in five words (`docs/maths/se3.md` SE.8 remark (ii)),
+$$
+Q(\rho, \varphi) = S(\rho) + \big[a\rho - (\varphi\cdot\rho)(b - 2d)\,\varphi\big]^\wedge,\qquad
+S(\rho) = b\,(\varphi^\wedge\rho^\wedge + \rho^\wedge\varphi^\wedge) - 2e\,(\varphi\cdot\rho)\,\varphi^\wedge\varphi^\wedge,
+$$
+$a = \tfrac12 - zd$ §3.5's $a$ (CO.4(a)), $S$ symmetric with its diagonal formed as §5.4's, and
+$b - 2d = (2a - \sin\theta/\theta)/z$ where $b$ is on its exact arm (`q_five_coeffs`). $Q(-\rho, -\varphi)$ has the
+same $S$ and the skew part negated
+([`0097`](./decisions/0097-the-jacobian-column-is-five-words.md), draft).
+
 ### 5.4 Inverses
 
 $J_r^{-1}(\tau)$ and $J_l^{-1}(\tau)$ are the dual-matrix inverse (§2.2) of §5.3,

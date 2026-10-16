@@ -631,9 +631,16 @@ mod group {
                 Jac::<f64, Twist<f64>>::neg(&SE3::<f64>::jl_inv(&tau)),
             );
             let got = x.rminus_jacobians(&y);
-            // `jl_inv`'s override against the provided body it replaces, `J_r⁻¹(−τ)`.
+            // `jl_inv`'s and `jl`'s overrides against the provided bodies they replace, `J_r⁻¹(−τ)`
+            // and `J_r(−τ)` (`0097`, draft).
             let (left, provided) = (SE3::<f64>::jl_inv(&tau), SE3::<f64>::jr_inv(&tau.neg()));
-            for (g, w) in [(&got.0, &want.0), (&got.1, &want.1), (&left, &provided)] {
+            let (fwd, fwd_provided) = (SE3::<f64>::jl(&tau), SE3::<f64>::jr(&tau.neg()));
+            for (g, w) in [
+                (&got.0, &want.0),
+                (&got.1, &want.1),
+                (&left, &provided),
+                (&fwd, &fwd_provided),
+            ] {
                 let (dg, dw) = (dense(g), dense(w));
                 let same = dg
                     .as_flattened()
@@ -648,10 +655,10 @@ mod group {
                 }
             }
         }
-        // An exactness claim with no headroom: every one of the 6003 blocks matches. The hat's zero
+        // An exactness claim with no headroom: every one of the 8004 blocks matches. The hat's zero
         // diagonal is never added (`Sym::plus_hat`), so no side writes a `−0` where another writes
         // `+0`; this test sees such a sign and `laws::jacobian_rows`'s error bound cannot.
-        assert_eq!(differing, 0, "of 6003 blocks");
+        assert_eq!(differing, 0, "of 8004 blocks");
     }
 
     fn twist(v: [f64; 6]) -> Twist<f64> {

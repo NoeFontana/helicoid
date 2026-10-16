@@ -74,10 +74,13 @@ mod kernel;
 mod sim3;
 #[cfg(test)]
 mod sim3_coeff_tests;
+// The sweep and the tests read `(b, d, e)` alone; the library through `q_five_coeffs`.
+#[cfg(any(test, feature = "__sweep"))]
+pub(crate) use kernel::q_coeffs;
 pub(crate) use kernel::{
     b_takes_exact_arm, exp_coeffs, gamma2_coeffs, jr_coeffs, jr_coeffs_sinc, jr_inv_coeff,
     jr_inv_coeff_dz, log_ratio, log_ratio_scale, log_ratio_short, log_ratio_takes_short_arm,
-    q_coeffs,
+    q_five_coeffs,
 };
 pub(crate) use sim3::{
     sim3_coeffs, sim3_coeffs_scaled, sim3_coeffs_scaled_pair, sim3_v, sim3_v_scaled, unscale,

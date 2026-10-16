@@ -1389,3 +1389,34 @@ fn log_ratio_scale_is_r_u_f64() {
 fn log_ratio_scale_is_r_u_f32() {
     log_ratio_scale_is_r_u::<f32>(3.0 * f64::from(f32::EPSILON));
 }
+
+/// `q_five_coeffs`' `b − 2d` (`0097`, draft): on `b`'s exact arm it is `(2a − sin θ/θ)/z`, within
+/// `4u` of `(2 − 2 cos θ − θ sin θ)/θ⁴`, which does not cancel there; below it, `b − 2d` itself.
+/// `a` and `b` are `jr_coeffs`', and `e` is `q_coeffs`', to the bit.
+#[test]
+fn q_five_coeffs_forms_b_minus_2d_without_the_cancellation() {
+    let u = f64::EPSILON / 2.0;
+    let mut theta = 1e-6_f64;
+    while theta < core::f64::consts::PI {
+        let z = theta * theta;
+        let ([a, b, t, e], _, far) = super::q_five_coeffs(z);
+        let (ja, jb) = jr_coeffs(z);
+        let (qb, d, qe) = q_coeffs(z);
+        assert_eq!(
+            [a, b, e].map(f64::to_bits),
+            [ja, jb, qe].map(f64::to_bits),
+            "theta {theta}"
+        );
+        assert_eq!(qb.to_bits(), b.to_bits(), "theta {theta}");
+        if far {
+            let want = ((2.0 - 2.0 * theta.cos()) - theta * theta.sin()) / (z * z);
+            assert!(
+                (t - want).abs() <= 4.0 * u * want,
+                "theta {theta}: {t} against {want}"
+            );
+        } else {
+            assert_eq!(t.to_bits(), (b - (d + d)).to_bits(), "theta {theta}");
+        }
+        theta *= 1.01;
+    }
+}

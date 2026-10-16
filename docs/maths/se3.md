@@ -25,7 +25,7 @@ Norms are spectral ($\lVert W\rVert = \theta$, $\lVert\Xi\rVert = \lVert\rho\rVe
 | SE.1–SE.2 | $\mathrm{SE}_N(3)$ as $(3+N)$-square matrices; $XY = (R_XR_Y,\ R_Xy_i + x_i)$, $X^{-1} = (R^\top, -R^\top x_i)$; $N=1$ SE(3), $N=2$ SE₂(3) with $x_1 = v$, $x_2 = p$ (a stated convention) | §1 | `SEn3`, `SE3`, `SE23`, `Mul`, `inverse` |
 | SE.3 | $\mathrm{Exp}\,\tau = (\mathrm{Exp}\,\varphi,\ J_l(\varphi)\rho_i)$; $\mathrm{Log}\,X = (\mathrm{Log}\,R,\ J_l^{-1}(\varphi)x_i)$ for $\theta(X) \le \pi$, inverting $\mathrm{Exp}$ for $\theta < \pi$ | §5.1 | `exp`, `log` |
 | SE.4 | $\mathrm{Ad}_X = R + \epsilon[x_i]_\times R$, $\mathrm{ad}_\tau = W + \epsilon[\rho_i]_\times$ | §5.2 | `adjoint`, `ad` |
-| SE.5–SE.8 | $J_l = \sum\mathrm{ad}^n/(n+1)!$: dual powers of $\mathrm{ad}$, the words $W^j\Xi W^k$, $W^3 = -zW$, the reductions among them; $Q(\rho,\varphi)$ with $b, d, e$ | §5.3, §4 | `q_coeffs`, `jl`, `jr` |
+| SE.5–SE.8 | $J_l = \sum\mathrm{ad}^n/(n+1)!$: dual powers of $\mathrm{ad}$, the words $W^j\Xi W^k$, $W^3 = -zW$, the reductions among them; $Q(\rho,\varphi)$ with $b, d, e$ | §5.3, §4 | `q_five_coeffs`, `jl`, `jr` |
 | SE.9 | $J_r$ has $Q(-\rho,-\varphi)$ (expanded); $Q_l = [J_l\rho]_\times J_l + e^WQ_r$; $\partial_\varphi(J_l\rho) = Q - [J_l\rho]_\times J_l$; an equal five-term form | §5.3, §1 | `jr`, `jl` |
 | SE.10–SE.11 | dual matrices $A + \epsilon B$: closure, product ($27 + 54N$ multiplications), inverse, `apply`, `apply_transpose`, determinant | §2.2, §14 | `SEn3Jac::{mul, inverse, apply, apply_transpose, write_dense}` |
 | SE.12 | $J_r^{-1}$, $J_l^{-1}$ are the dual inverse of $J_r$, $J_l$ | §5.4, §12 | `jr_inv`, `jl_inv` |
@@ -213,8 +213,8 @@ the unreduced one; the corpus compares values, not arrangements. (ii) SE.7(a)–
 $$
 Q = a\,\Xi + b\,(W\Xi + \Xi W) - (\varphi\cdot\rho)\big[(b - 2d)\,W + 2e\,W^2\big],\qquad a = \tfrac12 - zd
 $$
-(CO.4(a)), five words in place of nine. It is *not* §5.3 and is not adopted: another arrangement is a §5.3
-edit and a record.
+(CO.4(a)), five words in place of nine. The program evaluates it: `NUMERICS.md` §5.3 states it beside
+the definition (`0097`, draft).
 
 **Checked:** mpmath 1.4.1, 110 digits; $b, d, e$ from their definitions with 100 guard digits. 200
 random $(\varphi,\rho)$ ($\theta \sim U[0,6]$, $\rho_i \sim N(0,2^2)$) plus the 7 edge $\theta$ of SE.3 and its two
