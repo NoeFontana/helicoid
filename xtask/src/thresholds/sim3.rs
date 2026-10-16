@@ -17,7 +17,8 @@
 //! the points sorted by `Δ`, and the pair `(K, r_×²)` minimizing the larger of the two arms.
 //! Candidates within [`SLACK`] of the best are equal, and the cheapest wins: fewer terms, then the
 //! larger series region for `(K, r_×²)` and the smaller one for `w₀` (its exact arm reuses
-//! `expm1 σ`, which the closed arm has already formed).
+//! `expm1 σ`, which the closed arm has already formed). Last, three shallower tiers of the series
+//! arm, each from the one below it (`short_arm`, `0099`, draft).
 
 use std::fmt::Write as _;
 use std::path::Path;
@@ -43,6 +44,8 @@ const W0_TERMS_MAX: usize = 20;
 /// Two candidates whose objectives differ by less than this, in `u`, are equal: a quarter of a
 /// unit, or 2% of the best, whichever is larger.
 const SLACK: (f64, f64) = (0.25, 0.02);
+/// How much worse than depth `K`, in `u`, a shorter series arm may score at any one point.
+const TIER_SLACK: f64 = 0.0625;
 
 /// A reference split exactly into `hi + lo`, two binary64s.
 #[derive(Clone, Copy)]
@@ -72,6 +75,12 @@ pub(super) struct Choice {
     pub(super) closed_objective: f64,
     pub(super) w0_objective: f64,
     pub(super) points: usize,
+    pub(super) short_terms: usize,
+    pub(super) short_below: f64,
+    pub(super) mid_terms: usize,
+    pub(super) mid_below: f64,
+    pub(super) upper_terms: usize,
+    pub(super) upper_below: f64,
 }
 
 fn signed(neg: bool, m: BigUint) -> BigInt {
@@ -302,6 +311,7 @@ pub(super) fn sweep<S: Real<Mask = bool> + Into<f64>>(
     }
     let mut cands = Vec::new();
     let mut best = f64::INFINITY;
+    let mut sers = Vec::new();
     for k in K_RANGE {
         let ser: Vec<f64> = order
             .iter()
@@ -326,6 +336,7 @@ pub(super) fn sweep<S: Real<Mask = bool> + Into<f64>>(
             cands.push((obj, k, s, b, run, c));
             best = best.min(obj);
         }
+        sers.push((k, ser));
     }
     // Cheapest within the slack: fewer terms, then the larger series region.
     let chosen = cands
@@ -334,6 +345,17 @@ pub(super) fn sweep<S: Real<Mask = bool> + Into<f64>>(
         .filter(|c| within(c.0, best))
         .min_by(|a, b| a.1.cmp(&b.1).then(b.2.total_cmp(&a.2)))
         .ok_or("sim3: no candidate")?;
+    let (short_terms, short_below) =
+        short_arm(&grid, &sorted_delta, &sers, chosen.1, (0.0, chosen.2));
+    let (mid_terms, mid_below) = short_arm(
+        &grid,
+        &sorted_delta,
+        &sers,
+        chosen.1,
+        (short_below, chosen.2),
+    );
+    let (upper_terms, upper_below) =
+        short_arm(&grid, &sorted_delta, &sers, chosen.1, (mid_below, chosen.2));
     Ok(Choice {
         series_terms: chosen.1,
         series_below: chosen.2,
@@ -345,7 +367,50 @@ pub(super) fn sweep<S: Real<Mask = bool> + Into<f64>>(
         closed_objective: chosen.5,
         w0_objective,
         points: n,
+        short_terms,
+        short_below,
+        mid_terms,
+        mid_below,
+        upper_terms,
+        upper_below,
     })
+}
+
+/// A shorter series arm over `lo ≤ Δ < s` (`0099`, draft), `s` on the grid below `r_×²`: a depth
+/// `K_s < K` that scores within [`TIER_SLACK`] of depth `K` at **every** point there, its
+/// truncation negligible point by point and not only at the maximum (within [`SLACK`] of the
+/// maximum, the 4- and 6-term `f32` arms read 1.04× `main`'s total `sim3_log` error). Of those, the fewest terms
+/// summed over the points in `[lo, r_×²)`, then the larger region; `(K, lo)`, no arm, where none is
+/// cheaper. Called with `lo = 0` for the short arm, then above each arm for the next, twice.
+/// `sorted_delta` and each depth's scores are in the same `Δ` order.
+fn short_arm(
+    grid: &[f64],
+    sorted_delta: &[f64],
+    sers: &[(usize, Vec<f64>)],
+    k_full: usize,
+    (lo, series_below): (f64, f64),
+) -> (usize, f64) {
+    let first_at = |x: f64| sorted_delta.partition_point(|&d| d < x);
+    let Some((_, full)) = sers.iter().find(|(k, _)| *k == k_full) else {
+        return (k_full, lo);
+    };
+    let (start, end) = (first_at(lo), first_at(series_below));
+    let mut best = (k_full, lo, (end - start) * k_full);
+    for (k, ser) in sers.iter().filter(|(k, _)| *k < k_full) {
+        let (mut worse, mut i) = (0.0f64, start);
+        for &s in grid.iter().filter(|&&s| lo < s && s < series_below) {
+            let is = first_at(s);
+            while i < is {
+                worse = worse.max(ser[i] - full[i]);
+                i += 1;
+            }
+            let cost = (is - start) * k + (end - is) * k_full;
+            if worse <= TIER_SLACK && (cost, -s) < (best.2, -best.1) {
+                best = (*k, s, cost);
+            }
+        }
+    }
+    (best.0, best.1)
 }
 
 /// `1/n!` from `sim3_series.jsonl`, at binary64 and binary32.
@@ -400,7 +465,7 @@ pub(super) fn render(dir: &Path, choices: Option<(&Choice, &Choice)>) -> Result<
     let series_text = std::fs::read(dir.join(SERIES_FILE)).map_err(|e| e.to_string())?;
     let series_sha = super::emit::sha256_hex(&series_text);
     let mut csv = String::from(
-        "precision,series_terms,series_below,form_b_below,w0_terms,w0_below,objective,series_objective,closed_objective,w0_objective,points\n",
+        "precision,series_terms,series_below,form_b_below,w0_terms,w0_below,objective,series_objective,closed_objective,w0_objective,points,short_terms,short_below,mid_terms,mid_below,upper_terms,upper_below\n",
     );
     let mut rs = format!(
         "// @generated by `cargo xtask thresholds` from {CSV} — do not edit.\n\
@@ -432,12 +497,18 @@ pub(super) fn render(dir: &Path, choices: Option<(&Choice, &Choice)>) -> Result<
         closed_objective: f64::NAN,
         w0_objective: f64::NAN,
         points: 0,
+        short_terms: 16,
+        short_below: 0.0,
+        mid_terms: 16,
+        mid_below: 0.0,
+        upper_terms: 16,
+        upper_below: 0.0,
     };
     let (c64, c32) = choices.unwrap_or((&placeholder, &placeholder));
     for (name, c, wide) in [("f64", c64, true), ("f32", c32, false)] {
         let _ = writeln!(
             csv,
-            "{name},{},{:e},{:e},{},{:e},{:e},{:e},{:e},{:e},{}",
+            "{name},{},{:e},{:e},{},{:e},{:e},{:e},{:e},{:e},{},{},{:e},{},{:e},{},{:e}",
             c.series_terms,
             c.series_below,
             c.form_b_below,
@@ -447,7 +518,13 @@ pub(super) fn render(dir: &Path, choices: Option<(&Choice, &Choice)>) -> Result<
             c.series_objective,
             c.closed_objective,
             c.w0_objective,
-            c.points
+            c.points,
+            c.short_terms,
+            c.short_below,
+            c.mid_terms,
+            c.mid_below,
+            c.upper_terms,
+            c.upper_below
         );
         let lit = |x: f64| if wide { lit64(x) } else { lit32(x as f32) };
         let ty = if wide { "f64" } else { "f32" };
@@ -457,6 +534,9 @@ pub(super) fn render(dir: &Path, choices: Option<(&Choice, &Choice)>) -> Result<
              series {sobj:e}, closed {cobj:e}, w0 {wobj:e}.\n\
              pub(crate) const SIM3_{upper}: Sim3Switch<{ty}> = Sim3Switch {{\n    \
              // Δ < {sb:e}\n    series_below: {sbl},\n    series_terms: {k},\n    \
+             // Δ < {shb:e}\n    short_below: {shbl},\n    short_terms: {sk},\n    \
+             // Δ < {mb:e}\n    mid_below: {mbl},\n    mid_terms: {mk},\n    \
+             // Δ < {ub:e}\n    upper_below: {ubl},\n    upper_terms: {uk},\n    \
              // Δ ≥ {fb:e}\n    form_b_below: {fbl},\n    \
              // σ² < {wb:e}\n    w0_below: {wbl},\n    w0_terms: {wt},\n}};\n",
             points = c.points,
@@ -468,6 +548,15 @@ pub(super) fn render(dir: &Path, choices: Option<(&Choice, &Choice)>) -> Result<
             sb = c.series_below,
             sbl = lit(c.series_below),
             k = c.series_terms,
+            shb = c.short_below,
+            shbl = lit(c.short_below),
+            sk = c.short_terms,
+            mb = c.mid_below,
+            mbl = lit(c.mid_below),
+            mk = c.mid_terms,
+            ub = c.upper_below,
+            ubl = lit(c.upper_below),
+            uk = c.upper_terms,
             fb = c.form_b_below,
             fbl = lit(c.form_b_below),
             wb = c.w0_below,

@@ -5,7 +5,8 @@
 //! Two arms, chosen by one mask on `Δ = σ² + z`. Below `r_×²` the **total-degree series** of SM.6(b):
 //! the recurrences of SM.3 and SM.11(c) at per-sequence depths, so every scalar is truncated at
 //! total degree `< K` and the tail is a function of `r_Δ` alone; it covers `Δ = 0`, where it is the
-//! limits, without a division. Above, the **closed forms** of SM.5(b), SM.11(b)–(c) on `a, b, d`
+//! limits, without a division. `v₀` and `w₀` are summed by Horner in `σ`, and `K` is the depth of
+//! the arm's top tier, with three shallower ones below generated switches (`0099`, draft). Above, the **closed forms** of SM.5(b), SM.11(b)–(c) on `a, b, d`
 //! and `sin θ/θ` from the kernel's swept arms, `v₁` by form b from `Δ_b`, `w₀ = g₂(σ)` and
 //! `v₀ = g₁(σ)` by their series in `σ` below `σ_w`, and for `σ > 0` the **scaled arrangement** of SM.7(g): every scalar is formed
 //! as `e^{-σ} c` from `expm1(-σ)` and `e^{-σ}`, then multiplied by `e^σ`, so nothing overflows
@@ -24,6 +25,18 @@ pub(crate) struct Sim3Switch<T> {
     pub(crate) series_below: T,
     /// `K`: the series' total degree is `< K`.
     pub(crate) series_terms: usize,
+    /// The short series arm below it, in `Δ` (`0099`, draft): the series at depth `short_terms`.
+    pub(crate) short_below: T,
+    /// The short arm's depth, `≤ K`.
+    pub(crate) short_terms: usize,
+    /// The middle series arm, `short_below ≤ Δ <` it, at depth `mid_terms` (`0099`, draft).
+    pub(crate) mid_below: T,
+    /// The middle arm's depth, `≤ K`.
+    pub(crate) mid_terms: usize,
+    /// The upper series arm, `mid_below ≤ Δ <` it, at depth `upper_terms` (`0099`, draft).
+    pub(crate) upper_below: T,
+    /// The upper arm's depth, `≤ K`.
+    pub(crate) upper_terms: usize,
     /// `Δ_b`: `v₁` by form a below it, form b at and above.
     pub(crate) form_b_below: T,
     /// `σ_w²`: `w₀ = g₂(σ)` by its series below it, in `σ²`.
@@ -64,6 +77,12 @@ fn switch<S: Real>() -> Sim3Switch<f64> {
             Sim3Switch {
                 series_below: f64::from(s.series_below),
                 series_terms: s.series_terms,
+                short_below: f64::from(s.short_below),
+                short_terms: s.short_terms,
+                mid_below: f64::from(s.mid_below),
+                mid_terms: s.mid_terms,
+                upper_below: f64::from(s.upper_below),
+                upper_terms: s.upper_terms,
                 form_b_below: f64::from(s.form_b_below),
                 w0_below: f64::from(s.w0_below),
                 w0_terms: s.w0_terms,
@@ -148,11 +167,25 @@ fn series_at<S: Real, const FULL: bool, const PAIR: bool>(
     }
     // Below `r_×²` nothing cancels in `v₀ − zv₂`: `v₀ ≈ 1` and `zv₂ < r_×²/6`. No reader of
     // `χΔ` takes this arm (`b`'s exact arm starts above `r_×²`); it is the definition.
-    let at = |i: usize| Sim3Coeffs {
-        v: [acc[0][i], acc[1][i], acc[2][i]],
-        w: [acc[3][i], acc[4][i], acc[5][i]],
-        dv: [acc[6][i], acc[7][i]],
-        chi_delta: (acc[0][i] - z * acc[2][i]) * (sigma * sigma + z),
+    // `v₀ = g₁(σ)` and `w₀ = g₂(σ)` are polynomials in `σ` alone: by Horner, smallest term first,
+    // where the recurrence's upward sum rounds each of its `K` additions at the sum's scale
+    // (`0099`, draft: `v₀` read 4.5 `u` at `σ = 0.3`, `θ = 10⁻⁸`).
+    let horner = |s: S| {
+        (
+            g_series(s, 1, k),
+            if FULL { g_series(s, 2, k) } else { zero },
+        )
+    };
+    let (v0, w0) = horner(sigma);
+    let (v0m, w0m) = if PAIR { horner(-sigma) } else { (v0, w0) };
+    let at = |i: usize| {
+        let (v0, w0) = if i == 0 { (v0, w0) } else { (v0m, w0m) };
+        Sim3Coeffs {
+            v: [v0, acc[1][i], acc[2][i]],
+            w: [w0, acc[4][i], acc[5][i]],
+            dv: [acc[6][i], acc[7][i]],
+            chi_delta: (v0 - z * acc[2][i]) * (sigma * sigma + z),
+        }
     };
     [at(0), at(1)]
 }
@@ -305,6 +338,30 @@ pub(crate) fn unscale<S: Real>(c: Sim3Coeffs<S>, sigma: S, scaled: S::Mask) -> S
     }
 }
 
+/// The series at `Δ` (`0099`, draft): the short, middle or upper arm's depth below their switches,
+/// `K` above, each a branch so that each depth is a constant its loop unrolls by (a selected depth
+/// read 5 ns slower at `f64` near the identity).
+#[inline]
+fn tiered<S: Real, T: Blend<S>>(sw: &Sim3Switch<f64>, delta: S, at: impl Fn(usize) -> T) -> T {
+    S::branch(
+        delta.lt(S::lit(sw.short_below)),
+        || at(sw.short_terms),
+        || {
+            S::branch(
+                delta.lt(S::lit(sw.mid_below)),
+                || at(sw.mid_terms),
+                || {
+                    S::branch(
+                        delta.lt(S::lit(sw.upper_below)),
+                        || at(sw.upper_terms),
+                        || at(sw.series_terms),
+                    )
+                },
+            )
+        },
+    )
+}
+
 /// The group at the generated parameters: the series below `r_×²`, else the closed forms at the
 /// safe argument `(1, 1)` for a lane that is not on them (`0003` item 3).
 #[inline]
@@ -315,7 +372,7 @@ fn group<S: Real, const FULL: bool>(sigma: S, z: S) -> (Sim3Coeffs<S>, S::Mask) 
     let scaled = small.not().and(S::zero().lt(sigma));
     let c = S::branch(
         small,
-        || series::<S, FULL>(sigma, z, sw.series_terms),
+        || tiered(&sw, delta, |k| series::<S, FULL>(sigma, z, k)),
         || {
             let one = S::one();
             let (s, zz) = (S::select(small, one, sigma), S::select(small, one, z));
@@ -343,7 +400,7 @@ fn group_pair<S: Real>(sigma: S, z: S) -> [(Sim3Coeffs<S>, S::Mask); 2] {
     let zero = S::zero();
     let c = S::branch(
         small,
-        || series_at::<S, true, true>(sigma, z, sw.series_terms),
+        || tiered(&sw, delta, |k| series_at::<S, true, true>(sigma, z, k)),
         || {
             let one = S::one();
             let (s, zz) = (S::select(small, one, sigma), S::select(small, one, z));
