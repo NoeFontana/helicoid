@@ -32,12 +32,15 @@ pub(crate) struct Sim3Switch<T> {
     pub(crate) w0_terms: usize,
 }
 
-/// The eight scalars: `v = [v₀, v₁, v₂]`, `w = [w₀, w₁, w₂]`, `dv = [∂_z v₁, ∂_z v₂]`.
+/// The eight scalars: `v = [v₀, v₁, v₂]`, `w = [w₀, w₁, w₂]`, `dv = [∂_z v₁, ∂_z v₂]`; and
+/// `chi_delta = χΔ`, `χ = v₀ − zv₂` (SM.5(c)), `Δ = σ² + z`, which the closed arm forms without
+/// that cancellation. Its reader divides by `Δ` where it reads it (`0096`, draft).
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct Sim3Coeffs<S> {
     pub(crate) v: [S; 3],
     pub(crate) w: [S; 3],
     pub(crate) dv: [S; 2],
+    pub(crate) chi_delta: S,
 }
 
 impl<S: Real> Blend<S> for Sim3Coeffs<S> {
@@ -47,6 +50,7 @@ impl<S: Real> Blend<S> for Sim3Coeffs<S> {
             v: <[S; 3]>::blend(m, t.v, f.v),
             w: <[S; 3]>::blend(m, t.w, f.w),
             dv: <[S; 2]>::blend(m, t.dv, f.dv),
+            chi_delta: S::blend(m, t.chi_delta, f.chi_delta),
         }
     }
 }
@@ -142,10 +146,13 @@ fn series_at<S: Real, const FULL: bool, const PAIR: bool>(
         }
         (xi, zeta, p) = (nxi, nzeta, p * sigma);
     }
+    // Below `r_×²` nothing cancels in `v₀ − zv₂`: `v₀ ≈ 1` and `zv₂ < r_×²/6`. No reader of
+    // `χΔ` takes this arm (`b`'s exact arm starts above `r_×²`); it is the definition.
     let at = |i: usize| Sim3Coeffs {
         v: [acc[0][i], acc[1][i], acc[2][i]],
         w: [acc[3][i], acc[4][i], acc[5][i]],
         dv: [acc[6][i], acc[7][i]],
+        chi_delta: (acc[0][i] - z * acc[2][i]) * (sigma * sigma + z),
     };
     [at(0), at(1)]
 }
@@ -258,10 +265,15 @@ fn closed_from<S: Real, const FULL: bool>(
     let v1a = e * a - sigma * v2;
     let v1b = ((sigma * e * sinc - m1) + e * z * a) / delta;
     let v1 = S::select(form_b, v1b, v1a);
+    // `χΔ = Δ Re g₁(σ + iθ) = σ(e^σ cos θ − 1) + θe^σ sin θ` (SM.5(c)), with `e^σ cos θ − 1 =
+    // m₁ − eza` and `σm₁ = σ²v₀`, scaled as the rest: the two non-negative terms first, then the
+    // one of `−σ`'s sign. `v₀ − zv₂` cancels to `sin θ/θ` at `σ = 0` near `π` (`0096`, draft).
+    let chi_delta = (sigma * (sigma * v0) + e * (z * sinc)) - sigma * (e * (z * a));
     let mut c = Sim3Coeffs {
         v: [v0, v1, v2],
         w: [zero; 3],
         dv: [zero; 2],
+        chi_delta,
     };
     if FULL {
         let w0 = S::select(
@@ -289,6 +301,7 @@ pub(crate) fn unscale<S: Real>(c: Sim3Coeffs<S>, sigma: S, scaled: S::Mask) -> S
         v: c.v.map(|x| scale * x),
         w: c.w.map(|x| scale * x),
         dv: c.dv.map(|x| scale * x),
+        chi_delta: scale * c.chi_delta,
     }
 }
 
@@ -386,13 +399,14 @@ pub(crate) fn sim3_v_scaled<S: Real>(sigma: S, z: S) -> ([S; 3], S::Mask) {
     (c.v, scaled)
 }
 
-/// `[v₀, v₁, v₂]` alone, for `Exp` and `Log`: [`sim3_coeffs`]'s `v` to the bit.
+/// `([v₀, v₁, v₂], χΔ)` alone, for `Exp`: [`sim3_coeffs`]'s `v` and `chi_delta` to the bit.
 ///
 /// # Domain
 ///
 /// [`sim3_coeffs`]'s.
 #[inline]
-pub(crate) fn sim3_v<S: Real>(sigma: S, z: S) -> [S; 3] {
+pub(crate) fn sim3_v<S: Real>(sigma: S, z: S) -> ([S; 3], S) {
     let (c, scaled) = group::<S, false>(sigma, z);
-    unscale(c, sigma, scaled).v
+    let c = unscale(c, sigma, scaled);
+    (c.v, c.chi_delta)
 }

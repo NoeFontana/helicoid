@@ -102,10 +102,13 @@ fn worst<S: Real + Into<f64>>(
                 worst.max(e)
             };
         }
-        let v = sim3_v(to(p.sigma), to(p.z)).map(Into::into);
-        if v.map(f64::to_bits) != [got[0], got[1], got[2]].map(f64::to_bits) {
+        let (v, chi_delta) = sim3_v(to(p.sigma), to(p.z));
+        let (v, chi_delta): ([f64; 3], f64) = (v.map(Into::into), chi_delta.into());
+        if v.map(f64::to_bits) != [got[0], got[1], got[2]].map(f64::to_bits)
+            || chi_delta.to_bits() != c.chi_delta.into().to_bits()
+        {
             return Err(format!(
-                "sim3_v is not sim3_coeffs' v at ({}, {})",
+                "sim3_v is not sim3_coeffs' v and chi_delta at ({}, {})",
                 p.sigma, p.z
             ));
         }
@@ -477,5 +480,44 @@ fn sinc_a_b_d_is_its_members_own_groups() {
         case(z);
         case(z as f32);
         z *= 1.0371;
+    }
+}
+
+/// `χΔ` (`0096`, draft): at `σ = 0` near `π`, where `v₀ − zv₂` cancels to `sin θ/θ`, `χ` is
+/// `sin θ/θ` to a few `u` of itself; away from `π` it is `v₀ − zv₂` to a few `u` of `v₀`. The
+/// subtraction reads about `10⁶ u` of `χ` at `π − 10⁻⁶`.
+#[test]
+fn chi_delta_is_v0_minus_z_v2_without_the_cancellation() {
+    let u = f64::EPSILON / 2.0;
+    for theta in [
+        2.9,
+        3.0,
+        3.1,
+        core::f64::consts::PI - 1e-6,
+        core::f64::consts::PI - 1e-9,
+    ] {
+        let z = theta * theta;
+        let (_, chi_delta) = sim3_v(0.0, z);
+        let (chi, sinc) = (chi_delta / z, theta.sin() / theta);
+        assert!(
+            (chi - sinc).abs() <= 4.0 * u * sinc,
+            "theta {theta}: {chi} against {sinc}"
+        );
+    }
+    for (sigma, theta) in [
+        (0.5, 1.0),
+        (-0.5, 1.0),
+        (3.0, 1.5),
+        (-3.0, 0.7),
+        (1e-3, 2.0),
+    ] {
+        let z: f64 = theta * theta;
+        let (v, chi_delta) = sim3_v(sigma, z);
+        let chi = chi_delta / (sigma * sigma + z);
+        let direct = v[0] - z * v[2];
+        assert!(
+            (chi - direct).abs() <= 8.0 * u * v[0].abs().max(z * v[2]),
+            "({sigma}, {theta}): {chi} against {direct}"
+        );
     }
 }

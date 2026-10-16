@@ -6,8 +6,8 @@
 //! product and inverse; the coefficients are `coeffs::sim3`'s group.
 
 use crate::coeffs::{
-    sim3_coeffs, sim3_coeffs_scaled, sim3_coeffs_scaled_pair, sim3_v, sim3_v_scaled, unscale,
-    Sim3Coeffs,
+    b_takes_exact_arm, sim3_coeffs, sim3_coeffs_scaled, sim3_coeffs_scaled_pair, sim3_v,
+    sim3_v_scaled, unscale, Sim3Coeffs,
 };
 use crate::quat::Quat;
 use crate::side::Side;
@@ -302,6 +302,30 @@ fn poly_apply<S: Real>(phi: Vec3<S>, x: [S; 3], v: Vec3<S>) -> Vec3<S> {
     (v.scale(x[0]) + mu.scale(x[1])) + phi.cross(mu).scale(x[2])
 }
 
+/// `Vρ`, `V = v₀I + v₁W + v₂W²` at `z = ‖φ‖²`: by two cross products, or where `b` is on its exact
+/// arm `χρ + v₁ (φ × ρ) + v₂ (φ·ρ) φ` with `χ = v₀ − zv₂` from the kernel's `χΔ`, formed without that
+/// difference, which cancels to `sin θ/θ` at `σ = 0` near `π`. `SEn3::exp`'s far arm
+/// (`0095`, draft; `0096`, draft), one branch on the same mask; `Δ`'s division is in the arm that
+/// reads it, which measured 1 ns cheaper on the far bands than in the kernel.
+#[inline]
+fn v_apply<S: Real>(
+    phi: Vec3<S>,
+    z: S,
+    sigma: S,
+    v: [S; 3],
+    chi_delta: S,
+    rho: Vec3<S>,
+) -> Vec3<S> {
+    S::branch(
+        b_takes_exact_arm(z),
+        move || {
+            let chi = chi_delta / (sigma * sigma + z);
+            (rho.scale(chi) + phi.cross(rho).scale(v[1])) + phi.scale(v[2] * phi.dot(rho))
+        },
+        move || poly_apply(phi, v, rho),
+    )
+}
+
 /// `x₀ I + x₁ W + x₂ W²` as a matrix.
 #[inline]
 fn poly<S: Real>(phi: Vec3<S>, x: [S; 3]) -> Mat3<S> {
@@ -415,16 +439,17 @@ impl<S: Real> Sim3<S> {
     }
 }
 
-/// `(Exp τ, J_l(τ))` from one evaluation of the group: `Exp`'s `V` is the full group's `v`, the
-/// same bits as `sim3_v`'s.
+/// `(Exp τ, J_l(τ))` from one evaluation of the group: `Exp`'s `v` and `χΔ` are the full group's,
+/// the same bits as `sim3_v`'s.
 #[inline]
 fn exp_and_jl<S: Real>(tau: &Sim3Tangent<S>) -> (Sim3<S>, Sim3Jac<S>) {
     let (phi, rho) = (tau.phi, tau.rho);
     let t = SO3Tangent { phi };
-    let c = sim3_coeffs(tau.sigma, norm_sq(phi));
+    let z = norm_sq(phi);
+    let c = sim3_coeffs(tau.sigma, z);
     let x = Sim3 {
         q: SO3::exp(&t).quat(),
-        t: poly_apply(phi, c.v, rho),
+        t: v_apply(phi, z, tau.sigma, c.v, c.chi_delta, rho),
         sigma: tau.sigma,
     };
     (x, jl_blocks(phi, rho, &c))
@@ -476,14 +501,17 @@ impl<S: Real> LieGroup<S> for Sim3<S> {
         }
     }
 
-    /// `Exp τ = (Exp φ, Vρ, σ)`, `V = v₀I + v₁W + v₂W²` applied by two cross products (SM.4).
+    /// `Exp τ = (Exp φ, Vρ, σ)`, `V = v₀I + v₁W + v₂W²` (SM.4): by two cross products, or where
+    /// `b` is on its exact arm by `χ = v₀ − zv₂` formed without that cancellation (`0096`, draft).
     #[inline]
     fn exp(tau: &Sim3Tangent<S>) -> Self {
         let phi = tau.phi;
-        let v = sim3_v(tau.sigma, norm_sq(phi));
+        let z = norm_sq(phi);
+        let (v, chi_delta) = sim3_v(tau.sigma, z);
+        let q = SO3::exp(&SO3Tangent { phi }).quat();
         Self {
-            q: SO3::exp(&SO3Tangent { phi }).quat(),
-            t: poly_apply(phi, v, tau.rho),
+            q,
+            t: v_apply(phi, z, tau.sigma, v, chi_delta, tau.rho),
             sigma: tau.sigma,
         }
     }
