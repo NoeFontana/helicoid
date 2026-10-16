@@ -259,6 +259,15 @@ pub(crate) fn jr_coeffs_sinc<S: Real>(z: S) -> (S, S, S, S::Mask) {
     (a, b, sinc, small[1].not())
 }
 
+/// Whether `b` is on its exact arm at `θ² = z`: [`jr_coeffs_sinc`]'s `far`, without evaluating
+/// anything. For a caller that forms `1 − bθ² = sin θ/θ` another way where that arm runs
+/// (`0096`, draft), and so cannot type the switch (`0004`), as [`log_ratio_takes_short_arm`] is
+/// `0051`'s.
+pub(crate) fn b_takes_exact_arm<S: Real>(z: S) -> S::Mask {
+    let b = table::<S, _>(B_F64.arm(), B_F32.arm());
+    z.lt(b.below::<S>()).not()
+}
+
 /// [`exact_a_b`] and the `sin θ/θ` its `b` divides by, one root and the same two sines.
 fn exact_a_b_sinc<S: Real>(z: S) -> ([S; 2], S) {
     let th = z.sqrt();

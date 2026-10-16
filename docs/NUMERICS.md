@@ -356,7 +356,11 @@ $\Xi = \rho^\wedge$, $z = \theta^2$, $\Delta = \sigma^2 + z$, $M = W + \sigma I$
 
 - **Exp.** $\mathrm{Exp}\,\tau = (\mathrm{Exp}\,\varphi,\ \mathsf V\rho,\ \sigma)$, $\mathsf V = \sum_k M^k/(k+1)! = v_0I + v_1W + v_2W^2$ (SM.4), and for $\Delta > 0$
   $$v_0 = \frac{\mathrm{expm1}\,\sigma}\sigma,\quad v_2 = \frac{v_0 + \sigma e^\sigma a - e^\sigma\,\mathrm{sinc}\,\theta}\Delta,\quad v_1 = e^\sigma a - \sigma v_2 \ \text{(form a)} = \frac{\sigma e^\sigma\mathrm{sinc}\,\theta - \mathrm{expm1}\,\sigma + e^\sigma za}\Delta \ \text{(form b)}$$
-  (SM.5(b)), $a$, $b$, $d$ of §4 and $\mathrm{sinc}\,\theta = 1 - zb$.
+  (SM.5(b)), $a$, $b$, $d$ of §4 and $\mathrm{sinc}\,\theta = 1 - zb$. $\mathsf V\rho$ is applied by two cross products;
+  where $b$ is on its exact arm, as $\chi\rho + v_1\,\varphi\times\rho + v_2\,(\varphi\cdot\rho)\,\varphi$ with
+  $\chi\Delta = \sigma^2v_0 + e^\sigma z\,\mathrm{sinc}\,\theta - \sigma e^\sigma za$ (SM.5(c)), which does not cancel where
+  $v_0 - zv_2$ does, to $\mathrm{sinc}\,\theta$ at $\sigma = 0$ near $\pi$ (§5.1's far arm;
+  [`0096`](./decisions/0096-sim3-exp-takes-chi-without-the-cancellation.md), draft).
 - **Log.** $\mathrm{Log}\,X = (\varphi,\ \mathsf V^{-1}t,\ \sigma)$, $\varphi$ by §3.2, $\mathsf V^{-1} = i_0I + i_1W + i_2W^2$ with $\chi = v_0 - zv_2$,
   $\Lambda = \chi^2 + zv_1^2$, $i_0 = 1/v_0$, $i_1 = -v_1/\Lambda$, $i_2 = (v_1^2 - v_2\chi)/(v_0\Lambda)$ (SM.8). No `mp.logm`: the geometric $\mathrm{SO}(3)$ logarithm and a $\mathsf V$ solve are the reference.
 - **Ad, ad** (SM.9): $\mathrm{Ad}_X = \begin{bmatrix}R & 0 & 0\\ [t]_\times R & sR & -t\\ 0 & 0 & 1\end{bmatrix}$, $\mathrm{ad}_\tau = \begin{bmatrix}W & 0 & 0\\ \Xi & M & -\rho\\ 0 & 0 & 0\end{bmatrix}$.

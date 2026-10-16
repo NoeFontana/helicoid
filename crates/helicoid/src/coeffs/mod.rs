@@ -75,8 +75,9 @@ mod sim3;
 #[cfg(test)]
 mod sim3_coeff_tests;
 pub(crate) use kernel::{
-    exp_coeffs, gamma2_coeffs, jr_coeffs, jr_coeffs_sinc, jr_inv_coeff, jr_inv_coeff_dz, log_ratio,
-    log_ratio_scale, log_ratio_short, log_ratio_takes_short_arm, q_coeffs,
+    b_takes_exact_arm, exp_coeffs, gamma2_coeffs, jr_coeffs, jr_coeffs_sinc, jr_inv_coeff,
+    jr_inv_coeff_dz, log_ratio, log_ratio_scale, log_ratio_short, log_ratio_takes_short_arm,
+    q_coeffs,
 };
 pub(crate) use sim3::{
     sim3_coeffs, sim3_coeffs_scaled, sim3_coeffs_scaled_pair, sim3_v, sim3_v_scaled, unscale,
