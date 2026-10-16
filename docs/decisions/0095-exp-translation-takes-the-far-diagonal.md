@@ -102,6 +102,3 @@ None of substance; it is a `draft` until the owner accepts the new evaluation.
 ## Further work
 
 - **`Sim3::exp`'s `V`** has the same `χ = v₀ − zv₂` cancellation near `σ = 0`, `θ → π`.
-- **One `sin(θ/2)` for `SEn3::exp`.** `exp_coeffs` and `jr_coeffs_sinc` each evaluate `sin(θ/2)` on
-  their exact arms. A group holding `k`, `cos(θ/2)`, `a` and `b` would evaluate it once with the
-  same bits, which is one `libm` call of the far arm's three.
