@@ -78,25 +78,43 @@ pub(crate) const RECIP_FACT_F32: [f32; 33] = [
     f32::from_bits(0x04a1a697),
 ];
 
-// Objective (max u, the blocks' weighted error over 3549 points): 4.718650350131173e0; series 4.718650350131173e0, closed 4.025612047510283e0, w0 1.6330197614208808e0.
+// Objective (max u, the blocks' weighted error over 3549 points): 2.323415995403971e0; series 2.323415995403971e0, closed 2.2975183184935224e0, w0 1.6330197614208808e0.
 pub(crate) const SIM3_F64: Sim3Switch<f64> = Sim3Switch {
-    // Δ < 2.3713737056616552e-1
-    series_below: f64::from_bits(0x3fce5a84719edcd2),
-    series_terms: 13,
-    // Δ ≥ 2.3713737056616552e-1
-    form_b_below: f64::from_bits(0x3fce5a84719edcd2),
+    // Δ < 1.9809567785503388e0
+    series_below: f64::from_bits(0x3fffb1ffbc2a9c8c),
+    series_terms: 19,
+    // Δ < 5.424690937011326e-5
+    short_below: f64::from_bits(0x3f0c70e59cfc9f1f),
+    short_terms: 6,
+    // Δ < 4.2169650342858224e-2
+    mid_below: f64::from_bits(0x3fa59742aa36710d),
+    mid_terms: 11,
+    // Δ < 2.6416483203860924e-1
+    upper_below: f64::from_bits(0x3fd0e8139c96fc79),
+    upper_terms: 14,
+    // Δ ≥ 1.9809567785503388e0
+    form_b_below: f64::from_bits(0x3fffb1ffbc2a9c8c),
     // σ² < 5.829415347136074e-1
     w0_below: f64::from_bits(0x3fe2a77501626657),
     w0_terms: 15,
 };
 
-// Objective (max u, the blocks' weighted error over 3549 points): 2.9296364376011055e0; series 2.8273490725051067e0, closed 2.9296364376011055e0, w0 1.626639304937477e0.
+// Objective (max u, the blocks' weighted error over 3549 points): 2.2600047854550884e0; series 2.0777134107948307e0, closed 2.2600047854550884e0, w0 1.626639304937477e0.
 pub(crate) const SIM3_F32: Sim3Switch<f32> = Sim3Switch {
-    // Δ < 8.353625535964966e-1
-    series_below: f32::from_bits(0x3f55da52),
-    series_terms: 9,
-    // Δ ≥ 8.353625535964966e-1
-    form_b_below: f32::from_bits(0x3f55da52),
+    // Δ < 2.3713736534118652e0
+    series_below: f32::from_bits(0x4017c496),
+    series_terms: 11,
+    // Δ < 9.646615944802761e-4
+    short_below: f32::from_bits(0x3a7ce158),
+    short_terms: 4,
+    // Δ < 1.2863969802856445e-1
+    mid_below: f32::from_bits(0x3e03ba20),
+    mid_terms: 7,
+    // Δ < 6.264335513114929e-1
+    upper_below: f32::from_bits(0x3f205df3),
+    upper_terms: 9,
+    // Δ ≥ 5.829415321350098e0
+    form_b_below: f32::from_bits(0x40ba8a92),
     // σ² < 5.829415321350098e-1
     w0_below: f32::from_bits(0x3f153ba8),
     w0_terms: 8,
