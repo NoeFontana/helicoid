@@ -690,6 +690,39 @@ mod group {
         );
     }
 
+    /// `Exp`'s translation is `J_l(φ) ρ` on both of its arms (`0095`, draft): the cross products
+    /// below `b`'s switch, `(sin θ/θ) ρ + a (φ × ρ) + b (φ·ρ) φ` above it, each within a few `u` of
+    /// `SO3::jl`'s matrix times `ρ`, through the switch and up to `π`. A sign or an arm swapped is
+    /// `O(1)`.
+    #[test]
+    fn exp_translation_is_jl_times_rho_on_both_arms() {
+        use crate::{SO3Tangent, SO3};
+        let rho = Vector([0.75, -1.25, 2.0]);
+        let scale = rho.norm() * f64::EPSILON / 2.0;
+        let thetas = [
+            1e-3,
+            0.5,
+            1.5,
+            2.6,
+            2.75,
+            2.8,
+            2.9,
+            3.0,
+            3.1,
+            core::f64::consts::PI - 1e-6,
+            core::f64::consts::PI - 1e-9,
+        ];
+        for theta in thetas {
+            for axis in [[0.6, 0.0, 0.8], [-0.48, 0.64, 0.6], [0.0, -1.0, 0.0]] {
+                let phi = Vector(axis.map(|c| c * theta));
+                let x = SE3::<f64>::exp(&SEn3Tangent { phi, rho: [rho] }).translation();
+                let want = SO3::jl(&SO3Tangent { phi }) * rho;
+                let err = (x - want).norm() / scale;
+                assert!(err < 8.0, "theta {theta} axis {axis:?}: {err} u");
+            }
+        }
+    }
+
     /// The action is `R p + t`, and composition acts as the composition of the actions.
     #[test]
     fn the_action_composes() {
