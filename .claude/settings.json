@@ -17,7 +17,41 @@
       "Bash(just msrv)",
       "Bash(just no-std)",
       "Bash(just wasm)",
-      "Bash(just audit)"
+      "Bash(just audit)",
+      "Bash(git status*)",
+      "Bash(git diff*)",
+      "Bash(git log*)",
+      "Bash(just corpus-check)",
+      "Bash(just thresholds-check)",
+      "Bash(just determinism)",
+      "Bash(just envelope --check)"
+    ],
+    "deny": [
+      "Read(./conformance/corpus/**)",
+      "Read(./conformance/corpus-deep/**)",
+      "Read(./conformance/results*/**)",
+      "Read(./docs/book/**)",
+      "Read(./docs/changelog/**)",
+      "Read(./baseline/bench/**)",
+      "Read(./target*/**)",
+      "Read(./runners/*/target/**)",
+      "Edit(./crates/helicoid/src/coeffs/generated*.rs)",
+      "Edit(./conformance/corpus/**)",
+      "Edit(./conformance/sweeps/**)",
+      "Edit(./docs/changelog/**)"
+    ]
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "jq -r '.tool_input.file_path // empty' | grep -q '\\.rs$' && cargo fmt --all >/dev/null 2>&1; exit 0"
+          }
+        ]
+      }
     ]
   }
 }
