@@ -76,6 +76,7 @@ lowest MSRV among consumers (D17).
 - **Determinism** (D16): every transcendental through one private kernel, `helicoid-linalg`'s
   `Real` impls, which call the `libm` crate; no `mul_add`, no `target-cpu`, no fast-math. Outputs
   are bit-identical on x86_64, aarch64 and wasm32 for a given resolved `libm`.
+- **Data**: never read or hand-edit `conformance/corpus*`, `conformance/results*`, `baseline/bench`, `target*` (denied in `.claude/settings.json`); regenerate with `just`. Numeric-code practice: [`.claude/rules/numerics.md`](./.claude/rules/numerics.md).
 - Lints: `unwrap_used`, `expect_used`, `panic`, `todo`, `unimplemented`, `dbg_macro` are denied.
   No panic on valid input; a stated domain is a `debug_assert!`, never a release check (D11).
 - **Cite a symbol, never a line number**; `just lint` fails a new line citation. **A comment states
@@ -99,18 +100,8 @@ Single test: `cargo nextest run -p helicoid -- so3_exp_log_roundtrip`. The gener
 | `just corpus` / `corpus-check` | regenerate the mpmath corpus; check it is byte-identical to the committed one |
 | `just conformance` | run in-process subjects over the corpus → `conformance/results/`; `--self-test` runs the seeded defects |
 | `just thresholds` / `thresholds-check` | run the sweep, regenerate `coeffs/generated.rs`; check for drift |
-| `just oracle-tf-tree-math` | the `tf_tree_math` runner (workspace-excluded): its fmt, clippy, doc, deny, tests, then its rows over the corpus (`conformance --oracle`) |
-| `just oracle-sophus-rs` | the same for the sophus-rs runner (`runners/sophus_rs`, audited with its own `deny.toml`) |
-| `just oracle-nalgebra` | the same for the nalgebra runner (`runners/nalgebra`, its own `deny.toml`): `eig3`, `chol_*`, `solve_cubic`, `quat_renormalize` (`0056`) |
-| `just oracle-sophus` | the Sophus C++ container (`docker/oracles/sophus`, needs docker): builds the pinned image, whose build runs the conversions' tests, then its rows over the corpus offline (`0072`); `eig3` is the image's Eigen (`0083`) |
-| `just oracle-gtsam` | the same for GTSAM C++ (`docker/oracles/gtsam`), the library built in the image under the runner's flags (`0074`) |
-| `just oracle-manif` | the same for the manif container (`docker/oracles/manif`): SO(2), SE(2), SO(3), SE(3), SE₂(3) and the screw and world charts (`0075`) |
-| `just oracles` | every `oracle-*` recipe above, in order; local only (docker, a source-built GTSAM), no CI job runs it |
-| `just corpus-deep` / `corpus-deep-check` / `conformance-deep` | `0088`'s 64-record deep tier, git-ignored, its manifest committed; the candidate's and oracles' rows over it, for `just envelope --deep` |
-| `just envelope` | merge results, apply the domination and no-regress bars, then coverage; each domination failure says whether it is the program's, D16's or neither (`0037`, draft, via `conformance-twin`); `--check` also fails on a baseline or `docs/evidence/ENVELOPE.md` that `--bless` would change; `--bless` (for `helicoid`) writes both, and nothing while a bar or coverage fails |
-| `just compare` | `--a X --b Y [--fn ID] [--precision f64\|f32]`: a paired comparison of two in-process subjects — direction, sign test, geometric mean and extremes of the per-record ratio, ratio of maxima — per stratum, per id, then pooled (`0038`, `0078`). Printed only; **not a bar**. Choose between two programs with this, never by counting domination failures |
 | `just determinism` | the shipped subject's output digests over the corpus, this host against `wasm32-wasip1` (wasmtime); CI adds aarch64 (`PHASE6.md` §3) |
-| `just bench` | criterion; `--against <bench-binary>` is the gate, `--aa` logs this host's noise (`PHASE1.md` §9). `bench-check` is **owed** |
+| `just bench` / `envelope` / `compare` / `oracle-*` / `corpus-deep` | measurement and oracles: [`.claude/rules/oracles.md`](./.claude/rules/oracles.md), loaded when you touch `runners/`, `docker/`, `conformance/`, `xtask/` |
 
 ## Decision workflow
 
