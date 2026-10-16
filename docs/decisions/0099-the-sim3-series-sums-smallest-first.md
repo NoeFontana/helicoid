@@ -130,6 +130,15 @@ one pinned core, `σ ~ σ̄·U[0.5, 1.5]`, `main` → this (ns, `Exp`/`Log`):
 
 ## Open questions
 
-1. **Whether the `f64` series beyond `Δ ≈ 0.26` is worth its latency.** It costs 17–37% there, and
-   buys the halved objective. That is the owner's call. A cheaper deep series, a bivariate polynomial
-   in `(σ, z)` with generated coefficients, would be a record of its own.
+None. The latency trade above was decided on 2026-10-16, under the owner's delegation, for the
+accuracy.
+- **Why:** the project's bar is accuracy against the oracles. The upward sum was a defect, not a
+  choice. The faster path is the common one near the identity, and the slower band is measured
+  and stated here.
+
+## Further work
+
+- **A cheaper deep series for `Δ ∈ [0.26, 1.98)`.** Candidates are a bivariate polynomial in
+  `(σ, z)` with generated coefficients, or closed forms that do not cancel at moderate `Δ`, which
+  would let the sweep take `r_×²` back down. Either is a record of its own, measured against this
+  one's objective and the table above.
