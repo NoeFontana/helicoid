@@ -2,7 +2,7 @@
 //! (`docs/PHASE3.md` §5). The structured Jacobian `SEn3Jac` is `dualmat`'s.
 
 use crate::coeffs::log_ratio_short;
-use crate::coeffs::{jr_coeffs, jr_coeffs_sinc, jr_inv_coeff, jr_inv_coeff_dz, q_coeffs};
+use crate::coeffs::{jr_coeffs, jr_coeffs_sinc, jr_inv_coeff, jr_inv_coeff_dz, q_five_coeffs};
 use crate::dualmat::{zero3, SEn3Jac};
 use crate::quat::Quat;
 use crate::side::Side;
@@ -489,41 +489,26 @@ impl<S: Real> Mul<Point3<S>> for SEn3<S, 1> {
     }
 }
 
-/// Barfoot's block `Q(ρ, φ)` of `NUMERICS.md` §5.3, with `W = φ^` and `X = ρ^` given as matrices
-/// and `(b, d, e)` from one grouped `q_coeffs` branch.
-///
-/// Every word is associated as §5.3 writes it and the products are the seeded kernel's, operand
-/// for operand (`docs/maths/coefficients.md` CO.6, `0010`): the `xtask` subject that scores the
-/// `sen3_j*` corpus ids runs this same sequence, so a parity gap between them is a coefficient's
-/// and not an association's.
-///
-/// `W²` is passed in, not formed here: it is the one word of the eight that does not depend on
-/// `ρ`, so forming it per column cost `(N − 1) · 27` multiplications for the same bits.
+/// `J_r(τ)` (`LEFT = false`) or `J_l(τ)` (`LEFT = true`), each column in SE.8 remark (ii)'s five
+/// words (`NUMERICS.md` §5.3, `0097`, draft): `Q(ρ, φ) = S(ρ) + [aρ − (φ·ρ)(b − 2d)φ]^`, with the
+/// symmetric part `S(ρ) = b(φ^ρ^ + ρ^φ^) − 2e(φ·ρ)φ^φ^` and `a = ½ − zd` SO(3)'s `(1 − cos θ)/θ²`
+/// (CO.4(a)). `J_r`'s column `Q(−ρ, −φ)` has the same `S` and the skew part negated. The diagonal
+/// is `SO3::jr(φ)` from the same coefficients, and its transpose is `SO3::jl(φ)` to the bit.
 #[inline]
-#[expect(
-    clippy::too_many_arguments,
-    reason = "Q's arguments, and `0005`'s blocks are not values"
-)]
-fn q_block<S: Real>(
-    phi: Vec3<S>,
-    rho: Vec3<S>,
-    x: &Mat3<S>,
-    w: &Mat3<S>,
-    ww: &Mat3<S>,
-    b: S,
-    d: S,
-    e: S,
-) -> Mat3<S> {
-    // Every one of the seven products has a `hat` on the right, so every one goes through
-    // `mul_hat`: 18 multiplications and 9 additions each against 27 and 18, and bit-identical for
-    // finite entries (`so3::mul_hat` states the two exceptions and its test counts them).
-    let (wx, xw) = (mul_hat(w, rho), mul_hat(x, phi));
-    let (wxw, wwx, xww) = (mul_hat(&wx, phi), mul_hat(ww, rho), mul_hat(&xw, phi));
-    let b_word = (wx + xw) + wxw;
-    let d_word = (wwx + xww) - wxw.scale(S::lit(3.0));
-    let e_word = mul_hat(&wxw, phi) + mul_hat(&wwx, phi);
-    let head = x.scale(S::lit(0.5)) + b_word.scale(b);
-    (head + d_word.scale(d)) + e_word.scale(e)
+fn forward<S: Real, const N: usize, const LEFT: bool>(tau: &SEn3Tangent<S, N>) -> SEn3Jac<S, N> {
+    let phi = tau.phi;
+    let w2 = HatSq::of(phi);
+    let ([a, b, t, e], sinc, far) = q_five_coeffs(norm_sq(phi));
+    let right = w2.poly_far(S::one(), -a, b, sinc, far);
+    let k = Cols::of(phi, b, -(e + e));
+    SEn3Jac {
+        diag: if LEFT { right.transpose() } else { right },
+        col: tau.rho.map(|r| {
+            let (sym, p) = k.sym(r);
+            let h = r.scale(a) - phi.scale(p * t);
+            sym.plus_hat(if LEFT { h } else { -h })
+        }),
+    }
 }
 
 /// `J_r⁻¹(τ)` (`LEFT = false`) or `J_l⁻¹(τ)` (`LEFT = true`) in `NUMERICS.md` §5.4's closed form.
@@ -535,12 +520,12 @@ fn q_block<S: Real>(
 fn inverse<S: Real, const N: usize, const LEFT: bool>(tau: &SEn3Tangent<S, N>) -> SEn3Jac<S, N> {
     let (c, dc) = jr_inv_coeff_dz(norm_sq(tau.phi));
     let right = HatSq::of(tau.phi).poly(S::one(), S::lit(0.5), c);
-    let k = InvCols::of(tau.phi, c, dc);
+    let k = Cols::of(tau.phi, c, dc + dc);
     SEn3Jac {
         diag: if LEFT { right.transpose() } else { right },
         col: tau.rho.map(|r| {
-            let (sym, h) = k.sym(r);
-            sym.plus_hat(if LEFT { -h } else { h })
+            let h = r.scale(S::lit(0.5));
+            k.sym(r).0.plus_hat(if LEFT { -h } else { h })
         }),
     }
 }
@@ -552,7 +537,7 @@ fn inverse<S: Real, const N: usize, const LEFT: bool>(tau: &SEn3Tangent<S, N>) -
 fn inverses<S: Real, const N: usize>(tau: &SEn3Tangent<S, N>) -> (SEn3Jac<S, N>, SEn3Jac<S, N>) {
     let (c, dc) = jr_inv_coeff_dz(norm_sq(tau.phi));
     let right = HatSq::of(tau.phi).poly(S::one(), S::lit(0.5), c);
-    let k = InvCols::of(tau.phi, c, dc);
+    let k = Cols::of(tau.phi, c, dc + dc);
     let mut jr = SEn3Jac {
         diag: right,
         col: [zero3(); N],
@@ -562,20 +547,19 @@ fn inverses<S: Real, const N: usize>(tau: &SEn3Tangent<S, N>) -> (SEn3Jac<S, N>,
         col: [zero3(); N],
     };
     for (i, &r) in tau.rho.iter().enumerate() {
-        let (sym, h) = k.sym(r);
+        let (sym, h) = (k.sym(r).0, r.scale(S::lit(0.5)));
         jr.col[i] = sym.plus_hat(h);
         jl.col[i] = sym.plus_hat(-h);
     }
     (jr, jl)
 }
 
-/// The columns of `J⁻¹(τ)` (`NUMERICS.md` §5.4, `docs/maths/se3.md` SE.17): `J_r⁻¹`'s column `i` is
-/// `½ρᵢ^ + S(ρᵢ)` and `J_l⁻¹`'s `−½ρᵢ^ + S(ρᵢ)`, with the symmetric part
-/// `S(ρ) = c(φ^ρ^ + ρ^φ^) + 2c′(φ·ρ)φ^φ^`, `c′ = dc/dθ²`. What depends on `φ` alone is formed once.
-struct InvCols<S> {
+/// The symmetric part `S(ρ) = c(φ^ρ^ + ρ^φ^) + c₂(φ·ρ)φ^φ^` of a column of `J(τ)` or `J⁻¹(τ)`:
+/// `J⁻¹`'s with `c₂ = 2c′`, `c′ = dc/dθ²` (`NUMERICS.md` §5.4, `docs/maths/se3.md` SE.17), `J`'s
+/// with `(b, −2e)` (§5.3, SE.8 remark (ii)). What depends on `φ` alone is formed once.
+struct Cols<S> {
     phi: Vec3<S>,
     c: S,
-    /// `2c′`.
     c2: S,
     /// `−(φ^φ^)ᵢᵢ`: `y² + z²`, `x² + z²`, `x² + y²`.
     sq: [S; 3],
@@ -583,27 +567,28 @@ struct InvCols<S> {
     off: [S; 3],
 }
 
-impl<S: Real> InvCols<S> {
+impl<S: Real> Cols<S> {
     #[inline]
-    fn of(phi: Vec3<S>, c: S, dc: S) -> Self {
+    fn of(phi: Vec3<S>, c: S, c2: S) -> Self {
         let [x, y, z] = phi.0;
         Self {
             phi,
             c,
-            c2: dc + dc,
+            c2,
             sq: [z * z + y * y, z * z + x * x, y * y + x * x],
             off: [x * y, x * z, y * z],
         }
     }
 
-    /// `(S(ρ), ½ρ)`. `φ^ρ^ + ρ^φ^ = φρᵀ + ρφᵀ − 2(φ·ρ)I`, so each diagonal entry of `S` is
-    /// `−(2c(φⱼρⱼ + φₖρₖ) + 2c′(φ·ρ)(φⱼ² + φₖ²))`: the `(φ·ρ)` and `θ²` that would cancel against
+    /// `(S(ρ), φ·ρ)`. `φ^ρ^ + ρ^φ^ = φρᵀ + ρφᵀ − 2(φ·ρ)I`, so each diagonal entry of `S` is
+    /// `−(2c(φⱼρⱼ + φₖρₖ) + c₂(φ·ρ)(φⱼ² + φₖ²))`: the `(φ·ρ)` and `θ²` that would cancel against
     /// `φᵢρᵢ` and `φᵢ²` are never formed, as `HatSq` forms `W²`'s diagonal.
     #[inline]
-    fn sym(&self, rho: Vec3<S>) -> (Sym<S>, Vec3<S>) {
+    fn sym(&self, rho: Vec3<S>) -> (Sym<S>, S) {
         let [x, y, z] = self.phi.0;
         let [r0, r1, r2] = rho.0;
-        let q = self.c2 * self.phi.dot(rho);
+        let p = self.phi.dot(rho);
+        let q = self.c2 * p;
         let cc = self.c + self.c;
         let (px, py, pz) = (x * r0, y * r1, z * r2);
         let [s0, s1, s2] = self.sq;
@@ -620,7 +605,7 @@ impl<S: Real> InvCols<S> {
                 self.c * (y * r2 + r1 * z) + q * o12,
             ],
         };
-        (sym, rho.scale(S::lit(0.5)))
+        (sym, p)
     }
 }
 
@@ -878,24 +863,17 @@ impl<S: Real, const N: usize> LieGroup<S> for SEn3<S, N> {
         }
     }
 
-    /// `J_r(τ) = J_r(φ) + ε Q(−ρ_i, −φ)` (`NUMERICS.md` §5.3), the diagonal block from
-    /// [`SO3::jr`] and the columns from this module's `q_block`.
-    ///
-    /// `jl` is **not** overridden: the trait's provided `J_r(−τ)` is `J_l(φ) + ε Q(ρ_i, φ)`,
-    /// which is §5.3's left form exactly — negating the tangent negates both arguments of `Q`
-    /// twice over — so one code path serves both sides, as it does for [`SO3`].
+    /// `J_r(τ) = J_r(φ) + ε Q(−ρ_i, −φ)` (`NUMERICS.md` §5.3), each column in five words: `forward`.
     #[inline]
     fn jr(tau: &SEn3Tangent<S, N>) -> SEn3Jac<S, N> {
-        let (b, d, e) = q_coeffs(norm_sq(tau.phi));
-        let neg = -tau.phi;
-        let w = hat(neg);
-        let ww = mul_hat(&w, neg);
-        SEn3Jac {
-            diag: SO3::jr(&SO3Tangent { phi: tau.phi }),
-            col: tau
-                .rho
-                .map(|r| q_block(neg, -r, &hat(-r), &w, &ww, b, d, e)),
-        }
+        forward::<S, N, false>(tau)
+    }
+
+    /// `J_l(τ) = J_l(φ) + ε Q(ρ_i, φ)`: the provided `J_r(−τ)` to the bit, without negating the
+    /// tangent.
+    #[inline]
+    fn jl(tau: &SEn3Tangent<S, N>) -> SEn3Jac<S, N> {
+        forward::<S, N, true>(tau)
     }
 
     /// `J_r⁻¹(τ) = J_r⁻¹(φ) + ε(½ρᵢ^ + c(φ^ρᵢ^ + ρᵢ^φ^) + 2c′(φ·ρᵢ)φ^φ^)` (`NUMERICS.md` §5.4,
