@@ -8,25 +8,41 @@ defined by the status tables in `docs/`; they win over this file.
 
 ## [Unreleased]
 
-## [0.0.4] - 2026-10-14
+## [0.0.5] - 2026-10-16
 
-A patch release for locus-sensors' requests: `SO3::from_matrix` keeps exact rotations on the unit sphere and matches `tf_tree_math`'s accuracy at `f64` (`0086`), `Real::round_from_f64` rounds a runtime `f64` (`0087`), and `just determinism` checks D16 across x86_64, aarch64 and wasm32. No API break: `round_from_f64` is a provided method.
-
-### Added
-
-- **`just determinism`** (`PHASE6.md` §3, D16): `cargo xtask determinism` digests the shipped subject's outputs over the whole corpus, one SHA-256 per id and precision, NaN canonicalized. CI digests x86_64, aarch64 and `wasm32-wasip1` and fails on any difference. At `0.0.3` all 114 digests agree on x86_64 and `wasm32-wasip1`.
-
-- **`Real::round_from_f64(x: f64) -> Self`** (`0087`): a runtime `f64` correctly rounded to nearest-even at the scalar's precision, the identity at `f64`, `as f32` at `f32` (IEEE's conversion, the same bits on every target), a constant for `Dual`. Every `f64` is in the domain: at `f32` it overflows to `±inf` from `(2 − 2⁻²⁴)·2¹²⁷` and reaches `±0` at `2⁻¹⁵⁰`. A provided method, so an `impl Real` outside the workspace keeps compiling. Corpus id `real_round_from_f64`, with binary32 ties, near-ties and both edges: every stratum reads only the reference's 30-digit rounding.
+An accuracy and speed release, measured against Sophus, GTSAM, manif, sophus-rs and tf_tree_math on a new 64-record deep tier of the corpus. The SE(3) and SE₂(3) Jacobians and their inverses are rewritten in closed forms that are both more accurate and 1.7–6× faster. `Exp` loses a cancellation near `π` for SE_N(3) and Sim(3), and the Sim(3) series loses a summation defect. On the deep tier the domination bar fails no stratum but one, a recorded limit (below). **No API break.** Most outputs of the ids below change in their last bits, and `Quat::to_matrix` changes its documented formula for a non-unit quaternion (`0092`).
 
 ### Changed
 
-- **`SO3::from_matrix` returns Shepperd's quotients** (`0086`), in `tf_tree_math`'s arithmetic, whenever they land within `16u` of the unit sphere, which every rotation rounded to the precision does. A scaled, non-orthogonal or NaN matrix still gets 0.0.3's normalized column. Exact rotations, such as quarter turns and frame conventions' signed permutations, come back with `fl(‖q‖²) = 1` at `f64` (0.0.3: `1 − 2u`, which every later `act` carried). Under `0085`'s score, strata above the best oracle fall from 18 to 8 of 31 at `f64` and from 14 to 9 at `f32`, and `f64` now equals `tf_tree_math` on every stratum's maximum but `q:nonunit` (89.4 against 163.0 `u`). Six `f64` strata near `π` read up to 0.50 `u` higher than 0.0.3.
+- **SO(3) coefficients and `J_r`** (`0089`): the closed arms of `a`, `b`, `d` divide by the `θ²` they were given (GTSAM's arithmetic), `c` is Sophus's, and the swept switches are regenerated. `SO3::jr`'s diagonal is `sin θ/θ + bφᵢ²` where `b` is on its closed arm, so it no longer cancels near `π`. `jr` costs 1.06–1.07× near the identity.
+- **`SO3::log`** (`0090`) scales its vector by an exact two on `r`'s series arms: `so3_log` series strata go from 1.80–2.63 to 0.69–0.91 `u`, and at `f32` from 3.00 to 1.01. Near the identity +0.4 ns, elsewhere 5% faster.
+- **`Quat::to_matrix` takes Eigen's unit diagonal `1 − 2(uⱼ² + uₖ²)`** (`0092`, superseding `0076` decision 1). It removes 62 of 67 resolved `Ad` losses near the identity, at `+7%` (`f64`) and `−22%` (`f32`). For a non-unit `q` the matrix is now `(1 + η)R − ηI`, `act`'s term (`η = ‖q‖² − 1`): a caller that relied on the homogeneous form for a non-unit quaternion sees a different `O(η)` term.
+- **`SEn3::{jr_inv, jl_inv}`** (`0093`): each column is `±½ρ^ + c(φ^ρ^ + ρ^φ^) + 2c′(φ·ρ)φ^φ^`, proved equal to the dual-matrix sandwich (`docs/maths/se3.md` SE.17). All 600 strata improve, the worst from 6.8 to 1.46 `u`. `jr_inv` is 3–6× faster and `rminus_jacobians` 2.1–3.4×. `jl_inv` is overridden, the provided `J_r⁻¹(−τ)` to the bit.
+- **`SEn3::exp`** (`0095`): where `b` is on its exact arm, the translation is `(sin θ/θ)ρ + a(φ×ρ) + b(φ·ρ)φ`, without the `1 − bθ² = sin θ/θ` cancellation. `sen3_exp`'s worst deep stratum goes from 3.64 to 2.79 `u`, with latency within ±10%.
+- **`SEn3::{jr, jl}`** (`0097`): each column is SE.8 remark (ii)'s five words, `S(ρ) ± [aρ − (φ·ρ)(b − 2d)φ]^`. Total error is 0.93× and the worst deep stratum goes from 7.05 to 4.96 `u`. `jr` is 1.7–3.3× faster and `rplus_jacobians` 1.4–2.3×. `jl` is overridden, the provided `J_r(−τ)` to the bit.
+- **`Sim3::exp`** (`0096`): where `b` is on its exact arm, `Vρ = χρ + v₁(φ×ρ) + v₂(φ·ρ)φ`, with a cancellation-free `χ = v₀ − zv₂` from the coefficient group. `sim3_exp`'s total error is 0.95×, and `sigma:10/theta:3` goes from 10.6 to 6.9 `u`. It costs 3–8%.
+- **The Sim(3) series** (`0099`): `v₀ = g₁(σ)` and `w₀ = g₂(σ)` are summed by Horner; the upward sum had read 4.5 `u` of `v₀` at `σ = 0.3`. The regenerated sweep extends the series arm to `Δ < 1.98` (`K = 19`) in four generated tiers of depth, halving its objective from 4.72 to 2.32 `u`.
+  - **Accuracy:** `sim3_log` reads 0.90× total error and `sim3_exp` 0.92×, with strata above the best oracle 24 → 18 and 19 → 13. The Jacobians read 0.95–0.98×.
+  - **Latency:** 38% faster near the identity, 17–37% slower at `f64` for `Δ = σ² + θ² ∈ [0.26, 2)`.
+
+### Known limits
+
+- **`SO3::exp`'s quaternion near `π`** (`0098`): about `2 u` of radial rounding in `k = sin(θ/2)/θ`, from `θ²`'s rounding. The same rounding bounds `SEn3::{jr, jl}`'s near-`π` maxima. The uniform fix, a compensated `θ²`, would cost about 50% of `SO3::exp`, and the owner declined it. `sim3_exp/sigma:-3/theta:pi-1e-6@f32` is excepted from domination (`conformance/baseline/exceptions.toml`).
+
+### Instrument
+
+Not shipped in the crates.
+- **The domination bar** fails only a loss a paired swap test resolves at `α = 0.001`, or a gross one, and judges strata under 10 records on a git-ignored 64-record deep tier (`0088`).
+- **A rotation's `q`/`−q` twin is one draw** to that test (`0091`).
+- **A grid cell's pinned value is drawn in a narrow band** (`0094`), so no program's rounding of it counts 64 times.
+- **A `v*` tag writes its GitHub release notes** (`0100`): `cargo xtask release-notes` builds them from this file and the decision records, and fails before publishing on a tag that is not the workspace's version.
 
 ## Released versions
 
 Frozen history, newest first, in [`docs/changelog/`](./docs/changelog/); leave it
 out of searches and sweeps.
 
+- [`0.0.4`](./docs/changelog/0.0.4.md) — 2026-10-14 (`from_matrix` on the unit sphere, `round_from_f64`, `just determinism`)
 - [`0.0.3`](./docs/changelog/0.0.3.md) — 2026-10-13 (Phase 5, `eig3` as Jacobi, three C++ oracles)
 - [`0.0.2`](./docs/changelog/0.0.2.md) — 2026-10-09 (the carried path and a faster geodesic)
 - [`0.0.1`](./docs/changelog/0.0.1.md) — 2026-10-08 (first release)
@@ -35,3 +51,4 @@ out of searches and sweeps.
 [0.0.2]: https://github.com/NoeFontana/helicoid/releases/tag/v0.0.2
 [0.0.3]: https://github.com/NoeFontana/helicoid/releases/tag/v0.0.3
 [0.0.4]: https://github.com/NoeFontana/helicoid/releases/tag/v0.0.4
+[0.0.5]: https://github.com/NoeFontana/helicoid/releases/tag/v0.0.5

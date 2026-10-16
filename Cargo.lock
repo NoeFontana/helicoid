@@ -255,7 +255,7 @@ dependencies = [
 
 [[package]]
 name = "helicoid"
-version = "0.0.4"
+version = "0.0.5"
 dependencies = [
  "criterion",
  "helicoid-linalg",
@@ -265,7 +265,7 @@ dependencies = [
 
 [[package]]
 name = "helicoid-linalg"
-version = "0.0.4"
+version = "0.0.5"
 dependencies = [
  "libm",
  "mint",
@@ -635,7 +635,7 @@ dependencies = [
 
 [[package]]
 name = "xtask"
-version = "0.0.4"
+version = "0.0.5"
 dependencies = [
  "helicoid",
  "helicoid-linalg",
