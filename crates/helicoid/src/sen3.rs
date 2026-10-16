@@ -2,7 +2,7 @@
 //! (`docs/PHASE3.md` §5). The structured Jacobian `SEn3Jac` is `dualmat`'s.
 
 use crate::coeffs::log_ratio_short;
-use crate::coeffs::{jr_coeffs, jr_inv_coeff, jr_inv_coeff_dz, q_coeffs};
+use crate::coeffs::{jr_coeffs, jr_coeffs_sinc, jr_inv_coeff, jr_inv_coeff_dz, q_coeffs};
 use crate::dualmat::{zero3, SEn3Jac};
 use crate::quat::Quat;
 use crate::side::Side;
@@ -779,19 +779,32 @@ impl<S: Real, const N: usize> LieGroup<S> for SEn3<S, N> {
     /// `0036` (draft) measured the choice on the real corpus: 16 domination failures against 36 for
     /// the matrix form on `sen3_exp_n1`, the cross form better away from `π`. It is also the
     /// cheaper one at every `N` this type has (`12N` multiplications against `27 + 9N`) and it is
-    /// what `tf_tree_math::exp_se3` does, so the migration's parity rows compare one program's
-    /// rounding with its own (`0010`, `0041` draft).
+    /// what `tf_tree_math::exp_se3` does below `b`'s switch (`0010`, `0041` draft).
+    ///
+    /// Where `b` is on its closed arm, `ρ + b (φ × (φ × ρ))` cancels to `(sin θ/θ) ρ` near `π`, so
+    /// the column is `(sin θ/θ) ρ + a (φ × ρ) + b (φ·ρ) φ` instead, with the `sin θ/θ` that arm
+    /// formed `b` from: `J_r`'s diagonal of `0089`, applied (`0095`, draft). One branch on `b`'s
+    /// own mask, which `jr_coeffs_sinc` has already taken; the quaternion is formed first, which
+    /// measured 4–7 ns faster at `f64` than after it.
     #[inline]
     fn exp(tau: &SEn3Tangent<S, N>) -> Self {
         let phi = tau.phi;
-        let (a, b) = jr_coeffs(norm_sq(phi));
-        Self {
-            q: SO3::exp(&SO3Tangent { phi }).quat(),
-            x: tau.rho.map(|p| {
-                let c1 = phi.cross(p);
-                (p + c1.scale(a)) + phi.cross(c1).scale(b)
-            }),
-        }
+        let (a, b, sinc, far) = jr_coeffs_sinc(norm_sq(phi));
+        let q = SO3::exp(&SO3Tangent { phi }).quat();
+        let rho = tau.rho;
+        let x = S::branch(
+            far,
+            move || {
+                rho.map(|p| (p.scale(sinc) + phi.cross(p).scale(a)) + phi.scale(b * phi.dot(p)))
+            },
+            move || {
+                rho.map(|p| {
+                    let c1 = phi.cross(p);
+                    (p + c1.scale(a)) + phi.cross(c1).scale(b)
+                })
+            },
+        );
+        Self { q, x }
     }
 
     /// `Log(X) = (φ = Log(R), ρ_i = J_l⁻¹(φ) x_i)` (`NUMERICS.md` §5.1).

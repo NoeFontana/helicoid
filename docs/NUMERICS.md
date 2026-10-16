@@ -225,6 +225,10 @@ recorded max error of that coefficient; `branch_continuity_*` tests assert it.
 $\mathrm{Exp}(\tau) = (\mathrm{Exp}(\varphi),\ J_l(\varphi)\rho_1,\ \dots,\ J_l(\varphi)\rho_N)$.
 $\mathrm{Log}(X) = (\varphi = \mathrm{Log}(R),\ \rho_i = J_l^{-1}(\varphi)\,x_i)$.
 $J_l(\varphi)$ and $J_l^{-1}(\varphi)$ are §3.5's (the `V` and `V⁻¹` of `tf_tree_math`).
+$J_l(\varphi)\rho = \rho + a\,\varphi\times\rho + b\,\varphi\times(\varphi\times\rho)$, by two cross products;
+where $b$ is on its exact arm, $\tfrac{\sin\theta}{\theta}\rho + a\,\varphi\times\rho + b\,(\varphi\cdot\rho)\,\varphi$,
+the same map without the cancellation of $1 - b\theta^2 = \sin\theta/\theta$ near $\pi$ (§3.5's $J_r$
+diagonal; [`0095`](./decisions/0095-exp-translation-takes-the-far-diagonal.md), draft).
 
 ### 5.2 Adjoints
 
