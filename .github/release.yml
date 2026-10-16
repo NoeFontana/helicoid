@@ -1,0 +1,8 @@
+# The pull-request list `gh release create --generate-notes` appends to the release notes
+# (`.github/workflows/release.yml`, `0100`). The curated notes are CHANGELOG.md's.
+changelog:
+  categories:
+    - title: Dependencies
+      labels: [dependencies]
+    - title: Pull requests
+      labels: ["*"]

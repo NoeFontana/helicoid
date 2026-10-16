@@ -40,6 +40,25 @@ refactors and dependency bumps need no record.
 
 Tests run under nextest: `cargo nextest run -p helicoid -- <name>`.
 
+## Releasing
+
+A release is cut from committed state on `main` ([`0100`](./docs/decisions/0100-a-release-states-its-notes.md)).
+
+1. **One `release: X.Y.Z` pull request.**
+   - It stamps `CHANGELOG.md`'s `[Unreleased]` as `## [X.Y.Z] - date`, with a summary paragraph
+     first.
+   - It moves the previous version's section to `docs/changelog/`: links become `](../`, and the
+     index line goes in.
+   - It bumps `[workspace.package] version` and the two path dependencies' `version`, then
+     `Cargo.lock`, `CLAUDE.md`'s and `SUPPORT.md`'s current version.
+   - `cargo xtask release-notes X.Y.Z` previews the release page.
+2. **`just publish-check`** on the merged commit.
+3. **Tag the merged commit `vX.Y.Z` and push the tag.** `.github/workflows/release.yml` then:
+   - writes the notes, and fails before publishing if the tag is not the workspace's version or
+     the changelog has no section for it;
+   - publishes `helicoid-linalg`, then `helicoid`, to crates.io;
+   - creates the GitHub release from the notes, with the merged pull requests appended.
+
 ## License
 
 Contributions are dual-licensed MIT OR Apache-2.0, as stated in [`NOTICE`](./NOTICE).

@@ -1,5 +1,5 @@
-# crates.io publication by OIDC, no stored token; a Trusted Publisher is scoped to
-# this filename.
+# A `v*` tag: the release notes, then crates.io by OIDC (no stored token; a Trusted Publisher is
+# scoped to this filename), then the GitHub release (`0100`).
 name: release
 
 on:
@@ -18,11 +18,30 @@ env:
   RUST_BACKTRACE: 1
 
 jobs:
+  # First, so a tag that is not the workspace's version, or a changelog with no section for it,
+  # stops the release before anything is published (`cargo xtask release-notes`).
+  notes:
+    name: release notes
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # the tags and history the records' diff reads
+      - uses: dtolnay/rust-toolchain@stable
+      - name: cargo xtask release-notes
+        run: cargo run --quiet --locked -p xtask -- release-notes "${GITHUB_REF_NAME#v}" --out notes.md
+      - uses: actions/upload-artifact@v7
+        with:
+          name: release-notes
+          path: notes.md
+
   # OIDC, no stored token. Needs a Trusted Publisher per crate at
   # https://crates.io/me/trusted-publishers (owner `NoeFontana`, repository
   # `helicoid`, workflow `release.yml`, environment `crates-io`).
   publish:
     name: publish to crates.io
+    needs: notes
     runs-on: ubuntu-latest
     timeout-minutes: 30
     environment: crates-io
@@ -44,3 +63,26 @@ jobs:
       - name: cargo publish helicoid
         env: { CARGO_REGISTRY_TOKEN: "${{ steps.auth.outputs.token }}" }
         run: cargo publish --locked -p helicoid
+
+  # Last, so the release page never announces crates that are not on the index. The notes are
+  # `release-notes`' (changelog section, decision records, crates), and GitHub appends the merged
+  # pull requests (`--generate-notes`, grouped by `.github/release.yml`).
+  github-release:
+    name: GitHub release
+    needs: [notes, publish]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write # create the release
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: release-notes
+      - name: gh release create
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: >-
+          gh release create "$GITHUB_REF_NAME" --verify-tag
+          --title "helicoid ${GITHUB_REF_NAME#v}"
+          --notes-file notes.md --generate-notes

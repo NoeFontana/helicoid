@@ -9,6 +9,7 @@ mod conformance;
 mod determinism;
 mod envelope;
 mod lint;
+mod release_notes;
 mod seeded;
 mod shipped;
 mod thresholds;
@@ -24,6 +25,7 @@ const TASKS: &[&str] = &[
     "bench-gate",
     "compare",
     "determinism",
+    "release-notes",
 ];
 
 fn main() -> ExitCode {
@@ -37,6 +39,7 @@ fn main() -> ExitCode {
         bench::run,
         compare::run,
         determinism::run,
+        release_notes::run,
     ) {
         ExitCode::SUCCESS
     } else {
@@ -58,6 +61,7 @@ fn dispatch(
     bench_gate: impl FnOnce(&[String]) -> Result<(), String>,
     compare: impl FnOnce(&[String]) -> Result<(), String>,
     determinism: impl FnOnce(&[String]) -> Result<(), String>,
+    release_notes: impl FnOnce(&[String]) -> Result<(), String>,
 ) -> bool {
     match args.first().map(String::as_str) {
         Some("lint") => match lint() {
@@ -116,6 +120,13 @@ fn dispatch(
                 false
             }
         },
+        Some("release-notes") => match release_notes(&args[1..]) {
+            Ok(()) => true,
+            Err(e) => {
+                eprintln!("xtask release-notes: {e}");
+                false
+            }
+        },
         Some(task) => {
             eprintln!("xtask: `{task}` is not implemented (docs/PHASE1.md §0.0); have: {TASKS:?}");
             false
@@ -142,6 +153,7 @@ mod tests {
                 &args,
                 || lint,
                 |_| conf,
+                |_| Err("unused".into()),
                 |_| Err("unused".into()),
                 |_| Err("unused".into()),
                 |_| Err("unused".into()),
@@ -176,6 +188,7 @@ mod tests {
                 |_| Err("unused".into()),
                 |_| Err("unused".into()),
                 |_| Err("unused".into()),
+                |_| Err("unused".into()),
             )
         };
         assert!(thr(&["thresholds", "--check"]) && !thr(&["thresholds"]));
@@ -194,6 +207,7 @@ mod tests {
                 },
                 unused,
                 unused,
+                |_| Err("unused".into()),
                 |_| Err("unused".into()),
             )
         };
@@ -214,6 +228,7 @@ mod tests {
                     assert_eq!(rest, ["--a", "x"]);
                     out
                 },
+                |_| Err("unused".into()),
                 |_| Err("unused".into()),
             )
         };
@@ -238,7 +253,33 @@ mod tests {
             |_| Err("unused".into()),
             |_| Err("unused".into()),
             |_| Err("unused".into()),
+            |_| Err("unused".into()),
         );
         assert!(ok && *seen.borrow() == ["--fn", "so2_exp"]);
+    }
+
+    #[test]
+    fn release_notes_receives_the_arguments_after_its_name() {
+        let args: Vec<String> = ["release-notes", "0.0.5", "--out", "n.md"]
+            .map(String::from)
+            .to_vec();
+        let unused = |_: &[String]| Err("unused".to_string());
+        let run = |out: Result<(), String>| {
+            dispatch(
+                &args,
+                || Ok(vec![]),
+                unused,
+                unused,
+                unused,
+                unused,
+                unused,
+                unused,
+                |rest| {
+                    assert_eq!(rest, ["0.0.5", "--out", "n.md"]);
+                    out.clone()
+                },
+            )
+        };
+        assert!(run(Ok(())) && !run(Err("no section".into())));
     }
 }
