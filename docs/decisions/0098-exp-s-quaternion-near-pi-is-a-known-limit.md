@@ -49,12 +49,22 @@ a consumer-loop timing of `SO3::exp`:
 - **Where it is accepted:** the owner accepted the limit on 2026-10-16, after the measurements
   above.
 
+**The same floor bounds `J(φ)` near `π`.** `sen3_jr`'s and `sen3_jl`'s near-`π` maxima read up to
+1.7× the best oracle on one record per stratum (`theta:pi-1e-3`: 2.31 `u` against Sophus's 1.34),
+unresolved.
+- **Which block:** a per-block split of the worst record (id 103) puts 1.61 `u` in `J_r(φ)` and
+  0.40 in `Q`.
+- **How much is `θ²`:** assembling `J_r(φ)` exactly from coefficients at `fl(θ²)`, which is off by
+  −1.49 `u`, gives 0.86 of those 1.61 `u`. At the exact `θ²` the formula gives none.
+- **Why:** near `π`, `a` and `b` scale like `1/θ²`, so they carry `θ²`'s rounding as `k` does. The
+  fix is the same compensated `θ²`, at the same price.
+
 ## Consequences
 
 - **The deep envelope reads no domination failure** once the row is in; this record is the reason
   it does.
-- **A future `Exp` that wants this back** pays the compensated `θ²`, or finds a cheaper exact
-  root, and deletes the row.
+- **A future `Exp` or `J` that wants this back** pays the compensated `θ²`, or finds a cheaper exact
+  one, and deletes the row.
 
 ## Implementation plan
 
