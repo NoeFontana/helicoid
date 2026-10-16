@@ -25,3 +25,10 @@ stratum = "q:nonunit"
 precision = "f64"
 record = "0076"
 reason = "carried drift: helicoid's Ad blocks carry act's term (1 + eta)R - eta I (0058, 0092 draft), Sophus normalizes q at construction"
+
+[[exception]]
+fn = "sim3_exp"
+stratum = "sigma:-3/theta:pi-1e-6@f32"
+precision = "f32"
+record = "0098"
+reason = "SO3::exp's quaternion near pi: k = sin(theta/2)/theta carries ~2u of radial rounding; the uniform fix costs +50% of SO3::exp"
