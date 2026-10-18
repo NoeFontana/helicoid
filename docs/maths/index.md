@@ -55,7 +55,7 @@ $\begin{bmatrix}R & [t]_\times R\\ 0 & R\end{bmatrix}$ in Solà et al.
 - A statement is labelled `<page>.<n>` (`LG` for [`lie-groups.md`](./lie-groups.md), `SO` for
   [`so3.md`](./so3.md), `CO` for [`coefficients.md`](./coefficients.md), `SE` for
   [`se3.md`](./se3.md), `PL` (planar) for [`so2-se2.md`](./so2-se2.md), `EA` (error analysis) for
-  [`error-analysis.md`](./error-analysis.md), `GE` (geodesics) for [`geodesics.md`](./geodesics.md), `CH` (charts) for [`charts.md`](./charts.md), `GG` (Γ and Gaussians) for [`gamma-gaussian.md`](./gamma-gaussian.md), `AJ` (ambient Jacobians) for [`ambient-jacobians.md`](./ambient-jacobians.md), `SM` (Sim(3)) for [`sim3.md`](./sim3.md)), numbered in order of appearance. Labels are stable:
+  [`error-analysis.md`](./error-analysis.md), `GE` (geodesics) for [`geodesics.md`](./geodesics.md), `CH` (charts) for [`charts.md`](./charts.md), `GG` (Γ and Gaussians) for [`gamma-gaussian.md`](./gamma-gaussian.md), `AJ` (ambient Jacobians) for [`ambient-jacobians.md`](./ambient-jacobians.md), `SM` (Sim(3)) for [`sim3.md`](./sim3.md), `SV` (the SVD) and `PO` (the polar factor) for [`svd3.md`](./svd3.md)), numbered in order of appearance. Labels are stable:
   later results are appended, never renumbered, so other pages and PR descriptions can cite them.
 - Each result states its domain and carries a proof, or says which step is only outlined.
 - Each proposition ends with one **Checked:** line: what was run, at which precision, over which
@@ -137,7 +137,7 @@ below, are collected for decision, with a recommendation each, in the draft reco
   canonicalization (for instance $w \ge 0$, which moves the jump to $w = 0$) is a §3.4 decision.
 - `PHASE2.md` §6 says `svd3` is signed with $\det U = \det V = +1$ and "only $\sigma_3$ may be negative",
   but not that $\lvert\sigma_3\rvert \le \min(\sigma_1, \sigma_2)$. `nearest_rotation` $= UV^\top$ needs it
-  (SO.13(c)): with $\Sigma = \mathrm{diag}(1, 1, -5)$ it is at squared distance $36$ against $20$.
+  (SO.13(c)): with $\Sigma = \mathrm{diag}(1, 1, -5)$ it is at squared distance $36$ against $20$. [`0101`](../decisions/0101-svd3-is-one-sided-jacobi-on-eig3-s-rotation.md) (draft) states it (SV.4).
 - `NUMERICS.md` §4 "Naive cancellation" ($\sim2u/\theta^2$, $6u/\theta^2$, $12u/\theta^2$,
   $24u/\theta^4$ and $24u/\theta^2$, $360u/\theta^4$): the exponents are right, the constants are
   not bounds, and the column is not built by one rule ($a$, $b$, $c$, $d$ count the dominant rounded
