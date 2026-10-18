@@ -11,8 +11,8 @@ noise bars and long debug sweeps stay local `just` recipes, never CI jobs.
 |---|---|
 | `just oracle-tf-tree-math` | the `tf_tree_math` runner: its fmt, clippy, doc, deny, tests, then its rows over the corpus (`conformance --oracle`) |
 | `just oracle-sophus-rs` | the same for `runners/sophus_rs` (own `deny.toml`) |
-| `just oracle-nalgebra` | the same for `runners/nalgebra` (own `deny.toml`): `eig3`, `chol_*`, `solve_cubic`, `quat_renormalize` (`0056`), `svd3` (`0101`) |
-| `just oracle-sophus` | Sophus C++ container (`docker/oracles/sophus`, needs docker): builds the pinned image, runs its rows offline (`0072`); `eig3` and `svd3` are the image's Eigen (`0083`, `0101`) |
+| `just oracle-nalgebra` | the same for `runners/nalgebra` (own `deny.toml`): `eig3`, `chol_*`, `solve_cubic`, `quat_renormalize` (`0056`), `svd3`, `nearest_rotation` (`0101`; `0102`, draft) |
+| `just oracle-sophus` | Sophus C++ container (`docker/oracles/sophus`, needs docker): builds the pinned image, runs its rows offline (`0072`); `eig3` and `svd3` are the image's Eigen (`0083`, `0101`), `nearest_rotation` Sophus's `fitToSO3` (`0102`, draft) |
 | `just oracle-gtsam` | GTSAM C++ (`docker/oracles/gtsam`), built in the image under the runner's flags (`0074`) |
 | `just oracle-manif` | manif container: SO(2), SE(2), SO(3), SE(3), SE₂(3), screw and world charts (`0075`) |
 | `just oracles` | every `oracle-*` above, in order; local only |

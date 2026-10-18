@@ -1,6 +1,7 @@
 // The corpus's arrays to Sophus's types and back (docs/decisions/0072), at the scalar `T` a record
 // is answered in: `double`, or `float` for an `@f32` record (docs/decisions/0077); and `eig3`'s and
-// `svd3`'s to Eigen's, the image's own Eigen (docs/decisions/0083, 0101).
+// `svd3`'s to Eigen's, the image's own Eigen (docs/decisions/0083, 0101); `nearest_rotation`'s
+// through Sophus's `SO3::fitToSO3` (docs/decisions/0102, draft).
 //
 // helicoid is rotation-first and `w`-first (docs/decisions/0002); Sophus is translation-first:
 // SE(2) `[υ; θ]`, SE(3) `[υ; ω]`, Sim(3) `[υ; ω; σ]`. Its Sim(3) stores `√s · q` (`RxSO3`), so the
@@ -240,6 +241,16 @@ HelicoidSvd3 eigen_to_helicoid_svd3(const Eigen::JacobiSVD<Eigen::Matrix<T, 3, 3
   return {Vec(u.data(), u.data() + 9), {static_cast<double>(sigma(0)), static_cast<double>(sigma(1)),
                                         static_cast<double>(sigma(2))},
           Vec(v.data(), v.data() + 9)};
+}
+
+// --- nearest_rotation: Sophus's `fitToSO3` (docs/decisions/0102, draft) --------------------------
+
+// `SO3<T>::fitToSO3(M).matrix()`, column-major: Sophus's `makeRotationMatrix` (`JacobiSVD`, then
+// `U diag(1, 1, det UVᵀ) Vᵀ`), stored as a quaternion by `SO3(R)`, whose orthogonality check is a
+// refusal, and read back as a matrix.
+template <class T>
+Vec helicoid_nearest_rotation(const Vec& m) {
+  return sophus_to_helicoid_matrix3<T>(Sophus::SO3<T>::fitToSO3(helicoid_to_eigen_matrix3<T>(m)).matrix());
 }
 
 }  // namespace oracle

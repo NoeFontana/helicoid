@@ -314,6 +314,29 @@ void svd3() {
   check(binary32(f.u) && binary32(f.sigma) && binary32(f.v), "svd3 f32: binary32");
 }
 
+void nearest_rotation() {
+  // R_z(π/2), column-major, comes back to rounding; a transposed answer would be R_z(−π/2).
+  const oracle::Vec quarter{0, 1, 0, -1, 0, 0, 0, 0, 1};
+  near(oracle::helicoid_nearest_rotation<double>(quarter), quarter, "nearest_rotation: a rotation unchanged");
+  // 7 R and 10⁻³ R: R.
+  oracle::Vec scaled(quarter), small(quarter);
+  for (double& x : scaled) x *= 7;
+  for (double& x : small) x *= 1e-3;
+  near(oracle::helicoid_nearest_rotation<double>(scaled), quarter, "nearest_rotation: 7 R");
+  near(oracle::helicoid_nearest_rotation<double>(small), quarter, "nearest_rotation: 10⁻³ R");
+  // M = diag(1, 1, −1), det < 0: its nearest rotations are not unique (σ₂ + dσ₃ = 0), and each has
+  // det R = 1 and ‖R − M‖² = 6 − 2 max tr(MᵀR) = 4; the reflection itself is not one.
+  const oracle::Vec reflection{1, 0, 0, 0, 1, 0, 0, 0, -1};
+  const oracle::Vec r = oracle::helicoid_nearest_rotation<double>(reflection);
+  const Eigen::Map<const Eigen::Matrix3d> rm(r.data()), mm(reflection.data());
+  check(std::fabs(rm.determinant() - 1) <= kTol, "nearest_rotation: det R = 1 from a reflection");
+  check(std::fabs((rm - mm).squaredNorm() - 4) <= 1e-13, "nearest_rotation: a nearest one");
+  // At `float`: every output a binary32.
+  const oracle::Vec f = oracle::helicoid_nearest_rotation<float>(scaled);
+  near(f, quarter, "nearest_rotation f32: 7 R", kTolF);
+  check(binary32(f), "nearest_rotation f32: binary32");
+}
+
 void hex_floats() {
   check(oracle::format_hex(1.0) == "0x1p+0", "hex: 1");
   check(oracle::format_hex(-0.0) == "-0x0p+0", "hex: −0");
@@ -349,6 +372,7 @@ int main() {
   sim3_exp();
   eig3();
   svd3();
+  nearest_rotation();
   hex_floats();
   if (failures != 0) return 1;
   std::puts("convert_test: all passed");

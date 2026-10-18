@@ -19,6 +19,9 @@
 //! - `svd3` (`docs/decisions/0101` decision 8): `SVD::try_new`, which nalgebra 0.35.0
 //!   computes for a `Matrix3` by McAdams et al.'s route (`SymmetricEigen` of `AᵀA`, then a QR of
 //!   `AV`), sorted descending and put in that record's signed convention.
+//! - `nearest_rotation` (`docs/decisions/0102` decision 8, draft): `Rotation3::from_matrix_eps`,
+//!   Müller et al.'s iteration, from the identity, `eps` the precision's unit roundoff, at most
+//!   [`ROTATION_ITERATIONS`] steps.
 //!
 //! The matrices of `eig3` and `chol_*` are exactly symmetric, so the triangle read changes nothing;
 //! the corpus test asserts it. In binary64 every record is answered, `@f32` strata included: the protocol
@@ -29,7 +32,7 @@
 use std::collections::BTreeMap;
 
 use nalgebra::{
-    Cholesky, Quaternion, RealField, SMatrix, SVector, Schur, SymmetricEigen, Unit, SVD,
+    Cholesky, Quaternion, RealField, Rotation3, SMatrix, SVector, Schur, SymmetricEigen, Unit, SVD,
 };
 
 /// Named arrays: a record's `in` object (its `shape` as two numbers), or the `out` of the answer.
@@ -79,7 +82,7 @@ type Evaluate = fn(&Fields) -> Result<Fields, String>;
 /// The function ids this runner answers, each with its evaluation in binary64 and in binary32:
 /// the one list, so an id cannot be advertised without an answer or answered without being
 /// advertised.
-const TABLE: [(&str, Evaluate, Evaluate); 9] = [
+const TABLE: [(&str, Evaluate, Evaluate); 10] = [
     ("eig3", eig3::<f64>, eig3::<f32>),
     ("chol_n3", chol::<f64, 3>, chol::<f32, 3>),
     ("chol_n6", chol::<f64, 6>, chol::<f32, 6>),
@@ -97,6 +100,11 @@ const TABLE: [(&str, Evaluate, Evaluate); 9] = [
         mat2_inverse_adj::<f32>,
     ),
     ("svd3", svd3::<f64>, svd3::<f32>),
+    (
+        "nearest_rotation",
+        nearest_rotation::<f64>,
+        nearest_rotation::<f32>,
+    ),
 ];
 
 /// The iterations `SymmetricEigen`, `Schur` and `SVD` get. Their `new` is `try_new(m, T::EPSILON, 0)`,
@@ -105,6 +113,10 @@ const TABLE: [(&str, Evaluate, Evaluate); 9] = [
 /// LAPACK's `dlahqr` allows `30 · max(10, n)`; the slowest convergent cubic found, `x³ ∓ 1`, takes
 /// 39.
 const MAX_ITERATIONS: usize = 300;
+
+/// The steps `Rotation3::from_matrix_eps` gets (`docs/decisions/0102` decision 8, draft); its `0`
+/// would be unbounded.
+const ROTATION_ITERATIONS: usize = 100;
 
 /// The function ids [`answer`] evaluates, in table order.
 pub(crate) fn supported() -> impl Iterator<Item = &'static str> {
@@ -146,12 +158,17 @@ fn take_one<T: Real>(input: &Fields, key: &str) -> Result<T, String> {
 
 /// The input `A`, which must carry `shape` `[N, N]`.
 fn take_square<T: Real, const N: usize>(input: &Fields) -> Result<Vec<T>, String> {
+    take_square_named::<T, N>(input, "A")
+}
+
+/// The input matrix `key`, which must carry `shape` `[N, N]`.
+fn take_square_named<T: Real, const N: usize>(input: &Fields, key: &str) -> Result<Vec<T>, String> {
     let n = N as f64;
     match take_f64(input, "shape", 2)? {
         [r, c] if r.to_bits() == n.to_bits() && c.to_bits() == n.to_bits() => {
-            take(input, "A", N * N)
+            take(input, key, N * N)
         }
-        shape => Err(format!("`A` has shape {shape:?}, expected [{N}, {N}]")),
+        shape => Err(format!("`{key}` has shape {shape:?}, expected [{N}, {N}]")),
     }
 }
 
@@ -267,6 +284,15 @@ fn svd3<T: Real>(input: &Fields) -> Result<Fields, String> {
         ("V", nalgebra_to_helicoid_matrix(&v)),
         ("sigma", wide(&sigma)),
     ]))
+}
+
+/// `Rotation3::from_matrix_eps(M, u, ROTATION_ITERATIONS, I)`, `u = ε/2` the precision's unit
+/// roundoff (`2⁻⁵³`, `2⁻²⁴`): the rotation nalgebra extracts from `M`, column-major.
+fn nearest_rotation<T: Real>(input: &Fields) -> Result<Fields, String> {
+    let m = helicoid_to_nalgebra_matrix::<T, 3, 3>(&take_square_named::<T, 3>(input, "M")?)?;
+    let roundoff = T::default_epsilon() / nalgebra::convert(2.0);
+    let r = Rotation3::from_matrix_eps(&m, roundoff, ROTATION_ITERATIONS, Rotation3::identity());
+    Ok(fields([("R", nalgebra_to_helicoid_matrix(r.matrix()))]))
 }
 
 /// `A.try_inverse()` and `A.determinant()`; `None`: a NaN inverse.
@@ -426,6 +452,8 @@ mod tests {
         assert!(eig3::<f64>(&input([("A", a.clone())])).is_err());
         assert!(eig3::<f64>(&input([("A", a.clone()), ("shape", vec![3.0, 1.0])])).is_err());
         assert!(svd3::<f64>(&input([("A", a.clone())])).is_err());
+        assert!(nearest_rotation::<f64>(&input([("M", a.clone())])).is_err());
+        assert!(nearest_rotation::<f64>(&square::<3>(a.clone())).is_err());
         assert!(chol::<f64, 6>(&square::<3>(a)).is_err());
     }
 
@@ -553,6 +581,52 @@ mod tests {
         }
         let sigma = get(&narrow, "sigma")?;
         assert!(sigma[2] < 0.0 && sigma[1] >= sigma[2].abs(), "{sigma:?}");
+        Ok(())
+    }
+
+    /// `nearest_rotation`'s `R` as a matrix.
+    fn nearest_rotation_of<T: Real>(m: [f64; 9]) -> Result<M3, String> {
+        let out = nearest_rotation::<T>(&input([("M", m.to_vec()), ("shape", vec![3.0, 3.0])]));
+        helicoid_to_nalgebra_matrix::<f64, 3, 3>(&get(&out, "R")?)
+    }
+
+    /// A rotation about `(1, 2, 2)/3` by `0.7`: `R_z(π/2)` alone would be exact in every entry.
+    fn turn() -> M3 {
+        let axis = Unit::new_normalize(SVector::<f64, 3>::new(1.0, 2.0, 2.0));
+        *Rotation3::from_axis_angle(&axis, 0.7).matrix()
+    }
+
+    /// An exact rotation comes back to rounding, `R_z(π/2)` bit for bit, column-major.
+    #[test]
+    fn nearest_rotation_returns_a_rotation_unchanged() -> Result<(), String> {
+        let quarter = [0.0, 1.0, 0.0, -1.0, 0.0, 0.0, 0.0, 0.0, 1.0];
+        let r = nearest_rotation_of::<f64>(quarter)?;
+        assert!((r - M3::from_column_slice(&quarter)).norm() < 1e-15, "{r}");
+        let t = turn();
+        let r = nearest_rotation_of::<f64>(t.as_slice().try_into().map_err(|_| "9")?)?;
+        assert!((r - t).norm() < 1e-14, "{r} {t}");
+        Ok(())
+    }
+
+    /// `cR` for `c ∈ {10⁻³, 7, 10³}`: `R`, and in binary32 every output a binary32.
+    #[test]
+    fn nearest_rotation_of_a_scaled_rotation_is_the_rotation() -> Result<(), String> {
+        let t = turn();
+        for c in [1e-3, 7.0, 1e3] {
+            let r = nearest_rotation_of::<f64>((t * c).as_slice().try_into().map_err(|_| "9")?)?;
+            assert!((r - t).norm() < 1e-13, "c = {c}: {r}");
+            assert!((r.determinant() - 1.0).abs() < 1e-13);
+        }
+        let narrow: [f64; 9] = t
+            .map(|x| f64::from(x as f32) * 4.0)
+            .as_slice()
+            .try_into()
+            .map_err(|_| "9")?;
+        let r = nearest_rotation_of::<f32>(narrow)?;
+        assert!(r
+            .iter()
+            .all(|&x| f64::from(x as f32).to_bits() == x.to_bits()));
+        assert!((r - t).norm() < 1e-5, "{r}");
         Ok(())
     }
 
