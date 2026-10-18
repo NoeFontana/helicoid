@@ -95,10 +95,18 @@ $\lVert X^{-1}\rVert_F = \lVert\mathrm{cof}(X)\rVert_F/\lvert\det X\rvert$. [Hig
 Matrices*, 2008, §8.6 and Theorem 8.12.]
 
 **PO.2 (reflect).** For $\det M < 0$ in the signed convention, $X_0 = M - 2(Mv_3)v_3^\top$ has
-$\det X_0 = -\det M$ and polar factor $UV^\top$, the nearest rotation of $M$.
+$\det X_0 = -\det M$ and polar factor $UV^\top$, the nearest rotation of $M$. Equivalently, with
+$Q = U\,\mathrm{diag}(1, 1, -1)V^\top$ the orthogonal polar factor of $M$ ($\det Q = -1$) and
+$H = Q^\top M = V\,\mathrm{diag}(\sigma_1, \sigma_2, \lvert\sigma_3\rvert)V^\top$, the nearest rotation is
+$Q(I - 2P)$, $P = v_3v_3^\top = \mathrm{adj}(H - \lvert\sigma_3\rvert I)/\operatorname{tr}\mathrm{adj}(H -
+\lvert\sigma_3\rvert I)$ where $\lvert\sigma_3\rvert$ is simple: a rational function of $H$ and the
+eigenvalue, smooth through a tie of $\sigma_1$ and $\sigma_2$.
 
 *Proof.* $M(I - 2v_3v_3^\top) = U\Sigma V^\top(I - 2v_3v_3^\top) = U\,\mathrm{diag}(\sigma_1, \sigma_2,
--\sigma_3)V^\top$, with $-\sigma_3 > 0$; then SV.4. $\square$
+-\sigma_3)V^\top$, with $-\sigma_3 > 0$; then SV.4. $Q(I - 2v_3v_3^\top) = U\,\mathrm{diag}(1,1,-1)
+\mathrm{diag}(1,1,-1)V^\top = UV^\top$. In $V$'s basis $\mathrm{adj}(H - \lambda_3I)$ is diagonal with entries
+$\prod_{j\ne k}(\lambda_j - \lambda_3)$, zero but for $k = 3$, $(\lambda_1 - \lambda_3)(\lambda_2 - \lambda_3)$,
+which is its trace. $\square$
 
 **PO.3 (the tangent).** Where $R_\star$ is unique, $\dot R_\star = U\Omega V^\top$,
 $\Omega_{ij} = (C_{ij} - C_{ji})/(\sigma_i + \sigma_j)$, $C = U^\top\dot MV$, the

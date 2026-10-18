@@ -83,11 +83,19 @@ at $3.5\times10^{-7}$, $1.2\times10^{7}$ (and NaN on 13% of the family) at $3.5\
    $\lVert X_{k+1} - X_k\rVert_F^2 \le 48u^2$ ($4u\sqrt3$) or eight steps. The step that
    detects convergence is applied: it is the one the tangents need, one behind the values. The
    exit decides through `Real::branch` and `Mask::decide`, as `eig3`'s.
-4. **Reflect.** $(U, \Sigma, V) = $ `svd3`$(M)$, $X_0 = M - 2(Mv_3)v_3^\top$, then Newton. $\det X_0 =
-   -\det M > 0$ and the polar factor of $X_0$ is $UV^\top$, the nearest rotation of $M$ (PO.2). Its
-   tangent is exact wherever $\sigma_3$ is simple, which is where the nearest rotation of a
-   $\det < 0$ matrix is unique.
-5. **`svd3`.** $R = UV^\top$, from `svd3`'s signed convention (`0101` decision 1).
+4. **Reflect.** Newton from $X_0 = M$ converges to the orthogonal polar factor $Q$, $\det Q = -1$.
+   $H = \tfrac12(Q^\top M + M^\top Q)$ has the eigenvalues $(\sigma_1, \sigma_2, \lvert\sigma_3\rvert)$;
+   $\lambda$, its smallest, from `eig3`, then one Newton step on $p(\lambda) = \det(H - \lambda I)$,
+   $\lambda \leftarrow \lambda + p/\operatorname{tr}\mathrm{adj}(H - \lambda I)$;
+   $P = \mathrm{adj}(H - \lambda I)/\operatorname{tr}\mathrm{adj}(H - \lambda I)$, the projector onto
+   $\lambda$'s eigenvector; $R = Q(I - 2P)$ (PO.2), then one Newton step. Every step after `eig3` is
+   rational in $M$ and $\lambda$, and the refined $\lambda$ has the root's derivative whatever
+   `eig3`'s lanes, so the tangent is exact wherever $\sigma_3$ is simple, which is where the nearest
+   rotation of a $\det < 0$ matrix is unique, $\sigma_1 = \sigma_2$ included. Where
+   $\operatorname{tr}\mathrm{adj}(H - \lambda I) \le 16u\lVert M\rVert_F^2$, $\sigma_3$ is tied to
+   rounding and the nearest rotation is not unique: decision 5's.
+5. **`svd3`.** $R = UV^\top$, from `svd3`'s signed convention (`0101` decision 1), then one Newton
+   step, which squares the error of the product of two frames (7.8–8.6 `u` without it).
 6. **Non-finite input** gives a matrix of NaN, never a plausible rotation; the zero matrix gives
    $I$ (the `svd3` arm, $U = V = I$). Nothing panics.
 7. **`Dual`.** The Newton and reflect arms differentiate a rational iteration and are exact to the
@@ -123,7 +131,9 @@ at $3.5\times10^{-7}$, $1.2\times10^{7}$ (and NaN on 13% of the family) at $3.5\
 
      That is 296 binary64 and 264 binary32 records, about 0.3 MB.
    - **Oracles**: nalgebra's `Rotation3::from_matrix_eps` (Müller et al.'s iteration, from the
-     identity, `eps` the precision's `u`, at most 100 iterations) and Sophus's `SO3::fitToSO3`
+     identity, `eps` the precision's `u`, at most $10^4$ iterations: at 100 it stops 0.80 short of
+     the nearest rotation of $[[1,2,3],[4,5,6],[7,8,10]]$ and is within $5\times10^{-14}$ by 1000,
+     and an oracle is scored at its best) and Sophus's `SO3::fitToSO3`
      (`JacobiSVD`, then $U\,\mathrm{diag}(1, 1, \det UV^\top)V^\top$), at both precisions.
    - **Bars**: domination of both on every stratum at both precisions; committed rows reproduced.
    - **Self-test**: `R` rotated by `1e-9` about $e_3$ fires on `polar:near-1e-8`.
@@ -133,8 +143,11 @@ at $3.5\times10^{-7}$, $1.2\times10^{7}$ (and NaN on 13% of the family) at $3.5\
 - **Newton where it is well posed, not `svd3` everywhere**: about a third of `svd3`'s cost near
   SO(3) (two or three steps of one division and two roots, against eight rotations of three and
   two), half its error, and the only one of the two whose tangent is right there (*Context*).
-- **Reflect, not $UV^\top$, for $\det < 0$**: the same accuracy as Newton, and tangents that do
-  not inherit `svd3`'s at a tie of $\sigma_1, \sigma_2$, for one `svd3` call the arm makes anyway.
+- **A projector, not a reflection through `svd3`'s $v_3$, for $\det < 0$.** The first build took
+  $X_0 = M - 2(Mv_3)v_3^\top$ with `svd3`'s $v_3$, then Newton: at $\Sigma = (2, 2, -\tfrac12)$ its
+  tangent was $0.18$ off PO.3, because `svd3`'s rotation inside the tied pair has an arbitrary angle
+  and an $O(1/u)$ lane, which the next rotation with $v_3$'s column carries into $v_3$'s lane at
+  $O(1)$. The projector's tangent passes through no tie; `polar_tests` holds it there.
 - **Frobenius scaling, not $\lvert\det X\rvert^{-1/3}$**: no cube root, and it is the scaling
   whose step count Higham bounds. The alternatives are rows of step 2's measurement.
 - **No `nearest_rotation` without `svd3`**: the reflect and singular arms need it, and a Newton
@@ -171,7 +184,20 @@ None.
 
 ## Measured
 
-Filled in by step 2.
+**Large sample** (`polar_tests::measure_nearest_rotation`, $5\times10^4$ per family and
+precision, the corpus metric's weighted error and frame against `svd3_tests`' double-double
+reference; max, p99.9, mean in `u`):
+
+| family | `f64` | `f32` |
+|---|---|---|
+| random | 6.15, 4.58, 1.61 | 5.90, 4.60, 1.61 |
+| $cR$ | 5.08, 4.39, 1.60 | 5.64, 4.49, 1.53 |
+| reflection $(1, 0.6, -0.2)$ | 6.44, 4.72, 1.62 | 6.10, 4.65, 1.63 |
+| rank 2 | 5.93, 4.55, 1.56 | 5.80, 4.48, 1.56 |
+| near-rotation $10^{-2}$ … $10^{-16}$ | 5.22–5.70, 4.41–4.61, 1.63–1.66 | 5.27–5.82, 4.43–4.51, 1.42–1.57 |
+| $\sigma = (1, \tfrac12, 10^{-k})$, k = 4 … 16 | 5.32–5.70, 4.50–4.59, 1.56–1.58 | 5.33–5.81, 4.48–4.57, 1.55–1.56 |
+
+Corpus rows, oracles and cost: filled in by step 2.
 
 ## Further work
 

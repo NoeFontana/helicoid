@@ -114,9 +114,10 @@ const TABLE: [(&str, Evaluate, Evaluate); 10] = [
 /// 39.
 const MAX_ITERATIONS: usize = 300;
 
-/// The steps `Rotation3::from_matrix_eps` gets (`docs/decisions/0102` decision 8, draft); its `0`
-/// would be unbounded.
-const ROTATION_ITERATIONS: usize = 100;
+/// The steps `Rotation3::from_matrix_eps` gets (`docs/decisions/0102` decision 8, draft): at 100
+/// it stops 0.80 short of the nearest rotation of `[[1,2,3],[4,5,6],[7,8,10]]`, at 1000 it is within
+/// `5e-14`; its `0` would be unbounded.
+const ROTATION_ITERATIONS: usize = 10_000;
 
 /// The function ids [`answer`] evaluates, in table order.
 pub(crate) fn supported() -> impl Iterator<Item = &'static str> {

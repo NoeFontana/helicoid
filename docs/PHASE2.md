@@ -16,7 +16,7 @@ signatures in code blocks are normative.
 | `Dual<S, N>` (§3) | Partial: dual numbers generic over `Real` with automatic differentiation; corpus ids `real_sqrt`, `real_cbrt`, `real_sin_cos`, `real_acos`, `real_atan2`, `real_div` at both precisions, ≤ 3.65 `u` ([`0056`](./decisions/0056-the-routines-d7-does-not-reach.md)); `real_exp`, `real_expm1` ([`0068`](./decisions/0068-real-owes-exp-and-exp-m1.md)). |
 | `Vector`, `Matrix`, `Point`, `hat`/`vee`, `Mat3::inverse_adj`, `chol` (§4) | Partial: fixed-size types, operations, and `chol_solve` implemented (`0019`); corpus ids `chol_n{3,6}`, `chol_solve_n{3,6}` (`0056`). `Mat2::inverse_adj` and its id `mat2_inverse_adj` implemented ([`0061`](./decisions/0061-mat2-keeps-its-adjugate.md), #121). |
 | `Strided`, `StridedMut` (§5) | Done: column-major, row-major, strided slice views. |
-| `eig3`, `svd3`, `solve_cubic` + corpus ids (§6) | Done: `solve_cubic` implemented with `libm` transcendentals (`0017`, `0022`, `0053`); `eig3` is cyclic Jacobi with a deterministic exit and dominates nalgebra and Eigen's `SelfAdjointEigenSolver` on every stratum at both precisions ([`0081`](./decisions/0081-eig3-is-four-jacobi-sweeps.md), [`0083`](./decisions/0083-eig3-is-also-judged-against-eigen.md), [`0084`](./decisions/0084-eig3-leaves-jacobi-when-it-has-converged.md)). Corpus ids `solve_cubic` and `eig3` at both precisions, `eig3` against nalgebra (`0056`, `0077`) and Eigen (`0083`). `svd3` is one-sided Jacobi with `eig3`'s exit, its id `svd3` at both precisions, and dominates nalgebra and Eigen's `JacobiSVD` on every stratum at both precisions ([`0101`](./decisions/0101-svd3-is-one-sided-jacobi-on-eig3-s-rotation.md)). |
+| `eig3`, `svd3`, `nearest_rotation`, `solve_cubic` + corpus ids (§6) | Partial: `solve_cubic` implemented with `libm` transcendentals (`0017`, `0022`, `0053`); `eig3` is cyclic Jacobi with a deterministic exit and dominates nalgebra and Eigen's `SelfAdjointEigenSolver` on every stratum at both precisions ([`0081`](./decisions/0081-eig3-is-four-jacobi-sweeps.md), [`0083`](./decisions/0083-eig3-is-also-judged-against-eigen.md), [`0084`](./decisions/0084-eig3-leaves-jacobi-when-it-has-converged.md)). Corpus ids `solve_cubic` and `eig3` at both precisions, `eig3` against nalgebra (`0056`, `0077`) and Eigen (`0083`). `svd3` is one-sided Jacobi with `eig3`'s exit, its id `svd3` at both precisions, and dominates nalgebra and Eigen's `JacobiSVD` on every stratum at both precisions ([`0101`](./decisions/0101-svd3-is-one-sided-jacobi-on-eig3-s-rotation.md)). `nearest_rotation` is Newton's polar iteration with a projector reflection and `svd3` as its other arms, its id `nearest_rotation` against nalgebra and Sophus ([`0102`](./decisions/0102-the-nearest-rotation-takes-newton-where-it-is-well-posed.md), draft). |
 | `mint` feature (§7) | Done: optional feature conversions for fixed-size types. |
 | Downstream perception migration (§9) | Not started |
 
@@ -235,6 +235,14 @@ their Jacobian through these (faer `MatMut` and Ceres row-major buffers both map
   `svd:gap-1e-k/{bottom,top}`, `svd:graded-1e-k`, `svd:col-graded`, `svd:rank2`, `svd:rank1`,
   `svd:zero`, `svd:rotation`, `svd:near-rotation-1e-k`, `svd:near-reflection-1e-k`,
   `svd:essential`, `svd:ordering`, `svd:scale-{up,down}` (`0101` decision 8).
+- `nearest_rotation<S: Real>(m: &Mat3<S>) -> Mat3<S>`: the Frobenius-nearest rotation,
+  $U\,\mathrm{diag}(1, 1, \det UV^\top)V^\top$, one of the nearest where it is not unique. Newton's
+  polar iteration where $\det M \ge \tau\lVert M\rVert_F^3$, a projector reflection where
+  $\det M \le -\tau\lVert M\rVert_F^3$, `svd3` between (`NUMERICS.md` §19,
+  [`0102`](./decisions/0102-the-nearest-rotation-takes-newton-where-it-is-well-posed.md), draft).
+  Bars against `mp.svd_r`: §11's `nearest_rotation` metric. Strata: `polar:near-1e-k`,
+  `polar:exact`, `polar:scaled`, `polar:random`, `polar:reflection`, `polar:cond-1e-k`,
+  `polar:rank2`, `polar:non-unique`, `polar:scale-{up,down}`.
 - `solve_cubic<S: Real>(a: S, b: S, c: S, d: S) -> (Vec3<S>, [S::Mask; 3])`: real roots of
   `a x³ + b x² + c x + d` with validity mask ([`0017`](./decisions/0017-cbrt-and-mask-valued-roots.md)); power-of-two tolerances; `Real::acos` and `Real::cos` via `libm` ([`0022`](./decisions/0022-real-owes-acos-and-cos.md), [`0053`](./decisions/0053-acos-is-better-the-roots-are-not-necessarily.md)). Against
   `mp.polyroots` of the stored coefficients, by root-set distance (`NUMERICS.md` §11). Strata:
