@@ -132,8 +132,8 @@ round $\sqrt{c_j}$ and $1/\sqrt{c_j}$ on opposite sides where a normalization ro
 component the same way: an exact quarter turn gets $\mathrm{fl}(\lVert q\rVert^2) = 1$ from them and
 $1 - 2u$ from the column ([`0086`](./decisions/0086-from-matrix-keeps-shepperd-s-quotients-on-the-sphere.md)). **Closed form, never iterative**:
 avoids iterative convergence failures (such as Müller iteration hangs on degenerate input).
-Projecting an arbitrary $3\times3$ onto SO(3) is `svd3` first, whose signed convention makes
-$UV^\top$ the nearest rotation where that is unique (§18), then this.
+Projecting an arbitrary $3\times3$ onto SO(3) is `nearest_rotation` first, the rotation
+nearest in the Frobenius norm where that is unique (§19), then this.
 
 ### 3.5 Jacobians and adjoints
 
@@ -498,6 +498,11 @@ $X(t) = X_0\,\mathrm{Exp}(t\,d)$ with $d = X_1 \ominus_R X_0$ and $\Delta = X_0^
   $\hat\sigma_3$ has no test of its own: dropped, it reads $2\lvert\sigma_3\rvert/\lVert A\rVert$ in
   the forward and the backward error, and where $\lvert\sigma_3\rvert$ is at rounding a backward
   stable answer may carry either sign.
+- **Nearest rotations** (`nearest_rotation`): the largest of the forward error weighted by the
+  projection's conditioning, $\lVert\hat R - R\rVert_F\,(\sigma_2 + d\sigma_3)/(2\lVert M\rVert_F\,u)$
+  ($\lVert\dot R\rVert \le 2\lVert\dot M\rVert/(\sigma_2 + d\sigma_3)$, `maths/svd3.md` PO.3; weight 0
+  where the reference is not unique), $\lVert\hat R^\top\hat R - I\rVert_F/u$, and $1/u$ where
+  $\det\hat R \le 0$ ([`0102`](./decisions/0102-the-nearest-rotation-takes-newton-where-it-is-well-posed.md), draft).
 - **Roots** (`solve_cubic`): the Hausdorff distance between the valid slots $\hat R$ and the three
   reference roots $Z$, complex ones included, over $\|Z\|_2\,u$: each real root to its nearest
   valid slot, each valid slot to its nearest root, $\lvert\hat r - z\rvert$ in $\mathbb C$, over
@@ -546,6 +551,7 @@ $X(t) = X_0\,\mathrm{Exp}(t\,d)$ with $d = X_1 \ominus_R X_0$ and $\Delta = X_0^
 | `solve_cubic` | every input; the mask is the report: a non-finite coefficient, $a = 0$, or $1/a$, $b/a$, $c/a$ or $d/a$ overflowing gives no valid slot (§16) | — |
 | `eig3` | every input, lower triangle read; every finite matrix (§17's exact power-of-two scaling); a subnormal largest entry keeps only its own digits | a non-finite entry: `NaN` eigenvalues, never a plausible number, and the identity frame; an eigenvalue beyond the largest finite number is infinite ([`0081`](./decisions/0081-eig3-is-four-jacobi-sweeps.md)) |
 | `svd3` | every input; every finite matrix (§18's exact power-of-two scaling) | a non-finite entry: `NaN` singular values and $U = V = I$; a singular value beyond the largest finite number is infinite ([`0101`](./decisions/0101-svd3-is-one-sided-jacobi-on-eig3-s-rotation.md)) |
+| `nearest_rotation` | every input | a non-finite entry: a matrix of `NaN`; the zero matrix: $I$ ([`0102`](./decisions/0102-the-nearest-rotation-takes-newton-where-it-is-well-posed.md), draft) |
 | `so3::gamma1`, `gamma2`, `gamma_apply_jacobians` | every finite $\varphi$ with $\theta^2$ finite: $\Gamma_m$ is entire (GG.2), no singular $\theta$; the overflow of $\theta^2$ is `Exp`'s (CO.15(c)) ([`0064`](./decisions/0064-the-integrated-exponentials-reuse-the-swept-switches.md)) | — |
 | `S2::from_vec_unchecked` | $\lvert\|v\|^2 - 1\rvert \le 2^{-40}$ (`f64`), $2^{-16}$ (`f32`); `debug_assert!`, NaN fails (`0063`) | garbage in, garbage out |
 | `S2::from_vec_normalized` | $\|v\|^2$ normal (`0027`) | NaN at $v = 0$; zero above the overflow |
@@ -837,3 +843,26 @@ where that is unique (SV.4).
   values exchanged. Then where $\sigma_2 < \lvert\sigma_3\rvert$, $s = \operatorname{copysign}(1, \sigma_3)$:
   $(u_2, u_3) \leftarrow (s\,u_3, -s\,u_2)$, $(v_2, v_3) \leftarrow (v_3, -v_2)$,
   $(\sigma_2, \sigma_3) \leftarrow (s\,\sigma_3, s\,\sigma_2)$. Then the first again (SV.5).
+
+## 19. The nearest rotation
+
+`nearest_rotation`'s formulas ([`0102`](./decisions/0102-the-nearest-rotation-takes-newton-where-it-is-well-posed.md),
+draft; `docs/maths/svd3.md` PO.1–PO.3). The result is $U\,\mathrm{diag}(1, 1, d)V^\top$, $d =
+\operatorname{sign}\det M$, the Frobenius-nearest rotation (SO.13(c)), one of the nearest where it
+is not unique.
+
+- **Non-finite input and scaling** as §18; a non-finite entry gives a matrix of `NaN`. The rotation
+  is not scaled back.
+- **Arms.** With $n = \lVert M\rVert_F$, $\tau = 2^{-26}$ (`f64`), $2^{-12}$ (`f32`) and $\det M$ from
+  the cofactors: Newton where $\det M > \tau n^3$; reflect where $\det M < -\tau n^3$; `svd3`
+  between, the zero matrix included.
+- **Newton**, from $X = M$: $C = [x_2\times x_3,\ x_3\times x_1,\ x_1\times x_2]$, $\delta = x_1\cdot c_1$,
+  $\mu = \sqrt{\sqrt{\lVert C\rVert_F^2/\lVert X\rVert_F^2}/\lvert\delta\rvert}$,
+  $X \leftarrow \tfrac12(\mu X + C/(\mu\delta))$; after each step, where $\lVert X_{k+1} - X_k\rVert_F^2
+  \le 48u^2$, no further step; at most eight.
+- **Reflect.** $Q$ = Newton from $M$ ($\det Q = -1$); $H = \tfrac12(Q^\top M + M^\top Q)$; $\lambda$ the
+  smallest eigenvalue of `eig3`$(H)$, then $\lambda \leftarrow \lambda + \det(H - \lambda I)/t$,
+  $t = \operatorname{tr}\mathrm{adj}(H - \lambda I)$, both at the old $\lambda$; where $t \le 16u\,n^2$,
+  the `svd3` arm; otherwise $P = \mathrm{adj}(H - \lambda I)/t$ at the new $\lambda$ and $R = Q - 2QP$,
+  then one Newton step.
+- **`svd3`.** $R = UV^\top$ from §18, then one Newton step.

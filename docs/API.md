@@ -77,7 +77,7 @@ constructors normalize.
 | `Mat2::inverse_adj`, `Mat3::inverse_adj` | fns | `(adjugate/det, det)`; the caller decides what `det` means. `Mat2`'s adjugate is exact, so `det` is its only rounding ([`0061`](./decisions/0061-mat2-keeps-its-adjugate.md)). |
 | `chol<S, N>`, `solve_lower`, `solve_upper`, `chol_solve` | fns | Fixed-size Cholesky; `(L, S::Mask)`. Triangular solves reading one triangle each; `chol_solve(&L, b)` solves `A x = b` from the factor without a transpose ([`0019`](./decisions/0019-a-cholesky-solve-without-the-transpose.md)); `NUMERICS.md` §15. |
 | `Strided<'a, S>`, `StridedMut<'a, S>` | structs | `col_major`, `row_major`, `block`; bounds-checked (`# Panics`). |
-| `eig3`, `svd3`, `solve_cubic` | fns | `NUMERICS.md` §13 references; signatures in `PHASE2.md` §6. |
+| `eig3`, `svd3`, `nearest_rotation`, `solve_cubic` | fns | `NUMERICS.md` §13 references; signatures in `PHASE2.md` §6. |
 | `mint` | feature | `From`/`Into` for `Vector`, `Matrix` at sizes 2–4 and `Point` at 2–3 (`mint` has no 4-D point). |
 
 ## 3. `helicoid` — groups and geometry

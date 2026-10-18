@@ -25,8 +25,8 @@ use proptest::prelude::*;
 use std::vec::Vec;
 
 /// A matrix by rows, as `f64`.
-type M = [[f64; 3]; 3];
-type V3 = [f64; 3];
+pub(crate) type M = [[f64; 3]; 3];
+pub(crate) type V3 = [f64; 3];
 
 /// The recorded bound on `back`, `sv` and the weighted angle, in `u`.
 const K: f64 = 21.0;
@@ -35,10 +35,10 @@ const FRAME: f64 = 10.0;
 
 /// A decomposition: `U` and `V` by rows, `sigma`.
 #[derive(Clone, Copy, Debug)]
-struct Svd {
-    u: M,
-    s: V3,
-    v: M,
+pub(crate) struct Svd {
+    pub(crate) u: M,
+    pub(crate) s: V3,
+    pub(crate) v: M,
 }
 
 fn dot(x: V3, y: V3) -> f64 {
@@ -61,7 +61,7 @@ fn col(m: &M, c: usize) -> V3 {
     array::from_fn(|r| m[r][c])
 }
 
-fn fro(m: &M) -> f64 {
+pub(crate) fn fro(m: &M) -> f64 {
     m.iter().flatten().map(|x| x * x).sum::<f64>().sqrt()
 }
 
@@ -70,7 +70,7 @@ fn det(m: &M) -> f64 {
 }
 
 /// `a` with every entry rounded to `S`.
-fn round<S: Lane>(a: &M) -> M {
+pub(crate) fn round<S: Lane>(a: &M) -> M {
     a.map(|r| r.map(|x| S::make(x, [0.0; 2]).lane(0)))
 }
 
@@ -90,7 +90,7 @@ fn run<S: Lane>(a: &M) -> Svd {
 }
 
 /// `max(|X^T X - I|, |det X - 1|)`.
-fn frame_of(x: &M) -> f64 {
+pub(crate) fn frame_of(x: &M) -> f64 {
     // In double-double: an `f64` metric rounds at the ulp of 1, `2u`, which is the size of what it
     // measures.
     let c = [0, 1, 2].map(|k| col(x, k).map(Dd::of));
@@ -209,7 +209,7 @@ fn check<S: Lane>(what: &str, a: &M, t: &Svd) -> Result<(), TestCaseError> {
     Ok(())
 }
 
-fn rotation([w, x, y, z]: [f64; 4]) -> M {
+pub(crate) fn rotation([w, x, y, z]: [f64; 4]) -> M {
     let k = 2.0 / (w * w + x * x + y * y + z * z);
     let (xx, yy, zz) = (k * x * x, k * y * y, k * z * z);
     let (xy, xz, yz) = (k * x * y, k * x * z, k * y * z);
@@ -223,7 +223,7 @@ fn rotation([w, x, y, z]: [f64; 4]) -> M {
 
 /// `U diag(s) V^T` for the rotations of `p`, `q`, and its decomposition in the signed convention
 /// (`s` given as `s_1 >= s_2 >= |s_3|`).
-fn planted(p: [f64; 4], q: [f64; 4], s: V3) -> (M, Svd) {
+pub(crate) fn planted(p: [f64; 4], q: [f64; 4], s: V3) -> (M, Svd) {
     let (u, v) = (rotation(p), rotation(q));
     let a = array::from_fn(|i| array::from_fn(|j| (0..3).map(|k| u[i][k] * s[k] * v[j][k]).sum()));
     (a, Svd { u, s, v })
@@ -499,7 +499,7 @@ fn a_residual_far_from_orthogonal_keeps_the_frame() {
 }
 
 /// A seeded stream of numbers in `[-1, 1]` (splitmix64).
-fn lcg(seed: u64) -> impl FnMut() -> f64 {
+pub(crate) fn lcg(seed: u64) -> impl FnMut() -> f64 {
     let mut state = seed;
     move || {
         state = state.wrapping_add(0x9E37_79B9_7F4A_7C15);
@@ -788,7 +788,7 @@ fn dd_dot(x: &[Dd; 3], y: &[Dd; 3]) -> Dd {
 /// The decomposition of `a` by one-sided Jacobi in double-double, to about `1e-30 |A|`: the
 /// reference of [`measure_svd3`], independent of `svd3`'s rotation (the textbook `zeta`, `t`, `c`),
 /// put in the signed convention.
-fn reference(a: &M) -> Svd {
+pub(crate) fn reference(a: &M) -> Svd {
     let mut b: [[Dd; 3]; 3] = array::from_fn(|j| array::from_fn(|i| Dd::of(a[i][j])));
     let mut v: [[Dd; 3]; 3] =
         array::from_fn(|j| array::from_fn(|i| Dd::of(f64::from(u8::from(i == j)))));
