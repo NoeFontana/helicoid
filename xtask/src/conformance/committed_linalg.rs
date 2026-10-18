@@ -13,10 +13,11 @@ use crate::shipped;
 
 /// The ids of `0056` decision 1, and `0087`'s, whose rows are the reference's own 30-digit
 /// rounding: a binary32 off by a tie reads at least 0.5.
-const IDS: [&str; 15] = [
+const IDS: [&str; 16] = [
     "solve_cubic",
     "eig3",
     "svd3",
+    "nearest_rotation",
     "chol_n3",
     "chol_n6",
     "chol_solve_n3",

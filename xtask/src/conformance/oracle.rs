@@ -149,6 +149,7 @@ const RUNNERS: &[Runner] = &[
         answers_f32: &[
             "eig3",
             "svd3",
+            "nearest_rotation",
             "chol_n3",
             "chol_n6",
             "chol_solve_n3",
@@ -160,6 +161,7 @@ const RUNNERS: &[Runner] = &[
         answers: &[
             "eig3",
             "svd3",
+            "nearest_rotation",
             "chol_n3",
             "chol_n6",
             "chol_solve_n3",
@@ -175,9 +177,9 @@ const RUNNERS: &[Runner] = &[
         // C++ on the image's glibc (`0072`).
         backend: Backend::HostStd,
         binary64_only: false,
-        // `Sophus::Sim3<float>`, `Sophus::SO3<float>` of a matrix (`0085`), Eigen's
-        // `SelfAdjointEigenSolver<Matrix3f>` (`0083`) and `JacobiSVD<Matrix3f>` (`0101`);
-        // no other id it answers has `@f32` strata.
+        // `Sophus::Sim3<float>`, `Sophus::SO3<float>` of a matrix (`0085`) and its `fitToSO3`
+        // (`0102`, draft), Eigen's `SelfAdjointEigenSolver<Matrix3f>` (`0083`) and
+        // `JacobiSVD<Matrix3f>` (`0101`); no other id it answers has `@f32` strata.
         answers_f32: &[
             "so3_from_matrix",
             "sim3_exp",
@@ -186,6 +188,7 @@ const RUNNERS: &[Runner] = &[
             "sim3_act",
             "eig3",
             "svd3",
+            "nearest_rotation",
         ],
         answers: &[
             "so2_exp",
@@ -217,6 +220,8 @@ const RUNNERS: &[Runner] = &[
             // The image's Eigen, not Sophus (`0083`; `0101`).
             "eig3",
             "svd3",
+            // Sophus's `fitToSO3` (`0102`, draft).
+            "nearest_rotation",
         ],
     },
     Runner {

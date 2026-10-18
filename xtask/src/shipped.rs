@@ -23,8 +23,8 @@ use helicoid::{
     SEn3Jac, SEn3Tangent, Screw, Sim3, Sim3Tangent, Tangent, Twist, WorldTranslation, S2, SE3, SO3,
 };
 use helicoid_linalg::{
-    chol, chol_solve, eig3, solve_cubic, svd3, Dual, Mat3, Matrix, Precision, Real, StridedMut,
-    Vec3, Vector,
+    chol, chol_solve, eig3, nearest_rotation, solve_cubic, svd3, Dual, Mat3, Matrix, Precision,
+    Real, StridedMut, Vec3, Vector,
 };
 
 use crate::conformance::corpus::{exact_f32, Record};
@@ -498,6 +498,7 @@ enum Linalg {
     SolveCubic,
     Eig3,
     Svd3,
+    NearestRotation,
     Chol3,
     Chol6,
     CholSolve3,
@@ -516,10 +517,11 @@ enum Linalg {
 }
 
 impl Linalg {
-    const ALL: [(&'static str, Linalg); 18] = [
+    const ALL: [(&'static str, Linalg); 19] = [
         ("solve_cubic", Linalg::SolveCubic),
         ("eig3", Linalg::Eig3),
         ("svd3", Linalg::Svd3),
+        ("nearest_rotation", Linalg::NearestRotation),
         ("chol_n3", Linalg::Chol3),
         ("chol_n6", Linalg::Chol6),
         ("chol_solve_n3", Linalg::CholSolve3),
@@ -582,6 +584,12 @@ impl Linalg {
                     ("sigma".to_string(), flat(&sigma.0)),
                     ("V".to_string(), cols_out(&v)),
                 ])
+            }
+            Linalg::NearestRotation => {
+                let Some(m) = matrix::<S, 3>(record, "M") else {
+                    return Output::new();
+                };
+                Output::from([("R".to_string(), cols_out(&nearest_rotation(&m)))])
             }
             Linalg::Chol3 => chol_answer::<S, 3>(record),
             Linalg::Chol6 => chol_answer::<S, 6>(record),

@@ -49,13 +49,14 @@ pub(super) fn required() -> Vec<String> {
     ids.extend(["so2_exp".to_string(), "so2_log".to_string()]);
     ids.extend(group("se2", &["exp", "log", "ad"], ""));
     // `0056`'s, the routines D7 did not reach: `PHASE2.md` §6's three (`svd3` out of `OWED` with
-    // its corpus file, `0101`), `chol` and `chol_solve` at the widths a consumer factors,
-    // `renormalize`, and `Dual` as `real_*`.
+    // its corpus file, `0101`), `nearest_rotation` (`0102`, draft), `chol` and `chol_solve`
+    // at the widths a consumer factors, `renormalize`, and `Dual` as `real_*`.
     ids.extend(
         [
             "solve_cubic",
             "eig3",
             "svd3",
+            "nearest_rotation",
             "chol_n3",
             "chol_n6",
             "chol_solve_n3",
