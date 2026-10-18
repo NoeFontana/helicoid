@@ -119,9 +119,9 @@ oracle-sophus-rs:
 # The nalgebra oracle (`docs/decisions/0056` decision 4): as `oracle-sophus-rs`, for
 # `runners/nalgebra` (`subject_version` is the pinned `nalgebra`), audited with the runner's own
 # `deny.toml`, which cargo-deny finds beside the manifest: the root's bans `nalgebra`. It answers
-# `eig3`, `chol_*`, `chol_solve_*`, `solve_cubic`, `quat_renormalize`, `mat2_inverse_adj` and
-# `svd3` (`docs/decisions/0101`), in binary64 and, on their `@f32` strata, in binary32
-# (`docs/decisions/0077`). Rows in conformance/results/nalgebra.csv and nalgebra--f32.csv.
+# `eig3`, `chol_*`, `chol_solve_*`, `solve_cubic`, `quat_renormalize`, `mat2_inverse_adj`, `svd3`
+# and `nearest_rotation` (`docs/decisions/0101`; `0102`, draft), in binary64 and, on their `@f32`
+# strata, in binary32 (`docs/decisions/0077`). Rows in conformance/results/nalgebra.csv and nalgebra--f32.csv.
 oracle-nalgebra:
     cargo fmt --manifest-path runners/nalgebra/Cargo.toml -- --check
     cargo clippy --manifest-path runners/nalgebra/Cargo.toml --locked --all-targets -- -D warnings
@@ -138,8 +138,9 @@ oracle-nalgebra:
 # glibc; it answers in binary64, and `sim3_*`'s `@f32` strata with `Sophus::Sim3<float>`
 # (`docs/decisions/0077`), `so3_from_matrix`'s with `Sophus::SO3<float>` (`0085`). `eig3` is the
 # image's Eigen, `SelfAdjointEigenSolver<Matrix3<T>>`, at both precisions (`docs/decisions/0083`),
-# and `svd3` its `JacobiSVD<Matrix3<T>>` (`docs/decisions/0101`). Rows in
-# conformance/results/sophus.csv and sophus--f32.csv.
+# `svd3` its `JacobiSVD<Matrix3<T>>` (`docs/decisions/0101`) and `nearest_rotation`
+# `Sophus::SO3<T>::fitToSO3` (`docs/decisions/0102`, draft). Rows in conformance/results/sophus.csv
+# and sophus--f32.csv.
 oracle-sophus:
     cargo xtask conformance --oracle sophus
     cargo xtask conformance --oracle sophus --precision f32

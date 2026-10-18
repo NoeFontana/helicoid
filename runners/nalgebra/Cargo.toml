@@ -9,7 +9,7 @@ publish = false
 
 [dependencies]
 # The oracle (`docs/decisions/0056` decision 4): `SymmetricEigen`, `Cholesky`, `Schur`,
-# `Unit::renormalize_fast` and `SVD` (`0101`), exact. `PIN` in `src/main.rs` names it (a test compares it with this
+# `Unit::renormalize_fast`, `SVD` (`0101`) and `Rotation3::from_matrix_eps` (`0102`), exact. `PIN` in `src/main.rs` names it (a test compares it with this
 # line and with `Cargo.lock`): the `subject_version` of every result row. `std` without `macros`,
 # so no proc-macro enters the graph.
 nalgebra = { version = "=0.35.0", default-features = false, features = ["std"] }
