@@ -37,7 +37,7 @@ use helicoid_linalg::Precision;
 use num_bigint::{BigInt, BigUint, Sign};
 
 use super::corpus::{exact_f32, Record, Tensor};
-use super::number::{sqrt_ratio, Decimal, Dyadic};
+use super::number::{ratio_to_f64, sqrt_ratio, Decimal, Dyadic};
 use super::subject::Output;
 
 /// The scale `‖y‖` is floored at.
@@ -74,6 +74,9 @@ pub(crate) enum Rule {
     /// with one sign per column, the backward error, both factors' orthogonality, and `1/u` for an
     /// ordering or a determinant out of the contract, [`svd`].
     Svd,
+    /// `nearest_rotation` (`0102` (draft) decision 8): the forward error weighted by the
+    /// projection's conditioning, the orthogonality, and `1/u` for `det R̂ ≤ 0`, [`polar`].
+    Polar,
     /// `solve_cubic`: the distance between the valid slots and the reference roots, [`roots`].
     Roots,
     /// `chol`: the reported `mask` must be the reference's; `fields` are scored where it is set,
@@ -105,6 +108,7 @@ impl Rule {
             Rule::Forward(fields) => score(fields, rec, out, precision),
             Rule::Eigen => eigen(rec, out, precision),
             Rule::Svd => svd(rec, out, precision),
+            Rule::Polar => polar(rec, out, precision),
             Rule::Roots => roots(rec, out, precision),
             Rule::Masked { mask, fields } => masked(mask, fields, rec, out, precision),
             Rule::Adjugate => adjugate(rec, out, precision),
@@ -120,6 +124,7 @@ impl Rule {
             Rule::Forward(fields) => fields.iter().map(|f| f.field).collect(),
             Rule::Eigen => vec!["lambda", "V"],
             Rule::Svd => vec!["U", "sigma", "V"],
+            Rule::Polar => vec!["R"],
             Rule::Roots => vec!["re", "im"],
             Rule::Adjugate => ADJUGATE.iter().map(|f| f.field).collect(),
             Rule::Direction(field) | Rule::Axis(field) => vec![*field],
@@ -332,6 +337,7 @@ const TABLE: &[(&str, Rule)] = &[
     ("solve_cubic", Rule::Roots),
     ("eig3", Rule::Eigen),
     ("svd3", Rule::Svd),
+    ("nearest_rotation", Rule::Polar),
     (
         "chol",
         Rule::Masked {
@@ -795,6 +801,131 @@ fn svd(rec: &Record, out: &Output, precision: Precision) -> Result<Score, String
         worst = worst.max(2f64.powi(bits as i32));
     }
     Ok(finite_or_nonfinite(worst))
+}
+
+/// `0102` (draft) decision 8's metric, the largest of:
+///
+/// - the forward error weighted by the projection's conditioning,
+///   `‖R̂ − R‖_F · w / (2‖M‖_F u)`, `w = σ₂ + dσ₃` of the record's input `M` ([`polar_weight`]),
+///   weight 0 where `w ≤ 0`, where the reference is one of several nearest rotations;
+/// - the orthogonality `‖R̂ᵀR̂ − I‖_F / u`;
+/// - `1/u` where `det R̂ ≤ 0`.
+///
+/// `w` is a weight, rounded to binary64 once; every other value is an integer over one scale `S`.
+fn polar(rec: &Record, out: &Output, precision: Precision) -> Result<Score, String> {
+    let bits = unit_bits(precision);
+    let r = reference(rec, "R", 9)?;
+    let m = rec
+        .input("M")
+        .filter(|m| m.len() == 9)
+        .ok_or("the record has no 3x3 input `M`")?;
+    let Some(rh) = values(out, "R", 9, precision)? else {
+        return Ok(Score::NonFinite);
+    };
+    let w = polar_weight(r, m);
+    let w = [Dyadic::of(if w > 0.0 { w } else { 0.0 })];
+
+    let dyadics = |x: &[f64]| -> Vec<Dyadic> { x.iter().map(|&x| Dyadic::of(x)).collect() };
+    let (rhd, md) = (dyadics(rh), dyadics(m));
+    let ex = Exact::of(r, rhd.iter().chain(&md).chain(&w));
+    let exact = |d: &[Dyadic]| -> Vec<BigInt> { d.iter().map(|d| ex.dyadic(d)).collect() };
+    let (rh, m, w) = (exact(&rhd), exact(&md), ex.dyadic(&w[0]));
+    let r: Vec<BigInt> = r.iter().map(|d| ex.decimal(d)).collect();
+    let s2 = ex.square();
+
+    // (‖R̂ − R‖ S)² (w S)² / (4 (‖M‖ S)² S²).
+    let size: BigUint = m.iter().map(square).sum();
+    let diff: BigUint = rh.iter().zip(&r).map(|(h, y)| square(&(h - y))).sum();
+    let mut worst = if w.sign() == Sign::NoSign || size.bits() == 0 {
+        0.0
+    } else {
+        ratio_u(&(diff * square(&w)), &((size * &s2) << 2), bits)
+    };
+
+    // (R̂ S)ᵀ(R̂ S) − S² I over S², and the sign of det (R̂ S) = r̂₀ · (r̂₁ × r̂₂).
+    let scale = BigInt::from(s2.clone());
+    let dot =
+        |i: usize, j: usize| -> BigInt { (0..3).map(|k| &rh[3 * i + k] * &rh[3 * j + k]).sum() };
+    let mut off = BigUint::default();
+    for i in 0..3 {
+        for j in 0..3 {
+            let g = dot(i, j);
+            off += square(&if i == j { g - &scale } else { g });
+        }
+    }
+    worst = worst.max(ratio_u(&off, &(&s2 * &s2), bits));
+    let at = |c: usize, k: usize| &rh[3 * c + k];
+    let det: BigInt = (0..3)
+        .map(|k| {
+            let (k1, k2) = ((k + 1) % 3, (k + 2) % 3);
+            at(0, k) * (at(1, k1) * at(2, k2) - at(1, k2) * at(2, k1))
+        })
+        .sum();
+    if det.sign() != Sign::Plus {
+        worst = worst.max(2f64.powi(bits as i32));
+    }
+    Ok(finite_or_nonfinite(worst))
+}
+
+/// `σ₂ + dσ₃` of `M`, `d = sign det M`, from the reference `R`: for the nearest rotation,
+/// `H = RᵀM` is symmetric with the eigenvalues `(σ₁, σ₂, dσ₃)`, so the sum of its two smallest.
+/// `H`'s symmetric part is formed exactly from the 30-digit `R` and rounded once per entry; its
+/// eigenvalues are cyclic Jacobi's in binary64, `u‖M‖` absolute, which a weight can afford.
+fn polar_weight(r: &[Decimal], m: &[f64]) -> f64 {
+    let md: Vec<Dyadic> = m.iter().map(|&x| Dyadic::of(x)).collect();
+    let ex = Exact::of(r, &md);
+    let r: Vec<BigInt> = r.iter().map(|d| ex.decimal(d)).collect();
+    let m: Vec<BigInt> = md.iter().map(|d| ex.dyadic(d)).collect();
+    // (RᵀM)ᵢⱼ S² = Σₖ (R S)ₖᵢ (M S)ₖⱼ, column-major; the symmetric part over 2 S².
+    let rtm =
+        |i: usize, j: usize| -> BigInt { (0..3).map(|k| &r[3 * i + k] * &m[3 * j + k]).sum() };
+    let den = ex.square() << 1;
+    let mut h = [[0.0f64; 3]; 3];
+    for (i, row) in h.iter_mut().enumerate() {
+        for (j, x) in row.iter_mut().enumerate() {
+            let sum = rtm(i, j) + rtm(j, i);
+            let mag = ratio_to_f64(sum.magnitude(), &den);
+            *x = if sum.sign() == Sign::Minus { -mag } else { mag };
+        }
+    }
+    let mut lambda = symmetric_eigenvalues(h);
+    lambda.sort_by(f64::total_cmp);
+    lambda[0] + lambda[1]
+}
+
+/// The eigenvalues of a symmetric 3×3, by cyclic Jacobi rotations (Numerical Recipes' `jacobi`)
+/// until the off-diagonal is exactly zero or 32 sweeps have run: independent of the subject's own
+/// `eig3`.
+fn symmetric_eigenvalues(mut a: [[f64; 3]; 3]) -> [f64; 3] {
+    for _ in 0..32 {
+        let off = a[0][1] * a[0][1] + a[0][2] * a[0][2] + a[1][2] * a[1][2];
+        let diag = a[0][0] * a[0][0] + a[1][1] * a[1][1] + a[2][2] * a[2][2];
+        if off == 0.0 || off <= diag * (f64::EPSILON * f64::EPSILON) * 1e-4 {
+            break;
+        }
+        for (p, q) in [(0, 1), (0, 2), (1, 2)] {
+            let apq = a[p][q];
+            if apq == 0.0 {
+                continue;
+            }
+            let theta = (a[q][q] - a[p][p]) / (2.0 * apq);
+            let t = if theta.abs() > 1e150 {
+                0.5 / theta
+            } else {
+                theta.signum() / (theta.abs() + (theta * theta + 1.0).sqrt())
+            };
+            let c = 1.0 / (t * t + 1.0).sqrt();
+            let s = t * c;
+            a[p][p] -= t * apq;
+            a[q][q] += t * apq;
+            (a[p][q], a[q][p]) = (0.0, 0.0);
+            let k = 3 - p - q;
+            let (akp, akq) = (a[k][p], a[k][q]);
+            (a[k][p], a[k][q]) = (c * akp - s * akq, s * akp + c * akq);
+            (a[p][k], a[q][k]) = (a[k][p], a[k][q]);
+        }
+    }
+    [a[0][0], a[1][1], a[2][2]]
 }
 
 /// `NUMERICS.md` §11's root-set distance (`0056` decision 3): the Hausdorff distance between the
@@ -1515,6 +1646,7 @@ mod tests {
                 r,
                 Rule::Eigen
                     | Rule::Svd
+                    | Rule::Polar
                     | Rule::Roots
                     | Rule::Masked { .. }
                     | Rule::Adjugate
@@ -1815,6 +1947,91 @@ mod tests {
         Ok(())
     }
 
+    /// `Rule::Polar`'s score of `rh` for the input `m` against the reference `r`.
+    fn polar_u(m: [f64; 9], r: [&str; 9], rh: [f64; 9]) -> Result<Score, String> {
+        let rec = record(&[("M", &m)], &[("R", &r)])?;
+        let out = Output::from([("R".to_string(), rh.to_vec())]);
+        Rule::Polar.score(&rec, &out, Precision::F64)
+    }
+
+    #[test]
+    fn the_weight_is_the_sum_of_the_two_smallest_eigenvalues_of_r_t_m() -> Result<(), String> {
+        let decimals = |x: [f64; 9]| -> Result<Vec<Decimal>, String> {
+            x.iter().map(|x| format!("{x:e}").parse()).collect()
+        };
+        // diag(4, 2, 1): σ₂ + σ₃ = 3. diag(4, 2, −1) has `d = −1`, `R = I`: σ₂ − σ₃ = 1.
+        assert_eq!(polar_weight(&decimals(EYE)?, &diag([4.0, 2.0, 1.0])), 3.0);
+        assert_eq!(polar_weight(&decimals(EYE)?, &diag([4.0, 2.0, -1.0])), 1.0);
+        // `M = R S`, `R` the quarter turn, `S` symmetric with the eigenvalues (3, 1, 1/2): 3/2,
+        // through Jacobi rotations off the diagonal.
+        let s = [2.0, 1.0, 0.0, 1.0, 2.0, 0.0, 0.0, 0.0, 0.5];
+        let m: Vec<f64> = (0..9)
+            .map(|e| {
+                let (row, col) = (e % 3, e / 3);
+                (0..3).map(|k| QUARTER[3 * k + row] * s[3 * col + k]).sum()
+            })
+            .collect();
+        let m: [f64; 9] = m.try_into().map_err(|_| "nine")?;
+        let w = polar_weight(&decimals(QUARTER)?, &m);
+        assert!((w - 1.5).abs() <= 4.0 * f64::EPSILON, "{w}");
+        Ok(())
+    }
+
+    #[test]
+    fn a_rotation_scores_its_distance_weighted_by_the_conditioning() -> Result<(), String> {
+        let m = diag([4.0, 2.0, 1.0]);
+        assert_eq!(polar_u(m, IDENTITY, EYE)?, Score::Finite(0.0));
+        // `Rz(e) I`, e = 1e-12: `cos e` rounds to 1, so ‖R̂ − I‖_F = √2 sin e exactly in the
+        // answer's entries; w = 2 + 1, ‖M‖_F = √21. The orthogonality, sin² e √2 / u, is 1e-8.
+        let s = 1e-12f64.sin();
+        let turned = [1.0, s, 0.0, -s, 1.0, 0.0, 0.0, 0.0, 1.0];
+        let Score::Finite(f) = polar_u(m, IDENTITY, turned)? else {
+            return Err("non-finite".into());
+        };
+        near(f, s * 2f64.sqrt() * 3.0 / (2.0 * 21f64.sqrt() * U));
+        // One column one ulp long: ‖R̂ᵀR̂ − I‖_F = 2ε + ε², ε = 2^-52, over the forward ε · 3/(2√21).
+        let mut long = EYE;
+        long[0] = 1.0 + f64::EPSILON;
+        let Score::Finite(f) = polar_u(m, IDENTITY, long)? else {
+            return Err("non-finite".into());
+        };
+        near(f, 4.0 + 2.0 * f64::EPSILON);
+        Ok(())
+    }
+
+    #[test]
+    fn a_non_unique_reference_weighs_the_distance_zero_and_scores_the_rest() -> Result<(), String> {
+        // diag(2, 1, −1): `d = −1`, σ₂ − σ₃ = 0, and every rotation about e₀ is as near as `I`.
+        let m = diag([2.0, 1.0, -1.0]);
+        let about_e0 = [1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, -1.0, 0.0];
+        assert_eq!(polar_u(m, IDENTITY, about_e0)?, Score::Finite(0.0));
+        let mut long = about_e0;
+        long[0] = 1.0 + f64::EPSILON;
+        let Score::Finite(f) = polar_u(m, IDENTITY, long)? else {
+            return Err("non-finite".into());
+        };
+        near(f, 4.0 + 2.0 * f64::EPSILON);
+        // The zero matrix: every rotation is nearest.
+        assert_eq!(polar_u([0.0; 9], IDENTITY, QUARTER)?, Score::Finite(0.0));
+        Ok(())
+    }
+
+    #[test]
+    fn a_reflection_reads_one_over_u_and_a_nan_is_not_scored() -> Result<(), String> {
+        // diag(1, 1, −1) is its own nearest orthogonal matrix and a nearest rotation's distance
+        // from `I` weighs 0 (σ₂ − σ₃ = 0): only `det R̂ = −1` reads.
+        let m = diag([1.0, 1.0, -1.0]);
+        assert_eq!(polar_u(m, IDENTITY, m)?, Score::Finite(1.0 / U));
+        // Against a unique reference the determinant still dominates the distance, 3/√21 of 1/u.
+        let m = diag([4.0, 2.0, 1.0]);
+        let flipped = diag([1.0, 1.0, -1.0]);
+        assert_eq!(polar_u(m, IDENTITY, flipped)?, Score::Finite(1.0 / U));
+        let mut nan = EYE;
+        nan[4] = f64::NAN;
+        assert_eq!(polar_u(m, IDENTITY, nan)?, Score::NonFinite);
+        Ok(())
+    }
+
     fn cubic(
         re: [&str; 3],
         im: [&str; 3],
@@ -1920,6 +2137,7 @@ mod tests {
         let fields = |id| rule(id).map(Rule::reference_fields);
         assert_eq!(fields("eig3"), Some(vec!["V", "lambda"]));
         assert_eq!(fields("svd3"), Some(vec!["U", "V", "sigma"]));
+        assert_eq!(fields("nearest_rotation"), Some(vec!["R"]));
         assert_eq!(fields("solve_cubic"), Some(vec!["im", "re"]));
         assert_eq!(fields("chol_n6"), Some(vec!["L", "valid"]));
         assert_eq!(fields("chol_solve_n3"), Some(vec!["x"]));

@@ -653,6 +653,7 @@ mod tests {
                 "solve_cubic",
                 "eig3",
                 "svd3",
+                "nearest_rotation",
                 "chol",
                 "quat_",
                 "real_",

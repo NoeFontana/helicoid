@@ -183,6 +183,7 @@ side of `docs/maths/coefficients.md` CO.12.
 | `solve_cubic` | $(a, b, c, d)$ | the three roots of the stored coefficients as `re`, `im`, ordered by $(\mathrm{Re}, \mathrm{Im})$: planted where the coefficients are exact, else `mp.polyroots` with `extraprec=300` ([`0056`](./decisions/0056-the-routines-d7-does-not-reach.md)) |
 | `eig3` | $A$, symmetric | `mp.eigsy`: `lambda` ascending, `V` its eigenvectors as columns |
 | `svd3` | $A$ | `mp.svd_r` in the signed convention: $U, V \in \mathrm{SO}(3)$, `sigma` with $\sigma_1 \ge \sigma_2 \ge \lvert\sigma_3\rvert$, $\operatorname{sign}\sigma_3 = \operatorname{sign}\det A$; zero singular values exact by the rank in rationals ([`0101`](./decisions/0101-svd3-is-one-sided-jacobi-on-eig3-s-rotation.md)) |
+| `nearest_rotation` | $M$ | $U\,\mathrm{diag}(1, 1, d)V^\top$ from `mp.svd_r`, $d$ the exact sign of $\det M$ ([`0102`](./decisions/0102-the-nearest-rotation-takes-newton-where-it-is-well-posed.md), draft) |
 | `chol_n{3,6}` | $A$, symmetric | `valid` decided exactly by an $LDL^\top$ in rationals; `L` = `mp.cholesky`, zeros where `valid` is 0 |
 | `chol_solve_n{3,6}` | $(A, b)$ | `mp.lu_solve` of the equilibrated system $DAD$, $D = \mathrm{diag}(A)^{-1/2}$ |
 | `quat_renormalize` | $q$ | $q/\lVert q\rVert$, the projection `NUMERICS.md` §3.6 claims inside its band |
