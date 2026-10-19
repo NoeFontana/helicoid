@@ -1,6 +1,6 @@
 # 0101: `svd3` is one-sided Jacobi on `eig3`'s rotation
 
-**Status:** draft
+**Status:** ready
 **Owner:** @NoeFontana
 **Implementation:** the PRs of its *Implementation plan*
 
@@ -91,14 +91,16 @@ against 5–8 `u`; it is not built.
    - Sort the columns by $\alpha$, descending, with the network $(0,1), (1,2), (0,1)$, an exchange
      where the second is strictly larger. Each exchange is $(b_p, b_q) \leftarrow (b_q, -b_p)$ and
      the same on $V$: a quarter turn, so $\det V$ stays $+1$.
-   - $U$ by Gram–Schmidt on the sorted columns: $\sigma_1 = \lVert b_1\rVert$, $u_1 = b_1/\sigma_1$
-     ($e_1$ where $\sigma_1 = 0$); $w = b_2 - (u_1\cdot b_2)u_1$, $\sigma_2 = \lVert w\rVert$,
-     $u_2 = w/\sigma_2$ (where $\sigma_2 = 0$, the normalised cross product of $u_1$ with the axis
-     of its smallest component); $u_3 = u_1\times u_2$; $\sigma_3 = u_3\cdot b_3$. The residuals
-     $u_i\cdot b_j$ are the converged cosines, so the columnwise bound survives (SV.3).
-   - $V$ re-orthonormalised the same way, without roots: $v_1$ and $w = v_2 - (v_1\cdot v_2)v_1$
-     each by one Newton step on $1/\lVert v\rVert$ (`eig3`'s, every column within about $17u$ of
-     unit length), $v_3 = v_1\times v_2$.
+   - $U$ by Gram–Schmidt on the sorted columns, $N$ one Newton step on $1/\lVert v\rVert$,
+     $v(3 - \lVert v\rVert^2)/2$ (`eig3`'s): $\sigma_1 = \lVert b_1\rVert$,
+     $u_1 = N(b_1/\sigma_1)$ ($e_1$ where $\sigma_1 = 0$); $w = b_2 - (u_1\cdot b_2)u_1$,
+     $\sigma_2 = \lVert w\rVert$, $u_2 = N(w/\sigma_2)$ (where $\sigma_2 = 0$, Gram–Schmidt of the
+     axis of $u_1$'s smallest component); $u_3 = N(u_1\times u_2)$; $\sigma_3 = u_3\cdot b_3$. The
+     residuals $u_i\cdot b_j$ are the converged cosines, so the columnwise bound survives (SV.3).
+     Without the three $N$ the frames read 8–10 `u` and set the metric's maximum; with them, 4.5.
+   - $V$ re-orthonormalised the same way, without roots: $v_1 = N(v_1)$,
+     $v_2 = N(v_2 - (v_1\cdot v_2)v_1)$, $v_3 = N(v_1\times v_2)$. Recomputing $B = AV$ instead
+     would lose the graded columns' accuracy.
    - One masked pass fixes rounding-level inversions at ties: where $\sigma_1 < \sigma_2$,
      $(u_1, u_2) \leftarrow (u_2, -u_1)$, the same on $V$, the values exchanged; then where
      $\sigma_2 < \lvert\sigma_3\rvert$, with $s = \operatorname{copysign}(1, \sigma_3)$:
@@ -146,7 +148,7 @@ against 5–8 `u`; it is not built.
      | Stratum | Draw |
      |---|---|
      | `svd:random` (32) | Gaussian entries |
-     | `svd:gap-1e-k/bottom`, `/top`, k ∈ {0, 2, 4, 6, 8, 10, 12} ({0, 2, 4, 6}) | $\sigma$ with the two smallest (largest) at relative gap $10^{-k}$; $U$, $V$ Haar |
+     | `svd:gap-1e-k/bottom`, `/top`, k ∈ {1, 2, 4, 6, 8, 10, 12} ({1, 2, 4, 6}) | $\sigma$ with the two smallest (largest) at relative gap $10^{-k}$; $U$, $V$ Haar |
      | `svd:graded-1e-k`, k ∈ {2, 4, 8, 12} ({2, 4, 6}) | $\sigma = (1, 10^{-k}, \tfrac12 10^{-k})$: McAdams' failure |
      | `svd:col-graded` (32) | Gaussian $B$ times $\mathrm{diag}(1, 10^{-5}, 10^{-10})$ ($(1, 10^{-2}, 10^{-4})$) |
      | `svd:rank2`, `svd:rank1` | $\sigma = (1, \sigma_2, 0)$, $(1, 0, 0)$, planted |
@@ -215,7 +217,145 @@ not promised (decision 1); `nearest_rotation` is in scope, in its own record (`0
 
 ## Measured
 
-Filled in by step 2.
+**Corpus.** Per stratum, the maximum in `u` of `Rule::Svd`, for three programs:
+- this;
+- nalgebra 0.35's `SVD`, which is McAdams: `svd_ordered3`, from $A^\top A$;
+- Eigen 3.4's `JacobiSVD<Matrix3<T>>`, in the Sophus image.
+
+The maximum is 6.03 `u` at `f64` (`gap-1e-2/top`) and 5.08 at `f32` (`random`). Domination holds on
+all 61 strata. On each one, the better oracle is at least 2.06× this program's maximum at `f64` and
+2.34× at `f32`. `svd:zero` ties at 0.
+
+Eigen's smallest nonzero maximum is 8.03 `u`. nalgebra reads $4.2\times10^7$ at `graded-1e-8` and
+772 at `graded-1e-4@f32`, the backward error measured by *Context*'s harness.
+
+The `gap-1e-k` strata start at $k = 1$. Two nonnegative singular values differ by less than
+$\lVert\sigma\rVert_2$ unless the third is 0, so no spectrum has a relative gap of $10^0$.
+
+`svd:col-graded` is $A = B\,\mathrm{diag}(1, 10^{-5}, 10^{-10})$, or $(1, 10^{-2}, 10^{-4})$ at
+`f32`. It scores 3.41 at `f64` and 3.57 at `f32` in the absolute metric. Its committed rows hold
+whatever relative accuracy that shows (decision 1).
+
+| stratum | this | nalgebra | Eigen |
+|---|---|---|---|
+| `svd:random` | 4.22 | 14.8 | 20.9 |
+| `svd:gap-1e-1/bottom` | 5 | 16.4 | 16.2 |
+| `svd:gap-1e-2/bottom` | 5.36 | 14 | 14.6 |
+| `svd:gap-1e-4/bottom` | 4.15 | 11.6 | 15.1 |
+| `svd:gap-1e-6/bottom` | 3.2 | 12.5 | 20.4 |
+| `svd:gap-1e-8/bottom` | 4.26 | 12.7 | 13.3 |
+| `svd:gap-1e-10/bottom` | 4.07 | 13.1 | 18.1 |
+| `svd:gap-1e-12/bottom` | 3.4 | 14.2 | 22.4 |
+| `svd:gap-1e-1/top` | 4.54 | 12.3 | 13.1 |
+| `svd:gap-1e-2/top` | 6.03 | 14.2 | 20.9 |
+| `svd:gap-1e-4/top` | 3.85 | 14.7 | 16.1 |
+| `svd:gap-1e-6/top` | 4.14 | 13.2 | 17.5 |
+| `svd:gap-1e-8/top` | 3.84 | 10.4 | 17.8 |
+| `svd:gap-1e-10/top` | 3.57 | 11.8 | 12.9 |
+| `svd:gap-1e-12/top` | 3.64 | 13.3 | 20.8 |
+| `svd:graded-1e-2` | 4.46 | 141 | 12.8 |
+| `svd:graded-1e-4` | 3.92 | 9.5e+03 | 13.7 |
+| `svd:graded-1e-8` | 3.56 | 4.22e7 | 14 |
+| `svd:graded-1e-12` | 4.27 | 4.26e+03 | 12.2 |
+| `svd:col-graded` | 3.41 | 14.2 | 13.7 |
+| `svd:rank2` | 3.83 | 11 | 16.4 |
+| `svd:rank1` | 2.83 | 12.9 | 9.6 |
+| `svd:zero` | 0 | 0 | 0 |
+| `svd:rotation` | 3.36 | 9.97 | 8.03 |
+| `svd:near-rotation-1e-4` | 3.5 | 11 | 15.5 |
+| `svd:near-rotation-1e-8` | 4.14 | 12.5 | 17.4 |
+| `svd:near-rotation-1e-12` | 4.96 | 12.4 | 13.7 |
+| `svd:near-reflection-1e-4` | 3.76 | 14.3 | 23 |
+| `svd:near-reflection-1e-8` | 3.54 | 13.7 | 17.1 |
+| `svd:near-reflection-1e-12` | 3.46 | 12.2 | 14.4 |
+| `svd:essential` | 4 | 8.26 | 15.4 |
+| `svd:ordering` | 3.52 | 13.7 | 23 |
+| `svd:scale-up` | 3.98 | 11.5 | 23.8 |
+| `svd:scale-down` | 3.58 | 11.6 | 14.9 |
+| `svd:random@f32` | 5.08 | 14.4 | 17.7 |
+| `svd:gap-1e-1/bottom@f32` | 3.95 | 14.5 | 15.5 |
+| `svd:gap-1e-2/bottom@f32` | 3.88 | 12.6 | 18.1 |
+| `svd:gap-1e-4/bottom@f32` | 4.04 | 12.5 | 18.5 |
+| `svd:gap-1e-6/bottom@f32` | 3.36 | 9.99 | 11.8 |
+| `svd:gap-1e-1/top@f32` | 4.59 | 11.4 | 17.7 |
+| `svd:gap-1e-2/top@f32` | 4.05 | 12.2 | 11.8 |
+| `svd:gap-1e-4/top@f32` | 3.97 | 14 | 10.4 |
+| `svd:gap-1e-6/top@f32` | 3.92 | 11.9 | 13.7 |
+| `svd:graded-1e-2@f32` | 4.09 | 112 | 17 |
+| `svd:graded-1e-4@f32` | 3.58 | 772 | 11 |
+| `svd:graded-1e-6@f32` | 3.21 | 13 | 9.08 |
+| `svd:col-graded@f32` | 3.57 | 83 | 15.9 |
+| `svd:rank2@f32` | 3.28 | 9.85 | 14.5 |
+| `svd:rank1@f32` | 3.54 | 10.2 | 9.01 |
+| `svd:zero@f32` | 0 | 0 | 0 |
+| `svd:rotation@f32` | 3.5 | 14.3 | 8.19 |
+| `svd:near-rotation-1e-2@f32` | 4.49 | 12.3 | 14.8 |
+| `svd:near-rotation-1e-4@f32` | 4.28 | 12.8 | 15.4 |
+| `svd:near-rotation-1e-6@f32` | 3.76 | 14.1 | 10.8 |
+| `svd:near-reflection-1e-2@f32` | 4.14 | 13.2 | 17.3 |
+| `svd:near-reflection-1e-4@f32` | 3.86 | 15.4 | 14.3 |
+| `svd:near-reflection-1e-6@f32` | 3.89 | 13.6 | 9.82 |
+| `svd:essential@f32` | 3.6 | 10.3 | 9.12 |
+| `svd:ordering@f32` | 3.65 | 11.8 | 17 |
+| `svd:scale-up@f32` | 4.02 | 14.3 | 13.7 |
+| `svd:scale-down@f32` | 3.85 | 12 | 11.5 |
+
+**Large sample.** `measure_svd3`: $5\times10^4$ matrices per family and precision, scored against a
+double-double reference of the stored matrix (max / p99.9 / mean).
+- The overall maximum is 8.14 `u` at `f64` (`top-1e-0`) and 7.20 at `f32` (`random`).
+- Every mean is between 1.6 and 2.6.
+- Each proptest, over 10⁶ cases with two seeds, reads for the planted bounds: `back` 8.7, `sv`
+  10.3, `ang` 6.4, and 4.5 on the frames. These are under the bounds `svd3_tests` records,
+  `K = 21` and `FRAME = 10`.
+
+| family | `f64` max | p99.9 | mean | `f32` max | p99.9 | mean |
+|---|---|---|---|---|---|---|
+| `random` | 7.02 | 6.04 | 2.60 | 7.20 | 5.30 | 2.41 |
+| `col-graded` | 5.93 | 4.84 | 2.06 | 4.06 | 3.42 | 1.58 |
+| `rank1` | 5.89 | 4.25 | 1.94 | 5.21 | 4.01 | 1.86 |
+| `rank2` | 7.53 | 5.54 | 2.37 | 6.10 | 5.00 | 2.19 |
+| `essential` | 5.57 | 4.64 | 2.13 | 4.82 | 3.95 | 1.88 |
+| `ordering` | 6.48 | 4.91 | 2.04 | 5.66 | 4.46 | 1.89 |
+| `rotation` | 5.46 | 4.44 | 2.15 | 4.12 | 3.64 | 1.81 |
+| `bottom-1e-0` | 7.03 | 5.49 | 2.49 | 6.65 | 4.89 | 2.28 |
+| `top-1e-0` | 8.14 | 5.58 | 2.43 | 6.10 | 5.07 | 2.24 |
+| `bottom-1e-2` | 6.90 | 5.52 | 2.40 | 5.84 | 4.97 | 2.23 |
+| `top-1e-2` | 6.62 | 5.37 | 2.48 | 5.54 | 4.52 | 2.28 |
+| `bottom-1e-4` | 7.06 | 5.46 | 2.38 | 4.92 | 4.05 | 1.96 |
+| `top-1e-4` | 6.75 | 4.96 | 2.42 | 6.05 | 4.73 | 2.27 |
+| `bottom-1e-8` | 5.38 | 4.67 | 2.11 | 4.94 | 3.96 | 1.91 |
+| `top-1e-8` | 5.56 | 4.71 | 2.24 | 4.37 | 3.71 | 1.85 |
+| `bottom-1e-12` | 5.74 | 4.58 | 2.09 | 5.01 | 4.02 | 1.91 |
+| `top-1e-12` | 5.68 | 4.64 | 2.18 | 4.36 | 3.78 | 1.84 |
+| `graded-1e-4` | 6.27 | 5.10 | 2.17 | 5.03 | 3.93 | 1.86 |
+| `graded-1e-8` | 5.83 | 4.43 | 1.98 | 5.41 | 3.96 | 1.87 |
+| `near-rotation-1e-4` | 6.35 | 5.30 | 2.58 | 6.18 | 5.24 | 2.46 |
+| `near-rotation-1e-8` | 6.45 | 5.41 | 2.55 | 4.40 | 3.64 | 1.85 |
+| `near-reflection-1e-4` | 6.37 | 5.36 | 2.58 | 6.78 | 5.24 | 2.46 |
+| `near-reflection-1e-8` | 6.32 | 5.36 | 2.55 | 4.57 | 3.66 | 1.85 |
+
+**Cost.** In ns. This program's timings are criterion's estimates from
+`cargo bench -p helicoid --bench linalg -- svd3`, run with `taskset -c 2` while other sessions held
+the load at 5–9. The same four matrices were timed through two others:
+- nalgebra's `SVD::new(m, true, true)`, in a paired scratch harness, interleaved, min of 31 runs of
+  $2\times10^4$;
+- Eigen's `JacobiSVD` with full `U` and `V`, built with `g++ -O2 -ffp-contract=off` in the Sophus
+  image, min of 31.
+
+The data-dependent exit costs nothing on mixed input: the four-call row is the sum of the single
+rows.
+
+| row | `f64` | nalgebra | Eigen | `f32` | nalgebra | Eigen |
+|---|---|---|---|---|---|---|
+| random | 416 | 565 | 662 | 351 | 451 | 456 |
+| `gap-1e-8` | 260 | 505 | 664 | 189 | 312 | 408 |
+| `near-rotation-1e-8` | 378 | 567 | 786 | 162 | 310 | 120 |
+| rank 2 | 467 | 564 | 661 | 401 | 452 | 509 |
+| the four in turn | 1523 | | | 1099 | | |
+
+The scratch harness reads this program at 0.48–0.84 of nalgebra's time on every row. It is also
+faster than Eigen on every row but one, `near-rotation-1e-8` at `f32`: 162 against 120. That row
+was not looked into further.
 
 ## Further work
 

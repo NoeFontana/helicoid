@@ -8,7 +8,8 @@
 // An answer line is `{"id":N,"out":{"<field>":["<hex float>",…]}}`, fields flat in the reference's
 // order (matrices column-major). In binary64 every record is answered with `Sophus::*<double>`;
 // with `--precision f32` the `@f32` records alone, with `Sophus::*<float>` (docs/decisions/0077).
-// `eig3` is the image's Eigen, `SelfAdjointEigenSolver<Matrix3<T>>` (docs/decisions/0083).
+// `eig3` is the image's Eigen, `SelfAdjointEigenSolver<Matrix3<T>>` (docs/decisions/0083); `svd3`
+// its `JacobiSVD<Matrix3<T>>` (docs/decisions/0101).
 // A record Sophus refuses (a failed `SOPHUS_ENSURE`, or Eigen's solver not converging) is answered
 // with `nan` in every field: answered, so no stratum is the runner's choice, and non-finite, so it
 // never sets a bar.
@@ -168,6 +169,13 @@ struct At {
       const HelicoidEig3 e = eigen_to_helicoid_eig3<T>(es);
       return {{"V", e.v}, {"lambda", e.lambda}};
     }
+    // The image's Eigen too, signed by the runner (docs/decisions/0101).
+    if (id == "svd3") {
+      const Eigen::JacobiSVD<Eigen::Matrix<T, 3, 3>> svd(helicoid_to_eigen_matrix3<T>(take(in, "A", 9)),
+                                                        Eigen::ComputeFullU | Eigen::ComputeFullV);
+      const HelicoidSvd3 s = eigen_to_helicoid_svd3<T>(svd);
+      return {{"U", s.u}, {"sigma", s.sigma}, {"V", s.v}};
+    }
     throw std::logic_error("no evaluation of `" + id + "`");
   }
 };
@@ -209,6 +217,7 @@ const std::vector<Id>& table() {
       {"sim3_ad", {{"Ad", 49}}, true},
       {"sim3_act", {{"Xp", 3}}, true},
       {"eig3", {{"V", 9}, {"lambda", 3}}, true},
+      {"svd3", {{"U", 9}, {"sigma", 3}, {"V", 9}}, true},
   };
   return ids;
 }

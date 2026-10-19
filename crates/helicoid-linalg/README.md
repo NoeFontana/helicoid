@@ -38,10 +38,10 @@ to.
 ## What ships today
 
 `Real` and `Mask`; `Dual<S, D>` forward-mode duals; `Vector<S, N>`, `Point<S, N>`, `Matrix<S, R, C>`
-and the `Vec3`/`Mat3` aliases; strided views; `chol`, `solve_cubic`, `eig3`; optional [`mint`]
+and the `Vec3`/`Mat3` aliases; strided views; `chol`, `solve_cubic`, `eig3`, `svd3`; optional [`mint`]
 interop behind the `mint` feature.
 
-**Not yet:** `svd3`. Each spec's §0.0 table in
+Each spec's §0.0 table in
 [`docs/`](https://github.com/NoeFontana/helicoid/tree/main/docs) is the source of truth over any
 prose, this file included.
 

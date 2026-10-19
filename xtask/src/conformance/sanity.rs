@@ -228,14 +228,22 @@ fn a_binary64_run_scores_the_binary64_strata_only() -> Result<(), String> {
     Ok(())
 }
 
+/// `svd3`'s metric also scores the rounded factors' products (`0101` decision 8): with every entry
+/// within `u` of its own, `|U^T U - I|_F <= 2 |dU|_F <= 2 sqrt(3) u` and the backward error is at
+/// most `3u`, so its bound is `2 sqrt(3)`; 2.01 is read at `svd:gap-1e-8/top`.
 #[test]
 fn a_perfectly_rounded_subject_is_finite_and_within_two_u_on_every_forward_id() -> Result<(), String>
 {
     let rows = rows(Perfect::exact(), |_| true)?;
     assert!(rows.len() > 1900, "{} rows", rows.len());
     for r in &rows {
+        let bound = if r.fn_id == "svd3" {
+            2.0 * 3f64.sqrt()
+        } else {
+            2.0
+        };
         assert!(
-            r.nonfinite == 0 && r.max_u <= 2.0,
+            r.nonfinite == 0 && r.max_u <= bound,
             "{} {}: {}",
             r.fn_id,
             r.stratum,

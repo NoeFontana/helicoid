@@ -11,7 +11,8 @@
 //! stratum of the corpus ids (`0056`), so a row's arm is the stratum's: `solve_cubic` at three
 //! distinct roots (the trigonometric arm), one real root, a small root beside a complex pair, and a
 //! triple root; `eig3` at a random spectrum, a pair `1e-8` apart, and a triple eigenvalue, and the
-//! three in turn.
+//! three in turn; `svd3` (one-sided Jacobi with an exit, `0101`) at generic singular values,
+//! a pair `1e-8` apart, a rotation `1e-8` off SO(3) and a rank-2 matrix, and the four in turn.
 //!
 //! A baseline binary for `--against` is built in this tree with only the bodies under test
 //! reverted, as `benches/groups.rs` says.
@@ -28,7 +29,7 @@ use core::time::Duration;
 
 use criterion::measurement::WallTime;
 use criterion::{criterion_group, criterion_main, BenchmarkGroup, Criterion};
-use helicoid_linalg::{chol, eig3, solve_cubic, Dual, Mat3, Matrix, Real, Vec3, Vector};
+use helicoid_linalg::{chol, eig3, solve_cubic, svd3, Dual, Mat3, Matrix, Real, Vec3, Vector};
 
 /// Four scalars, not `[S; 4]`: an array by value reaches the callee through the stack, and a wide
 /// load of two of its narrow stores is a store-to-load forwarding stall that read 10-20 ns of a
@@ -42,6 +43,11 @@ fn cubic_of<S: Real>(a: S, b: S, c: S, d: S) -> (Vec3<S>, [S::Mask; 3]) {
 #[inline(never)]
 fn eig3_of<S: Real>(a: &Mat3<S>) -> (Vec3<S>, Mat3<S>) {
     eig3(a)
+}
+
+#[inline(never)]
+fn svd3_of<S: Real>(a: &Mat3<S>) -> (Mat3<S>, Vec3<S>, Mat3<S>) {
+    svd3(a)
 }
 
 /// The whole factor and the mask come back, and criterion's `black_box` keeps every entry live:
@@ -111,6 +117,47 @@ fn sym<S: Fixture>(lambda: [f64; 3]) -> Mat3<S> {
         Vector(core::array::from_fn(|i| S::of(a(i.max(j), i.min(j)))))
     }))
 }
+
+/// The rotation by `t` rad about the unit `n`, in `f64`.
+fn rotation(t: f64, n: [f64; 3]) -> [[f64; 3]; 3] {
+    let (s, c) = (t.sin(), t.cos());
+    core::array::from_fn(|i| {
+        core::array::from_fn(|j| {
+            let cross = match (i, j) {
+                (0, 1) => -n[2],
+                (1, 0) => n[2],
+                (0, 2) => n[1],
+                (2, 0) => -n[1],
+                (1, 2) => -n[0],
+                (2, 1) => n[0],
+                _ => 0.0,
+            };
+            let delta = if i == j { 1.0 } else { 0.0 };
+            c * delta + (1.0 - c) * n[i] * n[j] + s * cross
+        })
+    })
+}
+
+/// `U diag(σ) Vᵀ + ε E`, `U`, `V` fixed rotations and `E` a fixed matrix of entries in `[-1, 1]`,
+/// rounded once at `f64`.
+fn general<S: Fixture>(sigma: [f64; 3], eps: f64) -> Mat3<S> {
+    let u = rotation(1.0, [1.0 / 3.0, 2.0 / 3.0, 2.0 / 3.0]);
+    let v = rotation(2.0, [0.6, 0.0, -0.8]);
+    let e = [[0.3, -0.9, 0.1], [0.7, 0.2, -0.4], [-0.5, 0.8, 0.6]];
+    let a = |i: usize, j: usize| {
+        (0..3).map(|k| u[i][k] * sigma[k] * v[j][k]).sum::<f64>() + eps * e[i][j]
+    };
+    Matrix::from_cols(core::array::from_fn(|j| {
+        Vector(core::array::from_fn(|i| S::of(a(i, j))))
+    }))
+}
+
+const SINGULAR: &[(&str, [f64; 3], f64)] = &[
+    ("random", [0.9, 0.5, -0.2], 0.0),
+    ("gap-1e-8", [0.9, 0.4 + 1e-8, 0.4], 0.0),
+    ("near-rotation-1e-8", [1.0, 1.0, 1.0], 1e-8),
+    ("rank2", [0.9, 0.5, 0.0], 0.0),
+];
 
 impl Fixture for Dual<f64, 2> {
     fn of(x: f64) -> Self {
@@ -182,6 +229,12 @@ fn rows<S: Fixture>(g: &mut BenchmarkGroup<'_, WallTime>) {
             b.iter(|| eig3_of(black_box(&a)));
         });
     }
+    for &(name, sigma, eps) in SINGULAR {
+        let a = general::<S>(sigma, eps);
+        g.bench_function(format!("svd3/{name}"), |b| {
+            b.iter(|| svd3_of(black_box(&a)));
+        });
+    }
     chol_row::<S, 3>(g);
     chol_row::<S, 6>(g);
     chol_row::<S, 8>(g);
@@ -194,6 +247,17 @@ fn rows<S: Fixture>(g: &mut BenchmarkGroup<'_, WallTime>) {
         b.iter(|| {
             for a in black_box(&mixed) {
                 black_box(eig3_of(a));
+            }
+        });
+    });
+    let mixed: Vec<Mat3<S>> = SINGULAR
+        .iter()
+        .map(|&(_, s, e)| general::<S>(s, e))
+        .collect();
+    g.bench_function("svd3/mixed-four-calls", |b| {
+        b.iter(|| {
+            for a in black_box(&mixed) {
+                black_box(svd3_of(a));
             }
         });
     });

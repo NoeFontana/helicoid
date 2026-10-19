@@ -21,7 +21,7 @@ uv run --frozen python -m gen list
 | `gen/rng.py` | splitmix64, per-stratum streams, log-uniform, uniform on S² |
 | `gen/strata.py` | the strata; `gen/registry.py` the function ids; `gen/coeff.py`, `gen/so3.py`, `gen/sen3.py`, `gen/so2.py`, `gen/se2.py` their definitions |
 | `gen/series.py`, `gen/check.py`, `gen/check_sen3.py`, `gen/check_se2.py` | the exact Taylor series (`coeff_series`); the per-record cross-checks |
-| `gen/cubic.py`, `gen/eig.py`, `gen/chol.py`, `gen/quat.py`, `gen/real.py`, `gen/dense.py`, `gen/gaussian.py` | the ids of `docs/decisions/0056`, each with its strata (`strata.Drawn`); n×n helpers and exact rational LDLᵀ |
+| `gen/cubic.py`, `gen/eig.py`, `gen/svd.py`, `gen/chol.py`, `gen/quat.py`, `gen/real.py`, `gen/dense.py`, `gen/gaussian.py` | the ids of `docs/decisions/0056` and `svd3` (`0101`), each with its strata (`strata.Drawn`); n×n helpers, exact rank and rational LDLᵀ |
 | `gen/check_linalg.py`, `gen/check_real.py`, `gen/check_gaussian.py` | their cross-checks |
 | `gen/charts.py`, `gen/s2.py`, `gen/check_charts.py` | the chart ids (`docs/decisions/0060` decision 8, `0063`) and their cross-checks |
 | `gen/sim3.py`, `gen/check_sim3.py` | the Sim(3) ids (`docs/decisions/0070`) and their cross-checks |
@@ -41,8 +41,9 @@ One JSONL file per function id, one record per line, compact JSON with sorted ke
 - `in`: exact binary64 as `float.hex()`. `out`: decimal strings, 30 significant digits, `d.ddd…e<n>`
   (no `+`, no zero padding), rounded half-to-even from the 120-digit value in integer arithmetic.
 - Vectors are arrays. A matrix (`fmt.Mat`) is its column-major flat array plus a sibling
-  `"shape":[rows,cols]` in the same `in` or `out` object, so an object holds at most one:
-  `"out":{"J":[…9 entries…],"shape":[3,3]}`.
+  `"shape"` in the same `in` or `out` object: `"shape":[rows,cols]` where the object holds one,
+  `"out":{"J":[…9 entries…],"shape":[3,3]}`, and an object keyed by field where it holds several
+  (`0101` decision 8), `"out":{"U":[…],"V":[…],"shape":{"U":[3,3],"V":[3,3]},"sigma":[…]}`.
 - `MANIFEST.json`: generator identity, Python (major.minor) and mpmath versions, `dps`, seed, recheck
   parameters, and per file the SHA-256, record count, `kind` and one check count: `rechecked`
   (records recomputed at 150 digits) for `kind: "corpus"`, the files of the schema above;
@@ -272,13 +273,15 @@ tangent's order, `"shape":[3,3]`.
 ## The routines D7 did not reach (`docs/decisions/0056`)
 
 `solve_cubic`, `eig3`, `chol_n{3,6}`, `chol_solve_n{3,6}`, `quat_renormalize` and `real_*`: the
-record's decision 1 fixes their fields and references, decision 2 their strata. Every one has
+record's decision 1 fixes their fields and references, decision 2 their strata; `svd3`'s are
+`0101` decision 8's. Every one has
 `@f32` strata, after all its binary64 ones, in the same order.
 
 | Id | In | Out | Reference |
 |---|---|---|---|
 | `solve_cubic` | `a`, `b`, `c`, `d` | `re[3]`, `im[3]`, by (re, im) | the roots of the stored cubic (below) |
 | `eig3` | `A` (3×3) | `lambda[3]` ascending, `V` (columns) | `mp.eigsy`; each column's largest component (the first of equals) positive |
+| `svd3` | `A` (3×3) | `U`, `sigma[3]`, `V` | `mp.svd_r`, sorted; U, V ∈ SO(3), σ₁ ≥ σ₂ ≥ \|σ₃\|, sign σ₃ = sign det A (below) |
 | `chol_n*` | `A` (n×n) | `valid[1]`, `L` | `valid` by an exact LDLᵀ; `mp.cholesky(A, tol=0)`, or zeros |
 | `chol_solve_n*` | `A`, `b[n]` | `x[n]` | `mp.lu_solve` of the equilibrated system: x = D (DAD)⁻¹ D b, D = diag(A)^-1/2 |
 | `quat_renormalize` | `q[4]` | `q[4]` | q/‖q‖ |
@@ -292,6 +295,7 @@ record's decision 1 fixes their fields and references, decision 2 their strata. 
 |---|---|
 | `solve_cubic` | `cubic:distinct`, `double`, `triple`, `one-real`, `near-double-1e-{2,4,6,8}`, `one-real-p-small`, `coeff-scale-up`, `coeff-scale-down`, `one-real-small-root` (`0031`: x³ + x + q, |q| log-uniform in [1e-12, 1e-2], [1e-6, 1e-1] at f32); the same at f32. 64 each, 1536 |
 | `eig3` | `eig:random`, `eig:gap-1e-k/bottom` k = 0…12 (0…6), then `/top`, `eig:triple`, `rank1`, `scale-up`, `scale-down`. 64, gaps 32; 1920 |
+| `svd3` | `svd:random` (32), `svd:gap-1e-k/bottom` then `/top`, k ∈ {1, 2, 4, 6, 8, 10, 12} ({1, 2, 4, 6}), `graded-1e-k` k ∈ {2, 4, 8, 12} ({2, 4, 6}), `col-graded` (32), `rank2`, `rank1`, `zero` (4), `rotation`, `near-rotation-1e-k` then `near-reflection-1e-k`, k ∈ {4, 8, 12} ({2, 4, 6}), `essential`, `ordering` (32), `scale-up`, `scale-down` (10^±70, 10^±12). 16 unless stated; 580 + 468 |
 | `chol_n*` | `chol:spd`, `cond-1e-{4,8,12}` (`{2,4,6}`), `diag-scale`, `indefinite`. 32 each, 384 |
 | `chol_solve_n*` | the same without `indefinite`, 320 |
 | `quat_renormalize` | `renorm:eta-2^-{27,30,40,52}` (`{12,16,20,23}`), `renorm:eta-edge`. 64 each, 640 |
@@ -322,6 +326,19 @@ record's decision 1 fixes their fields and references, decision 2 their strata. 
 - **`eig3`.** `eig:gap` sets the pair's gap to exactly 10⁻ᵏ ‖λ‖₂ (a quadratic in the gap), the third
   eigenvalue h ∈ [¼, 1] beyond; `top` negates. `eig:triple` is c I itself (Q c I Qᵀ rounds to
   1e-121 off the diagonal). An exactly singular A has its zero eigenvalues set to 0.
+- **`svd3`.** A planted A is U diag(σ) Vᵀ, U and V Haar, rounded once. `svd:gap` sets the pair's
+  gap to exactly 10⁻ᵏ ‖σ‖₂ (a quadratic in the gap), the pair's centre c ∈ [½, 1], the third
+  c + g/2 + h beyond (h ∈ [¼, 1]) or a fraction ∈ [¼, ¾] of the pair below (`top`): every value
+  positive, which a gap of ‖σ‖₂ itself cannot be, so k starts at 1. `graded` is σ = (1, 10⁻ᵏ, ½10⁻ᵏ),
+  `col-graded` Gaussian B diag(1, 10⁻⁵, 10⁻¹⁰) (diag(1, 10⁻², 10⁻⁴)), `rank2` (1, σ₂ ∈ [¼, 1], 0),
+  `essential` (s, s, 0), `ordering` diag(a, a, −a(1 + h)), h ∈ [¼, 4]; `near-reflection` is
+  `near-rotation`'s R + 10⁻ᵏ G times diag(1, 1, −1), on its own streams. `zero` is ±0 by pattern:
+  all +0, all −0, then alternating from +0 and from −0. The reference: (u₁, v₁) and (u₂, v₂) from
+  `mp.svd_r`, sorted descending, each pair signed so u's largest component (the first of equals)
+  is positive; u₃ = u₁ × u₂, v₃ = v₁ × v₂, σ₃ = u₃ᵀAv₃, which gives det U = det V = 1 and the sign
+  of det A by construction. Singular values that are zero by the stored A's rank in rationals are
+  0; at rank 1, u₂ and v₂ are u₁ and v₁ crossed with the axis of their smallest component, the
+  same at every precision; at rank 0, U = V = I.
 - **`chol`.** Q is n Householder reflections, directions normalized Gaussians. `mp.cholesky`'s
   default refuses pivots below an absolute eps (all of `chol:diag-scale`'s, down to 1e-200), and
   `mp.lu_solve` pivots against ‖A‖₁ eps and loses cond(A) eps (1e400 eps there): hence `tol=0`,
@@ -336,7 +353,8 @@ record's decision 1 fixes their fields and references, decision 2 their strata. 
 - **Cross-checks**, at 240 digits to 1e-100: `solve_cubic` each root's residual and Vieta's relations
   against the size of their terms, the count of real roots against the discriminant, a
   conjugate pair, multiple roots exact in rationals; `eig3` ‖AV − VΛ‖ ≤ 1e-100 ‖A‖ and
-  ‖VᵀV − I‖ ≤ 1e-100; `chol` `valid` against `mp.eigsy` of the equilibrated A (a congruence keeps
+  ‖VᵀV − I‖ ≤ 1e-100; `svd3` ‖AV − UΣ‖ ≤ 1e-100 ‖A‖, ‖UᵀU − I‖, ‖VᵀV − I‖ and |det − 1| ≤ 1e-100,
+  the ordering, and the sign of σ₃ against det A in rationals; `chol` `valid` against `mp.eigsy` of the equilibrated A (a congruence keeps
   the signs), L lower with a positive diagonal and ‖LLᵀ − A‖ ≤ 1e-100 ‖A‖; `chol_solve`
   ‖Ax − b‖ ≤ 1e-100 ‖A‖‖x‖; `quat_renormalize` ‖q'‖ = 1, every 2×2 minor of [q, q'], q'·q > 0.
   `real_*`: each derivative against `mp.diff` at h = 10⁻⁷⁰|x| to 60 digits, the precision raised

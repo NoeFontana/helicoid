@@ -15,9 +15,9 @@ from gen.strata import QUAT_STRATA, SCALAR_THETA_STRATA, Stratum
 
 precision.setup()
 COMMITTED = manifest.ROOT.parent / "corpus"
-# 0056, 0061, 0065, 0067 (S2's two ids)
+# 0056, 0061, 0065, 0067 (S2's two ids), 0101
 ASKED_FOR_F32 = (
-    "solve_cubic", "eig3", "chol_", "quat_", "real_", "mat2_", "gaussian_", "s2_", "sim3_"
+    "solve_cubic", "eig3", "chol_", "quat_", "real_", "mat2_", "gaussian_", "s2_", "sim3_", "svd3"
 )
 SUBSET_STRATUM = next(s for s in SCALAR_THETA_STRATA if s.name == "theta:exact0")
 
@@ -169,10 +169,22 @@ class BuildTest(unittest.TestCase):
             ).encode(),
         )
 
-    def test_two_matrices_in_one_record_part_are_refused(self):
-        mat = fmt.Mat((1, 1), [1.0])
+    def test_several_matrices_in_one_record_part_key_their_shape(self):
+        """0101 decision 8: one `Mat` keeps `[r, c]`; several key it by field, in their order."""
+        a, b = fmt.Mat((1, 1), [1.0]), fmt.Mat((2, 1), [2.0, 3.0])
+        one = corpus._encode({"a": a, "v": [4.0]}, float)
+        self.assertEqual(one, {"a": [1.0], "v": [4.0], "shape": [1, 1]})
+        keyed = corpus._encode({"b": b, "v": [4.0], "a": a}, float)
+        shapes = {"b": [2, 1], "a": [1, 1]}
+        self.assertEqual(keyed, {"b": [2.0, 3.0], "v": [4.0], "a": [1.0], "shape": shapes})
+        self.assertEqual(list(keyed["shape"]), ["b", "a"])
+        self.assertEqual(
+            fmt.dumps(keyed), '{"a":[1.0],"b":[2.0,3.0],"shape":{"a":[1,1],"b":[2,1]},"v":[4.0]}'
+        )
+
+    def test_a_field_named_shape_is_refused(self):
         with self.assertRaises(ValueError):
-            corpus._encode({"a": mat, "b": mat}, fmt.hex_float)
+            corpus._encode({"shape": [1.0], "a": fmt.Mat((1, 1), [1.0])}, fmt.hex_float)
 
     def test_build_runs_the_spec_check_on_every_record(self):
         seen = []
@@ -226,8 +238,9 @@ class BuildTest(unittest.TestCase):
         """An `@f32` stratum is named for its binary64 namesake where one exists (0056 decision 2)
         and follows the binary64 order; the others (`x:1e37@f32`) are the binary32 range's own."""
         names = [n for n in FUNCTIONS if n.startswith(ASKED_FOR_F32)]
-        # and 0061's `mat2_inverse_adj`, 0065's two, 0067's two, 0068's two, 0070's eight, 0087's
-        self.assertEqual(len(names), 13 + 1 + 2 + 2 + 2 + 8 + 1)
+        # and 0061's `mat2_inverse_adj`, 0065's two, 0067's two, 0068's two, 0070's eight, 0087's,
+        # 0101's
+        self.assertEqual(len(names), 13 + 1 + 2 + 2 + 2 + 8 + 1 + 1)
         for name in names:
             strata = FUNCTIONS[name].strata
             flags = [s.f32 for s in strata]
@@ -254,6 +267,7 @@ SUBSET = {"theta:exact0", "theta:1e-6", "q:w0", "theta:exact0@f32", "theta:1e-6@
 SUBSET |= {"cubic:one-real", "eig:triple@f32", "renorm:eta-edge@f32", "nd:generic@f32", "nd:wide"}
 SUBSET |= {"x:1e-37@f32", "yx:ratio-1e+8", "chol:cond-1e-2@f32"}
 SUBSET |= {"matrix:exact", "matrix:exact@f32"}  # 0085
+SUBSET |= {"svd:rank1@f32"}  # 0101: two matrices in one part
 
 
 def subset_registry() -> dict:

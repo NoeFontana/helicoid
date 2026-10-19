@@ -148,6 +148,7 @@ const RUNNERS: &[Runner] = &[
         // Generic over `RealField`, and every id it answers has `@f32` strata.
         answers_f32: &[
             "eig3",
+            "svd3",
             "chol_n3",
             "chol_n6",
             "chol_solve_n3",
@@ -158,6 +159,7 @@ const RUNNERS: &[Runner] = &[
         ],
         answers: &[
             "eig3",
+            "svd3",
             "chol_n3",
             "chol_n6",
             "chol_solve_n3",
@@ -173,8 +175,9 @@ const RUNNERS: &[Runner] = &[
         // C++ on the image's glibc (`0072`).
         backend: Backend::HostStd,
         binary64_only: false,
-        // `Sophus::Sim3<float>`, `Sophus::SO3<float>` of a matrix (`0085`) and Eigen's
-        // `SelfAdjointEigenSolver<Matrix3f>` (`0083`); no other id it answers has `@f32` strata.
+        // `Sophus::Sim3<float>`, `Sophus::SO3<float>` of a matrix (`0085`), Eigen's
+        // `SelfAdjointEigenSolver<Matrix3f>` (`0083`) and `JacobiSVD<Matrix3f>` (`0101`);
+        // no other id it answers has `@f32` strata.
         answers_f32: &[
             "so3_from_matrix",
             "sim3_exp",
@@ -182,6 +185,7 @@ const RUNNERS: &[Runner] = &[
             "sim3_ad",
             "sim3_act",
             "eig3",
+            "svd3",
         ],
         answers: &[
             "so2_exp",
@@ -210,8 +214,9 @@ const RUNNERS: &[Runner] = &[
             "sim3_log",
             "sim3_ad",
             "sim3_act",
-            // The image's Eigen, not Sophus (`0083`).
+            // The image's Eigen, not Sophus (`0083`; `0101`).
             "eig3",
+            "svd3",
         ],
     },
     Runner {
