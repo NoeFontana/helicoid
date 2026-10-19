@@ -70,6 +70,10 @@ pub(crate) enum Rule {
     /// `eig3` (`0056` decision 3): `lambda` by forward error, `V` column by column, sign-aligned and
     /// weighted by the reference gap, [`eigen`].
     Eigen,
+    /// `svd3` (`0101` decision 8): `sigma` by forward error, the vector pairs gap-weighted
+    /// with one sign per column, the backward error, both factors' orthogonality, and `1/u` for an
+    /// ordering or a determinant out of the contract, [`svd`].
+    Svd,
     /// `solve_cubic`: the distance between the valid slots and the reference roots, [`roots`].
     Roots,
     /// `chol`: the reported `mask` must be the reference's; `fields` are scored where it is set,
@@ -100,6 +104,7 @@ impl Rule {
         match self {
             Rule::Forward(fields) => score(fields, rec, out, precision),
             Rule::Eigen => eigen(rec, out, precision),
+            Rule::Svd => svd(rec, out, precision),
             Rule::Roots => roots(rec, out, precision),
             Rule::Masked { mask, fields } => masked(mask, fields, rec, out, precision),
             Rule::Adjugate => adjugate(rec, out, precision),
@@ -114,6 +119,7 @@ impl Rule {
         let mut fields = match self {
             Rule::Forward(fields) => fields.iter().map(|f| f.field).collect(),
             Rule::Eigen => vec!["lambda", "V"],
+            Rule::Svd => vec!["U", "sigma", "V"],
             Rule::Roots => vec!["re", "im"],
             Rule::Adjugate => ADJUGATE.iter().map(|f| f.field).collect(),
             Rule::Direction(field) | Rule::Axis(field) => vec![*field],
@@ -325,6 +331,7 @@ const TABLE: &[(&str, Rule)] = &[
     ("se2_jl_inv", Forward(JAC)),
     ("solve_cubic", Rule::Roots),
     ("eig3", Rule::Eigen),
+    ("svd3", Rule::Svd),
     (
         "chol",
         Rule::Masked {
@@ -665,6 +672,124 @@ fn eigen(rec: &Record, out: &Output, precision: Precision) -> Result<Score, Stri
         // (d S)² (gap S)² / ((‖λ‖ S)² S²): every factor scaled by the one `S`.
         let num = minus.min(plus) * gap;
         worst = worst.max(ratio_u(&num, &(&norm * ex.square()), bits));
+    }
+    Ok(finite_or_nonfinite(worst))
+}
+
+/// `0101` decision 8's metric, the largest of:
+///
+/// - `sigma`'s forward error in `u‖σ‖₂`, floored as `eig3`'s `lambda` is;
+/// - each column pair, `min_{s=±1} max(‖ûᵢ − s uᵢ‖, ‖v̂ᵢ − s vᵢ‖) · gapᵢ / (‖σ‖₂ u)`, one sign for
+///   both factors, `gapᵢ = min_{j≠i} min(||σᵢ| − |σⱼ||, |σᵢ| + |σⱼ|)` from the reference, so a
+///   repeated singular value's pair weighs 0;
+/// - the backward error `‖A − ÛΣ̂V̂ᵀ‖_F / (‖A‖_F u)` against the record's own input `A`;
+/// - the orthogonality `‖XᵀX − I‖_F / u` of each of `Û`, `V̂`;
+/// - `1/u` where `σ̂₁ ≥ σ̂₂ ≥ |σ̂₃|` fails or `det Û` or `det V̂` is below zero.
+///
+/// Every value is an integer over one scale `S`, each term's ratio rounded once.
+fn svd(rec: &Record, out: &Output, precision: Precision) -> Result<Score, String> {
+    let bits = unit_bits(precision);
+    let (sigma, u, v) = (
+        reference(rec, "sigma", 3)?,
+        reference(rec, "U", 9)?,
+        reference(rec, "V", 9)?,
+    );
+    let a = rec
+        .input("A")
+        .filter(|a| a.len() == 9)
+        .ok_or("the record has no 3x3 input `A`")?;
+    let (Some(sh), Some(uh), Some(vh)) = (
+        values(out, "sigma", 3, precision)?,
+        values(out, "U", 9, precision)?,
+        values(out, "V", 9, precision)?,
+    ) else {
+        return Ok(Score::NonFinite);
+    };
+    let tiny = [Dyadic {
+        neg: false,
+        mant: 1,
+        exp: min_exp(precision),
+    }];
+    let mut worst = forward_u(sigma, sh, &tiny, false, bits);
+    let ordered = sh[0] >= sh[1] && sh[1] >= sh[2].abs();
+
+    let dyadics = |x: &[f64]| -> Vec<Dyadic> { x.iter().map(|&x| Dyadic::of(x)).collect() };
+    let (shd, uhd, vhd, ad) = (dyadics(sh), dyadics(uh), dyadics(vh), dyadics(a));
+    let ex = Exact::of(
+        sigma.iter().chain(u).chain(v),
+        shd.iter().chain(&uhd).chain(&vhd).chain(&ad),
+    );
+    let exact = |d: &[Dyadic]| -> Vec<BigInt> { d.iter().map(|d| ex.dyadic(d)).collect() };
+    let (sh, uh, vh, a) = (exact(&shd), exact(&uhd), exact(&vhd), exact(&ad));
+    let decimal = |d: &[Decimal]| -> Vec<BigInt> { d.iter().map(|d| ex.decimal(d)).collect() };
+    let (s, u, v) = (decimal(sigma), decimal(u), decimal(v));
+    let s2 = ex.square();
+    let s4 = &s2 * &s2;
+
+    // (d S)² (gap S)² / ((‖σ‖ S)² S²), as `eigen`'s.
+    let norm: BigUint = s.iter().map(square).sum();
+    let m: Vec<&BigUint> = s.iter().map(BigInt::magnitude).collect();
+    for i in 0..3 {
+        let gap = (0..3)
+            .filter(|&j| j != i)
+            .map(|j| {
+                let apart = if m[i] >= m[j] {
+                    m[i] - m[j]
+                } else {
+                    m[j] - m[i]
+                };
+                apart.min(m[i] + m[j])
+            })
+            .min()
+            .unwrap_or_default();
+        let column = |xh: &[BigInt], x: &[BigInt], flip: bool| -> BigUint {
+            (3 * i..3 * i + 3)
+                .map(|k| square(&if flip { &xh[k] + &x[k] } else { &xh[k] - &x[k] }))
+                .sum()
+        };
+        let pair = |flip| column(&uh, &u, flip).max(column(&vh, &v, flip));
+        let num = pair(false).min(pair(true)) * &gap * &gap;
+        worst = worst.max(ratio_u(&num, &(&norm * &s2), bits));
+    }
+
+    // (A S) S² − Σₖ (Û S)(σ̂ S)(V̂ S), over ‖A S‖ S².
+    let scale = BigInt::from(s2);
+    let mut residual = BigUint::default();
+    for c in 0..3 {
+        for r in 0..3 {
+            let usv: BigInt = (0..3)
+                .map(|k| &uh[3 * k + r] * &sh[k] * &vh[3 * k + c])
+                .sum();
+            residual += square(&(&a[3 * c + r] * &scale - usv));
+        }
+    }
+    let size: BigUint = a.iter().map(square).sum();
+    worst = worst.max(ratio_u(&residual, &(&size * &s4), bits));
+
+    // (X S)ᵀ(X S) − S² I over S², and the sign of det (X S) = x₀ · (x₁ × x₂).
+    let mut inverted = false;
+    for x in [&uh, &vh] {
+        let dot =
+            |i: usize, j: usize| -> BigInt { (0..3).map(|r| &x[3 * i + r] * &x[3 * j + r]).sum() };
+        let mut off = BigUint::default();
+        for i in 0..3 {
+            for j in 0..3 {
+                let g = dot(i, j);
+                off += square(&if i == j { g - &scale } else { g });
+            }
+        }
+        worst = worst.max(ratio_u(&off, &s4, bits));
+        let at = |c: usize, r: usize| &x[3 * c + r];
+        let det: BigInt = (0..3)
+            .map(|r| {
+                let (r1, r2) = ((r + 1) % 3, (r + 2) % 3);
+                at(0, r) * (at(1, r1) * at(2, r2) - at(1, r2) * at(2, r1))
+            })
+            .sum();
+        inverted |= det.sign() == Sign::Minus;
+    }
+    if !ordered || inverted {
+        worst = worst.max(2f64.powi(bits as i32));
     }
     Ok(finite_or_nonfinite(worst))
 }
@@ -1386,6 +1511,7 @@ mod tests {
             let own_test = matches!(
                 r,
                 Rule::Eigen
+                    | Rule::Svd
                     | Rule::Roots
                     | Rule::Masked { .. }
                     | Rule::Adjugate
@@ -1534,6 +1660,141 @@ mod tests {
         Ok(())
     }
 
+    /// `Rule::Svd`'s score of `(uh, sh, vh)` for the input `a` against the reference
+    /// `(u, sigma, v)`.
+    fn svd_u(
+        a: [f64; 9],
+        (u, sigma, v): ([&str; 9], [&str; 3], [&str; 9]),
+        (uh, sh, vh): ([f64; 9], [f64; 3], [f64; 9]),
+    ) -> Result<Score, String> {
+        let rec = record(&[("A", &a)], &[("U", &u), ("sigma", &sigma), ("V", &v)])?;
+        let out = Output::from([
+            ("U".to_string(), uh.to_vec()),
+            ("sigma".to_string(), sh.to_vec()),
+            ("V".to_string(), vh.to_vec()),
+        ]);
+        Rule::Svd.score(&rec, &out, Precision::F64)
+    }
+
+    /// `diag(d)`, column-major.
+    fn diag(d: [f64; 3]) -> [f64; 9] {
+        [d[0], 0.0, 0.0, 0.0, d[1], 0.0, 0.0, 0.0, d[2]]
+    }
+
+    /// The quarter turn about `z`, column-major: `e₀ ↦ e₁`, `e₁ ↦ −e₀`.
+    const QUARTER: [f64; 9] = [0.0, 1.0, 0.0, -1.0, 0.0, 0.0, 0.0, 0.0, 1.0];
+    const SIGMA: [&str; 3] = ["4e0", "2e0", "1e0"];
+
+    #[test]
+    fn a_singular_pair_scores_its_angle_times_its_gap_with_one_sign_per_column(
+    ) -> Result<(), String> {
+        let (a, s) = (diag([4.0, 2.0, 1.0]), [4.0, 2.0, 1.0]);
+        let exact = (IDENTITY, SIGMA, IDENTITY);
+        assert_eq!(svd_u(a, exact, (EYE, s, EYE))?, Score::Finite(0.0));
+        // Both factors' columns 0 and 1 negated: `ÛΣ̂V̂ᵀ` and both determinants unchanged.
+        let both = diag([-1.0, -1.0, 1.0]);
+        assert_eq!(svd_u(a, exact, (both, s, both))?, Score::Finite(0.0));
+        // `Û`'s alone: the sign is one per pair, so column 0 is 2 off whichever is taken, reading
+        // 2 · 2/√21; the backward error, ‖diag(8, 4, 0)‖/‖A‖ = √(80/21), reads more.
+        let Score::Finite(f) = svd_u(a, exact, (both, s, EYE))? else {
+            return Err("non-finite".into());
+        };
+        near(f, (80.0f64 / 21.0).sqrt() / U);
+        // The reference's column 0 tilted by e = 1e-12 into axis 1, against an exact answer:
+        // ‖ûᵢ − uᵢ‖ = e, gap₀ = min(4 − 2, 4 − 1) = 2, ‖σ‖ = √21. One factor tilted or both, the
+        // pair reads the larger.
+        let mut tilted = IDENTITY;
+        tilted[1] = "1e-12";
+        let want = 1e-12 * 2.0 / (21f64.sqrt() * U);
+        for reference in [
+            (tilted, SIGMA, IDENTITY),
+            (IDENTITY, SIGMA, tilted),
+            (tilted, SIGMA, tilted),
+        ] {
+            let Score::Finite(f) = svd_u(a, reference, (EYE, s, EYE))? else {
+                return Err("non-finite".into());
+            };
+            near(f, want);
+        }
+        // The same tilt between two equal singular values weighs nothing.
+        let tie = ["2e0", "2e0", "1e0"];
+        let a = diag([2.0, 2.0, 1.0]);
+        let reference = (tilted, tie, tilted);
+        let at_tie = svd_u(a, reference, (EYE, [2.0, 2.0, 1.0], EYE))?;
+        assert_eq!(at_tie, Score::Finite(0.0));
+        Ok(())
+    }
+
+    #[test]
+    fn the_backward_error_reads_a_pair_the_vectors_cannot_at_a_tie() -> Result<(), String> {
+        let (a, s) = (diag([2.0, 2.0, 1.0]), [2.0, 2.0, 1.0]);
+        let reference = (IDENTITY, ["2e0", "2e0", "1e0"], IDENTITY);
+        // `Û = V̂ = R` is another factorisation of `A`: 0.
+        let turned = svd_u(a, reference, (QUARTER, s, QUARTER))?;
+        assert_eq!(turned, Score::Finite(0.0));
+        // `Û = I`, `V̂ = R`: every column is a valid singular vector on its own (weight 0 at the
+        // tie), but `ÛΣ̂V̂ᵀ` is not `A`: ‖A − ÛΣ̂V̂ᵀ‖²_F = 16 against ‖A‖²_F = 9.
+        let Score::Finite(f) = svd_u(a, reference, (EYE, s, QUARTER))? else {
+            return Err("non-finite".into());
+        };
+        near(f, 4.0 / (3.0 * U));
+        // σ̂₀ one ulp up: forward and backward both 2^-50 / (√21 u); `Û`'s column 0 one ulp long
+        // instead: ‖ÛᵀÛ − I‖_F = 2ε + ε², ε = 2^-52, reads 4 and dominates the backward 8/√21.
+        let (a, s) = (diag([4.0, 2.0, 1.0]), [4.0, 2.0, 1.0]);
+        let exact = (IDENTITY, SIGMA, IDENTITY);
+        let up = [4.0 + 4.0 * f64::EPSILON, 2.0, 1.0];
+        let Score::Finite(f) = svd_u(a, exact, (EYE, up, EYE))? else {
+            return Err("non-finite".into());
+        };
+        near(f, 8.0 / 21f64.sqrt());
+        let mut long = EYE;
+        long[0] = 1.0 + f64::EPSILON;
+        let Score::Finite(f) = svd_u(a, exact, (long, s, EYE))? else {
+            return Err("non-finite".into());
+        };
+        near(f, 4.0 + 2.0 * f64::EPSILON);
+        Ok(())
+    }
+
+    #[test]
+    fn an_ordering_or_a_determinant_out_of_the_contract_reads_one_over_u() -> Result<(), String> {
+        // Each answer is its own reference and an exact factorisation: only the contract fails.
+        let dec = |d: [f64; 9]| {
+            d.map(|x| {
+                if x == 0.0 {
+                    "0e0"
+                } else if x < 0.0 {
+                    "-1e0"
+                } else {
+                    "1e0"
+                }
+            })
+        };
+        let mut cases = Vec::new();
+        // σ̂₁ < σ̂₂, and σ̂₂ < |σ̂₃|.
+        cases.push((EYE, [2.0, 4.0, 1.0], EYE, ["2e0", "4e0", "1e0"]));
+        cases.push((EYE, [4.0, 1.0, -2.0], EYE, ["4e0", "1e0", "-2e0"]));
+        // A reflection on both sides: `ÛΣ̂V̂ᵀ = A`, both determinants −1.
+        let r = diag([1.0, 1.0, -1.0]);
+        cases.push((r, [4.0, 2.0, 1.0], r, SIGMA));
+        for (uh, sh, vh, sigma) in cases {
+            let a: Vec<f64> = (0..9)
+                .map(|e| {
+                    let (r, c) = (e % 3, e / 3);
+                    (0..3).map(|k| uh[3 * k + r] * sh[k] * vh[3 * k + c]).sum()
+                })
+                .collect();
+            let a: [f64; 9] = a.try_into().map_err(|_| "nine")?;
+            let score = svd_u(a, (dec(uh), sigma, dec(vh)), (uh, sh, vh))?;
+            assert_eq!(score, Score::Finite(1.0 / U), "{sh:?}");
+        }
+        // A NaN anywhere is not scored.
+        let (a, s) = (diag([4.0, 2.0, 1.0]), [4.0, 2.0, f64::NAN]);
+        let nan = svd_u(a, (IDENTITY, SIGMA, IDENTITY), (EYE, s, EYE))?;
+        assert_eq!(nan, Score::NonFinite);
+        Ok(())
+    }
+
     fn cubic(
         re: [&str; 3],
         im: [&str; 3],
@@ -1638,6 +1899,7 @@ mod tests {
     fn the_new_rules_read_the_fields_they_name() {
         let fields = |id| rule(id).map(Rule::reference_fields);
         assert_eq!(fields("eig3"), Some(vec!["V", "lambda"]));
+        assert_eq!(fields("svd3"), Some(vec!["U", "V", "sigma"]));
         assert_eq!(fields("solve_cubic"), Some(vec!["im", "re"]));
         assert_eq!(fields("chol_n6"), Some(vec!["L", "valid"]));
         assert_eq!(fields("chol_solve_n3"), Some(vec!["x"]));

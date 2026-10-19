@@ -1,8 +1,9 @@
 //! The `0056` half of `--self-test` (`docs/PHASE1.md` §10): one defect per metric `0056` adds,
 //! planted into the shipped program's answer. Each must raise its stratum's maximum by more than
 //! [`FACTOR`] over the clean program's, which must itself be finite. A metric that cannot see a
-//! dropped root, a rotated eigenvector, a flipped mask, half a Newton step or a doubled derivative
-//! is not measuring what `NUMERICS.md` §11 says it does.
+//! dropped root, a rotated eigenvector or singular pair, a dropped sign, a flipped mask, half a
+//! Newton step or a doubled derivative is not measuring what `NUMERICS.md` §11 says it does. The
+//! `svd3` pair is `0101` decision 8's.
 
 use std::fmt::Write;
 use std::path::Path;
@@ -26,6 +27,11 @@ pub(super) enum Defect {
     DropsARoot,
     /// `eig3`: the first two columns of `V` rotated by `1e-9` in their plane (the gap weight).
     RotatesAnEigenvector,
+    /// `svd3`: the first two columns of `U` and of `V` rotated by `1e-9` in their plane (the gap
+    /// weight and the backward error).
+    RotatesASingularPair,
+    /// `svd3`: `σ₃`'s sign dropped (the ordering's `sign σ₃ = sign det A` and the backward error).
+    DropsTheSign,
     /// `chol`: the mask negated (mask agreement).
     FlipsTheMask,
     /// `quat_renormalize`: half the Newton step, `(q + q')/2`.
@@ -35,9 +41,11 @@ pub(super) enum Defect {
 }
 
 impl Defect {
-    pub(super) const ALL: [Defect; 5] = [
+    pub(super) const ALL: [Defect; 7] = [
         Defect::DropsARoot,
         Defect::RotatesAnEigenvector,
+        Defect::RotatesASingularPair,
+        Defect::DropsTheSign,
         Defect::FlipsTheMask,
         Defect::TakesHalfAStep,
         Defect::DoublesTheDerivative,
@@ -48,6 +56,8 @@ impl Defect {
         match self {
             Defect::DropsARoot => ("solve_cubic", "cubic:distinct"),
             Defect::RotatesAnEigenvector => ("eig3", "eig:random"),
+            Defect::RotatesASingularPair => ("svd3", "svd:random"),
+            Defect::DropsTheSign => ("svd3", "svd:ordering"),
             Defect::FlipsTheMask => ("chol_n3", "chol:indefinite"),
             Defect::TakesHalfAStep => ("quat_renormalize", "renorm:eta-2^-27"),
             Defect::DoublesTheDerivative => ("real_sqrt", "x:1e0"),
@@ -58,6 +68,8 @@ impl Defect {
         match self {
             Defect::DropsARoot => "drops-a-root",
             Defect::RotatesAnEigenvector => "rotates-an-eigenvector",
+            Defect::RotatesASingularPair => "rotates-a-singular-pair",
+            Defect::DropsTheSign => "drops-the-sign",
             Defect::FlipsTheMask => "flips-the-mask",
             Defect::TakesHalfAStep => "takes-half-a-step",
             Defect::DoublesTheDerivative => "doubles-the-derivative",
@@ -66,6 +78,16 @@ impl Defect {
 
     fn plant(self, record: &Record, mut out: Output) -> Output {
         let get = |out: &mut Output, k: &str| out.get_mut(k).map(std::mem::take);
+        let rotate = |out: &mut Output, k: &str| {
+            if let Some(mut v) = get(out, k).filter(|v| v.len() == 9) {
+                let (s, c) = 1e-9f64.sin_cos();
+                for r in 0..3 {
+                    let (a, b) = (v[r], v[3 + r]);
+                    (v[r], v[3 + r]) = (c * a + s * b, c * b - s * a);
+                }
+                out.insert(k.into(), v);
+            }
+        };
         match self {
             Defect::DropsARoot => {
                 if let Some(valid) = out.get_mut("valid") {
@@ -74,14 +96,14 @@ impl Defect {
                     }
                 }
             }
-            Defect::RotatesAnEigenvector => {
-                if let Some(mut v) = get(&mut out, "V").filter(|v| v.len() == 9) {
-                    let (s, c) = 1e-9f64.sin_cos();
-                    for r in 0..3 {
-                        let (a, b) = (v[r], v[3 + r]);
-                        (v[r], v[3 + r]) = (c * a + s * b, c * b - s * a);
-                    }
-                    out.insert("V".into(), v);
+            Defect::RotatesAnEigenvector => rotate(&mut out, "V"),
+            Defect::RotatesASingularPair => {
+                rotate(&mut out, "U");
+                rotate(&mut out, "V");
+            }
+            Defect::DropsTheSign => {
+                if let Some(s3) = out.get_mut("sigma").and_then(|s| s.get_mut(2)) {
+                    *s3 = s3.abs();
                 }
             }
             Defect::FlipsTheMask => {

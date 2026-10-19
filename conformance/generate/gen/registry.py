@@ -29,6 +29,7 @@ from . import (
     sim3,
     so2,
     so3,
+    svd,
 )
 from .strata import (
     COEFF_R_STRATA,
@@ -191,6 +192,8 @@ FUNCTIONS: dict[str, FunctionSpec] = {
             "solve_cubic", cubic.STRATA, drawn_inputs, cubic.solve_cubic, check_linalg.solve_cubic
         ),
         FunctionSpec("eig3", eig.STRATA, drawn_inputs, eig.eig3, check_linalg.eig3),
+        # docs/decisions/0101 decision 8.
+        FunctionSpec("svd3", svd.STRATA, drawn_inputs, svd.svd3, check_linalg.svd3),
         *(
             FunctionSpec(f"chol_n{n}", chol.strata(n, False), drawn_inputs, chol.chol, check_linalg.chol)
             for n in (3, 6)

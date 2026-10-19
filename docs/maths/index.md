@@ -137,7 +137,7 @@ below, are collected for decision, with a recommendation each, in the draft reco
   canonicalization (for instance $w \ge 0$, which moves the jump to $w = 0$) is a §3.4 decision.
 - `PHASE2.md` §6 says `svd3` is signed with $\det U = \det V = +1$ and "only $\sigma_3$ may be negative",
   but not that $\lvert\sigma_3\rvert \le \min(\sigma_1, \sigma_2)$. `nearest_rotation` $= UV^\top$ needs it
-  (SO.13(c)): with $\Sigma = \mathrm{diag}(1, 1, -5)$ it is at squared distance $36$ against $20$. [`0101`](../decisions/0101-svd3-is-one-sided-jacobi-on-eig3-s-rotation.md) (draft) states it (SV.4).
+  (SO.13(c)): with $\Sigma = \mathrm{diag}(1, 1, -5)$ it is at squared distance $36$ against $20$. [`0101`](../decisions/0101-svd3-is-one-sided-jacobi-on-eig3-s-rotation.md) states it (SV.4).
 - `NUMERICS.md` §4 "Naive cancellation" ($\sim2u/\theta^2$, $6u/\theta^2$, $12u/\theta^2$,
   $24u/\theta^4$ and $24u/\theta^2$, $360u/\theta^4$): the exponents are right, the constants are
   not bounds, and the column is not built by one rule ($a$, $b$, $c$, $d$ count the dominant rounded

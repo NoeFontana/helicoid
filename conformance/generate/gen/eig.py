@@ -8,12 +8,10 @@ exactly symmetric, and its spectrum is the reference's, not the drawn lambda. `e
 itself: Q c I Q^T at 120 digits would round to c I plus off-diagonal entries of 1e-121.
 """
 
-from fractions import Fraction
-
 from mpmath import mp, mpf
 
 from . import so3
-from .dense import exact, from_mat, round_symmetric, to_mat
+from .dense import exact, from_mat, rank, round_symmetric, to_mat
 from .fmt import Mat
 from .rng import unit_quaternion_s3
 from .strata import Draw, deep, drawn_strata
@@ -123,22 +121,6 @@ STRATA = _strata()
 # --- the reference ---------------------------------------------------------------------------
 
 
-def _rank(A: list[list[Fraction]]) -> int:
-    rows = [row[:] for row in A]
-    rank = 0
-    for col in range(3):
-        pivot = next((r for r in range(rank, 3) if rows[r][col] != 0), None)
-        if pivot is None:
-            continue
-        rows[rank], rows[pivot] = rows[pivot], rows[rank]
-        for r in range(3):
-            if r != rank and rows[r][col] != 0:
-                f = rows[r][col] / rows[rank][col]
-                rows[r] = [x - f * y for x, y in zip(rows[r], rows[rank], strict=True)]
-        rank += 1
-    return rank
-
-
 def eig3(inputs: dict) -> dict:
     """`mp.eigsy` of the stored A. An eigenvalue that is exactly 0 (A exactly singular, decided in
     rationals) is set to 0: `eigsy` leaves 1e-121 there, which no 30-digit value agrees with."""
@@ -146,7 +128,7 @@ def eig3(inputs: dict) -> dict:
     E, Q = mp.eigsy(A)
     order = sorted(range(3), key=lambda i: E[i])
     lam = [E[i] for i in order]
-    zeros = 3 - _rank(exact(inputs["A"]))
+    zeros = 3 - rank(exact(inputs["A"]))
     for i in sorted(range(3), key=lambda i: abs(lam[i]))[:zeros]:
         lam[i] = mpf(0)
     V = mp.matrix(3, 3)

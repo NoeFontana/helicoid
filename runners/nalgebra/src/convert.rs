@@ -16,16 +16,21 @@
 //! - `quat_renormalize`: `Unit::renormalize_fast`, the Newton step `q (3 − ‖q‖²)/2`.
 //! - `mat2_inverse_adj` (`docs/decisions/0061`): `Matrix2::try_inverse`, what locus-tag calls, and
 //!   `determinant`; `None` (a zero determinant) answers a NaN inverse, the singular answer.
+//! - `svd3` (`docs/decisions/0101` decision 8): `SVD::try_new`, which nalgebra 0.35.0
+//!   computes for a `Matrix3` by McAdams et al.'s route (`SymmetricEigen` of `AᵀA`, then a QR of
+//!   `AV`), sorted descending and put in that record's signed convention.
 //!
-//! The corpus's matrices are exactly symmetric, so the triangle read changes nothing; the corpus
-//! test asserts it. In binary64 every record is answered, `@f32` strata included: the protocol
+//! The matrices of `eig3` and `chol_*` are exactly symmetric, so the triangle read changes nothing;
+//! the corpus test asserts it. In binary64 every record is answered, `@f32` strata included: the protocol
 //! answers every stratum of a file. In binary32 (`docs/decisions/0077`) each id is the same
 //! generic code at `f32`, so the iteration tolerance is `f32::EPSILON` where it was
 //! `f64::EPSILON`; an input crosses by a lossless narrowing and an output by the exact widening.
 
 use std::collections::BTreeMap;
 
-use nalgebra::{Cholesky, Quaternion, RealField, SMatrix, SVector, Schur, SymmetricEigen, Unit};
+use nalgebra::{
+    Cholesky, Quaternion, RealField, SMatrix, SVector, Schur, SymmetricEigen, Unit, SVD,
+};
 
 /// Named arrays: a record's `in` object (its `shape` as two numbers), or the `out` of the answer.
 pub(crate) type Fields = BTreeMap<String, Vec<f64>>;
@@ -74,7 +79,7 @@ type Evaluate = fn(&Fields) -> Result<Fields, String>;
 /// The function ids this runner answers, each with its evaluation in binary64 and in binary32:
 /// the one list, so an id cannot be advertised without an answer or answered without being
 /// advertised.
-const TABLE: [(&str, Evaluate, Evaluate); 8] = [
+const TABLE: [(&str, Evaluate, Evaluate); 9] = [
     ("eig3", eig3::<f64>, eig3::<f32>),
     ("chol_n3", chol::<f64, 3>, chol::<f32, 3>),
     ("chol_n6", chol::<f64, 6>, chol::<f32, 6>),
@@ -91,9 +96,10 @@ const TABLE: [(&str, Evaluate, Evaluate); 8] = [
         mat2_inverse_adj::<f64>,
         mat2_inverse_adj::<f32>,
     ),
+    ("svd3", svd3::<f64>, svd3::<f32>),
 ];
 
-/// The iterations `SymmetricEigen` and `Schur` get. Their `new` is `try_new(m, T::EPSILON, 0)`,
+/// The iterations `SymmetricEigen`, `Schur` and `SVD` get. Their `new` is `try_new(m, T::EPSILON, 0)`,
 /// which never gives up: the same answer wherever it converges within this bound, and a NaN
 /// answer instead of a hang where it does not (`x³`, whose companion is a nilpotent Jordan block).
 /// LAPACK's `dlahqr` allows `30 · max(10, n)`; the slowest convergent cubic found, `x³ ∓ 1`, takes
@@ -226,6 +232,41 @@ fn eig3<T: Real>(input: &Fields) -> Result<Fields, String> {
         })
         .collect();
     Ok(fields([("V", v), ("lambda", lambda)]))
+}
+
+/// `SVD::try_new(A, true, true, 5ε, MAX_ITERATIONS)`: `SVD::new`'s tolerance, with
+/// [`MAX_ITERATIONS`] for its unbounded loop. Then `docs/decisions/0101` decision 1's convention:
+/// the triples sorted descending by `σ` (a stable sort: McAdams' route orders by `‖AVeᵢ‖²` and
+/// reports `|rᵢᵢ|`, which can invert a tie by an ulp); where `det V < 0`, `v₃` and `σ₃` negated; then where `det U < 0`, `u₃`
+/// and `σ₃`. So `U, V ∈ SO(3)` and `σ₁ ≥ σ₂ ≥ |σ₃|`. Not converged: NaN.
+fn svd3<T: Real>(input: &Fields) -> Result<Fields, String> {
+    let a = helicoid_to_nalgebra_matrix::<T, 3, 3>(&take_square::<T, 3>(input)?)?;
+    let tolerance = T::default_epsilon() * nalgebra::convert(5.0);
+    let svd = SVD::try_new(a, true, true, tolerance, MAX_ITERATIONS);
+    let Some((u, sigma, v_t)) = svd.and_then(|s| Some((s.u?, s.singular_values, s.v_t?))) else {
+        return Ok(fields([
+            ("U", vec![f64::NAN; 9]),
+            ("V", vec![f64::NAN; 9]),
+            ("sigma", vec![f64::NAN; 3]),
+        ]));
+    };
+    let v = v_t.transpose();
+    let mut order = [0, 1, 2];
+    order.sort_by(|&i, &j| sigma[j].widen().total_cmp(&sigma[i].widen()));
+    let mut u = SMatrix::<T, 3, 3>::from_columns(&order.map(|i| u.column(i).into_owned()));
+    let mut v = SMatrix::<T, 3, 3>::from_columns(&order.map(|i| v.column(i).into_owned()));
+    let mut sigma = order.map(|i| sigma[i]);
+    for m in [&mut v, &mut u] {
+        if m.determinant() < T::zero() {
+            m.column_mut(2).neg_mut();
+            sigma[2] = -sigma[2];
+        }
+    }
+    Ok(fields([
+        ("U", nalgebra_to_helicoid_matrix(&u)),
+        ("V", nalgebra_to_helicoid_matrix(&v)),
+        ("sigma", wide(&sigma)),
+    ]))
 }
 
 /// `A.try_inverse()` and `A.determinant()`; `None`: a NaN inverse.
@@ -384,6 +425,7 @@ mod tests {
         let a = vec![0.0; 9];
         assert!(eig3::<f64>(&input([("A", a.clone())])).is_err());
         assert!(eig3::<f64>(&input([("A", a.clone()), ("shape", vec![3.0, 1.0])])).is_err());
+        assert!(svd3::<f64>(&input([("A", a.clone())])).is_err());
         assert!(chol::<f64, 6>(&square::<3>(a)).is_err());
     }
 
@@ -424,6 +466,93 @@ mod tests {
             col(0, [h, -h, 0.0]) && col(1, [h, h, 0.0]) && col(2, [0.0, 0.0, 1.0]),
             "{v:?}"
         );
+        Ok(())
+    }
+
+    type M3 = SMatrix<f64, 3, 3>;
+
+    /// The `svd3` answer as matrices: `U`, `σ`, `V`.
+    fn svd3_of(a: [f64; 9]) -> Result<(M3, [f64; 3], M3), String> {
+        let out = svd3::<f64>(&square::<3>(a.to_vec()));
+        let u = helicoid_to_nalgebra_matrix::<f64, 3, 3>(&get(&out, "U")?)?;
+        let v = helicoid_to_nalgebra_matrix::<f64, 3, 3>(&get(&out, "V")?)?;
+        let sigma: [f64; 3] = get(&out, "sigma")?.try_into().map_err(|_| "sigma")?;
+        Ok((u, sigma, v))
+    }
+
+    /// `U, V ∈ SO(3)` and `U diag(σ) Vᵀ = A`, each to `tol`.
+    fn assert_signed_svd(a: [f64; 9], tol: f64) -> Result<[f64; 3], String> {
+        let (u, sigma, v) = svd3_of(a)?;
+        for (name, m) in [("U", u), ("V", v)] {
+            assert!((m.determinant() - 1.0).abs() < tol, "det {name} {m}");
+            let gram = m.transpose() * m - M3::identity();
+            assert!(gram.norm() < tol, "{name}ᵀ{name} {gram}");
+        }
+        let s = M3::from_diagonal(&SVector::from(sigma));
+        let back = u * s * v.transpose() - M3::from_column_slice(&a);
+        assert!(back.norm() < tol, "U Σ Vᵀ − A = {back}");
+        assert!(
+            sigma[0] >= sigma[1] && sigma[1] >= sigma[2].abs(),
+            "{sigma:?}"
+        );
+        Ok(sigma)
+    }
+
+    /// `diag(2, −3, 1)`, `det A < 0`: `σ = (3, 2, −1)`, the negative one the smallest in magnitude,
+    /// whatever sign nalgebra's `U` and `V` came with.
+    #[test]
+    fn a_mixed_sign_diagonal_svd3_has_sigma3_negative_and_smallest() -> Result<(), String> {
+        let sigma = assert_signed_svd([2.0, 0.0, 0.0, 0.0, -3.0, 0.0, 0.0, 0.0, 1.0], 1e-14)?;
+        for (got, want) in sigma.iter().zip([3.0, 2.0, -1.0]) {
+            assert!((got - want).abs() < 1e-14, "{sigma:?}");
+        }
+        Ok(())
+    }
+
+    /// `diag(1, 1, −5)`: `σ = (5, 1, −1)`, not `(1, 1, −5)`: `0015` PH.2's ordering, which
+    /// `nearest_rotation = UVᵀ` needs.
+    #[test]
+    fn svd3_orders_by_magnitude_before_it_signs() -> Result<(), String> {
+        let sigma = assert_signed_svd([1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, -5.0], 1e-14)?;
+        for (got, want) in sigma.iter().zip([5.0, 1.0, -1.0]) {
+            assert!((got - want).abs() < 1e-14, "{sigma:?}");
+        }
+        Ok(())
+    }
+
+    /// `R_z(π/2)`: `σ = (1, 1, 1)` and `UVᵀ = R`.
+    #[test]
+    fn a_rotation_svd3_has_unit_sigma_and_u_v_transpose_the_rotation() -> Result<(), String> {
+        let r = [0.0, 1.0, 0.0, -1.0, 0.0, 0.0, 0.0, 0.0, 1.0];
+        let sigma = assert_signed_svd(r, 1e-14)?;
+        assert!(sigma.iter().all(|s| (s - 1.0).abs() < 1e-14), "{sigma:?}");
+        let (u, _, v) = svd3_of(r)?;
+        let diff = u * v.transpose() - M3::from_column_slice(&r);
+        assert!(diff.norm() < 1e-14, "{diff}");
+        Ok(())
+    }
+
+    /// General matrices of both signs of `det`: reconstruction, both determinants `+1`, the order;
+    /// `sign σ₃ = sign det A`. In binary32 every output is a binary32.
+    #[test]
+    fn a_general_svd3_reconstructs_in_the_signed_convention() -> Result<(), String> {
+        // `[[1, 2, 3], [4, 5, 6], [7, 8, 10]]`, `det = −3`, and its negation, `det = 3`.
+        let negative = [1.0, 4.0, 7.0, 2.0, 5.0, 8.0, 3.0, 6.0, 10.0];
+        let positive = negative.map(|x| -x);
+        for a in [positive, negative] {
+            let det = M3::from_column_slice(&a).determinant();
+            let sigma = assert_signed_svd(a, 1e-13)?;
+            assert_eq!(sigma[2] < 0.0, det < 0.0, "{sigma:?} {det}");
+        }
+        let narrow = svd3::<f32>(&square::<3>(negative.to_vec()));
+        for key in ["U", "V", "sigma"] {
+            let values = get(&narrow, key)?;
+            assert!(values
+                .iter()
+                .all(|&x| f64::from(x as f32).to_bits() == x.to_bits()));
+        }
+        let sigma = get(&narrow, "sigma")?;
+        assert!(sigma[2] < 0.0 && sigma[1] >= sigma[2].abs(), "{sigma:?}");
         Ok(())
     }
 

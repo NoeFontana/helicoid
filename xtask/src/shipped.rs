@@ -23,8 +23,8 @@ use helicoid::{
     SEn3Jac, SEn3Tangent, Screw, Sim3, Sim3Tangent, Tangent, Twist, WorldTranslation, S2, SE3, SO3,
 };
 use helicoid_linalg::{
-    chol, chol_solve, eig3, solve_cubic, Dual, Mat3, Matrix, Precision, Real, StridedMut, Vec3,
-    Vector,
+    chol, chol_solve, eig3, solve_cubic, svd3, Dual, Mat3, Matrix, Precision, Real, StridedMut,
+    Vec3, Vector,
 };
 
 use crate::conformance::corpus::{exact_f32, Record};
@@ -497,6 +497,7 @@ where
 enum Linalg {
     SolveCubic,
     Eig3,
+    Svd3,
     Chol3,
     Chol6,
     CholSolve3,
@@ -515,9 +516,10 @@ enum Linalg {
 }
 
 impl Linalg {
-    const ALL: [(&'static str, Linalg); 17] = [
+    const ALL: [(&'static str, Linalg); 18] = [
         ("solve_cubic", Linalg::SolveCubic),
         ("eig3", Linalg::Eig3),
+        ("svd3", Linalg::Svd3),
         ("chol_n3", Linalg::Chol3),
         ("chol_n6", Linalg::Chol6),
         ("chol_solve_n3", Linalg::CholSolve3),
@@ -567,6 +569,17 @@ impl Linalg {
                 let (lambda, v) = eig3(&a);
                 Output::from([
                     ("lambda".to_string(), flat(&lambda.0)),
+                    ("V".to_string(), cols_out(&v)),
+                ])
+            }
+            Linalg::Svd3 => {
+                let Some(a) = matrix::<S, 3>(record, "A") else {
+                    return Output::new();
+                };
+                let (u, sigma, v) = svd3(&a);
+                Output::from([
+                    ("U".to_string(), cols_out(&u)),
+                    ("sigma".to_string(), flat(&sigma.0)),
                     ("V".to_string(), cols_out(&v)),
                 ])
             }

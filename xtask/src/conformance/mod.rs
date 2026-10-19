@@ -652,6 +652,7 @@ mod tests {
             [
                 "solve_cubic",
                 "eig3",
+                "svd3",
                 "chol",
                 "quat_",
                 "real_",
