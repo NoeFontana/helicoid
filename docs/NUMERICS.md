@@ -132,8 +132,8 @@ round $\sqrt{c_j}$ and $1/\sqrt{c_j}$ on opposite sides where a normalization ro
 component the same way: an exact quarter turn gets $\mathrm{fl}(\lVert q\rVert^2) = 1$ from them and
 $1 - 2u$ from the column ([`0086`](./decisions/0086-from-matrix-keeps-shepperd-s-quotients-on-the-sphere.md)). **Closed form, never iterative**:
 avoids iterative convergence failures (such as Müller iteration hangs on degenerate input).
-Projecting an arbitrary $3\times3$ onto SO(3) is `svd3` first
-($U\,\mathrm{diag}(1, 1, \det UV^\top)\,V^\top$), then this; `svd3` is owed (`PHASE2.md` §6).
+Projecting an arbitrary $3\times3$ onto SO(3) is `svd3` first, whose signed convention makes
+$UV^\top$ the nearest rotation where that is unique (§18), then this.
 
 ### 3.5 Jacobians and adjoints
 
@@ -490,10 +490,14 @@ $X(t) = X_0\,\mathrm{Exp}(t\,d)$ with $d = X_1 \ominus_R X_0$ and $\Delta = X_0^
   $\max_i\min_{s=\pm1}\max(\lVert\hat u_i - s\,u_i\rVert, \lVert\hat v_i - s\,v_i\rVert)\,\mathrm{gap}_i/(\lVert\sigma\rVert_2\,u)$,
   $\mathrm{gap}_i = \min_{j\ne i}\min(\lvert\lvert\sigma_i\rvert - \lvert\sigma_j\rvert\rvert, \lvert\sigma_i\rvert + \lvert\sigma_j\rvert)$
   from the reference (Wedin's scale; a repeated singular value's pair weighs 0); the backward error
-  $\lVert A - \hat U\hat\Sigma\hat V^\top\rVert_F/(\lVert A\rVert_F\,u)$, which sees what the weights
-  hide at a tie; and $\lVert X^\top X - I\rVert_F/u$ for each of $\hat U$, $\hat V$. An ordering
-  $\hat\sigma_1 \ge \hat\sigma_2 \ge \lvert\hat\sigma_3\rvert$ violated, or a determinant below zero,
-  scores $1/u$ ([`0101`](./decisions/0101-svd3-is-one-sided-jacobi-on-eig3-s-rotation.md)).
+  $\lVert A - \hat U\hat\Sigma\hat V^\top\rVert_F/(\lVert A\rVert_F\,u)$, which sees what the
+  weights hide at a tie; and $\lVert X^\top X - I\rVert_F/u$ for each of $\hat U$, $\hat V$. An
+  ordering $\hat\sigma_1 \ge \hat\sigma_2 \ge \lvert\hat\sigma_3\rvert$ violated, or a determinant
+  below zero, scores $1/u$
+  ([`0101`](./decisions/0101-svd3-is-one-sided-jacobi-on-eig3-s-rotation.md)). The sign of
+  $\hat\sigma_3$ has no test of its own: dropped, it reads $2\lvert\sigma_3\rvert/\lVert A\rVert$ in
+  the forward and the backward error, and where $\lvert\sigma_3\rvert$ is at rounding a backward
+  stable answer may carry either sign.
 - **Roots** (`solve_cubic`): the Hausdorff distance between the valid slots $\hat R$ and the three
   reference roots $Z$, complex ones included, over $\|Z\|_2\,u$: each real root to its nearest
   valid slot, each valid slot to its nearest root, $\lvert\hat r - z\rvert$ in $\mathbb C$, over
@@ -758,9 +762,12 @@ triangle $a_{ij}$, $i \ge j$, is read.
   $f$ that brings $m$ into $[2^{-128}, 2^{128})$ (`f64`), $[2^{-32}, 2^{32})$ (`f32`); $f = 1$
   inside it and at $m = 0$. Outside, two-sided steps at $2^{512}, 2^{256}, 2^{128}, 2^{64}$
   ($2^{64}, 2^{32}, 2^{16}, 2^{8}$): at $2^k$, divide where $m \ge 2^k$, multiply where
-  $m\,2^k < 2$ (`real::pow2_step`). The largest entry stays normal and scales exactly; an entry
-  that falls below the smallest normal rounds, by less than $2^{-1074}\cdot2^k$, far below $u\lvert A\rvert$.
-  The eigenvalues are multiplied by $1/f$ at the end.
+  $m < 2^{1-k}$ (`real::pow2_step`). Every step goes the same way, and the entries are multiplied
+  by the first step's factor, then by the product of the others: two factors, since one `f32`
+  cannot carry the smallest subnormal to §18's window. The largest entry stays normal and scales
+  exactly; an entry that falls below the smallest normal rounds, at most twice by less than
+  $2^{-1074}\cdot2^k$, far below $u\lvert A\rvert$. Every window's steps reach it from every finite
+  $m$, a compile-time check. The eigenvalues are multiplied by $1/f$ at the end.
 - **Order of rotations.** The first rotation is $(p, q, r) = (0, 1, 2)$; each rotation is followed
   by the pair that shares its second index, $(p, q, r) \to (q, r, p)$: $(0, 1), (1, 2), (2, 0),
   (0, 1), \dots$, at most twelve, $V = I$ at the start. After the first, $a_{rp} = 0$, the entry the
@@ -794,34 +801,38 @@ triangle $a_{ij}$, $i \ge j$, is read.
 ## 18. The 3×3 singular value decomposition
 
 `svd3`'s formulas ([`0101`](./decisions/0101-svd3-is-one-sided-jacobi-on-eig3-s-rotation.md),
-draft; `docs/maths/svd3.md`). The result is in the **signed convention**: $A = U\Sigma V^\top$,
+`docs/maths/svd3.md`). The result is in the **signed convention**: $A = U\Sigma V^\top$,
 $U, V \in \mathrm{SO}(3)$, $\sigma_1 \ge \sigma_2 \ge \lvert\sigma_3\rvert$,
 $\operatorname{sign}\sigma_3 = \operatorname{sign}\det A$; then $UV^\top$ is the nearest rotation
 where that is unique (SV.4).
 
 - **Non-finite input and scaling** as §17, on all nine entries, with the windows
-  $[2^{-128}, 2^{128})$ (`f64`) and $[2^{-16}, 2^{28})$ (`f32`): the rotation's radicand is of degree
-  four in $A$ (SV.6). $\Sigma$ is multiplied by $1/f$ at the end.
+  $[2^{-128}, 2^{128})$ (`f64`) and $[2^{-7}, 2^{28})$ (`f32`), and at `f32` the steps
+  $2^{64}, 2^{64}, 2^{32}, 2^{16}, 2^{8}$: the rotation's radicand is of degree four in $A$ (SV.6).
+  $\Sigma$ is multiplied by $1/f$ at the end.
 - **Sweep.** $B = A$, $V = I$. Pairs in §17's order, $(0, 1), (1, 2), (2, 0), \dots$, each followed by
   the pair that shares its second index. For the pair $(p, q)$: $\alpha = \lVert b_p\rVert^2$,
   $\beta = \lVert b_q\rVert^2$, $\gamma = b_p\cdot b_q$, and §17's rotation with $d = \beta - \alpha$,
   $a_{pq} = \gamma$, $w_2 = (2\gamma)^2$, which gives $(c, s)$, $c = 1$ in its safe arm (SV.1); then
   $(b_p, b_q) \leftarrow (c\,b_p - s\,b_q,\ s\,b_p + c\,b_q)$ and the same on $V$. The Gram entries
-  are recomputed from the rotated columns.
-- **Exit.** After each rotation, where every pair has $\gamma_{ij}^2 \le 16u^2\max(\alpha_i, f)\max(\alpha_j, f)$,
-  $f = u^2\max_k\alpha_k$ ($u = 2^{-53}$, $2^{-24}$), no further rotation; at most twelve. Then the
-  **polish**: the rotations of the two pairs other than the last one rotated, both computed from that
-  state, applied in turn to $B$ and $V$. The columns leave in index order for an exit after the first
-  rotation.
+  are recomputed from the rotated columns; $\alpha_r$, whose column did not move, is carried.
+- **Exit.** After each rotation, where every pair has $\gamma_{ij}^2 \le 16u^2\alpha_i\alpha_j$ or
+  holds a null column, $\alpha_k \le f = u^2\max_k\alpha_k$ ($u = 2^{-53}$, $2^{-24}$), no further
+  rotation; at most twelve. A null column's direction is not needed: the finish loses at most its
+  norm, $u\lVert B\rVert$. Then the **polish**: the rotations of the two pairs other than the last
+  one rotated, both computed from that state, applied in turn to $B$ and $V$. The columns leave in
+  index order for an exit after the first rotation.
 - **Order.** The columns of $B$ and $V$ are sorted by $\alpha$, descending, by the compare-exchange
   network $(0, 1), (1, 2), (0, 1)$, an exchange where the second is strictly larger; an exchange is
   $(x_p, x_q) \leftarrow (x_q, -x_p)$ on both.
 - **Finish.** $\sigma_1 = \sqrt{\alpha_1}$, $u_1 = N(b_1/\sigma_1)$ ($e_1$ where $\alpha_1 = 0$);
-  $w = b_2 - (u_1\cdot b_2)u_1$, $\sigma_2 = \lVert w\rVert$, $u_2 = N(w/\sigma_2)$ (where $w = 0$, the
-  normalised residual of the axis of $u_1$'s smallest $\lvert\text{component}\rvert$, the first of
-  equals, against $u_1$); $u_3 = N(u_1\times u_2)$; $\sigma_3 = u_3\cdot b_3$. $V$: $v_1 = N(v_1)$,
-  $v_2 = N(v_2 - (v_1\cdot v_2)v_1)$, $v_3 = N(v_1\times v_2)$. $N(v) = v\,(3/2 - \lVert v\rVert^2/2)$,
-  §17's Newton step.
+  $w' = b_2 - (u_1\cdot b_2)u_1$, $w = w' - (u_1\cdot w')u_1$ (twice: $b_2$ may leave the exit far
+  from orthogonal to $b_1$), $\sigma_2 = \lVert w\rVert$, $u_2 = N(w/\sigma_2)$ (where
+  $\lVert w\rVert^2$ is below the smallest normal, $\sigma_2 = 0$ and the normalised residual of the
+  axis of $u_1$'s smallest $\lvert\text{component}\rvert$, the first of equals, against $u_1$);
+  $u_3 = N(u_1\times u_2)$; $\sigma_3 = u_3\cdot b_3$. $V$: $v_1 = N(v_1)$,
+  $v_2 = N(v_2 - (v_1\cdot v_2)v_1)$, $v_3 = N(v_1\times v_2)$.
+  $N(v) = v\,(3/2 - \lVert v\rVert^2/2)$, §17's Newton step.
 - **Ties.** Where $\sigma_1 < \sigma_2$: $(u_1, u_2) \leftarrow (u_2, -u_1)$, the same on $V$, the
   values exchanged. Then where $\sigma_2 < \lvert\sigma_3\rvert$, $s = \operatorname{copysign}(1, \sigma_3)$:
   $(u_2, u_3) \leftarrow (s\,u_3, -s\,u_2)$, $(v_2, v_3) \leftarrow (v_3, -v_2)$,

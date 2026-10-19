@@ -8,6 +8,21 @@ defined by the status tables in `docs/`; they win over this file.
 
 ## [Unreleased]
 
+### Added
+
+- **`helicoid_linalg::svd3`** (`0101`): the 3×3 SVD in the signed convention, `U, V ∈ SO(3)`,
+  `σ₁ ≥ σ₂ ≥ |σ₃|`, `sign σ₃ = sign det A`, so `UVᵀ` is the nearest rotation where that is unique.
+  One-sided Jacobi on `eig3`'s rotation, with `eig3`'s exit and polish, then Gram–Schmidt with the
+  projection taken twice. It is backward stable column by column at every finite input, subnormal
+  ones included: 6.03 `u` at most over the corpus at `f64`, 5.08 at `f32`. It dominates nalgebra's
+  `SVD` (McAdams, `4.2×10⁷ u` at `graded-1e-8`) and Eigen's `JacobiSVD` on every stratum at both
+  precisions. It runs in 265–412 ns at `f64` and 167–364 ns at `f32`.
+
+### Changed
+
+- **`eig3`'s ladder** (`0101`) passes only scalars and takes no product on its chain. Its `f32`
+  arm runs 0.81× as long; every output is bit-identical.
+
 ## [0.0.5] - 2026-10-16
 
 An accuracy and speed release, measured against Sophus, GTSAM, manif, sophus-rs and tf_tree_math on a new 64-record deep tier of the corpus. The SE(3) and SE₂(3) Jacobians and their inverses are rewritten in closed forms that are both more accurate and 1.7–6× faster. `Exp` loses a cancellation near `π` for SE_N(3) and Sim(3), and the Sim(3) series loses a summation defect. On the deep tier the domination bar fails no stratum but one, a recorded limit (below). **No API break.** Most outputs of the ids below change in their last bits, and `Quat::to_matrix` changes its documented formula for a non-unit quaternion (`0092`).

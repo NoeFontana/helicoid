@@ -5,9 +5,9 @@
 //! every decision is a mask, every square root and division has a safe argument, and the only
 //! operations are `+ - * /`, `sqrt`, `abs` and `copysign`.
 
-use crate::eig3::{angle, ladder, largest};
+use crate::eig3::{angle, into_window, largest, smallest_normal, unit, Window};
 use crate::matrix::Mat3;
-use crate::real::{is_finite, pow2, Blend, Mask, Precision, Real};
+use crate::real::{pow2, Blend, Mask, Precision, Real};
 use crate::vector::{Vec3, Vector};
 
 /// At most twelve rotations, `eig3`'s bound: a scratch study of the exit below reached at most
@@ -15,18 +15,24 @@ use crate::vector::{Vec3, Vector};
 /// (`0101`).
 const ROTATIONS: usize = 12;
 
-/// The window `[lo, hi)` of the largest `|entry|` inside which the matrix is not scaled, and
-/// `eig3`'s steps. The rotation's radicand is of degree four in `A`: inside the window it cannot
-/// overflow, and one below the smallest normal belongs to a block below `2^-255 |A|^2` (`f64`),
-/// `2^-31 |A|^2` (`f32`) (`maths/svd3.md` SV.6). The `f32` window reaches `2^28` so that a
-/// covariance in mm² takes no ladder.
-const WINDOW_F64: (f64, f64, [f64; 4]) = (
-    pow2(-128),
-    pow2(128),
-    [pow2(512), pow2(256), pow2(128), pow2(64)],
-);
-const WINDOW_F32: (f64, f64, [f64; 4]) =
-    (pow2(-16), pow2(28), [pow2(64), pow2(32), pow2(16), pow2(8)]);
+/// The window `[lo, hi)` of the largest `|entry|` inside which the matrix is not scaled, and its
+/// steps. The rotation's radicand is of degree four in `A`: inside the window it cannot overflow,
+/// and a pair whose radicand is below the smallest normal, which `angle`'s safe arm leaves
+/// unrotated, costs the finish at most `2^-256` (`f64`), `2^-32` (`f32`), that is `2^-128 |A|` and
+/// `u |A| / 2` at the floor (`maths/svd3.md` SV.6). The `f32` window reaches `2^28` so that a
+/// covariance in mm² takes no ladder; its steps are `eig3`'s with a second `2^64`, which carries
+/// the smallest subnormal inside.
+const WINDOW_F64: Window = Window {
+    lo: pow2(-128),
+    hi: pow2(128),
+    steps: &[pow2(512), pow2(256), pow2(128), pow2(64)],
+};
+const WINDOW_F32: Window = Window {
+    lo: pow2(-7),
+    hi: pow2(28),
+    steps: &[pow2(64), pow2(64), pow2(32), pow2(16), pow2(8)],
+};
+const _: () = assert!(WINDOW_F64.reaches(Precision::F64) && WINDOW_F32.reaches(Precision::F32));
 
 /// The columns of `B = A V` and of `V` in the frame of the next rotation's roles `(p, q, r)`, and
 /// their Gram entries `[a_p, a_q, a_r, g_pq, g_qr, g_rp]`, `a = |b|^2`, `g = b . b'`.
@@ -60,14 +66,22 @@ fn pair<S: Real>(ap: S, aq: S, g: S) -> (S, S) {
     (c, s)
 }
 
-/// One rotation of the pair `(p, q)`; the next roles are `(q, r, p)`.
+/// One rotation of the pair `(p, q)`; the next roles are `(q, r, p)`. `a_r` is carried: `b_r` did
+/// not move.
 #[inline(always)]
 fn turn<S: Real>(([bp, bq, br], [vp, vq, vr], g): State<S>) -> State<S> {
     let (c, s) = pair(g[0], g[1], g[3]);
     let (bp, bq) = rot(c, s, bp, bq);
     let (vp, vq) = rot(c, s, vp, vq);
-    let b = [bq, br, bp];
-    (b, [vq, vr, vp], gram(b))
+    let g = [
+        bq.norm_sq(),
+        g[2],
+        bp.norm_sq(),
+        bq.dot(br),
+        br.dot(bp),
+        bp.dot(bq),
+    ];
+    ([bq, br, bp], [vq, vr, vp], g)
 }
 
 /// The last step, from a state within the exit: the rotations of `(p, q)` and `(q, r)`, both
@@ -85,13 +99,6 @@ fn polish<S: Real>(([b0, b1, b2], [v0, v1, v2], g): State<S>) -> ([Vec3<S>; 3], 
     let ((b0, b1), (v0, v1)) = (rot(ca, sa, b0, b1), rot(ca, sa, v0, v1));
     let ((b1, b2), (v1, v2)) = (rot(cb, sb, b1, b2), rot(cb, sb, v1, v2));
     ([b2, b0, b1], [v2, v0, v1])
-}
-
-/// One Newton step on `1 / |v|`, `v (3 - |v|^2) / 2`: `eig3`'s normalisation of a column within a
-/// few `u` of unit length.
-#[inline(always)]
-fn unit<S: Real>(v: Vec3<S>) -> Vec3<S> {
-    v.scale(S::lit(1.5) - S::lit(0.5) * v.norm_sq())
 }
 
 /// A unit vector orthogonal to the unit `u`: Gram–Schmidt of the axis of its smallest `|component|`
@@ -117,17 +124,18 @@ fn orthogonal<S: Real>(u: Vec3<S>) -> Vec3<S> {
 /// `(U, sigma, V)` with `a = U diag(sigma) V^T`: `U` and `V` rotations, `sigma_1 >= sigma_2 >=
 /// |sigma_3|` and `sigma_3` of the sign of `det a`.
 ///
-/// One-sided Jacobi with a deterministic exit (`docs/NUMERICS.md` §18, `0101`): the columns
-/// of `B = a V` are rotated in pairs `(0, 1), (1, 2), (2, 0), ...` by `eig3`'s rotation of their
-/// Gram block, each annihilating its pair's inner product, until every pair is orthogonal to `4u`
-/// relative (null columns, at `u |B|`, count as orthogonal) or twelve have run; then one step that
-/// rotates the two remaining pairs, which moves the values by at most those inner products and
-/// gives a `Dual` its first-order lanes. The columns are sorted by length with exchanges that are
-/// quarter turns, so `V` stays a rotation; `U` is Gram–Schmidt on them with `u_3 = u_1 x u_2`, so it
-/// is a rotation by construction and `sigma_3 = u_3 . b_3` carries the sign of `det a`; one masked
-/// pass orders rounding-level ties. The exit compares values that every target computes to the bit
-/// (D16). The matrix is first scaled by an exact power of two into a window (`[2^-128, 2^128)` at
-/// `f64`, `[2^-16, 2^28)` at `f32`), and `sigma` scaled back.
+/// One-sided Jacobi with a deterministic exit (`docs/NUMERICS.md` §18, `0101`): the columns of
+/// `B = a V` are rotated in pairs `(0, 1), (1, 2), (2, 0), ...` by `eig3`'s rotation of their Gram
+/// block, each annihilating its pair's inner product, until every pair is orthogonal to `4u`
+/// relative or holds a null column, at most `u |B|`, or twelve have run; then one step that rotates
+/// the two remaining pairs, which moves the values by at most those inner products and gives a
+/// `Dual` its first-order lanes. The columns are sorted by length with exchanges that are quarter
+/// turns, so `V` stays a rotation; `U` is Gram–Schmidt on them, the projection taken twice, with
+/// `u_3 = u_1 x u_2`, so it is a rotation by construction, converged or not, and
+/// `sigma_3 = u_3 . b_3` carries the sign of `det a`; one masked pass orders rounding-level ties.
+/// The exit compares values that every target computes to the bit (D16). The matrix is first scaled
+/// by an exact power of two into a window (`[2^-128, 2^128)` at `f64`, `[2^-7, 2^28)` at `f32`),
+/// and `sigma` scaled back.
 ///
 /// With this ordering `U V^T` is the rotation nearest to `a` in the Frobenius norm wherever that is
 /// unique (`maths/svd3.md` SV.4).
@@ -144,8 +152,10 @@ fn orthogonal<S: Real>(u: Vec3<S>) -> Vec3<S> {
 ///
 /// Every input is legal and nothing is asserted (`docs/API.md` R6): for every finite input the
 /// singular values are finite unless one exceeds the largest finite number, and `U`, `V` are
-/// rotations to a few `u`. The zero matrix gives `sigma = 0` and `U = V = I`. A non-finite entry
-/// gives `NaN` singular values, never a plausible number, and `U = V = I`.
+/// rotations to a few `u`. Every finite matrix, a subnormal one included, is scaled into the window
+/// exactly, so it loses only the rounding of `sigma` scaled back. The zero matrix gives `sigma = 0`
+/// and `U = V = I`. A non-finite entry gives `NaN` singular values, never a plausible number, and
+/// `U = V = I`.
 ///
 /// A `Dual` result differentiates the rotations taken, the last step's included: where `sigma_i`
 /// is simple, `d sigma_i = u_i^T (dA) v_i`, and where no other `|sigma_j|` equals `|sigma_i|`, the
@@ -169,20 +179,13 @@ fn orthogonal<S: Real>(u: Vec3<S>) -> Vec3<S> {
 #[inline]
 pub fn svd3<S: Real>(a: &Mat3<S>) -> (Mat3<S>, Vec3<S>, Mat3<S>) {
     let (zero, one) = (S::zero(), S::one());
-    let e: [S; 9] = core::array::from_fn(|k| a.get(k % 3, k / 3));
-    // A non-finite entry iterates on the zero matrix, the safe argument, and reports through the
-    // singular values.
-    let finite = e[1..]
-        .iter()
-        .fold(is_finite(e[0]), |ok, &x| ok.and(is_finite(x)));
-    let e = e.map(|x| S::select(finite, x, zero));
-    let (lo, hi, steps) = match S::PRECISION {
-        Precision::F64 => WINDOW_F64,
-        Precision::F32 => WINDOW_F32,
+    // A non-finite entry iterates on the zero matrix and reports through the singular values.
+    let window = match S::PRECISION {
+        Precision::F64 => &WINDOW_F64,
+        Precision::F32 => &WINDOW_F32,
     };
-    let m = largest(&e);
-    let inside = S::lit(lo).le(m).and(m.lt(S::lit(hi))).or(m.le(zero));
-    let (e, _, back) = S::branch(inside, || (e, m, one), || ladder(&steps, (e, m, one)));
+    let e: [S; 9] = core::array::from_fn(|k| a.get(k % 3, k / 3));
+    let (e, finite, _, back) = into_window(e, window);
 
     let b = [
         Vector([e[0], e[1], e[2]]),
@@ -195,8 +198,9 @@ pub fn svd3<S: Real>(a: &Mat3<S>) -> (Mat3<S>, Vec3<S>, Mat3<S>) {
         Vector([zero, zero, one]),
     ];
     let mut st = turn((b, ident, gram(b)));
-    // The exit (`0101` decision 3): `g^2 <= 16 u^2 max(a_i, f) max(a_j, f)` for every pair,
-    // `f = u^2 max a`, squared so that it takes no root.
+    // The exit (`0101` decision 3): every pair has `g^2 <= 16 u^2 a_i a_j`, squared so that it
+    // takes no root, or holds a null column, `a <= u^2 max a`, whose direction the finish does not
+    // need: it costs at most its own norm, `u |B|`.
     let (u2, tol) = match S::PRECISION {
         Precision::F64 => (const { pow2(-106) }, const { pow2(-102) }),
         Precision::F32 => (const { pow2(-48) }, const { pow2(-44) }),
@@ -206,9 +210,11 @@ pub fn svd3<S: Real>(a: &Mat3<S>) -> (Mat3<S>, Vec3<S>, Mat3<S>) {
     while k < ROTATIONS {
         let g = st.2;
         let f = u2 * largest(&[g[0], g[1], g[2]]);
-        let [ap, aq, ar] = [g[0], g[1], g[2]].map(|x| S::select(x.lt(f), f, x));
+        let [np, nq, nr] = [g[0], g[1], g[2]].map(|x| x.le(f));
         let ok = |gij: S, ai: S, aj: S| (gij * gij).le(tol * ai * aj);
-        let calm = ok(g[3], ap, aq).and(ok(g[4], aq, ar)).and(ok(g[5], ar, ap));
+        let calm = (ok(g[3], g[0], g[1]).or(np).or(nq))
+            .and(ok(g[4], g[1], g[2]).or(nq).or(nr))
+            .and(ok(g[5], g[2], g[0]).or(nr).or(np));
         st = S::branch(calm, || st, || turn(st));
         // A scalar leaves at its exit; lanes run on, each one held by the branch above.
         k = calm.decide(|| ROTATIONS, || k + 1, |_, _, next| next);
@@ -240,9 +246,15 @@ pub fn svd3<S: Real>(a: &Mat3<S>) -> (Mat3<S>, Vec3<S>, Mat3<S>) {
     let s1 = S::select(null1, one, a0).sqrt();
     let u1 = Vec3::blend(null1, ident[0], unit(b0.scale(one / s1)));
     let s1 = S::select(null1, zero, s1);
+    // The projection twice: once leaves `u1 . w` at `u |b1|`, not `u |w|`, where `b1` leaves the
+    // exit (null, or at the cap) far from orthogonal to `b0`; twice is enough. A residual whose
+    // square is below the smallest normal keeps too few digits in its root to be normalised: it is
+    // below `2^-511` (`f64`), `2^-63` (`f32`), at most `2^-383 |A|`, `2^-56 |A|` inside the window,
+    // and counts as zero.
     let w = b1 - u1.scale(u1.dot(b1));
+    let w = w - u1.scale(u1.dot(w));
     let aw = w.norm_sq();
-    let null2 = aw.le(zero);
+    let null2 = aw.lt(smallest_normal());
     let s2 = S::select(null2, one, aw).sqrt();
     let u2 = S::branch(null2, || orthogonal(u1), || unit(w.scale(one / s2)));
     let s2 = S::select(null2, zero, s2);

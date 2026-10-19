@@ -71,12 +71,19 @@ determinant. $\square$
 
 **SV.6 (the windows).** After a power-of-two scaling, $m = \max\lvert a_{ij}\rvert$ and
 $\lVert B\rVert_F \le 3m$, so $\alpha_j \le 9m^2$ and the radicand $d^2 + w^2 \le 405m^4$. In
-$[2^{-128}, 2^{128})$ (`f64`) it is below $2^{520.7}$; in $[2^{-16}, 2^{28})$ (`f32`) below
-$2^{120.7}$: no overflow. At the window's floor, a radicand below the smallest normal belongs to
-a block below $2^{-255}\lVert A\rVert^2$ (`f64`) and $2^{-31}\lVert A\rVert^2$ (`f32`), below
-$u\lVert A\rVert^2$, so the safe arm ($c = 1$) skips only rotations that would move nothing scored.
+$[2^{-128}, 2^{128})$ (`f64`) it is below $2^{520.7}$; in $[2^{-7}, 2^{28})$ (`f32`) below
+$2^{120.7}$: no overflow. A pair whose radicand is below the smallest normal $\tau$, which the safe
+arm ($c = 1$) leaves unrotated, costs the finish at most $\lvert\gamma\rvert/r$, $r$ the larger of
+its column norms (SV.3), and that is at most $(\tau/4)^{1/4}$: $2^{-256}$ (`f64`), $2^{-32}$
+(`f32`). With $\lVert A\rVert_F \ge m$ at the window's floor, that is $2^{-128}\lVert A\rVert$ and
+$u\lVert A\rVert/2$: the safe arm skips only rotations that would move nothing scored. The backward
+error goes with the column norm, the root of the block: a floor at $2^{-16}$ (`f32`) would leave
+$2^{-16}\lVert A\rVert$, $2^8u\lVert A\rVert$.
 
-*Proof.* Arithmetic: $(2^{-1022})^{1/2}/(2^{-128})^2$ and $(2^{-126})^{1/2}/(2^{-16})^2$. $\square$
+*Proof.* $\lvert\gamma\rvert \le \lVert b_p\rVert\lVert b_q\rVert \le r^2$ and
+$\lvert2\gamma\rvert \le \sqrt{d^2 + w^2} < \sqrt\tau$, so
+$\lvert\gamma\rvert/r \le \min(r, \sqrt\tau/2r)$, largest at $r^2 = \sqrt\tau/2$. Then
+$2^{-256}/2^{-128}$ and $2^{-32}/2^{-7} = 2^{-25} = u/2$. $\square$
 
 ## 2. The polar factor
 
