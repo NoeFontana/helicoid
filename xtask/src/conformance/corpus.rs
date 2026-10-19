@@ -111,35 +111,63 @@ struct Line {
     out: Object,
 }
 
-/// Splits `shape` off `object` and reads every other entry with `elem`. A `shape` belongs to the one
-/// array of its `rows · cols` values, the matrix's flat data; other arrays beside it are vectors
-/// (`0056`: `eig3`'s `lambda` beside `V`, `chol`'s `valid` beside `L`, `chol_solve`'s `b` beside
-/// `A`), and two arrays of the matrix's length make the shape ambiguous, which is an error.
+/// Splits `shape` off `object` and reads every other entry with `elem`. A `[rows, cols]` shape
+/// belongs to the one array of its `rows · cols` values, the matrix's flat data; other arrays
+/// beside it are vectors (`0056`: `eig3`'s `lambda` beside `V`, `chol`'s `valid` beside `L`,
+/// `chol_solve`'s `b` beside `A`), and two arrays of the matrix's length make the shape ambiguous,
+/// which is an error. A part holding several matrices keys its shape by field (`0101`
+/// decision 8: `svd3`'s `{"U": [3, 3], "V": [3, 3]}`); each named field must be an array of its
+/// length.
 fn fields<T>(
     mut object: BTreeMap<String, Value>,
     elem: impl Fn(&str) -> Result<T, String>,
 ) -> Result<Fields<T>, String> {
     let shape = match object.remove("shape") {
-        None => None,
+        None => Shape::None,
+        Some(v @ Value::Object(_)) => {
+            match serde_json::from_value::<BTreeMap<String, [usize; 2]>>(v) {
+                Ok(keyed) => Shape::Keyed(keyed),
+                Err(e) => return Err(format!("bad `shape`: {e}")),
+            }
+        }
         Some(v) => match serde_json::from_value::<[usize; 2]>(v) {
-            Ok([r, c]) => Some((r, c)),
+            Ok([r, c]) => Shape::One(r, c),
             Err(e) => return Err(format!("bad `shape`: {e}")),
         },
     };
     fn text(v: &Value) -> Result<&str, String> {
         v.as_str().ok_or_else(|| format!("not a string: {v}"))
     }
+    if let Shape::Keyed(keyed) = &shape {
+        if let Some(key) = keyed.keys().find(|k| !object.contains_key(*k)) {
+            return Err(format!(
+                "`shape` names `{key}`, which the record does not hold"
+            ));
+        }
+    }
     let mut out = Fields::new();
     for (key, value) in object {
-        let data = match &value {
+        let data: Vec<T> = match &value {
             Value::Array(items) => items.iter().map(|v| elem(text(v)?)).collect(),
             v => elem(text(v)?).map(|x| vec![x]),
         }
         .map_err(|e| format!("`{key}`: {e}"))?;
-        let shape = shape.filter(|&(r, c)| value.is_array() && data.len() == r * c);
+        let shape = match &shape {
+            Shape::None => None,
+            Shape::One(r, c) => (value.is_array() && data.len() == r * c).then_some((*r, *c)),
+            Shape::Keyed(keyed) => match keyed.get(&key) {
+                None => None,
+                Some(&[r, c]) if value.is_array() && data.len() == r * c => Some((r, c)),
+                Some(&[r, c]) => {
+                    return Err(format!(
+                        "`{key}` does not hold the {r}x{c} values of `shape`"
+                    ))
+                }
+            },
+        };
         out.insert(key, Tensor { shape, data });
     }
-    if let Some((r, c)) = shape {
+    if let Shape::One(r, c) = shape {
         match out.values().filter(|t| t.shape.is_some()).count() {
             1 => {}
             0 => return Err(format!("no array holds the {r}x{c} values of `shape`")),
@@ -151,6 +179,13 @@ fn fields<T>(
         }
     }
     Ok(out)
+}
+
+/// A record part's `shape`: absent, one matrix's, or one per named field.
+enum Shape {
+    None,
+    One(usize, usize),
+    Keyed(BTreeMap<String, [usize; 2]>),
 }
 
 /// The inputs that are quaternions, whose negative is the same rotation (`0091`, draft). The
@@ -378,6 +413,8 @@ mod tests {
     const VECTOR: &str = r#"{"id":3,"in":{"phi":["0x1.8p+1","-0x0.0p+0","0x1.0000000000001p-1022"]},"out":{"q":["9.99999999999999999999999251527e-1","-1.06240087782203108924896608142e-13"]},"stratum":"theta:1e-12"}"#;
     const MATRIX: &str = r#"{"id":0,"in":{"R":["0x1p+0","0x0.0p+0","0x0.0p+0","0x0.0p+0","0x1p+0","0x0.0p+0"],"shape":[3,2]},"out":{"J":["1e0","0e0","0e0","0e0","1e0","2.5e-311"],"shape":[3,2],"s":"1e0"},"stratum":"s"}"#;
 
+    const KEYED: &str = r#"{"id":0,"in":{"A":["0x1p+0","0x0.0p+0","0x0.0p+0","0x1p+1"],"shape":[2,2]},"out":{"U":["0e0","1e0","1e0","0e0"],"V":["0e0","1e0","1e0","2e1"],"sigma":["2e0","1e0"],"shape":{"U":[2,2],"V":[2,2]}},"stratum":"s"}"#;
+
     #[test]
     fn vectors_scalars_and_matrices_parse_exactly() -> Result<(), String> {
         let r = parse_line(VECTOR)?;
@@ -402,6 +439,13 @@ mod tests {
             (v.reference["s"].shape, v.reference["J"].shape),
             (None, Some((3, 2)))
         );
+        // `0101` decision 8: two matrices of one part key their shape by field, and a
+        // vector beside them keeps none.
+        let k = parse_line(KEYED)?;
+        assert_eq!(k.inputs["A"].shape, Some((2, 2)));
+        let shapes = ["U", "V", "sigma"].map(|f| k.reference[f].shape);
+        assert_eq!(shapes, [Some((2, 2)), Some((2, 2)), None]);
+        assert_eq!(k.reference["V"].data[3].exp10, 1);
         Ok(())
     }
 
@@ -428,6 +472,15 @@ mod tests {
             "`shape` is ambiguous",
         );
         bad(&MATRIX.replace("[3,2],\"s\"", "[3],\"s\""), "bad `shape`");
+        bad(
+            &KEYED.replace(r#""V":[2,2]}"#, r#""V":[2,3]}"#),
+            "`V` does not hold the 2x3 values",
+        );
+        bad(
+            &KEYED.replace(r#""V":[2,2]}"#, r#""W":[2,2]}"#),
+            "`shape` names `W`",
+        );
+        bad(&KEYED.replace(r#""V":[2,2]}"#, r#""V":2}"#), "bad `shape`");
         bad(&VECTOR.replace("\"id\":3,", ""), "missing field");
         bad(
             &VECTOR.replace("\"stratum\"", "\"extra\":1,\"stratum\""),

@@ -67,16 +67,20 @@ def recheck_stratum(
 
 
 def _encode(values: dict, one) -> dict:
-    """A vector is an array; a `Mat` is its column-major array and a sibling `"shape"` key, so a
-    dict holds at most one."""
+    """A vector is an array; a `Mat` is its column-major array beside a `"shape"` key: `[r, c]`
+    where the part holds one `Mat`, so no record of one moves, and `{field: [r, c], ...}` where it
+    holds several (docs/decisions/0101 decision 8)."""
+    if "shape" in values:
+        raise ValueError(f"a field named `shape` in a record part: {sorted(values)}")
     out: dict = {}
+    shapes: dict = {}
     for k, v in values.items():
         if isinstance(v, Mat):
-            if "shape" in out:
-                raise ValueError(f"two matrices in one record part: {sorted(values)}")
-            out[k], out["shape"] = [one(x) for x in v.data], list(v.shape)
+            out[k], shapes[k] = [one(x) for x in v.data], list(v.shape)
         else:
             out[k] = [one(x) for x in v] if isinstance(v, (list, tuple)) else one(v)
+    if shapes:
+        out["shape"] = next(iter(shapes.values())) if len(shapes) == 1 else shapes
     return out
 
 

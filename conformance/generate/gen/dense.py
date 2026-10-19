@@ -34,6 +34,28 @@ def round_symmetric(A, rnd: Callable) -> Mat:
     return Mat((n, n), [upper[min(i, j), max(i, j)] for j in range(n) for i in range(n)])
 
 
+def round_matrix(A, rnd: Callable) -> Mat:
+    """A general matrix rounded entrywise by `rnd`, once."""
+    return Mat((A.rows, A.cols), [rnd(A[i, j]) for j in range(A.cols) for i in range(A.rows)])
+
+
+def rank(A: list[list[Fraction]]) -> int:
+    """The rank of an exact matrix, by Gauss-Jordan elimination in rationals."""
+    rows = [row[:] for row in A]
+    n, out = len(rows[0]) if rows else 0, 0
+    for col in range(n):
+        pivot = next((r for r in range(out, len(rows)) if rows[r][col] != 0), None)
+        if pivot is None:
+            continue
+        rows[out], rows[pivot] = rows[pivot], rows[out]
+        for r in range(len(rows)):
+            if r != out and rows[r][col] != 0:
+                f = rows[r][col] / rows[out][col]
+                rows[r] = [x - f * y for x, y in zip(rows[r], rows[out], strict=True)]
+        out += 1
+    return out
+
+
 def frobenius(A):
     return mp.sqrt(sum(abs(A[i, j]) ** 2 for i in range(A.rows) for j in range(A.cols)))
 

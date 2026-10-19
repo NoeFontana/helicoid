@@ -14,15 +14,12 @@ use super::bars::{Bar, Failure};
 /// `(phase, text of the §0.0 row that owns them, where named, ids)`: what later phases add to the
 /// corpus. The row text must match exactly one row of its phase's table
 /// (a test reads the docs), so a renamed row fails a test, not coverage silently.
-const OWED: &[(u8, &str, &str, &[&str])] = &[
-    (2, "corpus ids (§6)", "PHASE2.md §6", &["svd3"]),
-    (
-        6,
-        "ambient Jacobians",
-        "PHASE6.md §1",
-        &["so3_plus_jacobian", "se3_plus_jacobian"],
-    ),
-];
+const OWED: &[(u8, &str, &str, &[&str])] = &[(
+    6,
+    "ambient Jacobians",
+    "PHASE6.md §1",
+    &["so3_plus_jacobian", "se3_plus_jacobian"],
+)];
 
 /// The ids of `docs/PHASE1.md` §4.3 that corpus v1 holds.
 pub(super) fn required() -> Vec<String> {
@@ -51,12 +48,14 @@ pub(super) fn required() -> Vec<String> {
     }
     ids.extend(["so2_exp".to_string(), "so2_log".to_string()]);
     ids.extend(group("se2", &["exp", "log", "ad"], ""));
-    // `0056`'s, the routines D7 did not reach: `PHASE2.md` §6's two that exist, `chol` and
-    // `chol_solve` at the widths a consumer factors, `renormalize`, and `Dual` as `real_*`.
+    // `0056`'s, the routines D7 did not reach: `PHASE2.md` §6's three (`svd3` out of `OWED` with
+    // its corpus file, `0101`), `chol` and `chol_solve` at the widths a consumer factors,
+    // `renormalize`, and `Dual` as `real_*`.
     ids.extend(
         [
             "solve_cubic",
             "eig3",
+            "svd3",
             "chol_n3",
             "chol_n6",
             "chol_solve_n3",
@@ -275,12 +274,12 @@ mod tests {
             ["`sen3_jr_inv_n2` has no corpus file (PHASE1.md §4.3)"]
         );
         // One row Done: its ids fail, and no other group's.
-        let c = check(&required(), &rows(&["corpus ids (§6)"]));
-        assert_eq!(c.failures.len(), 1);
+        let c = check(&required(), &rows(&["ambient Jacobians"]));
+        assert_eq!(c.failures.len(), 2);
         assert!(messages(&c)[0].starts_with(
-            "phase 2's row `corpus ids (§6)` is Done and `svd3` (PHASE2.md §6) has no corpus file"
+            "phase 6's row `ambient Jacobians` is Done and `so3_plus_jacobian` (PHASE6.md §1) has no corpus file"
         ));
-        assert_eq!(c.excused, owed_total() - 1);
+        assert_eq!(c.excused, owed_total() - 2);
     }
 
     #[test]
@@ -304,13 +303,13 @@ mod tests {
     #[test]
     fn an_owed_id_that_has_a_file_fails() {
         let mut have = required();
-        have.push("svd3".into());
+        have.push("so3_plus_jacobian".into());
         let c = check(&have, &rows(&[]));
         assert_eq!(c.failures.len(), 1);
         assert!(c.failures[0]
             .text
-            .contains("`svd3` has a corpus file and is listed as owed"));
-        have.push("so3_plus_jacobian".into());
+            .contains("`so3_plus_jacobian` has a corpus file and is listed as owed"));
+        have.push("se3_plus_jacobian".into());
         assert_eq!(check(&have, &rows(&[])).failures.len(), 2);
     }
 

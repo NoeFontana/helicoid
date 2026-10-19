@@ -24,18 +24,18 @@ const WINDOW_F64: (f64, f64, [f64; 4]) = (
 const WINDOW_F32: (f64, f64, [f64; 4]) =
     (pow2(-32), pow2(32), [pow2(64), pow2(32), pow2(16), pow2(8)]);
 
-/// The lower triangle `[xx, yy, zz, xy, xz, yz]`, its largest `|entry|` and the power of two that
-/// undoes its scaling.
-type Scaled<S> = ([S; 6], S, S);
+/// The entries (here the lower triangle `[xx, yy, zz, xy, xz, yz]`), their largest `|entry|` and
+/// the power of two that undoes their scaling.
+pub(crate) type Scaled<S, const N: usize> = ([S; N], S, S);
 
-/// [`eig3`]'s scaling steps, out of line: rarely taken, as `cubic`'s ladders. At `2^k` the entries
+/// [`eig3`]'s and `svd3`'s scaling steps, out of line: rarely taken, as `cubic`'s ladders. At `2^k` the entries
 /// are divided by it where the largest is at least `2^k` and multiplied where it is below
 /// `2^(1-k)` (`real::pow2_step`). The largest entry stays normal, so it scales exactly and is carried
 /// as `m f`; an entry that falls below the smallest normal rounds, by less than `2^-1074` of `2^k`,
 /// far below `u |A|`.
 #[cold]
 #[inline(never)]
-fn ladder<S: Real>(steps: &[f64], start: Scaled<S>) -> Scaled<S> {
+pub(crate) fn ladder<S: Real, const N: usize>(steps: &[f64], start: Scaled<S, N>) -> Scaled<S, N> {
     steps.iter().fold(start, |(e, m, back), &k| {
         let (f, b) = pow2_step(k, m);
         (e.map(|x| x * f), m * f, back * b)
@@ -44,7 +44,7 @@ fn ladder<S: Real>(steps: &[f64], start: Scaled<S>) -> Scaled<S> {
 
 /// The largest `|entry|`.
 #[inline]
-fn largest<S: Real>(e: &[S; 6]) -> S {
+pub(crate) fn largest<S: Real, const N: usize>(e: &[S; N]) -> S {
     e.iter().fold(S::zero(), |m, &x| {
         let x = x.abs();
         S::select(m.lt(x), x, m)
@@ -56,7 +56,8 @@ fn largest<S: Real>(e: &[S; 6]) -> S {
 /// being zero (the previous rotation annihilated it); then the columns `[v_p, v_q, v_r]`.
 type Roles<S> = ([S; 7], [Vec3<S>; 3]);
 
-/// The rotation annihilating `a_pq` (`NUMERICS.md` §17): `(ta, c, s, c^2, t)`.
+/// The rotation annihilating `a_pq` (`NUMERICS.md` §17): `(ta, c, s, c^2, t)`. `svd3` calls it on
+/// the Gram block of two columns (`0101`).
 ///
 /// `h = sqrt(d^2 + w2)`, `den = |d| + h`, `t = w / den`, `ta = t a_pq = sign(d) (w2 / 2) / den`,
 /// `c^2 = den / 2h`, `s = c t`. `ta` is read from `w2`, the square the root saw, not from `a_pq`:
@@ -65,7 +66,7 @@ type Roles<S> = ([S; 7], [Vec3<S>; 3]);
 /// `0081`): that arm rotates by about `w`, a block below `2^-383 |A|` (`f64`), `2^-31 |A|` (`f32`)
 /// inside the window.
 #[inline(always)]
-fn angle<S: Real>(d: S, apq: S, w2: S) -> (S, S, S, S, S) {
+pub(crate) fn angle<S: Real>(d: S, apq: S, w2: S) -> (S, S, S, S, S) {
     let (one, two, half) = (S::one(), S::lit(2.0), S::lit(0.5));
     let tiny = S::lit(match S::PRECISION {
         Precision::F64 => const { pow2(-1022) },

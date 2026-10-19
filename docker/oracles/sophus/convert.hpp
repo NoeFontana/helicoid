@@ -1,6 +1,6 @@
 // The corpus's arrays to Sophus's types and back (docs/decisions/0072), at the scalar `T` a record
-// is answered in: `double`, or `float` for an `@f32` record (docs/decisions/0077); and `eig3`'s to
-// Eigen's, the image's own Eigen (docs/decisions/0083).
+// is answered in: `double`, or `float` for an `@f32` record (docs/decisions/0077); and `eig3`'s and
+// `svd3`'s to Eigen's, the image's own Eigen (docs/decisions/0083, 0101).
 //
 // helicoid is rotation-first and `w`-first (docs/decisions/0002); Sophus is translation-first:
 // SE(2) `[υ; θ]`, SE(3) `[υ; ω]`, Sim(3) `[υ; ω; σ]`. Its Sim(3) stores `√s · q` (`RxSO3`), so the
@@ -21,6 +21,7 @@
 #include <Eigen/Core>
 #include <Eigen/Eigenvalues>
 #include <Eigen/Geometry>
+#include <Eigen/SVD>
 #include <sophus/se2.hpp>
 #include <sophus/se3.hpp>
 #include <sophus/sim3.hpp>
@@ -175,8 +176,8 @@ HelicoidSim3 sophus_to_helicoid_sim3(const Sophus::Sim3<T>& s) {
 
 // --- eig3: Eigen's symmetric solver (docs/decisions/0083) -----------------------------------------
 
-// A corpus `A` (3 × 3, column-major) as Eigen's `Matrix3<T>`, column-major too; the solver reads
-// its lower triangle.
+// A corpus `A` (3 × 3, column-major) as Eigen's `Matrix3<T>`, column-major too;
+// `SelfAdjointEigenSolver` reads its lower triangle, `JacobiSVD` all of it.
 template <class T>
 Eigen::Matrix<T, 3, 3> helicoid_to_eigen_matrix3(const Vec& a) {
   if (a.size() != 9) throw std::invalid_argument("a 3 × 3 matrix has 9 values");
@@ -205,6 +206,40 @@ HelicoidEig3 eigen_to_helicoid_eig3(const Eigen::SelfAdjointEigenSolver<Eigen::M
     for (int r = 0; r < 3; ++r) out.v.push_back(static_cast<double>(vectors(r, i)));
   }
   return out;
+}
+
+// --- svd3: Eigen's one-sided Jacobi SVD (docs/decisions/0101) ------------------------------------
+
+struct HelicoidSvd3 {
+  Vec u, sigma, v;
+};
+
+// A finished `JacobiSVD` (`ComputeFullU | ComputeFullV`) in record 0101 decision 1's convention:
+// the triples sorted descending by `σ` (Eigen sorts; the stable sort states it); where `det V < 0`,
+// `v₃` and `σ₃` negated; then where `det U < 0`, `u₃` and `σ₃`. So `U, V ∈ SO(3)` and
+// `σ₁ ≥ σ₂ ≥ |σ₃|`. A non-finite input (`info()`) is a refusal, so `nan`.
+template <class T>
+HelicoidSvd3 eigen_to_helicoid_svd3(const Eigen::JacobiSVD<Eigen::Matrix<T, 3, 3>>& svd) {
+  if (svd.info() != Eigen::Success) throw Refused("JacobiSVD: invalid input");
+  const auto& values = svd.singularValues();
+  std::array<int, 3> order{0, 1, 2};
+  std::stable_sort(order.begin(), order.end(), [&](int i, int j) { return values(i) > values(j); });
+  Eigen::Matrix<T, 3, 3> u, v;
+  Eigen::Matrix<T, 3, 1> sigma;
+  for (int k = 0; k < 3; ++k) {
+    u.col(k) = svd.matrixU().col(order[k]);
+    v.col(k) = svd.matrixV().col(order[k]);
+    sigma(k) = values(order[k]);
+  }
+  for (Eigen::Matrix<T, 3, 3>* m : {&v, &u}) {
+    if (m->determinant() < T(0)) {
+      m->col(2) = -m->col(2);
+      sigma(2) = -sigma(2);
+    }
+  }
+  return {Vec(u.data(), u.data() + 9), {static_cast<double>(sigma(0)), static_cast<double>(sigma(1)),
+                                        static_cast<double>(sigma(2))},
+          Vec(v.data(), v.data() + 9)};
 }
 
 }  // namespace oracle

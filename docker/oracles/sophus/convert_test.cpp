@@ -260,6 +260,60 @@ void eig3() {
   check(binary32(f.lambda) && binary32(f.v), "eig3 f32: binary32");
 }
 
+// `U diag(σ) Vᵀ` from `svd3`'s column-major arrays, against `a` (column-major), and `U, V ∈ SO(3)`
+// and `σ₁ ≥ σ₂ ≥ |σ₃|`, each to `tol`.
+void signed_svd(const oracle::HelicoidSvd3& s, const oracle::Vec& a, const std::string& what, double tol) {
+  const Eigen::Map<const Eigen::Matrix3d> u(s.u.data()), v(s.v.data()), want(a.data());
+  const Eigen::Vector3d sigma(s.sigma[0], s.sigma[1], s.sigma[2]);
+  check((u * sigma.asDiagonal() * v.transpose() - want).norm() <= tol, what + ": U Σ Vᵀ = A");
+  check(std::fabs(u.determinant() - 1) <= tol && std::fabs(v.determinant() - 1) <= tol, what + ": det U = det V = 1");
+  check((u.transpose() * u - Eigen::Matrix3d::Identity()).norm() <= tol &&
+            (v.transpose() * v - Eigen::Matrix3d::Identity()).norm() <= tol,
+        what + ": U, V orthogonal");
+  check(sigma(0) >= sigma(1) && sigma(1) >= std::fabs(sigma(2)), what + ": σ₁ ≥ σ₂ ≥ |σ₃|");
+}
+
+template <class T>
+oracle::HelicoidSvd3 svd3_of(const oracle::Vec& a) {
+  return oracle::eigen_to_helicoid_svd3<T>(Eigen::JacobiSVD<Eigen::Matrix<T, 3, 3>>(
+      oracle::helicoid_to_eigen_matrix3<T>(a), Eigen::ComputeFullU | Eigen::ComputeFullV));
+}
+
+void svd3() {
+  // diag(2, −3, 1), det < 0: σ = (3, 2, −1), the negative one the smallest in magnitude.
+  const oracle::Vec mixed{2, 0, 0, 0, -3, 0, 0, 0, 1};
+  const oracle::HelicoidSvd3 d = svd3_of<double>(mixed);
+  near(d.sigma, {3, 2, -1}, "svd3: diag(2, −3, 1)'s σ");
+  signed_svd(d, mixed, "svd3: diag(2, −3, 1)", kTol);
+  // diag(1, 1, −5): σ = (5, 1, −1), ordered by magnitude before it is signed (0015 PH.2).
+  const oracle::Vec order{1, 0, 0, 0, 1, 0, 0, 0, -5};
+  const oracle::HelicoidSvd3 o = svd3_of<double>(order);
+  near(o.sigma, {5, 1, -1}, "svd3: diag(1, 1, −5)'s σ");
+  signed_svd(o, order, "svd3: diag(1, 1, −5)", kTol);
+  // R_z(π/2): σ = (1, 1, 1) and U Vᵀ = R.
+  const oracle::Vec turn{0, 1, 0, -1, 0, 0, 0, 0, 1};
+  const oracle::HelicoidSvd3 r = svd3_of<double>(turn);
+  near(r.sigma, {1, 1, 1}, "svd3: a rotation's σ");
+  const Eigen::Map<const Eigen::Matrix3d> ru(r.u.data()), rv(r.v.data()), rr(turn.data());
+  check((ru * rv.transpose() - rr).norm() <= kTol, "svd3: a rotation's U Vᵀ");
+  // [[1, 2, 3], [4, 5, 6], [7, 8, 10]], det = −3, column-major: not symmetric, so a transposed U
+  // or V fails the reconstruction; and its negation, det = 3.
+  const oracle::Vec general{1, 4, 7, 2, 5, 8, 3, 6, 10};
+  const oracle::HelicoidSvd3 g = svd3_of<double>(general);
+  signed_svd(g, general, "svd3: general, det < 0", 1e-13);
+  check(g.sigma[2] < 0, "svd3: sign σ₃ = sign det A < 0");
+  oracle::Vec negated(general);
+  for (double& x : negated) x = -x;
+  const oracle::HelicoidSvd3 n = svd3_of<double>(negated);
+  signed_svd(n, negated, "svd3: general, det > 0", 1e-13);
+  check(n.sigma[2] > 0, "svd3: sign σ₃ = sign det A > 0");
+  // At `float`: the same, every output a binary32.
+  const oracle::HelicoidSvd3 f = svd3_of<float>(general);
+  signed_svd(f, general, "svd3 f32: general", 1e-5);
+  check(f.sigma[2] < 0, "svd3 f32: sign σ₃");
+  check(binary32(f.u) && binary32(f.sigma) && binary32(f.v), "svd3 f32: binary32");
+}
+
 void hex_floats() {
   check(oracle::format_hex(1.0) == "0x1p+0", "hex: 1");
   check(oracle::format_hex(-0.0) == "-0x0p+0", "hex: −0");
@@ -294,6 +348,7 @@ int main() {
   sim3_adjoint();
   sim3_exp();
   eig3();
+  svd3();
   hex_floats();
   if (failures != 0) return 1;
   std::puts("convert_test: all passed");

@@ -1101,18 +1101,19 @@ mod tests {
     fn an_owed_group_is_due_when_its_row_is_done_whatever_the_rest_of_the_table_says(
     ) -> Result<(), String> {
         let scratch = world("owed")?;
-        for (path, text) in coverage::docs_for_tests(&["corpus ids (§6)"]) {
+        for (path, text) in coverage::docs_for_tests(&["ambient Jacobians"]) {
             write_file(&scratch.0, &path, &text)?;
         }
         let r = go(&scratch, CANDIDATE, &[], "")?;
-        assert_eq!(bars(&r), ["coverage"]);
+        // One failure per owed id of the row.
+        assert_eq!(bars(&r), ["coverage", "coverage"]);
         assert!(r.text.contains(
-            "FAIL coverage: phase 2's row `corpus ids (§6)` is Done and `svd3` (PHASE2.md §6) has no corpus file"
+            "FAIL coverage: phase 6's row `ambient Jacobians` is Done and `so3_plus_jacobian` (PHASE6.md §1) has no corpus file"
         ));
         // A checkout whose docs lack the row cannot tell, and does not excuse.
         std::fs::remove_file(scratch.0.join("docs/PHASE6.md")).map_err(|e| e.to_string())?;
         let r = go(&scratch, CANDIDATE, &[], "")?;
-        assert_eq!(r.failures.len(), 2);
+        assert_eq!(r.failures.len(), 1);
         assert!(r.text.contains("docs/PHASE6.md: "), "{}", r.text);
         Ok(())
     }

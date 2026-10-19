@@ -6,6 +6,9 @@ the route that computed the record, at twice the working precision, to 100 digit
   is conjugate, the order is (re, im); a zero discriminant's roots (planted double and triple) are
   roots exactly, in rationals.
 - `eig3`: |A V - V Lambda| <= 1e-100 |A| and |V^T V - I| <= 1e-100, Frobenius; lambda ascending.
+- `svd3` (0101): |A V - U Sigma| <= 1e-100 |A|, |U^T U - I| and |V^T V - I| <= 1e-100, Frobenius;
+  det U and det V within 1e-100 of 1; sigma1 >= sigma2 >= |sigma3|; sign sigma3 = sign det A, the
+  determinant of the stored A in rationals.
 - `chol`: `valid` is the sign of the smallest eigenvalue (`mp.eigsy` of the equilibrated A, whose
   eigenvalues have A's signs); L is lower triangular with a
   positive diagonal and |L L^T - A| <= 1e-100 |A|, or zero where `valid` is 0.
@@ -20,7 +23,7 @@ from mpmath import mp, mpf
 
 from .chol import equilibrator
 from .cubic import discriminant, fraction, horner, is_root
-from .dense import frobenius, from_mat
+from .dense import exact, frobenius, from_mat
 from .precision import DPS
 
 DIGITS = 100
@@ -75,6 +78,33 @@ def eig3(inputs: dict, out: dict) -> None:
         A, V = from_mat(inputs["A"]), from_mat(out["V"])
         _within("eig3: A V - V Lambda", frobenius(A * V - V * mp.diag(lam)), frobenius(A))
         _within("eig3: V^T V - I", frobenius(V.T * V - mp.eye(3)), 1)
+
+
+def _det3(A):
+    return (
+        A[0][0] * (A[1][1] * A[2][2] - A[1][2] * A[2][1])
+        - A[0][1] * (A[1][0] * A[2][2] - A[1][2] * A[2][0])
+        + A[0][2] * (A[1][0] * A[2][1] - A[1][1] * A[2][0])
+    )
+
+
+def _sign(x) -> int:
+    return (x > 0) - (x < 0)
+
+
+def svd3(inputs: dict, out: dict) -> None:
+    s1, s2, s3 = out["sigma"]
+    if not s1 >= s2 >= abs(s3):
+        raise CrossCheckError(f"svd3: singular values out of order: {out['sigma']}")
+    det = _det3(exact(inputs["A"]))
+    if _sign(s3) != _sign(det):
+        raise CrossCheckError(f"svd3: sigma3 = {mp.nstr(s3, 10)} against det A = {float(det)}")
+    with mp.workdps(2 * DPS):
+        A, U, V = from_mat(inputs["A"]), from_mat(out["U"]), from_mat(out["V"])
+        _within("svd3: A V - U Sigma", frobenius(A * V - U * mp.diag(out["sigma"])), frobenius(A))
+        for name, X in (("U", U), ("V", V)):
+            _within(f"svd3: {name}^T {name} - I", frobenius(X.T * X - mp.eye(3)), 1)
+            _within(f"svd3: det {name} - 1", abs(mp.det(X) - 1), 1)
 
 
 def chol(inputs: dict, out: dict) -> None:
