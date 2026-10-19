@@ -69,9 +69,9 @@ at $3.5\times10^{-7}$, $1.2\times10^{7}$ (and NaN on 13% of the family) at $3.5\
 2. **Scaling and the arm test.** The input is scaled by `svd3`'s exact power-of-two ladder and
    windows (`0101` decision 5); the rotation needs no scaling back. With $n = \lVert M\rVert_F$ and
    $\det M$ from the cofactors, the arms are:
-   - **Newton**, where $\det M \ge \tau n^3$;
-   - **reflect**, where $\det M \le -\tau n^3$;
-   - **`svd3`**, between,
+   - **Newton**, where $\det M > \tau n^3$;
+   - **reflect**, where $\det M < -\tau n^3$;
+   - **`svd3`**, between, the zero matrix included,
 
    with $\tau = 2^{-26}$ (`f64`), $2^{-12}$ (`f32`), about $\sqrt u$. Both sides of $\tau$ are
    accurate by a factor of about $1/\sqrt u$ (*Context*). It is a choice between two complete
@@ -91,9 +91,15 @@ at $3.5\times10^{-7}$, $1.2\times10^{7}$ (and NaN on 13% of the family) at $3.5\
    $\lambda$'s eigenvector; $R = Q(I - 2P)$ (PO.2), then the polish of decision 5. Every step
    after `eig3` is rational in $M$ and $\lambda$, and the refined $\lambda$ has the root's derivative whatever
    `eig3`'s lanes, so the tangent is exact wherever $\sigma_3$ is simple, which is where the nearest
-   rotation of a $\det < 0$ matrix is unique, $\sigma_1 = \sigma_2$ included. Where
-   $\operatorname{tr}\mathrm{adj}(H - \lambda I) \le 16u\lVert M\rVert_F^2$, $\sigma_3$ is tied to
-   rounding and the nearest rotation is not unique: decision 5's.
+   rotation of a $\det < 0$ matrix is unique, $\sigma_1 = \sigma_2$ included. The trace
+   $t = \operatorname{tr}\mathrm{adj}(H - \lambda I)$ is the product of the gaps from $\lambda$ to
+   the other two eigenvalues; where $t \le e(g + e)$, $e = 16u\lVert M\rVert_F$, $g$ the largest
+   of `eig3`'s eigenvalues less the smallest, the gap $\sigma_2 - \lvert\sigma_3\rvert$ is at
+   rounding and the nearest rotation is not unique: decision 5's. The review replaced
+   $t \le 16u\lVert M\rVert_F^2$, which compares a product of two gaps with a squared norm: it
+   sent $-\mathrm{diag}(1, 1, 1 - \delta)$, $\delta$ below $1.7\times10^{-3}$ at `f32`, to
+   `svd3`, whose tangent at the $\sigma_1 = \sigma_2$ tie is no derivative. `eig3`'s eigenvalues
+   come without its frame, bit for bit.
 5. **`svd3`.** $R = UV^\top$, from `svd3`'s signed convention (`0101` decision 1), then the
    **polish**: one Newton step, which squares the error of the product of two frames (7.8–8.6 `u`
    without it), and a second where the first was longer than $\sqrt u$, $\lVert\Delta\rVert_F^2 > u$.
@@ -120,6 +126,9 @@ at $3.5\times10^{-7}$, $1.2\times10^{7}$ (and NaN on 13% of the family) at $3.5\
      $\lVert\hat R - R\rVert_F\,(\sigma_2 + d\sigma_3)/(2\lVert M\rVert_F\,u)$, weight $0$ where
      the reference is not unique (PO.3: $\lVert\dot R\rVert \le 2\lVert\dot M\rVert/(\sigma_2 +
      d\sigma_3)$); $\lVert\hat R^\top\hat R - I\rVert_F/u$, exact; and $1/u$ where $\det\hat R \le 0$.
+     The weight is $\operatorname{tr}H - \lambda_{\max}(H)$, $H = \mathrm{sym}(R^\top M)$, in integers
+     from the 30-digit $R$, rounded once: a binary64 eigenvalue carries $u\lVert M\rVert$ absolute,
+     all of the weight on `non-unique` (this record's review).
    - **Strata** (16 each, 64 deep, unless stated):
 
      | Stratum | Draw |
@@ -202,7 +211,60 @@ reference; max, p99.9, mean in `u`):
 | near-rotation $10^{-2}$ … $10^{-16}$ | 5.22–5.70, 4.41–4.61, 1.63–1.66 | 5.27–5.82, 4.43–4.51, 1.42–1.57 |
 | $\sigma = (1, \tfrac12, 10^{-k})$, k = 4 … 16 | 5.32–5.70, 4.50–4.59, 1.56–1.58 | 5.33–5.81, 4.48–4.57, 1.55–1.56 |
 
-Corpus rows, oracles and cost: filled in by step 2.
+**Corpus.** Per stratum, the maximum in `u` of `Rule::Polar`, for three programs:
+- this;
+- nalgebra 0.35's `Rotation3::from_matrix_eps` (Müller's iteration), its input brought to unit
+  scale by a power of two, since its stopping test is absolute;
+- Sophus's `SO3<T>::fitToSO3`, Eigen's `JacobiSVD`.
+
+The maximum is 5.08 `u` at both precisions (`near-1e-4`, `scale-up@f32`), every one of them the
+frame's term, and `polar:exact` reads 0. Domination holds on all 32 strata: the better oracle is at
+least 4.24× this program's maximum at `f64` (`near-1e-4`) and 3.24× at `f32` (`near-1e-6@f32`).
+Sophus is 9.2–33× this on every stratum. nalgebra reads $1.47\times10^{16}$ on `polar:exact` and
+about $7\times10^3$ on `non-unique`, where the nearest rotation is not unique.
+
+| stratum | this | nalgebra | Sophus |
+|---|---|---|---|
+| `polar:random` | 4 | 45.5 | 69.6 |
+| `polar:scaled` | 3.44 | 23.6 | 31.8 |
+| `polar:exact` | 0 | $1.47\times10^{16}$ | 22.6 |
+| `polar:near-1e-2` | 3.46 | 20.5 | 116 |
+| `polar:near-1e-4` | 5.08 | 21.5 | 160 |
+| `polar:near-1e-8` | 4 | 19.7 | 67.6 |
+| `polar:near-1e-12` | 4.15 | 22 | 39.3 |
+| `polar:near-1e-16` | 3.62 | 23 | 44.5 |
+| `polar:reflection` | 3.38 | 34.3 | 33.5 |
+| `polar:cond-1e-4` | 3.65 | 31.6 | 80.2 |
+| `polar:cond-1e-8` | 4.09 | 25 | 71 |
+| `polar:cond-1e-12` | 4.16 | 31.5 | 80.2 |
+| `polar:cond-1e-16` | 4.28 | 34.6 | 69.1 |
+| `polar:rank2` | 3.36 | 24.1 | 61.3 |
+| `polar:non-unique` | 4.92 | $7.13\times10^3$ | 48.3 |
+| `polar:scale-up` | 4.14 | 45.8 | 48.2 |
+| `polar:scale-down` | 3.64 | 56.8 | 38.1 |
+| `polar:random@f32` | 4.41 | 35.3 | 66.7 |
+| `polar:scaled@f32` | 3.8 | 15.2 | 38.1 |
+| `polar:exact@f32` | 0 | $2.74\times10^{7}$ | 11.3 |
+| `polar:near-1e-2@f32` | 4.37 | 18.3 | 50.4 |
+| `polar:near-1e-4@f32` | 3.8 | 13.3 | 57.1 |
+| `polar:near-1e-6@f32` | 4.36 | 14.1 | 62.9 |
+| `polar:reflection@f32` | 3.26 | 17.7 | 89.5 |
+| `polar:cond-1e-2@f32` | 4.45 | 20.8 | 48 |
+| `polar:cond-1e-4@f32` | 4.04 | 18.5 | 65.8 |
+| `polar:cond-1e-6@f32` | 2.99 | 30.1 | 57.5 |
+| `polar:cond-1e-8@f32` | 4.32 | 20.1 | 55.7 |
+| `polar:rank2@f32` | 3.46 | 21.1 | 64.5 |
+| `polar:non-unique@f32` | 3.19 | $7.27\times10^3$ | 38.3 |
+| `polar:scale-up@f32` | 5.08 | 26.6 | 98.9 |
+| `polar:scale-down@f32` | 3.7 | 87.3 | 78.7 |
+
+**Cost** (`benches/linalg.rs`, one pinned core, the median of three runs interleaved with the
+commit before this record's review; `f64`, `f32`): a rotation $10^{-8}$ off SO(3) 99.5 and 52.6 ns;
+`random`, Newton's arm, 286 and 227; the reflection $(1, 0.6, -0.2)$ 603 and 486; rank 2, `svd3`'s
+arm, 525 and 468. The review put the ½ in Newton's scalars, reused the arm test's cofactors in the
+first step, took `eig3`'s eigenvalues without its frame and put the rare arms out of line: Newton's
+arm runs 0.71× (`f64`) and 0.68× (`f32`) as long, the reflection 0.80× and 0.75×; `svd3`'s arm and
+`eig3` did not move.
 
 ## Further work
 

@@ -8,6 +8,27 @@ defined by the status tables in `docs/`; they win over this file.
 
 ## [Unreleased]
 
+### Added
+
+- **`helicoid_linalg::nearest_rotation`** (`0102`): the Frobenius-nearest rotation of a 3×3,
+  `U diag(1, 1, det UVᵀ) Vᵀ`, one of the nearest where it is not unique. It runs Newton's polar
+  iteration with Frobenius scaling where `det M > τ‖M‖³`. Where `det M < −τ‖M‖³` it takes the
+  orthogonal polar factor and a projector reflection, and between them `svd3`'s `UVᵀ`. Its `Dual`
+  tangent is the derivative of the projection wherever that is unique off the `svd3` arm, ties
+  among the singular values included. It reads at most 5.08 `u` over the corpus at both
+  precisions, and dominates nalgebra's `from_matrix_eps` and Sophus's `fitToSO3` on every stratum
+  at both precisions, by at least 4.24× (`f64`) and 3.24× (`f32`). It runs in 99.5 ns on a
+  rotation `1e-8` off SO(3) at `f64` and 52.6 at `f32`, 286–603 ns and 227–486 elsewhere.
+
+### Instrument
+
+Not shipped in the crates.
+- **The corpus id `nearest_rotation`** (`0102`): 17 binary64 strata (296 records) and 15 binary32
+  (264), against `mp.svd_r` at 120 digits. The metric `Rule::Polar` weights the forward error by
+  the projection's conditioning, the weight exact in integers. A self-test pair goes with it, and
+  nalgebra's `Rotation3::from_matrix_eps` (its input at unit scale) and Sophus's `SO3::fitToSO3`
+  are oracles.
+
 ## [0.0.6] - 2026-10-19
 
 The 3×3 SVD release. `helicoid_linalg::svd3` uses the signed convention, so `UVᵀ` is the nearest rotation where that is unique. It is backward stable at every finite input and dominates nalgebra's `SVD` and Eigen's `JacobiSVD` on every stratum at both precisions. `eig3`'s scaling ladder gets faster with bit-identical outputs. **No API break.**

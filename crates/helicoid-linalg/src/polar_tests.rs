@@ -367,6 +367,37 @@ fn the_tangent_is_the_derivative_of_the_projection() {
     }
 }
 
+/// A reflection whose two largest singular values tie, the smallest `delta` below them: the nearest
+/// rotation is unique and the reflection arm's, not `svd3`'s, whose tangent at the tie is no
+/// derivative (`0102` decision 4). Against PO.3 to `16 u / delta`, the conditioning's.
+#[test]
+fn a_reflection_near_a_triple_tie_differentiates_the_projection() {
+    fn at<S: Lane>(delta: f64) {
+        let (p, q) = ([0.4, 0.1, 0.6, -0.3], [0.2, 0.9, 0.1, 0.3]);
+        let a = round::<S>(&planted(p, q, [1.0, 1.0, -(1.0 - delta)]).0);
+        let t = reference(&a);
+        let x = Mat3::from_rows([0, 1, 2].map(|i| {
+            Vector([0, 1, 2].map(|j| Dual::<S, 9>::variable(S::make(a[i][j], [0.0; 2]), 3 * i + j)))
+        }));
+        let r = nearest_rotation(&x);
+        let tol = 16.0 * unit::<S>() / delta;
+        for l in 0..9 {
+            let want = closed_form(&t, l);
+            let got: M = array::from_fn(|i| array::from_fn(|j| r.get(i, j).d[l].lane(0)));
+            let e = fro(&array::from_fn(|i| {
+                array::from_fn(|j| got[i][j] - want[i][j])
+            }));
+            assert!(
+                e <= tol * fro(&want),
+                "delta {delta:e} lane {l}: {:e}",
+                e / fro(&want)
+            );
+        }
+    }
+    at::<f64>(1e-8);
+    at::<f32>(1e-3);
+}
+
 /// The families of [`measure_nearest_rotation`].
 #[allow(clippy::type_complexity)]
 fn families() -> Vec<(

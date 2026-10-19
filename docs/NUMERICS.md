@@ -501,7 +501,8 @@ $X(t) = X_0\,\mathrm{Exp}(t\,d)$ with $d = X_1 \ominus_R X_0$ and $\Delta = X_0^
 - **Nearest rotations** (`nearest_rotation`): the largest of the forward error weighted by the
   projection's conditioning, $\lVert\hat R - R\rVert_F\,(\sigma_2 + d\sigma_3)/(2\lVert M\rVert_F\,u)$
   ($\lVert\dot R\rVert \le 2\lVert\dot M\rVert/(\sigma_2 + d\sigma_3)$, `maths/svd3.md` PO.3; weight 0
-  where the reference is not unique), $\lVert\hat R^\top\hat R - I\rVert_F/u$, and $1/u$ where
+  where the reference is not unique; the weight is exact, then rounded once),
+  $\lVert\hat R^\top\hat R - I\rVert_F/u$, and $1/u$ where
   $\det\hat R \le 0$ ([`0102`](./decisions/0102-the-nearest-rotation-takes-newton-where-it-is-well-posed.md)).
 - **Roots** (`solve_cubic`): the Hausdorff distance between the valid slots $\hat R$ and the three
   reference roots $Z$, complex ones included, over $\|Z\|_2\,u$: each real root to its nearest
@@ -847,7 +848,7 @@ where that is unique (SV.4).
 ## 19. The nearest rotation
 
 `nearest_rotation`'s formulas ([`0102`](./decisions/0102-the-nearest-rotation-takes-newton-where-it-is-well-posed.md),
-draft; `docs/maths/svd3.md` PO.1–PO.3). The result is $U\,\mathrm{diag}(1, 1, d)V^\top$, $d =
+`docs/maths/svd3.md` PO.1–PO.3). The result is $U\,\mathrm{diag}(1, 1, d)V^\top$, $d =
 \operatorname{sign}\det M$, the Frobenius-nearest rotation (SO.13(c)), one of the nearest where it
 is not unique.
 
@@ -862,8 +863,8 @@ is not unique.
   \le 48u^2$, no further step; at most eight.
 - **Reflect.** $Q$ = Newton from $M$ ($\det Q = -1$); $H = \tfrac12(Q^\top M + M^\top Q)$; $\lambda$ the
   smallest eigenvalue of `eig3`$(H)$, then $\lambda \leftarrow \lambda + \det(H - \lambda I)/t$,
-  $t = \operatorname{tr}\mathrm{adj}(H - \lambda I)$, both at the old $\lambda$; where $t \le 16u\,n^2$,
-  the `svd3` arm; otherwise $P = \mathrm{adj}(H - \lambda I)/t$ at the new $\lambda$ and $R = Q - 2QP$,
+  $t = \operatorname{tr}\mathrm{adj}(H - \lambda I)$, both at the old $\lambda$; where $t \le e(g + e)$,
+  $e = 16u\,n$, $g$ the largest eigenvalue of `eig3`$(H)$ less the smallest, the `svd3` arm; otherwise $P = \mathrm{adj}(H - \lambda I)/t$ at the new $\lambda$ and $R = Q - 2QP$,
   then the polish.
 - **`svd3`.** $R = UV^\top$ from §18, then the polish.
 - **Polish.** One Newton step, and a second where the first had $\lVert\Delta\rVert_F^2 > u$.
