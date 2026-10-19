@@ -11,7 +11,7 @@
 //! **The recorded bounds** are `frame <= FRAME u` and `back`, `sv`, `ang * gap / |sigma|` at most
 //! `K u`, one constant at every gap, ties included, about twice the measured worst over 10^6 cases
 //! of each proptest (the config's `cases` raised; `SVD3_REPORT=1` prints each new largest), two
-//! runs with different seeds: `back` 8.7, `sv` 10.3, `ang` 6.4, and 4.5 `u` on the frames
+//! runs with different seeds: `back` 8.7, `sv` 10.3, `ang` 6.4, and 4.7 `u` on the frames
 //! (`measure_svd3`'s families). A planted truth is that of the exact
 //! `U diag(sigma) V^T`, so `sv` and `ang` include the rounding of the planted matrix to `S`;
 //! `measure_svd3` scores against a double-double reference of the stored matrix instead, per family
@@ -424,6 +424,78 @@ fn every_finite_magnitude_is_in_the_domain() {
     }
     at::<f64>(-1000, 1000);
     at::<f32>(-120, 120);
+}
+
+/// A graded matrix at every magnitude: its two small columns, at `2^-17 |A|`, make a Gram block
+/// whose radicand is of degree four. With the `f32` window's floor at `2^-16` that radicand fell
+/// below the smallest normal, the pair went unrotated and `sigma_2` read 24% low; every magnitude
+/// now gives the same singular values to `4 u |A|`.
+#[test]
+fn a_graded_matrix_keeps_its_small_pair_at_every_magnitude() {
+    fn at<S: Lane>(lo: i32, hi: i32) {
+        let t = 2f64.powi(-17);
+        let a = [[1.0, 0.0, 0.0], [0.0, t, t], [0.0, 0.0, t / 2.0]];
+        let base = run::<S>(&a);
+        for e in lo..=hi {
+            let f = 2f64.powi(e);
+            let d = run::<S>(&a.map(|r| r.map(|x| x * f)));
+            for k in 0..3 {
+                assert!(
+                    (d.s[k] - base.s[k] * f).abs() <= 4.0 * unit::<S>() * base.s[0] * f,
+                    "2^{e}: {:?} {:?}",
+                    d.s,
+                    base.s
+                );
+            }
+        }
+    }
+    at::<f64>(-1000, 1000);
+    at::<f32>(-108, 120);
+}
+
+/// A residual whose square is below the smallest normal: the root of a subnormal keeps a few bits,
+/// and `U` read `1.7e14 u` (`f64`), `1.5e4 u` (`f32`) from a rotation. It counts as zero.
+#[test]
+fn a_residual_below_the_smallest_normal_counts_as_zero() {
+    fn at<S: Lane>(x: f64) {
+        for a in [
+            [[1.0, 0.0, 0.0], [0.0, 0.6 * x, 0.0], [0.0, 0.8 * x, 0.0]],
+            [[1.0, 0.0, 0.0], [0.0, 1.125 * x, 0.0], [0.0, 0.0, 0.0]],
+        ] {
+            let d = run::<S>(&a);
+            let ok = convention::<S>("subnormal residual", &a, &d);
+            assert!(ok.is_ok(), "{x:e}: {ok:?}");
+        }
+    }
+    at::<f64>(1.3 * 2f64.powi(-537));
+    at::<f32>(1.3 * 2f64.powi(-73));
+}
+
+/// Columns that leave the exit far from orthogonal to the first, here the two null ones of a
+/// rank-one matrix at `f32` (a planted `sigma = (1, 1e-11, 5e-12)`): one projection left `u_2`
+/// `18 u` from orthogonal to `u_1`, and the projection twice keeps the frame.
+#[test]
+fn a_residual_far_from_orthogonal_keeps_the_frame() {
+    fn at<S: Lane>() {
+        let a = round::<S>(&[
+            [
+                0.054878136243408183,
+                -0.04864913192866512,
+                -0.02365098361864323,
+            ],
+            [0.7095535691895094, -0.6290148965727802, -0.3057982830895288],
+            [
+                -0.02687179269805748,
+                0.023821679770935383,
+                0.011581011546970917,
+            ],
+        ]);
+        let d = run::<S>(&a);
+        let ok = convention::<S>("rank one", &a, &d);
+        assert!(ok.is_ok(), "{ok:?}");
+    }
+    at::<f64>();
+    at::<f32>();
 }
 
 /// A seeded stream of numbers in `[-1, 1]` (splitmix64).

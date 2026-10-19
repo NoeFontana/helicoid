@@ -30,7 +30,8 @@ pub(super) enum Defect {
     /// `svd3`: the first two columns of `U` and of `V` rotated by `1e-9` in their plane (the gap
     /// weight and the backward error).
     RotatesASingularPair,
-    /// `svd3`: `σ₃`'s sign dropped (the ordering's `sign σ₃ = sign det A` and the backward error).
+    /// `svd3`: `σ₃`'s sign dropped (σ's signed forward error and the backward error,
+    /// `2 |σ₃| / ‖A‖`; the ordering cannot see it).
     DropsTheSign,
     /// `chol`: the mask negated (mask agreement).
     FlipsTheMask,
