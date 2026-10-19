@@ -88,14 +88,19 @@ at $3.5\times10^{-7}$, $1.2\times10^{7}$ (and NaN on 13% of the family) at $3.5\
    $\lambda$, its smallest, from `eig3`, then one Newton step on $p(\lambda) = \det(H - \lambda I)$,
    $\lambda \leftarrow \lambda + p/\operatorname{tr}\mathrm{adj}(H - \lambda I)$;
    $P = \mathrm{adj}(H - \lambda I)/\operatorname{tr}\mathrm{adj}(H - \lambda I)$, the projector onto
-   $\lambda$'s eigenvector; $R = Q(I - 2P)$ (PO.2), then one Newton step. Every step after `eig3` is
-   rational in $M$ and $\lambda$, and the refined $\lambda$ has the root's derivative whatever
+   $\lambda$'s eigenvector; $R = Q(I - 2P)$ (PO.2), then the polish of decision 5. Every step
+   after `eig3` is rational in $M$ and $\lambda$, and the refined $\lambda$ has the root's derivative whatever
    `eig3`'s lanes, so the tangent is exact wherever $\sigma_3$ is simple, which is where the nearest
    rotation of a $\det < 0$ matrix is unique, $\sigma_1 = \sigma_2$ included. Where
    $\operatorname{tr}\mathrm{adj}(H - \lambda I) \le 16u\lVert M\rVert_F^2$, $\sigma_3$ is tied to
    rounding and the nearest rotation is not unique: decision 5's.
-5. **`svd3`.** $R = UV^\top$, from `svd3`'s signed convention (`0101` decision 1), then one Newton
-   step, which squares the error of the product of two frames (7.8–8.6 `u` without it).
+5. **`svd3`.** $R = UV^\top$, from `svd3`'s signed convention (`0101` decision 1), then the
+   **polish**: one Newton step, which squares the error of the product of two frames (7.8–8.6 `u`
+   without it), and a second where the first was longer than $\sqrt u$, $\lVert\Delta\rVert_F^2 > u$.
+   A step leaves about the square of its length. The second step serves the reflect arm, whose $P$
+   loses accuracy as $\sigma_2$ and $\lvert\sigma_3\rvert$ close: with
+   $\sigma = (1.95, 0.2513, -0.2495)$ one step left 19.5 `u` on the frame at `f32`. The large
+   sample's figures did not move.
 6. **Non-finite input** gives a matrix of NaN, never a plausible rotation; the zero matrix gives
    $I$ (the `svd3` arm, $U = V = I$). Nothing panics.
 7. **`Dual`.** The Newton and reflect arms differentiate a rational iteration and are exact to the

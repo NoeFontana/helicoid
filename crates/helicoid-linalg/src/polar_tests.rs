@@ -9,7 +9,8 @@
 //!
 //! **The recorded bounds** are `frame <= FRAME u` and the weighted error at most `K u`, about
 //! twice the measured worst over 10^6 cases of each proptest (the config's `cases` raised;
-//! `POLAR_REPORT=1` prints each new largest), two runs with different seeds.
+//! `POLAR_REPORT=1` prints each new largest), three runs with different seeds: 3.2 on the weighted
+//! error (the `non-unique` family), 7.0 on the frame.
 
 use crate::linalg_tests::{cfg, unit, Lane};
 use crate::svd3_tests::{frame_of, fro, lcg, planted, reference, rotation, round, Svd, M, V3};
@@ -20,9 +21,9 @@ use proptest::prelude::*;
 use std::vec::Vec;
 
 /// The recorded bound on the weighted error, in `u`.
-const K: f64 = 16.0;
+const K: f64 = 8.0;
 /// The frame's bound, in `u`.
-const FRAME: f64 = 16.0;
+const FRAME: f64 = 14.0;
 
 fn mat<S: Lane>(a: &M) -> Mat3<S> {
     Mat3::from_rows(a.map(|r| Vector(r.map(|x| S::make(x, [0.0; 2])))))
@@ -149,6 +150,7 @@ fn any_at<S: Lane>(a: &M) -> Result<(), TestCaseError> {
         return Ok(());
     }
     let f = frame_of(&r) / unit::<S>();
+    note("any", [0.0, f]);
     prop_assert!(f <= FRAME, "{a:?}: frame {f:.3}, {r:?}");
     Ok(())
 }
@@ -187,6 +189,19 @@ fn exact_cases() {
             .map(|k| (a[k / 3][k % 3] - got[k / 3][k % 3]).powi(2))
             .sum();
         assert!((d - 20.0).abs() <= 1e-4, "{d} {got:?}");
+        // The reflect arm with its two smallest singular values 0.0019 apart, `sigma = (1.95,
+        // 0.2513, 0.2495)`: one polishing step left 19.5 `u` on the frame at `f32`.
+        let a = round::<S>(&[
+            [0.5, 1.0, -1.588_624_211_521_113],
+            [
+                0.012_303_650_824_949_865,
+                0.288_420_627_821_753_8,
+                0.012_199_184_420_463_211,
+            ],
+            [-0.245_913_889_249_208_93, 0.0, -0.049_008_597_635_288_24],
+        ]);
+        let f = frame_of(&run::<S>(&a)) / u;
+        assert!(f <= FRAME, "{f}");
     }
     at::<f64>();
     at::<f32>();

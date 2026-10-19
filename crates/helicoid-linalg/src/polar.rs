@@ -61,13 +61,26 @@ fn newton<S: Real>(x: [Vec3<S>; 3]) -> [Vec3<S>; 3] {
     x
 }
 
-/// `svd3`'s `U V^T`, then one Newton step, which squares the frame's error of the product of two
-/// frames (7.8-8.6 `u` without it) and projects the tangent onto the one it already has.
+/// The last Newton steps of an arm whose `x` is orthogonal to a small `d`: a step leaves an error of
+/// about the square of its length, so a second runs only where the first was longer than `sqrt(u)`.
+/// It projects the tangent onto the one it already has.
+#[inline]
+fn polish<S: Real>(x: [Vec3<S>; 3]) -> [Vec3<S>; 3] {
+    let u = S::lit(match S::PRECISION {
+        Precision::F64 => const { pow2(-53) },
+        Precision::F32 => const { pow2(-24) },
+    });
+    let (x, d) = step(x);
+    S::branch(d.le(u), || x, || step(x).0)
+}
+
+/// `svd3`'s `U V^T`, then `polish`, which squares the frame's error of the product of two frames
+/// (7.8-8.6 `u` without it).
 #[inline]
 fn through_svd3<S: Real>(a: &Mat3<S>) -> [Vec3<S>; 3] {
     let (u, _, v) = svd3(a);
     let vt = v.transpose();
-    step([0, 1, 2].map(|j| u * vt.col(j))).0
+    polish([0, 1, 2].map(|j| u * vt.col(j)))
 }
 
 /// The reflection arm, `det x <= -tau |x|_F^3` (`0102` decision 4): `Q`, the orthogonal polar
@@ -78,7 +91,9 @@ fn through_svd3<S: Real>(a: &Mat3<S>) -> [Vec3<S>; 3] {
 /// has the root's derivative whatever `eig3`'s lanes are, so the tangent is exact wherever the
 /// smallest singular value is simple, the two largest tied or not. Where `tr adj(H - l I)` is
 /// below `16 u |x|_F^2` the smallest singular value is tied to rounding and the nearest rotation
-/// is not unique: `svd3`'s `U V^T`, one of the nearest. A last Newton step polishes the frame.
+/// is not unique: `svd3`'s `U V^T`, one of the nearest. `polish` finishes the frame: `P`'s error
+/// grows as the two smallest singular values close, and one step left 19.5 `u` at `f32` with
+/// `sigma = (1.95, 0.2513, 0.2495)`.
 #[inline]
 fn reflect<S: Real>(x: [Vec3<S>; 3], a: &Mat3<S>, n2: S) -> [Vec3<S>; 3] {
     let (half, two) = (S::lit(0.5), S::lit(2.0));
@@ -106,10 +121,9 @@ fn reflect<S: Real>(x: [Vec3<S>; 3], a: &Mat3<S>, n2: S) -> [Vec3<S>; 3] {
             // `d/dl det(H - l I) = -tr adj(H - l I)`.
             let (c, _, tr) = shifted(l.0[0] + det / tr);
             let k = two / tr;
-            // `adj(H - l I)` is symmetric, so its cofactor columns are its columns.
-            // One more step of the iteration squares the frame's error left by `P`'s rounding
-            // (16-20 `u` without it); it projects the tangent onto the one it already has.
-            step([0, 1, 2].map(|j| q.col(j) - (q * c[j]).scale(k))).0
+            // `adj(H - l I)` is symmetric, so its cofactor columns are its columns. `polish`
+            // squares the frame's error left by `P`'s rounding (16-20 `u` without it).
+            polish([0, 1, 2].map(|j| q.col(j) - (q * c[j]).scale(k)))
         },
     )
 }
