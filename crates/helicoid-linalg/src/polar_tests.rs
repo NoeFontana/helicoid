@@ -172,8 +172,8 @@ fn identity() -> M {
     array::from_fn(|i| array::from_fn(|j| f64::from(u8::from(i == j))))
 }
 
-/// The zero matrix gives `I`; a rotation is returned to a few `u`; `0015` PH.2's `diag(1, 1, -5)`
-/// gives the nearest rotation, `diag(-1, 1, -1)` or another at squared distance 20.
+/// The zero matrix gives `I`; a rotation is returned to a few `u`; `0015` (draft) PH.2's
+/// `diag(1, 1, -5)` gives the nearest rotation, `diag(-1, 1, -1)` or another at squared distance 20.
 #[test]
 fn exact_cases() {
     fn at<S: Lane>() {
