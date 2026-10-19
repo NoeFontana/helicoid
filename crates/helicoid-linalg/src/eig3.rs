@@ -173,6 +173,9 @@ pub(crate) fn largest<S: Real, const N: usize>(e: &[S; N]) -> S {
 /// being zero (the previous rotation annihilated it); then the columns `[v_p, v_q, v_r]`.
 type Roles<S> = ([S; 7], [Vec3<S>; 3]);
 
+/// Three `(eigenvalue, column)` pairs.
+type Pairs<S> = [(S, Vec3<S>); 3];
+
 /// The rotation annihilating `a_pq` (`NUMERICS.md` §17): `(ta, c, s, c^2, t)`. `svd3` calls it on
 /// the Gram block of two columns (`0101`).
 ///
@@ -208,9 +211,9 @@ pub(crate) fn angle<S: Real>(d: S, apq: S, w2: S) -> (S, S, S, S, S) {
 /// One rotation, `x = a_rp` (`FIRST` only; zero after it): the state of the next rotation, whose
 /// roles are `(q, r, p)`. The next pair's entry `c z`, `z = t x + y`, reaches the next rotation as
 /// `w2 = 4 z^2 c^2`, `c^2` a square root earlier than `c` (`0084`); `d` is recomputed from
-/// the stored diagonal.
+/// the stored diagonal. Without `FRAME` the columns are not rotated.
 #[inline(always)]
-fn turn<S: Real, const FIRST: bool>(
+fn turn<S: Real, const FIRST: bool, const FRAME: bool>(
     ([dp, dq, dr, d, apq, w2, y], [vp, vq, vr]): Roles<S>,
     x: S,
 ) -> Roles<S> {
@@ -231,7 +234,11 @@ fn turn<S: Real, const FIRST: bool>(
             four * (z * z) * c2,
             rp,
         ],
-        [vp.scale(s) + vq.scale(c), vr, vp.scale(c) - vq.scale(s)],
+        if FRAME {
+            [vp.scale(s) + vq.scale(c), vr, vp.scale(c) - vq.scale(s)]
+        } else {
+            [vp, vq, vr]
+        },
     )
 }
 
@@ -243,15 +250,66 @@ fn turn<S: Real, const FIRST: bool>(
 /// The index order is that of an exit after the first rotation, whose roles are `(1, 2, 0)`: a
 /// multiple of the identity and a diagonal matrix keep their axes in order. A later exit leaves the
 /// three in another cyclic order, which the sort makes ascending; it decides only between equal
-/// eigenvalues.
+/// eigenvalues. Without `FRAME` the columns are not rotated.
 #[inline(always)]
-fn polish<S: Real>(([dp, dq, dr, d, apq, w2, y], [vp, vq, vr]): Roles<S>) -> [(S, Vec3<S>); 3] {
+fn polish<S: Real, const FRAME: bool>(
+    ([dp, dq, dr, d, apq, w2, y], [vp, vq, vr]): Roles<S>,
+) -> Pairs<S> {
     let wb = S::lit(2.0) * y;
     let (ta, ca, sa, _, _) = angle(d, apq, w2);
     let (tb, cb, sb, _, _) = angle(dr - dq, y, wb * wb);
-    let (vp, vq) = (vp.scale(ca) - vq.scale(sa), vp.scale(sa) + vq.scale(ca));
-    let (vq, vr) = (vq.scale(cb) - vr.scale(sb), vq.scale(sb) + vr.scale(cb));
+    let (vp, vq, vr) = if FRAME {
+        let (vp, vq) = (vp.scale(ca) - vq.scale(sa), vp.scale(sa) + vq.scale(ca));
+        let (vq, vr) = (vq.scale(cb) - vr.scale(sb), vq.scale(sb) + vr.scale(cb));
+        (vp, vq, vr)
+    } else {
+        (vp, vq, vr)
+    };
     [(dr + tb, vr), (dp - ta, vp), ((dq + ta) - tb, vq)]
+}
+
+/// The rotations of [`eig3`], the frame only with `FRAME`: the polished `(value, column)` pairs in
+/// the exit's cyclic order, the finiteness mask and the power of two that scales the values back.
+#[inline(always)]
+fn jacobi<S: Real, const FRAME: bool>(a: &Mat3<S>) -> (Pairs<S>, S::Mask, S) {
+    let (zero, one) = (S::zero(), S::one());
+    let e = [
+        a.get(0, 0),
+        a.get(1, 1),
+        a.get(2, 2),
+        a.get(1, 0),
+        a.get(2, 0),
+        a.get(2, 1),
+    ];
+    // A non-finite entry iterates on the zero matrix and reports through the eigenvalues.
+    let window = match S::PRECISION {
+        Precision::F64 => &WINDOW_F64,
+        Precision::F32 => &WINDOW_F32,
+    };
+    let ([d0, d1, d2, o01, o02, o12], finite, m, back) = into_window(e, window);
+
+    let two = S::lit(2.0);
+    let ident = [
+        Vector([one, zero, zero]),
+        Vector([zero, one, zero]),
+        Vector([zero, zero, one]),
+    ];
+    // The first rotation, of `(0, 1)`, is general: `a_rp = a_02` is not yet zero.
+    let w = two * o01;
+    let mut st = turn::<S, true, FRAME>(([d0, d1, d2, d1 - d0, o01, w * w, o12], ident), o02);
+    // The exit (`0084`): both entries left at most `u |A|`, `|A|` the largest entry.
+    let th = S::lit(match S::PRECISION {
+        Precision::F64 => const { pow2(-53) },
+        Precision::F32 => const { pow2(-24) },
+    }) * m;
+    let mut k = 1;
+    while k < ROTATIONS {
+        let calm = st.0[4].abs().le(th).and(st.0[6].abs().le(th));
+        st = S::branch(calm, || st, || turn::<S, false, FRAME>(st, zero));
+        // A scalar leaves at its exit; lanes run on, each one held by the branch above.
+        k = calm.decide(|| ROTATIONS, || k + 1, |_, _, next| next);
+    }
+    (polish::<S, FRAME>(st), finite, back)
 }
 
 /// The eigenvalues, ascending, and an orthonormal basis of eigenvectors of the symmetric matrix `a`.
@@ -313,46 +371,8 @@ fn polish<S: Real>(([dp, dq, dr, d, apq, w2, y], [vp, vq, vr]): Roles<S>) -> [(S
 /// ```
 #[inline]
 pub fn eig3<S: Real>(a: &Mat3<S>) -> (Vec3<S>, Mat3<S>) {
-    let (zero, one) = (S::zero(), S::one());
-    let e = [
-        a.get(0, 0),
-        a.get(1, 1),
-        a.get(2, 2),
-        a.get(1, 0),
-        a.get(2, 0),
-        a.get(2, 1),
-    ];
-    // A non-finite entry iterates on the zero matrix and reports through the eigenvalues.
-    let window = match S::PRECISION {
-        Precision::F64 => &WINDOW_F64,
-        Precision::F32 => &WINDOW_F32,
-    };
-    let ([d0, d1, d2, o01, o02, o12], finite, m, back) = into_window(e, window);
-
-    let two = S::lit(2.0);
-    let ident = [
-        Vector([one, zero, zero]),
-        Vector([zero, one, zero]),
-        Vector([zero, zero, one]),
-    ];
-    // The first rotation, of `(0, 1)`, is general: `a_rp = a_02` is not yet zero.
-    let w = two * o01;
-    let mut st = turn::<S, true>(([d0, d1, d2, d1 - d0, o01, w * w, o12], ident), o02);
-    // The exit (`0084`): both entries left at most `u |A|`, `|A|` the largest entry.
-    let th = S::lit(match S::PRECISION {
-        Precision::F64 => const { pow2(-53) },
-        Precision::F32 => const { pow2(-24) },
-    }) * m;
-    let mut k = 1;
-    while k < ROTATIONS {
-        let calm = st.0[4].abs().le(th).and(st.0[6].abs().le(th));
-        st = S::branch(calm, || st, || turn::<S, false>(st, zero));
-        // A scalar leaves at its exit; lanes run on, each one held by the branch above.
-        k = calm.decide(|| ROTATIONS, || k + 1, |_, _, next| next);
-    }
-    let [(d0, v0), (d1, v1), (d2, v2)] = polish(st);
-
-    let mut sign = one;
+    let ([(d0, v0), (d1, v1), (d2, v2)], finite, back) = jacobi::<S, true>(a);
+    let mut sign = S::one();
     let mut exchange = |(x, vx): (S, Vec3<S>), (y, vy): (S, Vec3<S>)| {
         let swap = y.lt(x);
         sign = S::select(swap, -sign, sign);
@@ -372,4 +392,19 @@ pub fn eig3<S: Real>(a: &Mat3<S>) -> (Vec3<S>, Mat3<S>) {
         Vector([value(p0.0), value(p1.0), value(p2.0)]),
         Mat3::from_cols([unit(p0.1.scale(sign)), unit(p1.1), unit(p2.1)]),
     )
+}
+
+/// [`eig3`]'s eigenvalues, bit for bit, without its frame.
+#[inline]
+pub(crate) fn eig3_values<S: Real>(a: &Mat3<S>) -> Vec3<S> {
+    let ([(d0, _), (d1, _), (d2, _)], finite, back) = jacobi::<S, false>(a);
+    let exchange = |x: S, y: S| {
+        let swap = y.lt(x);
+        (S::select(swap, y, x), S::select(swap, x, y))
+    };
+    let (p0, p1) = exchange(d0, d1);
+    let (p1, p2) = exchange(p1, d2);
+    let (p0, p1) = exchange(p0, p1);
+    let nan = S::zero() / S::zero();
+    Vector([p0, p1, p2].map(|l| S::select(finite, l * back, nan)))
 }

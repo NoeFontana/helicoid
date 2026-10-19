@@ -868,64 +868,61 @@ fn polar(rec: &Record, out: &Output, precision: Precision) -> Result<Score, Stri
 }
 
 /// `σ₂ + dσ₃` of `M`, `d = sign det M`, from the reference `R`: for the nearest rotation,
-/// `H = RᵀM` is symmetric with the eigenvalues `(σ₁, σ₂, dσ₃)`, so the sum of its two smallest.
-/// `H`'s symmetric part is formed exactly from the 30-digit `R` and rounded once per entry; its
-/// eigenvalues are cyclic Jacobi's in binary64, `u‖M‖` absolute, which a weight can afford.
+/// `H = RᵀM` is symmetric with the eigenvalues `(σ₁, σ₂, dσ₃)`, so the sum of its two smallest,
+/// `tr H − λ_max`. `N = 2S² sym(RᵀM)` is an integer matrix, exact from the 30-digit `R`, and
+/// `λ_max(N)` is Newton's on its characteristic polynomial in integers from Gershgorin's bound:
+/// above the largest root of a real-rooted cubic every step is short of the root, so the iterate
+/// stays above it and stops within 3 of it. The weight is rounded once. A binary64 eigenvalue
+/// carries `u‖M‖` absolute, all of the weight where the nearest rotation is not unique.
 fn polar_weight(r: &[Decimal], m: &[f64]) -> f64 {
     let md: Vec<Dyadic> = m.iter().map(|&x| Dyadic::of(x)).collect();
     let ex = Exact::of(r, &md);
     let r: Vec<BigInt> = r.iter().map(|d| ex.decimal(d)).collect();
     let m: Vec<BigInt> = md.iter().map(|d| ex.dyadic(d)).collect();
-    // (RᵀM)ᵢⱼ S² = Σₖ (R S)ₖᵢ (M S)ₖⱼ, column-major; the symmetric part over 2 S².
+    // (RᵀM)ᵢⱼ S² = Σₖ (R S)ₖᵢ (M S)ₖⱼ, column-major.
     let rtm =
         |i: usize, j: usize| -> BigInt { (0..3).map(|k| &r[3 * i + k] * &m[3 * j + k]).sum() };
-    let den = ex.square() << 1;
-    let mut h = [[0.0f64; 3]; 3];
-    for (i, row) in h.iter_mut().enumerate() {
-        for (j, x) in row.iter_mut().enumerate() {
-            let sum = rtm(i, j) + rtm(j, i);
-            let mag = ratio_to_f64(sum.magnitude(), &den);
-            *x = if sum.sign() == Sign::Minus { -mag } else { mag };
-        }
-    }
-    let mut lambda = symmetric_eigenvalues(h);
-    lambda.sort_by(f64::total_cmp);
-    lambda[0] + lambda[1]
-}
-
-/// The eigenvalues of a symmetric 3×3, by cyclic Jacobi rotations (Numerical Recipes' `jacobi`)
-/// until the off-diagonal is exactly zero or 32 sweeps have run: independent of the subject's own
-/// `eig3`.
-fn symmetric_eigenvalues(mut a: [[f64; 3]; 3]) -> [f64; 3] {
-    for _ in 0..32 {
-        let off = a[0][1] * a[0][1] + a[0][2] * a[0][2] + a[1][2] * a[1][2];
-        let diag = a[0][0] * a[0][0] + a[1][1] * a[1][1] + a[2][2] * a[2][2];
-        if off == 0.0 || off <= diag * (f64::EPSILON * f64::EPSILON) * 1e-4 {
+    let n: [[BigInt; 3]; 3] =
+        std::array::from_fn(|i| std::array::from_fn(|j| rtm(i, j) + rtm(j, i)));
+    // det(λI − N) = λ³ − c₂λ² + c₁λ − c₀.
+    let minor = |i: usize, j: usize| &n[i][i] * &n[j][j] - &n[i][j] * &n[j][i];
+    let c2: BigInt = (0..3).map(|i| &n[i][i]).sum();
+    let c1 = minor(0, 1) + minor(0, 2) + minor(1, 2);
+    let c0: BigInt = (0..3)
+        .map(|k| {
+            let (k1, k2) = ((k + 1) % 3, (k + 2) % 3);
+            &n[0][k] * (&n[1][k1] * &n[2][k2] - &n[1][k2] * &n[2][k1])
+        })
+        .sum();
+    let mut x = (0..3)
+        .map(|i| {
+            &n[i][i]
+                + (0..3)
+                    .filter(|&j| j != i)
+                    .map(|j| BigInt::from(n[i][j].magnitude().clone()))
+                    .sum::<BigInt>()
+        })
+        .max()
+        .unwrap_or_default();
+    loop {
+        let p = ((&x - &c2) * &x + &c1) * &x - &c0;
+        let dp: BigInt = (&x * 3u32 - (&c2 << 1u32)) * &x + &c1;
+        if p.sign() != Sign::Plus || dp.sign() != Sign::Plus {
             break;
         }
-        for (p, q) in [(0, 1), (0, 2), (1, 2)] {
-            let apq = a[p][q];
-            if apq == 0.0 {
-                continue;
-            }
-            let theta = (a[q][q] - a[p][p]) / (2.0 * apq);
-            let t = if theta.abs() > 1e150 {
-                0.5 / theta
-            } else {
-                theta.signum() / (theta.abs() + (theta * theta + 1.0).sqrt())
-            };
-            let c = 1.0 / (t * t + 1.0).sqrt();
-            let s = t * c;
-            a[p][p] -= t * apq;
-            a[q][q] += t * apq;
-            (a[p][q], a[q][p]) = (0.0, 0.0);
-            let k = 3 - p - q;
-            let (akp, akq) = (a[k][p], a[k][q]);
-            (a[k][p], a[k][q]) = (c * akp - s * akq, s * akp + c * akq);
-            (a[p][k], a[q][k]) = (a[k][p], a[k][q]);
+        let step = p / dp;
+        if step.sign() == Sign::NoSign {
+            break;
         }
+        x -= step;
     }
-    [a[0][0], a[1][1], a[2][2]]
+    let w = c2 - x;
+    let mag = ratio_to_f64(w.magnitude(), &(ex.square() << 1));
+    if w.sign() == Sign::Minus {
+        -mag
+    } else {
+        mag
+    }
 }
 
 /// `NUMERICS.md` §11's root-set distance (`0056` decision 3): the Hausdorff distance between the
@@ -1962,8 +1959,7 @@ mod tests {
         // diag(4, 2, 1): σ₂ + σ₃ = 3. diag(4, 2, −1) has `d = −1`, `R = I`: σ₂ − σ₃ = 1.
         assert_eq!(polar_weight(&decimals(EYE)?, &diag([4.0, 2.0, 1.0])), 3.0);
         assert_eq!(polar_weight(&decimals(EYE)?, &diag([4.0, 2.0, -1.0])), 1.0);
-        // `M = R S`, `R` the quarter turn, `S` symmetric with the eigenvalues (3, 1, 1/2): 3/2,
-        // through Jacobi rotations off the diagonal.
+        // `M = R S`, `R` the quarter turn, `S` symmetric with the eigenvalues (3, 1, 1/2): 3/2.
         let s = [2.0, 1.0, 0.0, 1.0, 2.0, 0.0, 0.0, 0.0, 0.5];
         let m: Vec<f64> = (0..9)
             .map(|e| {
@@ -1972,8 +1968,10 @@ mod tests {
             })
             .collect();
         let m: [f64; 9] = m.try_into().map_err(|_| "nine")?;
-        let w = polar_weight(&decimals(QUARTER)?, &m);
-        assert!((w - 1.5).abs() <= 4.0 * f64::EPSILON, "{w}");
+        assert_eq!(polar_weight(&decimals(QUARTER)?, &m), 1.5);
+        // The matrix of ones has the eigenvalues (3, 0, 0) and `R = I` among its nearest: exactly
+        // zero, the weight of a non-unique nearest rotation.
+        assert_eq!(polar_weight(&decimals(EYE)?, &[1.0; 9]), 0.0);
         Ok(())
     }
 
