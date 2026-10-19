@@ -864,5 +864,6 @@ is not unique.
   smallest eigenvalue of `eig3`$(H)$, then $\lambda \leftarrow \lambda + \det(H - \lambda I)/t$,
   $t = \operatorname{tr}\mathrm{adj}(H - \lambda I)$, both at the old $\lambda$; where $t \le 16u\,n^2$,
   the `svd3` arm; otherwise $P = \mathrm{adj}(H - \lambda I)/t$ at the new $\lambda$ and $R = Q - 2QP$,
-  then one Newton step.
-- **`svd3`.** $R = UV^\top$ from §18, then one Newton step.
+  then the polish.
+- **`svd3`.** $R = UV^\top$ from §18, then the polish.
+- **Polish.** One Newton step, and a second where the first had $\lVert\Delta\rVert_F^2 > u$.
