@@ -26,26 +26,26 @@ NEAR_K = {False: (4, 8, 12), True: (2, 4, 6)}
 SCALE = {False: 70, True: 12}  # svd:scale-up/down: 10^(+-SCALE)
 
 
-def _uniform(rng, lo, hi):
+def uniform(rng, lo, hi):
     return lo + (hi - lo) * mpf(rng.uniform())
 
 
-def _rotation(rng):
+def rotation(rng):
     return mp.matrix(so3.rot(list(unit_quaternion_s3(rng))))
 
 
-def _gaussian_matrix(rng):
+def gaussian_matrix(rng):
     return mp.matrix([[gaussian(rng) for _ in range(3)] for _ in range(3)])
 
 
-def _with_sigma(spectrum):
+def with_sigma(spectrum):
     """A planted stratum: `spectrum(rng)` draws sigma from the stream `sigma`."""
 
     def make(draw: Draw, n: int) -> list[dict]:
         rq_u, rq_v, rs = draw.stream("U"), draw.stream("V"), draw.stream("sigma")
         out = []
         for _ in range(n):
-            U, V = _rotation(rq_u), _rotation(rq_v)
+            U, V = rotation(rq_u), rotation(rq_v)
             out.append({"A": round_matrix(U * mp.diag(spectrum(rs)) * V.T, draw.round)})
         return out
 
@@ -59,7 +59,7 @@ def _random(sign: int = 0):
     def make(draw: Draw, n: int) -> list[dict]:
         rng = draw.stream("entries", of="svd:random")
         factor = mpf(10) ** (sign * SCALE[draw.f32])
-        return [{"A": round_matrix(factor * _gaussian_matrix(rng), draw.round)} for _ in range(n)]
+        return [{"A": round_matrix(factor * gaussian_matrix(rng), draw.round)} for _ in range(n)]
 
     return make
 
@@ -81,21 +81,21 @@ def gap_spectrum(c, x, t, top: bool) -> list:
 
 def _gap(k: int, top: bool):
     def spectrum(rng):
-        c = _uniform(rng, mpf(1) / 2, 1)
-        x = _uniform(rng, mpf(1) / 4, mpf(3) / 4) if top else _uniform(rng, mpf(1) / 4, 1)
+        c = uniform(rng, mpf(1) / 2, 1)
+        x = uniform(rng, mpf(1) / 4, mpf(3) / 4) if top else uniform(rng, mpf(1) / 4, 1)
         return gap_spectrum(c, x, mpf(10) ** -k, top)
 
-    return _with_sigma(spectrum)
+    return with_sigma(spectrum)
 
 
 def _graded(k: int):
-    return _with_sigma(lambda rng: [mpf(1), mpf(10) ** -k, mpf(10) ** -k / 2])
+    return with_sigma(lambda rng: [mpf(1), mpf(10) ** -k, mpf(10) ** -k / 2])
 
 
 def _col_graded(draw: Draw, n: int) -> list[dict]:
     rng = draw.stream("entries")
     D = mp.diag([mpf(10) ** -g for g in COL_GRADES[draw.f32]])
-    return [{"A": round_matrix(_gaussian_matrix(rng) * D, draw.round)} for _ in range(n)]
+    return [{"A": round_matrix(gaussian_matrix(rng) * D, draw.round)} for _ in range(n)]
 
 
 # `svd:zero`'s sign patterns, column-major: all +0, all -0, then alternating from +0 and from -0.
@@ -109,10 +109,10 @@ def _zero(draw: Draw, n: int) -> list[dict]:
 
 def _haar_rotation(draw: Draw, n: int) -> list[dict]:
     rng = draw.stream("quat")
-    return [{"A": round_matrix(_rotation(rng), draw.round)} for _ in range(n)]
+    return [{"A": round_matrix(rotation(rng), draw.round)} for _ in range(n)]
 
 
-def _near_rotation(k: int, reflect: bool):
+def near_rotation(k: int, reflect: bool):
     """A Haar rotation plus Gaussian entries of size 10^-k; `reflect` times diag(1, 1, -1)."""
 
     def make(draw: Draw, n: int) -> list[dict]:
@@ -120,7 +120,7 @@ def _near_rotation(k: int, reflect: bool):
         flip = mp.diag([1, 1, -1 if reflect else 1])
         out = []
         for _ in range(n):
-            R, E = _rotation(rq), _gaussian_matrix(re)
+            R, E = rotation(rq), gaussian_matrix(re)
             out.append({"A": round_matrix((R + mpf(10) ** -k * E) * flip, draw.round)})
         return out
 
@@ -128,18 +128,18 @@ def _near_rotation(k: int, reflect: bool):
 
 
 def _rank2(rng):
-    return [mpf(1), _uniform(rng, mpf(1) / 4, 1), mpf(0)]
+    return [mpf(1), uniform(rng, mpf(1) / 4, 1), mpf(0)]
 
 
 def _essential(rng):
-    s = _uniform(rng, mpf(1) / 4, 1)
+    s = uniform(rng, mpf(1) / 4, 1)
     return [s, s, mpf(0)]
 
 
 def _ordering(rng):
     """diag(a, a, -b), b = a (1 + h) > a: PH.2's case, sigma = (b, a, -a)."""
-    a = _uniform(rng, mpf(1) / 4, 1)
-    return [a, a, -a * (1 + _uniform(rng, mpf(1) / 4, 4))]
+    a = uniform(rng, mpf(1) / 4, 1)
+    return [a, a, -a * (1 + uniform(rng, mpf(1) / 4, 4))]
 
 
 def _named(f32: bool) -> list[tuple[str, object, int, bool]]:
@@ -155,7 +155,7 @@ def _named(f32: bool) -> list[tuple[str, object, int, bool]]:
     ]
     near64 = NEAR_K[False]
     near = [
-        (f"svd:near-{kind}-1e-{k}", _near_rotation(k, kind == "reflection"), N_SVD, k in near64)
+        (f"svd:near-{kind}-1e-{k}", near_rotation(k, kind == "reflection"), N_SVD, k in near64)
         for kind in ("rotation", "reflection")
         for k in NEAR_K[f32]
     ]
@@ -164,13 +164,13 @@ def _named(f32: bool) -> list[tuple[str, object, int, bool]]:
         *gaps,
         *graded,
         ("svd:col-graded", _col_graded, N_WIDE, False),
-        ("svd:rank2", _with_sigma(_rank2), N_SVD, True),
-        ("svd:rank1", _with_sigma(lambda rng: [mpf(1), mpf(0), mpf(0)]), N_SVD, True),
+        ("svd:rank2", with_sigma(_rank2), N_SVD, True),
+        ("svd:rank1", with_sigma(lambda rng: [mpf(1), mpf(0), mpf(0)]), N_SVD, True),
         ("svd:zero", _zero, N_ZERO, True),
         ("svd:rotation", _haar_rotation, N_SVD, True),
         *near,
-        ("svd:essential", _with_sigma(_essential), N_SVD, True),
-        ("svd:ordering", _with_sigma(_ordering), N_WIDE, True),
+        ("svd:essential", with_sigma(_essential), N_SVD, True),
+        ("svd:ordering", with_sigma(_ordering), N_WIDE, True),
         ("svd:scale-up", _random(1), N_SVD, False),
         ("svd:scale-down", _random(-1), N_SVD, False),
     ]

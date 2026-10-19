@@ -21,13 +21,13 @@ const ROTATIONS: usize = 12;
 /// unrotated, costs the finish at most `2^-256` (`f64`), `2^-32` (`f32`), that is `2^-128 |A|` and
 /// `u |A| / 2` at the floor (`maths/svd3.md` SV.6). The `f32` window reaches `2^28` so that a
 /// covariance in mm² takes no ladder; its steps are `eig3`'s with a second `2^64`, which carries
-/// the smallest subnormal inside.
-const WINDOW_F64: Window = Window {
+/// the smallest subnormal inside. `nearest_rotation` scales by them too.
+pub(crate) const WINDOW_F64: Window = Window {
     lo: pow2(-128),
     hi: pow2(128),
     steps: &[pow2(512), pow2(256), pow2(128), pow2(64)],
 };
-const WINDOW_F32: Window = Window {
+pub(crate) const WINDOW_F32: Window = Window {
     lo: pow2(-7),
     hi: pow2(28),
     steps: &[pow2(64), pow2(64), pow2(32), pow2(16), pow2(8)],

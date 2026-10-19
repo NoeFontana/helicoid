@@ -178,7 +178,7 @@ const RUNNERS: &[Runner] = &[
         backend: Backend::HostStd,
         binary64_only: false,
         // `Sophus::Sim3<float>`, `Sophus::SO3<float>` of a matrix (`0085`) and its `fitToSO3`
-        // (`0102`, draft), Eigen's `SelfAdjointEigenSolver<Matrix3f>` (`0083`) and
+        // (`0102`), Eigen's `SelfAdjointEigenSolver<Matrix3f>` (`0083`) and
         // `JacobiSVD<Matrix3f>` (`0101`); no other id it answers has `@f32` strata.
         answers_f32: &[
             "so3_from_matrix",
@@ -220,7 +220,7 @@ const RUNNERS: &[Runner] = &[
             // The image's Eigen, not Sophus (`0083`; `0101`).
             "eig3",
             "svd3",
-            // Sophus's `fitToSO3` (`0102`, draft).
+            // Sophus's `fitToSO3` (`0102`).
             "nearest_rotation",
         ],
     },

@@ -1,6 +1,6 @@
 # 0102: the nearest rotation takes Newton where it is well posed
 
-**Status:** draft
+**Status:** ready
 **Owner:** @NoeFontana
 **Implementation:** the PRs of its *Implementation plan*
 

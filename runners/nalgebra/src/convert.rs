@@ -19,7 +19,7 @@
 //! - `svd3` (`docs/decisions/0101` decision 8): `SVD::try_new`, which nalgebra 0.35.0
 //!   computes for a `Matrix3` by McAdams et al.'s route (`SymmetricEigen` of `AᵀA`, then a QR of
 //!   `AV`), sorted descending and put in that record's signed convention.
-//! - `nearest_rotation` (`docs/decisions/0102` decision 8, draft): `Rotation3::from_matrix_eps`,
+//! - `nearest_rotation` (`docs/decisions/0102` decision 8): `Rotation3::from_matrix_eps`,
 //!   Müller et al.'s iteration, from the identity, `eps` the precision's unit roundoff, at most
 //!   [`ROTATION_ITERATIONS`] steps.
 //!
@@ -114,7 +114,7 @@ const TABLE: [(&str, Evaluate, Evaluate); 10] = [
 /// 39.
 const MAX_ITERATIONS: usize = 300;
 
-/// The steps `Rotation3::from_matrix_eps` gets (`docs/decisions/0102` decision 8, draft): at 100
+/// The steps `Rotation3::from_matrix_eps` gets (`docs/decisions/0102` decision 8): at 100
 /// it stops 0.80 short of the nearest rotation of `[[1,2,3],[4,5,6],[7,8,10]]`, at 1000 it is within
 /// `5e-14`; its `0` would be unbounded.
 const ROTATION_ITERATIONS: usize = 10_000;

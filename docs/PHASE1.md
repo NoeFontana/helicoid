@@ -183,7 +183,7 @@ side of `docs/maths/coefficients.md` CO.12.
 | `solve_cubic` | $(a, b, c, d)$ | the three roots of the stored coefficients as `re`, `im`, ordered by $(\mathrm{Re}, \mathrm{Im})$: planted where the coefficients are exact, else `mp.polyroots` with `extraprec=300` ([`0056`](./decisions/0056-the-routines-d7-does-not-reach.md)) |
 | `eig3` | $A$, symmetric | `mp.eigsy`: `lambda` ascending, `V` its eigenvectors as columns |
 | `svd3` | $A$ | `mp.svd_r` in the signed convention: $U, V \in \mathrm{SO}(3)$, `sigma` with $\sigma_1 \ge \sigma_2 \ge \lvert\sigma_3\rvert$, $\operatorname{sign}\sigma_3 = \operatorname{sign}\det A$; zero singular values exact by the rank in rationals ([`0101`](./decisions/0101-svd3-is-one-sided-jacobi-on-eig3-s-rotation.md)) |
-| `nearest_rotation` | $M$ | $U\,\mathrm{diag}(1, 1, d)V^\top$ from `mp.svd_r`, $d$ the exact sign of $\det M$ ([`0102`](./decisions/0102-the-nearest-rotation-takes-newton-where-it-is-well-posed.md), draft) |
+| `nearest_rotation` | $M$ | $U\,\mathrm{diag}(1, 1, d)V^\top$ from `mp.svd_r`, $d$ the exact sign of $\det M$ ([`0102`](./decisions/0102-the-nearest-rotation-takes-newton-where-it-is-well-posed.md)) |
 | `chol_n{3,6}` | $A$, symmetric | `valid` decided exactly by an $LDL^\top$ in rationals; `L` = `mp.cholesky`, zeros where `valid` is 0 |
 | `chol_solve_n{3,6}` | $(A, b)$ | `mp.lu_solve` of the equilibrated system $DAD$, $D = \mathrm{diag}(A)^{-1/2}$ |
 | `quat_renormalize` | $q$ | $q/\lVert q\rVert$, the projection `NUMERICS.md` §3.6 claims inside its band |
@@ -218,7 +218,7 @@ Series are summed until the term's norm is below $10^{-110}$ relative. Phase 2's
   $\theta \in \{10^{-8}, 10^{-4}, 10^{-1}, 1, \pi - 10^{-6}\}$ for SE_N(3), $N \in \{1, 2, 3\}$.
   Each cell is a stratum, `rho:1e4/theta=pi-1e-6`, and each record draws its $\theta$ in the
   cell's band: the offset from $0$, or from $\pi$, times $1 + 2^{-10}(2u - 1)$
-  ([`0094`](./decisions/0094-a-grid-cell-is-a-band.md), draft). The SE_N(3) ids also see the
+  ([`0094`](./decisions/0094-a-grid-cell-is-a-band.md)). The SE_N(3) ids also see the
   `theta:*` strata at unit translation scale, all but `theta:dense`; `sen3_log` and `sen3_ad`, which take a quaternion,
   also see `q:w0` and `q:nonunit`. Each SE_N(3) stratum is 6 records, not 64: five dense matrices
   per record at 64 would be 190 MB. 6 is a budget trade-off (the family is 18 of the 50 MB; the

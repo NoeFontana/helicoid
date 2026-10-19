@@ -10,7 +10,7 @@
 // with `--precision f32` the `@f32` records alone, with `Sophus::*<float>` (docs/decisions/0077).
 // `eig3` is the image's Eigen, `SelfAdjointEigenSolver<Matrix3<T>>` (docs/decisions/0083); `svd3`
 // its `JacobiSVD<Matrix3<T>>` (docs/decisions/0101); `nearest_rotation` `SO3<T>::fitToSO3`
-// (docs/decisions/0102, draft).
+// (docs/decisions/0102).
 // A record Sophus refuses (a failed `SOPHUS_ENSURE`, or Eigen's solver not converging) is answered
 // with `nan` in every field: answered, so no stratum is the runner's choice, and non-finite, so it
 // never sets a bar.

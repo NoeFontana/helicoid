@@ -21,7 +21,7 @@ uv run --frozen python -m gen list
 | `gen/rng.py` | splitmix64, per-stratum streams, log-uniform, uniform on S² |
 | `gen/strata.py` | the strata; `gen/registry.py` the function ids; `gen/coeff.py`, `gen/so3.py`, `gen/sen3.py`, `gen/so2.py`, `gen/se2.py` their definitions |
 | `gen/series.py`, `gen/check.py`, `gen/check_sen3.py`, `gen/check_se2.py` | the exact Taylor series (`coeff_series`); the per-record cross-checks |
-| `gen/cubic.py`, `gen/eig.py`, `gen/svd.py`, `gen/chol.py`, `gen/quat.py`, `gen/real.py`, `gen/dense.py`, `gen/gaussian.py` | the ids of `docs/decisions/0056` and `svd3` (`0101`), each with its strata (`strata.Drawn`); n×n helpers, exact rank and rational LDLᵀ |
+| `gen/cubic.py`, `gen/eig.py`, `gen/svd.py`, `gen/polar.py`, `gen/chol.py`, `gen/quat.py`, `gen/real.py`, `gen/dense.py`, `gen/gaussian.py` | the ids of `docs/decisions/0056`, `svd3` (`0101`) and `nearest_rotation` (`0102`), each with its strata (`strata.Drawn`); n×n helpers, exact rank and rational LDLᵀ |
 | `gen/check_linalg.py`, `gen/check_real.py`, `gen/check_gaussian.py` | their cross-checks |
 | `gen/charts.py`, `gen/s2.py`, `gen/check_charts.py` | the chart ids (`docs/decisions/0060` decision 8, `0063`) and their cross-checks |
 | `gen/sim3.py`, `gen/check_sim3.py` | the Sim(3) ids (`docs/decisions/0070`) and their cross-checks |
@@ -274,7 +274,7 @@ tangent's order, `"shape":[3,3]`.
 
 `solve_cubic`, `eig3`, `chol_n{3,6}`, `chol_solve_n{3,6}`, `quat_renormalize` and `real_*`: the
 record's decision 1 fixes their fields and references, decision 2 their strata; `svd3`'s are
-`0101` decision 8's. Every one has
+`0101` decision 8's and `nearest_rotation`'s `0102` decision 8's. Every one has
 `@f32` strata, after all its binary64 ones, in the same order.
 
 | Id | In | Out | Reference |
@@ -282,6 +282,7 @@ record's decision 1 fixes their fields and references, decision 2 their strata; 
 | `solve_cubic` | `a`, `b`, `c`, `d` | `re[3]`, `im[3]`, by (re, im) | the roots of the stored cubic (below) |
 | `eig3` | `A` (3×3) | `lambda[3]` ascending, `V` (columns) | `mp.eigsy`; each column's largest component (the first of equals) positive |
 | `svd3` | `A` (3×3) | `U`, `sigma[3]`, `V` | `mp.svd_r`, sorted; U, V ∈ SO(3), σ₁ ≥ σ₂ ≥ \|σ₃\|, sign σ₃ = sign det A (below) |
+| `nearest_rotation` | `M` (3×3) | `R` (3×3) | U diag(1, 1, d) Vᵀ from `mp.svd_r`, d = sign det M in rationals (below) |
 | `chol_n*` | `A` (n×n) | `valid[1]`, `L` | `valid` by an exact LDLᵀ; `mp.cholesky(A, tol=0)`, or zeros |
 | `chol_solve_n*` | `A`, `b[n]` | `x[n]` | `mp.lu_solve` of the equilibrated system: x = D (DAD)⁻¹ D b, D = diag(A)^-1/2 |
 | `quat_renormalize` | `q[4]` | `q[4]` | q/‖q‖ |
@@ -296,6 +297,7 @@ record's decision 1 fixes their fields and references, decision 2 their strata; 
 | `solve_cubic` | `cubic:distinct`, `double`, `triple`, `one-real`, `near-double-1e-{2,4,6,8}`, `one-real-p-small`, `coeff-scale-up`, `coeff-scale-down`, `one-real-small-root` (`0031`: x³ + x + q, |q| log-uniform in [1e-12, 1e-2], [1e-6, 1e-1] at f32); the same at f32. 64 each, 1536 |
 | `eig3` | `eig:random`, `eig:gap-1e-k/bottom` k = 0…12 (0…6), then `/top`, `eig:triple`, `rank1`, `scale-up`, `scale-down`. 64, gaps 32; 1920 |
 | `svd3` | `svd:random` (32), `svd:gap-1e-k/bottom` then `/top`, k ∈ {1, 2, 4, 6, 8, 10, 12} ({1, 2, 4, 6}), `graded-1e-k` k ∈ {2, 4, 8, 12} ({2, 4, 6}), `col-graded` (32), `rank2`, `rank1`, `zero` (4), `rotation`, `near-rotation-1e-k` then `near-reflection-1e-k`, k ∈ {4, 8, 12} ({2, 4, 6}), `essential`, `ordering` (32), `scale-up`, `scale-down` (10^±70, 10^±12). 16 unless stated; 580 + 468 |
+| `nearest_rotation` | `polar:near-1e-k` k ∈ {2, 4, 8, 12, 16} ({2, 4, 6}), `exact` (24), `scaled`, `random` (32), `reflection`, `cond-1e-k` k ∈ {4, 8, 12, 16} ({2, 4, 6, 8}), `rank2`, `non-unique`, `scale-up`, `scale-down` (10^±70, 10^±12). 16 unless stated; 296 + 264 |
 | `chol_n*` | `chol:spd`, `cond-1e-{4,8,12}` (`{2,4,6}`), `diag-scale`, `indefinite`. 32 each, 384 |
 | `chol_solve_n*` | the same without `indefinite`, 320 |
 | `quat_renormalize` | `renorm:eta-2^-{27,30,40,52}` (`{12,16,20,23}`), `renorm:eta-edge`. 64 each, 640 |
@@ -339,6 +341,19 @@ record's decision 1 fixes their fields and references, decision 2 their strata; 
   of det A by construction. Singular values that are zero by the stored A's rank in rationals are
   0; at rank 1, u₂ and v₂ are u₁ and v₁ crossed with the axis of their smallest component, the
   same at every precision; at rank 0, U = V = I.
+- **`nearest_rotation`.** Planted as `svd3`'s, rounded once; `polar:near` is `svd:near-rotation`'s
+  draw on its own streams, `exact` `matrix:exact`'s 24 rotations (`0085`), `scaled` c R with c
+  log-uniform in [10⁻³, 10³], `reflection` σ = (1, a, −ha), a ∈ [½, 1], h ∈ [⅛, ½) (det M/‖M‖³ >
+  0.009, the reflect arm at both precisions), `cond` σ = (1, ½, ±10⁻ᵏ), + on even records and − on
+  odd (det M/‖M‖³ = 0.36·10⁻ᵏ: k = 4 above τ = 2⁻²⁶ and 8 below; 2 above 2⁻¹² and 4 below at f32),
+  `non-unique` σ = (1, a, −a), a ∈ [¼, 1]. `rank2` is X Yᵀ, X = [u₁, u₂] and Y = [v₁, v₂/2] on the
+  grid 2⁻²⁶ (2⁻¹¹): its entries are exact, so the stored M is rank 2 in rationals. The reference
+  sorts `mp.svd_r` descending; at det M = 0, d = det U det V, which leaves no sign of the null
+  vectors in R. An M that is a rotation in rationals is R itself (svd_r leaves 1e-121 where a
+  signed permutation is 0). An M whose nearest rotation is not unique (det M ≤ 0 and the two
+  smallest eigenvalues of MᵀM equal, by the exact discriminant) is refused, since svd_r's point on
+  the circle is not the same at every precision: `non-unique`'s rounding breaks its tie by
+  1e-18…1e-16 (3e-9…4e-8), so its reference is the stored M's one nearest rotation.
 - **`chol`.** Q is n Householder reflections, directions normalized Gaussians. `mp.cholesky`'s
   default refuses pivots below an absolute eps (all of `chol:diag-scale`'s, down to 1e-200), and
   `mp.lu_solve` pivots against ‖A‖₁ eps and loses cond(A) eps (1e400 eps there): hence `tol=0`,
@@ -354,7 +369,8 @@ record's decision 1 fixes their fields and references, decision 2 their strata; 
   against the size of their terms, the count of real roots against the discriminant, a
   conjugate pair, multiple roots exact in rationals; `eig3` ‖AV − VΛ‖ ≤ 1e-100 ‖A‖ and
   ‖VᵀV − I‖ ≤ 1e-100; `svd3` ‖AV − UΣ‖ ≤ 1e-100 ‖A‖, ‖UᵀU − I‖, ‖VᵀV − I‖ and |det − 1| ≤ 1e-100,
-  the ordering, and the sign of σ₃ against det A in rationals; `chol` `valid` against `mp.eigsy` of the equilibrated A (a congruence keeps
+  the ordering, and the sign of σ₃ against det A in rationals; `nearest_rotation` ‖RᵀR − I‖ and
+  |det R − 1| ≤ 1e-100 and no nearer rotation among 50, 25 Haar and R turned by 10⁻ᵏ, k = 1…25; `chol` `valid` against `mp.eigsy` of the equilibrated A (a congruence keeps
   the signs), L lower with a positive diagonal and ‖LLᵀ − A‖ ≤ 1e-100 ‖A‖; `chol_solve`
   ‖Ax − b‖ ≤ 1e-100 ‖A‖‖x‖; `quat_renormalize` ‖q'‖ = 1, every 2×2 minor of [q, q'], q'·q > 0.
   `real_*`: each derivative against `mp.diff` at h = 10⁻⁷⁰|x| to 60 digits, the precision raised
