@@ -56,6 +56,15 @@ def rank(A: list[list[Fraction]]) -> int:
     return out
 
 
+def det3(A):
+    """The determinant of a 3x3 by its rows: exact on `exact`'s rationals."""
+    return (
+        A[0][0] * (A[1][1] * A[2][2] - A[1][2] * A[2][1])
+        - A[0][1] * (A[1][0] * A[2][2] - A[1][2] * A[2][0])
+        + A[0][2] * (A[1][0] * A[2][1] - A[1][1] * A[2][0])
+    )
+
+
 def frobenius(A):
     return mp.sqrt(sum(abs(A[i, j]) ** 2 for i in range(A.rows) for j in range(A.cols)))
 

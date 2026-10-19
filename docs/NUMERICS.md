@@ -26,7 +26,7 @@ computes from definitions (`PHASE1.md` §4.3), so a wrong line in this file fail
   stored `w` first. Active: $v' = q\,v\,q^*$. With $u = (x, y, z)$:
   $R(q) = (w^2 - \|u\|^2)\,I + 2\,u u^\top + 2w\,[u]_\times$, evaluated as
   $(1 - 2\|u\|^2)\,I + 2\,u u^\top + 2w\,[u]_\times$, equal for a unit $q$: the diagonal is
-  $1 - 2(u_j^2 + u_k^2)$ ([`0092`](./decisions/0092-r-of-q-takes-the-unit-diagonal.md), draft).
+  $1 - 2(u_j^2 + u_k^2)$ ([`0092`](./decisions/0092-r-of-q-takes-the-unit-diagonal.md)).
 - **SE_N(3).** $X = (R, x_1, \dots, x_N)$, i.e. the $(3+N)\times(3+N)$ matrix
   $\begin{bmatrix} R & x_1 \cdots x_N \\ 0 & I_N \end{bmatrix}$. Composition
   $XY = (R_X R_Y,\ R_X y_i + x_i)$; inverse $(R^\top, -R^\top x_i)$. SE(3) is $N = 1$ with $x_1 = t$;
@@ -228,7 +228,7 @@ $J_l(\varphi)$ and $J_l^{-1}(\varphi)$ are §3.5's (the `V` and `V⁻¹` of `tf_
 $J_l(\varphi)\rho = \rho + a\,\varphi\times\rho + b\,\varphi\times(\varphi\times\rho)$, by two cross products;
 where $b$ is on its exact arm, $\tfrac{\sin\theta}{\theta}\rho + a\,\varphi\times\rho + b\,(\varphi\cdot\rho)\,\varphi$,
 the same map without the cancellation of $1 - b\theta^2 = \sin\theta/\theta$ near $\pi$ (§3.5's $J_r$
-diagonal; [`0095`](./decisions/0095-exp-translation-takes-the-far-diagonal.md), draft).
+diagonal; [`0095`](./decisions/0095-exp-translation-takes-the-far-diagonal.md)).
 
 ### 5.2 Adjoints
 
@@ -264,13 +264,13 @@ $$
 $a = \tfrac12 - zd$ §3.5's $a$ (CO.4(a)), $S$ symmetric with its diagonal formed as §5.4's, and
 $b - 2d = (2a - \sin\theta/\theta)/z$ where $b$ is on its exact arm (`q_five_coeffs`). $Q(-\rho, -\varphi)$ has the
 same $S$ and the skew part negated
-([`0097`](./decisions/0097-the-jacobian-column-is-five-words.md), draft).
+([`0097`](./decisions/0097-the-jacobian-column-is-five-words.md)).
 
 ### 5.4 Inverses
 
 $J_r^{-1}(\tau)$ and $J_l^{-1}(\tau)$ are the dual-matrix inverse (§2.2) of §5.3,
 $J_r^{-1}(\varphi) - \epsilon\,J_r^{-1}(\varphi)\,Q(-\rho_i, -\varphi)\,J_r^{-1}(\varphi)$, **evaluated in
-the four words it reduces to** (`docs/maths/se3.md` SE.17; [`0093`](./decisions/0093-the-inverse-jacobian-column-is-four-words.md), draft):
+the four words it reduces to** (`docs/maths/se3.md` SE.17; [`0093`](./decisions/0093-the-inverse-jacobian-column-is-four-words.md)):
 $$
 J_r^{-1}(\tau) = J_r^{-1}(\varphi) + \epsilon\,\big(\tfrac12\rho_i^\wedge + S(\rho_i)\big),\qquad
 J_l^{-1}(\tau) = J_l^{-1}(\varphi) + \epsilon\,\big(-\tfrac12\rho_i^\wedge + S(\rho_i)\big),
@@ -370,7 +370,7 @@ $\Xi = \rho^\wedge$, $z = \theta^2$, $\Delta = \sigma^2 + z$, $M = W + \sigma I$
   where $b$ is on its exact arm, as $\chi\rho + v_1\,\varphi\times\rho + v_2\,(\varphi\cdot\rho)\,\varphi$ with
   $\chi\Delta = \sigma^2v_0 + e^\sigma z\,\mathrm{sinc}\,\theta - \sigma e^\sigma za$ (SM.5(c)), which does not cancel where
   $v_0 - zv_2$ does, to $\mathrm{sinc}\,\theta$ at $\sigma = 0$ near $\pi$ (§5.1's far arm;
-  [`0096`](./decisions/0096-sim3-exp-takes-chi-without-the-cancellation.md), draft).
+  [`0096`](./decisions/0096-sim3-exp-takes-chi-without-the-cancellation.md)).
 - **Log.** $\mathrm{Log}\,X = (\varphi,\ \mathsf V^{-1}t,\ \sigma)$, $\varphi$ by §3.2, $\mathsf V^{-1} = i_0I + i_1W + i_2W^2$ with $\chi = v_0 - zv_2$,
   $\Lambda = \chi^2 + zv_1^2$, $i_0 = 1/v_0$, $i_1 = -v_1/\Lambda$, $i_2 = (v_1^2 - v_2\chi)/(v_0\Lambda)$ (SM.8). No `mp.logm`: the geometric $\mathrm{SO}(3)$ logarithm and a $\mathsf V$ solve are the reference.
 - **Ad, ad** (SM.9): $\mathrm{Ad}_X = \begin{bmatrix}R & 0 & 0\\ [t]_\times R & sR & -t\\ 0 & 0 & 1\end{bmatrix}$, $\mathrm{ad}_\tau = \begin{bmatrix}W & 0 & 0\\ \Xi & M & -\rho\\ 0 & 0 & 0\end{bmatrix}$.
@@ -379,7 +379,7 @@ $\Xi = \rho^\wedge$, $z = \theta^2$, $\Delta = \sigma^2 + z$, $M = W + \sigma I$
   $w_0 = (\mathrm{expm1}\,\sigma - \sigma)/\sigma^2$, $w_2 = (w_0 + \sigma v_2 - v_1)/\Delta$, $w_1 = v_2 - \sigma w_2$, $\partial_zv_2 = (\sigma e^\sigma a' - e^\sigma\mathrm{sinc}' - v_2)/\Delta$, $\partial_zv_1 = e^\sigma a' - \sigma\partial_zv_2$,
   $a' = -\frac12(b - 2d)$, $\mathrm{sinc}' = -\frac12(a - b)$. The inverses by blocks (SM.10(c)): $J_l^{-1} = \begin{bmatrix}J_l^{-1}(\varphi) & 0 & 0\\ -\mathsf V^{-1}\mathsf QJ_l^{-1}(\varphi) & \mathsf V^{-1} & \mathsf V^{-1}\Gamma_2(M)\rho\\ 0 & 0 & 1\end{bmatrix}$.
 - **Structure.** Every Jacobian above, and every §2.3 row built from them, is $\begin{bmatrix}A & 0 & 0\\ B & C & f\\ 0 & 0 & e\end{bmatrix}$, closed under product and inverse: `Sim3Jac`, not a dense $7\times7$ ([`0070`](./decisions/0070-sim3-a-structured-jacobian-and-a-series-on-delta.md)).
-- **The coefficients** $v_0, v_1, v_2, w_0, w_1, w_2, \partial_zv_1, \partial_zv_2$ are one group: the limits $1, \frac12, \frac16, \frac12, \frac16, \frac1{24}, -\frac1{24}, -\frac1{120}$ at $\Delta = 0$; below $\Delta < r_\times^2$ the total-degree series of SM.6(b) by the recurrences of SM.3 and SM.11(c) at per-sequence depths ($\xi_k$ to $K$, $\zeta_k$ to $K+1$, $\xi'_k$ to $K+2$, $\zeta'_k$ to $K+3$), one mask on $\Delta$ for every direction, with $v_0 = g_1(\sigma)$ and $w_0 = g_2(\sigma)$, polynomials in $\sigma$ alone, by Horner (smallest term first) and $K$ itself the depth of the arm's top tier: three shorter depths below three generated switches in $\Delta$, each within $\frac1{16}u$ of depth $K$ at every sweep point ([`0099`](./decisions/0099-the-sim3-series-sums-smallest-first.md), draft); above it the closed forms, $v_1$ by form b for $\Delta \ge \Delta_b$, $w_0$ by its series in $\sigma$ below $\lvert\sigma\rvert < \sigma_w$, $v_0 = 1$ and $w_0 = \frac12$ at $\sigma = 0$; for $\sigma > 0$ the scaled arrangement of SM.7(g) ($e^\sigma \to 1$, $\mathrm{expm1}\,\sigma \to -\mathrm{expm1}(-\sigma)$, $e^\sigma$ applied last; `Log` applies $e^{-\sigma/2}(e^{-\sigma/2}t)$). $K$, $r_\times^2$, $\Delta_b$, $\sigma_w$ and the tiers are generated (`0004`) by a sweep over rays in $(\sigma, \theta)$ whose objective is the blocks' error, each scalar weighted by the power of $\theta$ that multiplies it.
+- **The coefficients** $v_0, v_1, v_2, w_0, w_1, w_2, \partial_zv_1, \partial_zv_2$ are one group: the limits $1, \frac12, \frac16, \frac12, \frac16, \frac1{24}, -\frac1{24}, -\frac1{120}$ at $\Delta = 0$; below $\Delta < r_\times^2$ the total-degree series of SM.6(b) by the recurrences of SM.3 and SM.11(c) at per-sequence depths ($\xi_k$ to $K$, $\zeta_k$ to $K+1$, $\xi'_k$ to $K+2$, $\zeta'_k$ to $K+3$), one mask on $\Delta$ for every direction, with $v_0 = g_1(\sigma)$ and $w_0 = g_2(\sigma)$, polynomials in $\sigma$ alone, by Horner (smallest term first) and $K$ itself the depth of the arm's top tier: three shorter depths below three generated switches in $\Delta$, each within $\frac1{16}u$ of depth $K$ at every sweep point ([`0099`](./decisions/0099-the-sim3-series-sums-smallest-first.md)); above it the closed forms, $v_1$ by form b for $\Delta \ge \Delta_b$, $w_0$ by its series in $\sigma$ below $\lvert\sigma\rvert < \sigma_w$, $v_0 = 1$ and $w_0 = \frac12$ at $\sigma = 0$; for $\sigma > 0$ the scaled arrangement of SM.7(g) ($e^\sigma \to 1$, $\mathrm{expm1}\,\sigma \to -\mathrm{expm1}(-\sigma)$, $e^\sigma$ applied last; `Log` applies $e^{-\sigma/2}(e^{-\sigma/2}t)$). $K$, $r_\times^2$, $\Delta_b$, $\sigma_w$ and the tiers are generated (`0004`) by a sweep over rays in $(\sigma, \theta)$ whose objective is the blocks' error, each scalar weighted by the power of $\theta$ that multiplies it.
 
 ## 10. Geodesics
 
@@ -502,7 +502,7 @@ $X(t) = X_0\,\mathrm{Exp}(t\,d)$ with $d = X_1 \ominus_R X_0$ and $\Delta = X_0^
   projection's conditioning, $\lVert\hat R - R\rVert_F\,(\sigma_2 + d\sigma_3)/(2\lVert M\rVert_F\,u)$
   ($\lVert\dot R\rVert \le 2\lVert\dot M\rVert/(\sigma_2 + d\sigma_3)$, `maths/svd3.md` PO.3; weight 0
   where the reference is not unique), $\lVert\hat R^\top\hat R - I\rVert_F/u$, and $1/u$ where
-  $\det\hat R \le 0$ ([`0102`](./decisions/0102-the-nearest-rotation-takes-newton-where-it-is-well-posed.md), draft).
+  $\det\hat R \le 0$ ([`0102`](./decisions/0102-the-nearest-rotation-takes-newton-where-it-is-well-posed.md)).
 - **Roots** (`solve_cubic`): the Hausdorff distance between the valid slots $\hat R$ and the three
   reference roots $Z$, complex ones included, over $\|Z\|_2\,u$: each real root to its nearest
   valid slot, each valid slot to its nearest root, $\lvert\hat r - z\rvert$ in $\mathbb C$, over
@@ -545,13 +545,13 @@ $X(t) = X_0\,\mathrm{Exp}(t\,d)$ with $d = X_1 \ominus_R X_0$ and $\Delta = X_0^
 | `SO3::log` | all unit $q$; at $w = +0$ a function of $q$'s sign (§3.2) | — |
 | `jr_inv`, `jl_inv` (SO(3), SE_N(3)) | $\theta < 2\pi$ | unspecified finite value |
 | `from_wxyz_unchecked` | $\lvert\|q\|^2 - 1\rvert \le 2^{-40}$ (`f64`), $2^{-16}$ (`f32`) | garbage in, garbage out |
-| `SO3::from_quat_unchecked` (carried, §3.6) | $\lvert\eta\rvert \le 2^{-26.29}$ (`f64`), $2^{-11.79}$ (`f32`), $\eta = \|q\|^2 - 1$; nothing asserted, NaN propagates. To first order in $\eta$: `log` returns the `Log` of $q/\|q\|$; `act` returns $Rv + \eta(Rv - v)$; `to_matrix` returns $(1 + \eta)R - \eta I$, `act`'s term ([`0092`](./decisions/0092-r-of-q-takes-the-unit-diagonal.md), draft); `Mul` gives $\eta_{ab} = \eta_a + \eta_b + \eta_a\eta_b$; `inverse` keeps $\eta$; `geodesic` keeps both endpoints bit-exact and is scale-invariant below `r`'s second switch, while the blend tilts by $\sin((1-t)\alpha)\sin(t\alpha)/\sin\alpha \cdot \lvert\eta_1 - \eta_0\rvert$; SE_N(3)'s columns carry `act`'s term ([`0058`](./decisions/0058-a-drifted-quaternion-is-carried-not-vouched-for.md)) | garbage in, garbage out |
+| `SO3::from_quat_unchecked` (carried, §3.6) | $\lvert\eta\rvert \le 2^{-26.29}$ (`f64`), $2^{-11.79}$ (`f32`), $\eta = \|q\|^2 - 1$; nothing asserted, NaN propagates. To first order in $\eta$: `log` returns the `Log` of $q/\|q\|$; `act` returns $Rv + \eta(Rv - v)$; `to_matrix` returns $(1 + \eta)R - \eta I$, `act`'s term ([`0092`](./decisions/0092-r-of-q-takes-the-unit-diagonal.md)); `Mul` gives $\eta_{ab} = \eta_a + \eta_b + \eta_a\eta_b$; `inverse` keeps $\eta$; `geodesic` keeps both endpoints bit-exact and is scale-invariant below `r`'s second switch, while the blend tilts by $\sin((1-t)\alpha)\sin(t\alpha)/\sin\alpha \cdot \lvert\eta_1 - \eta_0\rvert$; SE_N(3)'s columns carry `act`'s term ([`0058`](./decisions/0058-a-drifted-quaternion-is-carried-not-vouched-for.md)) | garbage in, garbage out |
 | `from_wxyz_normalized` | $\|q\|^2$ normal (components within $\approx 10^{\pm154}$ `f64`, $10^{\pm19}$ `f32`); `debug_assert!` on the result (§3.6, [`0027`](./decisions/0027-a-normalizing-constructor-normalizes.md)) | NaN at $q = 0$; zero above the overflow |
 | `renormalize` | none; a normalization only for $\lvert\|q\|^2 - 1\rvert \le 2^{-26.29}$ (`f64`), $2^{-11.79}$ (`f32`) (§3.6) | defined everywhere; $0$ at $\|q\|^2 = 3$, $q$ reversed beyond |
 | `solve_cubic` | every input; the mask is the report: a non-finite coefficient, $a = 0$, or $1/a$, $b/a$, $c/a$ or $d/a$ overflowing gives no valid slot (§16) | — |
 | `eig3` | every input, lower triangle read; every finite matrix (§17's exact power-of-two scaling); a subnormal largest entry keeps only its own digits | a non-finite entry: `NaN` eigenvalues, never a plausible number, and the identity frame; an eigenvalue beyond the largest finite number is infinite ([`0081`](./decisions/0081-eig3-is-four-jacobi-sweeps.md)) |
 | `svd3` | every input; every finite matrix (§18's exact power-of-two scaling) | a non-finite entry: `NaN` singular values and $U = V = I$; a singular value beyond the largest finite number is infinite ([`0101`](./decisions/0101-svd3-is-one-sided-jacobi-on-eig3-s-rotation.md)) |
-| `nearest_rotation` | every input | a non-finite entry: a matrix of `NaN`; the zero matrix: $I$ ([`0102`](./decisions/0102-the-nearest-rotation-takes-newton-where-it-is-well-posed.md), draft) |
+| `nearest_rotation` | every input | a non-finite entry: a matrix of `NaN`; the zero matrix: $I$ ([`0102`](./decisions/0102-the-nearest-rotation-takes-newton-where-it-is-well-posed.md)) |
 | `so3::gamma1`, `gamma2`, `gamma_apply_jacobians` | every finite $\varphi$ with $\theta^2$ finite: $\Gamma_m$ is entire (GG.2), no singular $\theta$; the overflow of $\theta^2$ is `Exp`'s (CO.15(c)) ([`0064`](./decisions/0064-the-integrated-exponentials-reuse-the-swept-switches.md)) | — |
 | `S2::from_vec_unchecked` | $\lvert\|v\|^2 - 1\rvert \le 2^{-40}$ (`f64`), $2^{-16}$ (`f32`); `debug_assert!`, NaN fails (`0063`) | garbage in, garbage out |
 | `S2::from_vec_normalized` | $\|v\|^2$ normal (`0027`) | NaN at $v = 0$; zero above the overflow |

@@ -236,7 +236,7 @@ def _snap(coeffs: list[Fraction], x) -> Fraction | None:
     return q if is_root(coeffs, q) else None
 
 
-def _multiple(coeffs: list[Fraction]) -> list[Fraction]:
+def multiple_roots(coeffs: list[Fraction]) -> list[Fraction]:
     """The roots of a cubic with a zero discriminant, all rational."""
     a, b, c, d = coeffs
     s = b * b - 3 * a * c
@@ -269,7 +269,7 @@ def roots(coeffs: list[Fraction]) -> list[tuple]:
     a, b, c, d = coeffs
     disc = discriminant(a, b, c, d)
     if disc == 0:
-        out = [(mpf(r), mpf(0)) for r in _multiple(coeffs)]
+        out = [(mpf(r), mpf(0)) for r in multiple_roots(coeffs)]
     elif disc > 0:
         out = []
         for z in _polyroots(coeffs):

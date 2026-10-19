@@ -12,7 +12,9 @@
 //! distinct roots (the trigonometric arm), one real root, a small root beside a complex pair, and a
 //! triple root; `eig3` at a random spectrum, a pair `1e-8` apart, and a triple eigenvalue, and the
 //! three in turn; `svd3` (one-sided Jacobi with an exit, `0101`) at generic singular values,
-//! a pair `1e-8` apart, a rotation `1e-8` off SO(3) and a rank-2 matrix, and the four in turn.
+//! a pair `1e-8` apart, a rotation `1e-8` off SO(3) and a rank-2 matrix, and the four in turn;
+//! `nearest_rotation` (`0102`) at one input per arm: Newton near SO(3) and at generic singular
+//! values, the reflection, and `svd3`'s at a rank-2 matrix.
 //!
 //! A baseline binary for `--against` is built in this tree with only the bodies under test
 //! reverted, as `benches/groups.rs` says.
@@ -29,7 +31,9 @@ use core::time::Duration;
 
 use criterion::measurement::WallTime;
 use criterion::{criterion_group, criterion_main, BenchmarkGroup, Criterion};
-use helicoid_linalg::{chol, eig3, solve_cubic, svd3, Dual, Mat3, Matrix, Real, Vec3, Vector};
+use helicoid_linalg::{
+    chol, eig3, nearest_rotation, solve_cubic, svd3, Dual, Mat3, Matrix, Real, Vec3, Vector,
+};
 
 /// Four scalars, not `[S; 4]`: an array by value reaches the callee through the stack, and a wide
 /// load of two of its narrow stores is a store-to-load forwarding stall that read 10-20 ns of a
@@ -48,6 +52,11 @@ fn eig3_of<S: Real>(a: &Mat3<S>) -> (Vec3<S>, Mat3<S>) {
 #[inline(never)]
 fn svd3_of<S: Real>(a: &Mat3<S>) -> (Mat3<S>, Vec3<S>, Mat3<S>) {
     svd3(a)
+}
+
+#[inline(never)]
+fn nearest_rotation_of<S: Real>(a: &Mat3<S>) -> Mat3<S> {
+    nearest_rotation(a)
 }
 
 /// The whole factor and the mask come back, and criterion's `black_box` keeps every entry live:
@@ -159,6 +168,15 @@ const SINGULAR: &[(&str, [f64; 3], f64)] = &[
     ("rank2", [0.9, 0.5, 0.0], 0.0),
 ];
 
+/// One input per arm of `nearest_rotation`: `det` above `tau |M|^3` (Newton), below `-tau |M|^3`
+/// (the reflection), and between (`svd3`'s `U V^T`).
+const NEAREST: &[(&str, [f64; 3], f64)] = &[
+    ("near-rotation-1e-8", [1.0, 1.0, 1.0], 1e-8),
+    ("random", [0.9, 0.5, 0.2], 0.0),
+    ("reflection", [1.0, 0.6, -0.2], 0.0),
+    ("rank2", [0.9, 0.5, 0.0], 0.0),
+];
+
 impl Fixture for Dual<f64, 2> {
     fn of(x: f64) -> Self {
         Dual { v: x, d: [x, 0.5] }
@@ -233,6 +251,12 @@ fn rows<S: Fixture>(g: &mut BenchmarkGroup<'_, WallTime>) {
         let a = general::<S>(sigma, eps);
         g.bench_function(format!("svd3/{name}"), |b| {
             b.iter(|| svd3_of(black_box(&a)));
+        });
+    }
+    for &(name, sigma, eps) in NEAREST {
+        let a = general::<S>(sigma, eps);
+        g.bench_function(format!("nearest_rotation/{name}"), |b| {
+            b.iter(|| nearest_rotation_of(black_box(&a)));
         });
     }
     chol_row::<S, 3>(g);

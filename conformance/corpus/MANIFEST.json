@@ -115,6 +115,12 @@
       "records": 42,
       "sha256": "4015480c178d18f91c1460cb919d40cd985391d1e4fde9d14a743418f9c1069a"
     },
+    "nearest_rotation.jsonl": {
+      "kind": "corpus",
+      "rechecked": 32,
+      "records": 560,
+      "sha256": "f4efbc99d3d9c3dd301bd59a1faa6639b02bca2b88b351e315f84d229a6e6e64"
+    },
     "quat_renormalize.jsonl": {
       "kind": "corpus",
       "rechecked": 10,
@@ -542,7 +548,7 @@
       "sha256": "a4f5783bfca8ae06c9e63ec21b221b2b25ee146d761e662bb292d73b123609ff"
     }
   },
-  "generator": "sha256:f0f1592b66d8c4ea762bc920372634dfa6223952bde7d46447cb3fe558a4fa8e",
+  "generator": "sha256:e5e3a29157be84b83a3334d79b0d36760e874bfbd87069dd2520bf8587117e49",
   "mpmath": "1.4.1",
   "python": "3.12",
   "recheck": {

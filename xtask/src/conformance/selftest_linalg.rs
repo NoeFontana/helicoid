@@ -3,7 +3,7 @@
 //! [`FACTOR`] over the clean program's, which must itself be finite. A metric that cannot see a
 //! dropped root, a rotated eigenvector, singular pair or rotation, a dropped sign, a flipped mask,
 //! half a Newton step or a doubled derivative is not measuring what `NUMERICS.md` §11 says it does.
-//! The `svd3` pair is `0101` decision 8's, the `nearest_rotation` one `0102`'s (draft).
+//! The `svd3` pair is `0101` decision 8's, the `nearest_rotation` one `0102`'s.
 
 use std::fmt::Write;
 use std::path::Path;

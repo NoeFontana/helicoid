@@ -21,6 +21,7 @@ from . import (
     gaussian,
     geodesic,
     mat2,
+    polar,
     quat,
     real,
     s2,
@@ -194,6 +195,14 @@ FUNCTIONS: dict[str, FunctionSpec] = {
         FunctionSpec("eig3", eig.STRATA, drawn_inputs, eig.eig3, check_linalg.eig3),
         # docs/decisions/0101 decision 8.
         FunctionSpec("svd3", svd.STRATA, drawn_inputs, svd.svd3, check_linalg.svd3),
+        # docs/decisions/0102 decision 8.
+        FunctionSpec(
+            "nearest_rotation",
+            polar.STRATA,
+            drawn_inputs,
+            polar.nearest_rotation,
+            check_linalg.nearest_rotation,
+        ),
         *(
             FunctionSpec(f"chol_n{n}", chol.strata(n, False), drawn_inputs, chol.chol, check_linalg.chol)
             for n in (3, 6)

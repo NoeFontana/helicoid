@@ -1,12 +1,12 @@
-//! The rotation nearest to a 3x3 matrix (`docs/NUMERICS.md` §19, decision `0102`, draft).
+//! The rotation nearest to a 3x3 matrix (`docs/NUMERICS.md` §19, decision `0102`).
 //!
 //! Newton's polar iteration where the nearest rotation is the orthogonal polar factor and the
 //! determinant resolves it, a reflection through `svd3`'s last right singular vector where the
 //! determinant is negative, and `svd3`'s `U V^T` between; generic over `S: Real`.
 
-use crate::eig3::{eig3, ladder, largest};
+use crate::eig3::{eig3, into_window};
 use crate::matrix::Mat3;
-use crate::real::{is_finite, pow2, Mask, Precision, Real};
+use crate::real::{pow2, Mask, Precision, Real};
 use crate::svd3::{svd3, WINDOW_F32, WINDOW_F64};
 use crate::vector::{Vec3, Vector};
 
@@ -178,19 +178,14 @@ fn reflect<S: Real>(x: [Vec3<S>; 3], a: &Mat3<S>, n2: S) -> [Vec3<S>; 3] {
 /// ```
 #[inline]
 pub fn nearest_rotation<S: Real>(m: &Mat3<S>) -> Mat3<S> {
-    let (zero, one) = (S::zero(), S::one());
-    let e: [S; 9] = core::array::from_fn(|k| m.get(k % 3, k / 3));
-    let finite = e[1..]
-        .iter()
-        .fold(is_finite(e[0]), |ok, &x| ok.and(is_finite(x)));
-    let e = e.map(|x| S::select(finite, x, zero));
-    let (lo, hi, steps) = match S::PRECISION {
-        Precision::F64 => WINDOW_F64,
-        Precision::F32 => WINDOW_F32,
+    // A non-finite entry iterates on the zero matrix and reports a matrix of NaN; the rotation
+    // needs no scaling back.
+    let window = match S::PRECISION {
+        Precision::F64 => &WINDOW_F64,
+        Precision::F32 => &WINDOW_F32,
     };
-    let mx = largest(&e);
-    let inside = S::lit(lo).le(mx).and(mx.lt(S::lit(hi))).or(mx.le(zero));
-    let (e, _, _) = S::branch(inside, || (e, mx, one), || ladder(&steps, (e, mx, one)));
+    let e: [S; 9] = core::array::from_fn(|k| m.get(k % 3, k / 3));
+    let (e, finite, _, _) = into_window(e, window);
     let x = [
         Vector([e[0], e[1], e[2]]),
         Vector([e[3], e[4], e[5]]),

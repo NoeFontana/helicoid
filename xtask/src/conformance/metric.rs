@@ -74,7 +74,7 @@ pub(crate) enum Rule {
     /// with one sign per column, the backward error, both factors' orthogonality, and `1/u` for an
     /// ordering or a determinant out of the contract, [`svd`].
     Svd,
-    /// `nearest_rotation` (`0102` (draft) decision 8): the forward error weighted by the
+    /// `nearest_rotation` (`0102` decision 8): the forward error weighted by the
     /// projection's conditioning, the orthogonality, and `1/u` for `det R̂ ≤ 0`, [`polar`].
     Polar,
     /// `solve_cubic`: the distance between the valid slots and the reference roots, [`roots`].
@@ -803,7 +803,7 @@ fn svd(rec: &Record, out: &Output, precision: Precision) -> Result<Score, String
     Ok(finite_or_nonfinite(worst))
 }
 
-/// `0102` (draft) decision 8's metric, the largest of:
+/// `0102` decision 8's metric, the largest of:
 ///
 /// - the forward error weighted by the projection's conditioning,
 ///   `‖R̂ − R‖_F · w / (2‖M‖_F u)`, `w = σ₂ + dσ₃` of the record's input `M` ([`polar_weight`]),
