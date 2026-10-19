@@ -289,8 +289,26 @@ fn svd3<T: Real>(input: &Fields) -> Result<Fields, String> {
 
 /// `Rotation3::from_matrix_eps(M, u, ROTATION_ITERATIONS, I)`, `u = ε/2` the precision's unit
 /// roundoff (`2⁻⁵³`, `2⁻²⁴`): the rotation nalgebra extracts from `M`, column-major.
+///
+/// `M` is first scaled by a power of two to `‖M‖²_F ∈ [2, 8)`, exactly, which leaves its nearest
+/// rotation alone. Where a step is below `eps`, `from_matrix_eps` perturbs until `‖M − R‖²` moves
+/// by an absolute `ε`, a move proportional to `‖M‖`: at `10⁻³ R` it walked to another rotation,
+/// and at `10⁻⁷⁰` it never stopped.
 fn nearest_rotation<T: Real>(input: &Fields) -> Result<Fields, String> {
-    let m = helicoid_to_nalgebra_matrix::<T, 3, 3>(&take_square_named::<T, 3>(input, "M")?)?;
+    let mut m = helicoid_to_nalgebra_matrix::<T, 3, 3>(&take_square_named::<T, 3>(input, "M")?)?;
+    let (two, half): (T, T) = (nalgebra::convert(2.0), nalgebra::convert(0.5));
+    let (lo, hi): (T, T) = (nalgebra::convert(2.0), nalgebra::convert(8.0));
+    // At most 2200 halvings or doublings: the exponent range of a binary64 square.
+    for _ in 0..2200 {
+        let n2 = m.norm_squared();
+        if n2 < lo && n2 > T::zero() {
+            m *= two;
+        } else if n2 >= hi && n2.is_finite() {
+            m *= half;
+        } else {
+            break;
+        }
+    }
     let roundoff = T::default_epsilon() / nalgebra::convert(2.0);
     let r = Rotation3::from_matrix_eps(&m, roundoff, ROTATION_ITERATIONS, Rotation3::identity());
     Ok(fields([("R", nalgebra_to_helicoid_matrix(r.matrix()))]))
