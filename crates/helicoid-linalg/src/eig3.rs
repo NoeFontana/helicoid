@@ -16,29 +16,146 @@ const ROTATIONS: usize = 12;
 /// The window `[lo, hi)` of the largest `|entry|` inside which the matrix is not scaled, and the
 /// two-sided power-of-two steps that bring any other finite matrix into it (`0081` decision 3).
 /// Inside it `d^2 + 4 a_pq^2` cannot overflow and every square that matters is normal.
-const WINDOW_F64: (f64, f64, [f64; 4]) = (
-    pow2(-128),
-    pow2(128),
-    [pow2(512), pow2(256), pow2(128), pow2(64)],
-);
-const WINDOW_F32: (f64, f64, [f64; 4]) =
-    (pow2(-32), pow2(32), [pow2(64), pow2(32), pow2(16), pow2(8)]);
+const WINDOW_F64: Window = Window {
+    lo: pow2(-128),
+    hi: pow2(128),
+    steps: &[pow2(512), pow2(256), pow2(128), pow2(64)],
+};
+const WINDOW_F32: Window = Window {
+    lo: pow2(-32),
+    hi: pow2(32),
+    steps: &[pow2(64), pow2(32), pow2(16), pow2(8)],
+};
+const _: () = assert!(WINDOW_F64.reaches(Precision::F64) && WINDOW_F32.reaches(Precision::F32));
 
-/// The entries (here the lower triangle `[xx, yy, zz, xy, xz, yz]`), their largest `|entry|` and
-/// the power of two that undoes their scaling.
-pub(crate) type Scaled<S, const N: usize> = ([S; N], S, S);
+/// A scaling window `[lo, hi)` of the largest `|entry|` and the steps of its [`ladder`].
+pub(crate) struct Window {
+    pub(crate) lo: f64,
+    pub(crate) hi: f64,
+    pub(crate) steps: &'static [f64],
+}
 
-/// [`eig3`]'s and `svd3`'s scaling steps, out of line: rarely taken, as `cubic`'s ladders. At `2^k` the entries
-/// are divided by it where the largest is at least `2^k` and multiplied where it is below
-/// `2^(1-k)` (`real::pow2_step`). The largest entry stays normal, so it scales exactly and is carried
-/// as `m f`; an entry that falls below the smallest normal rounds, by less than `2^-1074` of `2^k`,
-/// far below `u |A|`.
+impl Window {
+    /// Whether [`ladder`] brings a largest `|entry|` in every binade of the precision, subnormal
+    /// ones included, into the window, with both of its factors and the power of two that undoes
+    /// them representable: what [`into_window`] relies on, checked at compile time for every
+    /// window.
+    pub(crate) const fn reaches(&self, p: Precision) -> bool {
+        // The binade of a power of two, and whether `2^e` is representable at `p`.
+        const fn exponent(x: f64) -> i32 {
+            ((x.to_bits() >> 52) & 0x7ff) as i32 - 1023
+        }
+        const fn fits(e: i32, p: Precision) -> bool {
+            match p {
+                Precision::F64 => -1074 <= e && e <= 1023,
+                Precision::F32 => -149 <= e && e <= 127,
+            }
+        }
+        let (lo, hi) = (exponent(self.lo), exponent(self.hi));
+        let mut e = match p {
+            Precision::F64 => -1074,
+            Precision::F32 => -149,
+        };
+        while fits(e, p) {
+            // `m` in `[2^e, 2^(e+1))`; the factors `2^first` and `2^rest`.
+            let (mut x, mut first, mut rest) = (e, 0, 0);
+            if x < lo || x >= hi {
+                let mut i = 0;
+                while i < self.steps.len() {
+                    // `real::pow2_step` at `2^k`: down where `m >= 2^k`, up where `m < 2^(1-k)`.
+                    let k = exponent(self.steps[i]);
+                    if !(fits(k, p) && fits(-k, p)) {
+                        return false;
+                    }
+                    let s = if x >= k {
+                        -k
+                    } else if x <= -k {
+                        k
+                    } else {
+                        0
+                    };
+                    x += s;
+                    if i == 0 {
+                        first = s;
+                    } else {
+                        rest += s;
+                    }
+                    if !(fits(rest, p) && fits(-rest, p) && fits(-first - rest, p)) {
+                        return false;
+                    }
+                    i += 1;
+                }
+            }
+            if x < lo || x >= hi {
+                return false;
+            }
+            e += 1;
+        }
+        true
+    }
+}
+
+/// The scaling steps of [`into_window`], out of line: rarely taken, as `cubic`'s ladders. At `2^k`
+/// the scale is divided by it where the largest `|entry|` `m` is at least `2^k` and multiplied
+/// where `m` is below `2^(1-k)` (`real::pow2_step`). Only scalars cross the call: the first step's
+/// factor and the product of the others, two factors because one `f32` cannot carry the smallest
+/// subnormal to `svd3`'s window ([`Window::reaches`]).
 #[cold]
 #[inline(never)]
-pub(crate) fn ladder<S: Real, const N: usize>(steps: &[f64], start: Scaled<S, N>) -> Scaled<S, N> {
-    steps.iter().fold(start, |(e, m, back), &k| {
-        let (f, b) = pow2_step(k, m);
-        (e.map(|x| x * f), m * f, back * b)
+fn ladder<S: Real>(steps: &[f64], m: S) -> (S, S) {
+    let one = S::one();
+    let Some((&k, steps)) = steps.split_first() else {
+        return (one, one);
+    };
+    let (first, _) = pow2_step(k, m);
+    let (_, rest) = steps.iter().fold((m * first, one), |(m, rest), &k| {
+        let (f, _) = pow2_step(k, m);
+        (m * f, rest * f)
+    });
+    (first, rest)
+}
+
+/// The entries, all zero where one is not finite (the safe argument), scaled by an exact power of
+/// two into the window `w`: `(entries, finite, m, back)`, `m` their largest `|entry|` and `back`
+/// the power of two that undoes the scaling. The largest entry stays normal, so it scales exactly;
+/// an entry that falls below the smallest normal rounds, at most twice by less than `2^-1074` of
+/// `2^k`, far below `u |A|`.
+#[inline(always)]
+pub(crate) fn into_window<S: Real, const N: usize>(
+    e: [S; N],
+    w: &Window,
+) -> ([S; N], S::Mask, S, S) {
+    let (zero, one) = (S::zero(), S::one());
+    let finite = e[1..]
+        .iter()
+        .fold(is_finite(e[0]), |ok, &x| ok.and(is_finite(x)));
+    let e = e.map(|x| S::select(finite, x, zero));
+    let m = largest(&e);
+    let inside = S::lit(w.lo).le(m).and(m.lt(S::lit(w.hi))).or(m.le(zero));
+    let (e, m, back) = S::branch(
+        inside,
+        move || (e, m, one),
+        move || {
+            let (f, g) = ladder(w.steps, m);
+            (e.map(|x| x * f * g), m * f * g, (one / f) * (one / g))
+        },
+    );
+    (e, finite, m, back)
+}
+
+/// One Newton step on `1 / |v|`, `v (3 - |v|^2) / 2`: the normalisation, with no root and no
+/// division, of a column within a few `u` of unit length (`0084`).
+#[inline(always)]
+pub(crate) fn unit<S: Real>(v: Vec3<S>) -> Vec3<S> {
+    v.scale(S::lit(1.5) - S::lit(0.5) * v.norm_sq())
+}
+
+/// The smallest normal number, below which `angle` takes its safe arm.
+#[inline(always)]
+pub(crate) fn smallest_normal<S: Real>() -> S {
+    S::lit(match S::PRECISION {
+        Precision::F64 => const { pow2(-1022) },
+        Precision::F32 => const { pow2(-126) },
     })
 }
 
@@ -68,10 +185,7 @@ type Roles<S> = ([S; 7], [Vec3<S>; 3]);
 #[inline(always)]
 pub(crate) fn angle<S: Real>(d: S, apq: S, w2: S) -> (S, S, S, S, S) {
     let (one, two, half) = (S::one(), S::lit(2.0), S::lit(0.5));
-    let tiny = S::lit(match S::PRECISION {
-        Precision::F64 => const { pow2(-1022) },
-        Precision::F32 => const { pow2(-126) },
-    });
+    let tiny = smallest_normal::<S>();
     let sgn = one.copysign(d);
     let h2 = d * d + w2;
     let small = h2.lt(tiny);
@@ -208,20 +322,12 @@ pub fn eig3<S: Real>(a: &Mat3<S>) -> (Vec3<S>, Mat3<S>) {
         a.get(2, 0),
         a.get(2, 1),
     ];
-    // A non-finite entry iterates on the zero matrix, the safe argument, and reports through the
-    // eigenvalues.
-    let finite = e[1..]
-        .iter()
-        .fold(is_finite(e[0]), |ok, &x| ok.and(is_finite(x)));
-    let e = e.map(|x| S::select(finite, x, zero));
-    let (lo, hi, steps) = match S::PRECISION {
-        Precision::F64 => WINDOW_F64,
-        Precision::F32 => WINDOW_F32,
+    // A non-finite entry iterates on the zero matrix and reports through the eigenvalues.
+    let window = match S::PRECISION {
+        Precision::F64 => &WINDOW_F64,
+        Precision::F32 => &WINDOW_F32,
     };
-    let m = largest(&e);
-    let inside = S::lit(lo).le(m).and(m.lt(S::lit(hi))).or(m.le(zero));
-    let ([d0, d1, d2, o01, o02, o12], m, back) =
-        S::branch(inside, || (e, m, one), || ladder(&steps, (e, m, one)));
+    let ([d0, d1, d2, o01, o02, o12], finite, m, back) = into_window(e, window);
 
     let two = S::lit(2.0);
     let ident = [
@@ -260,11 +366,8 @@ pub fn eig3<S: Real>(a: &Mat3<S>) -> (Vec3<S>, Mat3<S>) {
     let (p0, p1) = exchange(p0, p1);
     let nan = S::zero() / S::zero();
     let value = |l: S| S::select(finite, l * back, nan);
-    // Each column is within about `17 u` of unit length (measured), so one Newton step on
-    // `1 / sqrt(n^2)`, `(3 - n^2) / 2`, normalises it to rounding with no root and no division
-    // (`0084`).
-    let (three_halves, half) = (S::lit(1.5), S::lit(0.5));
-    let unit = |v: Vec3<S>| v.scale(three_halves - half * v.norm_sq());
+    // Each column is within about `17 u` of unit length (measured), so one Newton step normalises
+    // it to rounding.
     (
         Vector([value(p0.0), value(p1.0), value(p2.0)]),
         Mat3::from_cols([unit(p0.1.scale(sign)), unit(p1.1), unit(p2.1)]),

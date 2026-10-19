@@ -217,9 +217,10 @@ pub(crate) const fn pow2(e: i32) -> f64 {
 /// normal.
 #[inline]
 pub(crate) fn pow2_step<S: Real>(k: f64, m: S) -> (S, S) {
-    let (one, two) = (S::one(), S::lit(2.0));
+    let one = S::one();
     let (big, small) = (S::lit(k), S::lit(1.0 / k));
-    let (down, up) = (big.le(m), (m * big).lt(two));
+    // `m K < 2` as `m < 2 / K`, exact for a power of two: no product on the ladder's chain.
+    let (down, up) = (big.le(m), m.lt(S::lit(2.0 / k)));
     (
         S::select(down, small, S::select(up, big, one)),
         S::select(down, big, S::select(up, small, one)),

@@ -788,6 +788,9 @@ fn svd(rec: &Record, out: &Output, precision: Precision) -> Result<Score, String
             .sum();
         inverted |= det.sign() == Sign::Minus;
     }
+    // `sign σ̂₃ = sign det A` has no test of its own: a dropped sign reads `2 |σ₃| / ‖A‖` in σ's
+    // signed forward error and the backward error, and where `|σ₃|` is at rounding a backward
+    // stable answer carries either sign, `A + 2σ₃ u₃v₃ᵀ` being as near as `A`.
     if !ordered || inverted {
         worst = worst.max(2f64.powi(bits as i32));
     }
@@ -1753,6 +1756,23 @@ mod tests {
             return Err("non-finite".into());
         };
         near(f, 4.0 + 2.0 * f64::EPSILON);
+        Ok(())
+    }
+
+    #[test]
+    fn a_dropped_sign_reads_twice_the_smallest_singular_value() -> Result<(), String> {
+        // `A = diag(4, 2, -1)` answered `σ̂ = (4, 2, 1)`, `Û = V̂ = I`: σ's forward error and the
+        // backward error both read `‖diag(0, 0, 2)‖ / √21`.
+        let a = diag([4.0, 2.0, -1.0]);
+        let reference = (IDENTITY, ["4e0", "2e0", "-1e0"], IDENTITY);
+        assert_eq!(
+            svd_u(a, reference, (EYE, [4.0, 2.0, -1.0], EYE))?,
+            Score::Finite(0.0)
+        );
+        let Score::Finite(f) = svd_u(a, reference, (EYE, [4.0, 2.0, 1.0], EYE))? else {
+            return Err("non-finite".into());
+        };
+        near(f, 2.0 / (21f64.sqrt() * U));
         Ok(())
     }
 

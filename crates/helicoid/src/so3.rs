@@ -234,8 +234,8 @@ impl<S: Real> SO3<S> {
     /// # Domain
     ///
     /// `r` is a rotation matrix. For anything else this returns the nearest quaternion its pivot
-    /// admits, which is not a projection onto SO(3); §3.4 projects with `svd3` first, which is
-    /// owed (`PHASE2.md` §6), so until then a caller projects with its own SVD. It does
+    /// admits, which is not a projection onto SO(3); §3.4 projects with `helicoid_linalg::svd3`
+    /// first, whose `U V^T` is the nearest rotation where that is unique (`0101`). It does
     /// not panic, in debug or release: NaN propagates, and an entry large enough to overflow the
     /// selected column's squared norm, beyond about `2^511` (`f64`) or `2^63` (`f32`), gives a NaN
     /// quaternion -- garbage in, garbage out. That is why the normalization below is written out

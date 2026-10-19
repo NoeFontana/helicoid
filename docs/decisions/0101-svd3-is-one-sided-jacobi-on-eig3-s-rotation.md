@@ -79,25 +79,33 @@ against 5–8 `u`; it is not built.
    $(b_p, b_q) \leftarrow (c\,b_p - s\,b_q,\ s\,b_p + c\,b_q)$ and the same on $V$'s columns. The two
    routines share one private `angle`, so `eig3`'s bits do not move.
 3. **The exit.** After each rotation, if every pair satisfies
-   $\gamma_{ij}^2 \le 16u^2\max(\alpha_i, f)\max(\alpha_j, f)$, $f = u^2\max_k\alpha_k$ (the relative
-   test at $4u$, floored at $u\lVert B\rVert$ so that rounding-level null columns, which no
-   relative test can settle, count as orthogonal), the loop stops; at most twelve rotations,
-   `eig3`'s bound. The mask decides through `Real::branch` and `Mask::decide`, as in `eig3`: a
-   scalar leaves, lanes run on held. Then the **polish**: the rotations of the two pairs other
-   than the last one rotated, both computed from the exit state, applied in turn; their values move
-   by at most the entries, their `Dual` lanes annihilate the entries' lanes to first order (`0084`
-   decision 4).
+   $\gamma_{ij}^2 \le 16u^2\alpha_i\alpha_j$ (the relative test at $4u$) or holds a null column,
+   $\alpha_k \le f = u^2\max_k\alpha_k$, the loop stops. A null column at rounding level, which no
+   relative test can settle, needs no direction: the finish loses at most its norm,
+   $u\lVert B\rVert$. A floor inside the test, $\max(\alpha_i, f)$, would not settle it (it asks a
+   null column for a cosine of $4u$), and at `f32` $16u^2f^2$ is below the smallest subnormal; at
+   most twelve rotations, `eig3`'s bound. The mask decides through `Real::branch` and
+   `Mask::decide`, as in `eig3`: a scalar leaves, lanes run on held. Then the **polish**: the
+   rotations of the two pairs other than the last one rotated, both computed from the exit state,
+   applied in turn; their values move by at most the entries, their `Dual` lanes annihilate the
+   entries' lanes to first order (`0084` decision 4).
 4. **The finish.**
    - Sort the columns by $\alpha$, descending, with the network $(0,1), (1,2), (0,1)$, an exchange
      where the second is strictly larger. Each exchange is $(b_p, b_q) \leftarrow (b_q, -b_p)$ and
      the same on $V$: a quarter turn, so $\det V$ stays $+1$.
    - $U$ by Gram–Schmidt on the sorted columns, $N$ one Newton step on $1/\lVert v\rVert$,
-     $v(3 - \lVert v\rVert^2)/2$ (`eig3`'s): $\sigma_1 = \lVert b_1\rVert$,
-     $u_1 = N(b_1/\sigma_1)$ ($e_1$ where $\sigma_1 = 0$); $w = b_2 - (u_1\cdot b_2)u_1$,
-     $\sigma_2 = \lVert w\rVert$, $u_2 = N(w/\sigma_2)$ (where $\sigma_2 = 0$, Gram–Schmidt of the
-     axis of $u_1$'s smallest component); $u_3 = N(u_1\times u_2)$; $\sigma_3 = u_3\cdot b_3$. The
-     residuals $u_i\cdot b_j$ are the converged cosines, so the columnwise bound survives (SV.3).
-     Without the three $N$ the frames read 8–10 `u` and set the metric's maximum; with them, 4.5.
+     $v(3 - \lVert v\rVert^2)/2$ (`eig3`'s): $\sigma_1 = \lVert b_1\rVert$, $u_1 = N(b_1/\sigma_1)$
+     ($e_1$ where $\sigma_1 = 0$); $w$ the projection of $b_2$ against $u_1$ taken twice, since a
+     null column or one at the cap leaves the exit far from orthogonal to $b_1$ and one projection
+     then leaves $u_1\cdot w$ at $u\lVert b_2\rVert$, not $u\lVert w\rVert$ (18 `u` from orthogonal
+     at `f32`, on a rank-one matrix); $\sigma_2 = \lVert w\rVert$, $u_2 = N(w/\sigma_2)$ (where
+     $\lVert w\rVert^2$ is below the smallest normal, whose root keeps too few digits to normalise
+     $w$, $\sigma_2 = 0$ and Gram–Schmidt of the axis of $u_1$'s smallest component:
+     $\lVert w\rVert < 2^{-511}$, $2^{-63}$, at most $2^{-383}\lVert A\rVert$,
+     $2^{-56}\lVert A\rVert$ inside the windows); $u_3 = N(u_1\times u_2)$;
+     $\sigma_3 = u_3\cdot b_3$. The residuals $u_i\cdot b_j$ are the converged cosines, so the
+     columnwise bound survives (SV.3). Without the three $N$ the frames read 8–10 `u` and set the
+     metric's maximum; with them, 4.5.
    - $V$ re-orthonormalised the same way, without roots: $v_1 = N(v_1)$,
      $v_2 = N(v_2 - (v_1\cdot v_2)v_1)$, $v_3 = N(v_1\times v_2)$. Recomputing $B = AV$ instead
      would lose the graded columns' accuracy.
@@ -108,11 +116,13 @@ against 5–8 `u`; it is not built.
      $(\sigma_2, \sigma_3) \leftarrow (s\,\sigma_3, s\,\sigma_2)$; then $(0, 1)$ again. Each keeps
      $U\Sigma V^\top$ and both determinants (SV.5).
 5. **Scaling.** `eig3`'s exact power-of-two ladder, on the largest $\lvert a_{ij}\rvert$, with the
-   windows $[2^{-128}, 2^{128})$ at `f64` and $[2^{-16}, 2^{28})$ at `f32`. The rotation's radicand
-   is of degree four in $A$; inside these windows it cannot overflow, and a radicand below the
-   smallest normal belongs to a block below $2^{-255}\lVert A\rVert^2$ (`f64`), $2^{-31}\lVert A\rVert^2$
-   (`f32`), below $u\lVert A\rVert^2$ (SV.6). The `f32` window reaches $2^{28}$ so that a Kabsch covariance in mm² takes no
-   ladder. $\Sigma$ is scaled back.
+   windows $[2^{-128}, 2^{128})$ at `f64` and $[2^{-7}, 2^{28})$ at `f32`, and at `f32` a second
+   $2^{64}$ step, which carries the smallest subnormal inside. The rotation's radicand is of
+   degree four in $A$; inside these windows it cannot overflow, and a pair whose radicand is below
+   the smallest normal costs the finish at most $2^{-256}$ (`f64`), $2^{-32}$ (`f32`), that is
+   $2^{-128}\lVert A\rVert$ and $u\lVert A\rVert/2$ at the floor (SV.6). A floor of $2^{-16}$ at
+   `f32` left $2^8u\lVert A\rVert$: a graded matrix read 114 `u` there. The `f32` window reaches
+   $2^{28}$ so that a Kabsch covariance in mm² takes no ladder. $\Sigma$ is scaled back.
 6. **Non-finite input** iterates on the zero matrix and reports $\Sigma = (\mathrm{NaN}, \mathrm{NaN},
    \mathrm{NaN})$, $U = V = I$; never a plausible number, never `unit_or`'s fallback. The zero
    matrix gives $\Sigma = 0$, $U = V = I$. Nothing panics.
@@ -223,8 +233,8 @@ not promised (decision 1); `nearest_rotation` is in scope, in its own record (`0
 - Eigen 3.4's `JacobiSVD<Matrix3<T>>`, in the Sophus image.
 
 The maximum is 6.03 `u` at `f64` (`gap-1e-2/top`) and 5.08 at `f32` (`random`). Domination holds on
-all 61 strata. On each one, the better oracle is at least 2.06× this program's maximum at `f64` and
-2.34× at `f32`. `svd:zero` ties at 0.
+all 61 strata. On each one, the better oracle is at least 2.21× this program's maximum at `f64` and
+2.33× at `f32`. `svd:zero` ties at 0.
 
 Eigen's smallest nonzero maximum is 8.03 `u`. nalgebra reads $4.2\times10^7$ at `graded-1e-8` and
 772 at `graded-1e-4@f32`, the backward error measured by *Context*'s harness.
@@ -238,7 +248,7 @@ whatever relative accuracy that shows (decision 1).
 
 | stratum | this | nalgebra | Eigen |
 |---|---|---|---|
-| `svd:random` | 4.22 | 14.8 | 20.9 |
+| `svd:random` | 4.25 | 14.8 | 20.9 |
 | `svd:gap-1e-1/bottom` | 5 | 16.4 | 16.2 |
 | `svd:gap-1e-2/bottom` | 5.36 | 14 | 14.6 |
 | `svd:gap-1e-4/bottom` | 4.15 | 11.6 | 15.1 |
@@ -259,84 +269,84 @@ whatever relative accuracy that shows (decision 1).
 | `svd:graded-1e-12` | 4.27 | 4.26e+03 | 12.2 |
 | `svd:col-graded` | 3.41 | 14.2 | 13.7 |
 | `svd:rank2` | 3.83 | 11 | 16.4 |
-| `svd:rank1` | 2.83 | 12.9 | 9.6 |
+| `svd:rank1` | 3.05 | 12.9 | 9.6 |
 | `svd:zero` | 0 | 0 | 0 |
 | `svd:rotation` | 3.36 | 9.97 | 8.03 |
 | `svd:near-rotation-1e-4` | 3.5 | 11 | 15.5 |
 | `svd:near-rotation-1e-8` | 4.14 | 12.5 | 17.4 |
 | `svd:near-rotation-1e-12` | 4.96 | 12.4 | 13.7 |
-| `svd:near-reflection-1e-4` | 3.76 | 14.3 | 23 |
+| `svd:near-reflection-1e-4` | 3.69 | 14.3 | 23 |
 | `svd:near-reflection-1e-8` | 3.54 | 13.7 | 17.1 |
 | `svd:near-reflection-1e-12` | 3.46 | 12.2 | 14.4 |
-| `svd:essential` | 4 | 8.26 | 15.4 |
-| `svd:ordering` | 3.52 | 13.7 | 23 |
-| `svd:scale-up` | 3.98 | 11.5 | 23.8 |
+| `svd:essential` | 3.73 | 8.26 | 15.4 |
+| `svd:ordering` | 3.28 | 13.7 | 23 |
+| `svd:scale-up` | 3.95 | 11.5 | 23.8 |
 | `svd:scale-down` | 3.58 | 11.6 | 14.9 |
 | `svd:random@f32` | 5.08 | 14.4 | 17.7 |
-| `svd:gap-1e-1/bottom@f32` | 3.95 | 14.5 | 15.5 |
+| `svd:gap-1e-1/bottom@f32` | 3.96 | 14.5 | 15.5 |
 | `svd:gap-1e-2/bottom@f32` | 3.88 | 12.6 | 18.1 |
 | `svd:gap-1e-4/bottom@f32` | 4.04 | 12.5 | 18.5 |
 | `svd:gap-1e-6/bottom@f32` | 3.36 | 9.99 | 11.8 |
 | `svd:gap-1e-1/top@f32` | 4.59 | 11.4 | 17.7 |
 | `svd:gap-1e-2/top@f32` | 4.05 | 12.2 | 11.8 |
 | `svd:gap-1e-4/top@f32` | 3.97 | 14 | 10.4 |
-| `svd:gap-1e-6/top@f32` | 3.92 | 11.9 | 13.7 |
+| `svd:gap-1e-6/top@f32` | 4.31 | 11.9 | 13.7 |
 | `svd:graded-1e-2@f32` | 4.09 | 112 | 17 |
 | `svd:graded-1e-4@f32` | 3.58 | 772 | 11 |
 | `svd:graded-1e-6@f32` | 3.21 | 13 | 9.08 |
 | `svd:col-graded@f32` | 3.57 | 83 | 15.9 |
-| `svd:rank2@f32` | 3.28 | 9.85 | 14.5 |
-| `svd:rank1@f32` | 3.54 | 10.2 | 9.01 |
+| `svd:rank2@f32` | 3.47 | 9.85 | 14.5 |
+| `svd:rank1@f32` | 2.99 | 10.2 | 9.01 |
 | `svd:zero@f32` | 0 | 0 | 0 |
-| `svd:rotation@f32` | 3.5 | 14.3 | 8.19 |
+| `svd:rotation@f32` | 3.52 | 14.3 | 8.19 |
 | `svd:near-rotation-1e-2@f32` | 4.49 | 12.3 | 14.8 |
-| `svd:near-rotation-1e-4@f32` | 4.28 | 12.8 | 15.4 |
+| `svd:near-rotation-1e-4@f32` | 4.32 | 12.8 | 15.4 |
 | `svd:near-rotation-1e-6@f32` | 3.76 | 14.1 | 10.8 |
 | `svd:near-reflection-1e-2@f32` | 4.14 | 13.2 | 17.3 |
 | `svd:near-reflection-1e-4@f32` | 3.86 | 15.4 | 14.3 |
-| `svd:near-reflection-1e-6@f32` | 3.89 | 13.6 | 9.82 |
-| `svd:essential@f32` | 3.6 | 10.3 | 9.12 |
+| `svd:near-reflection-1e-6@f32` | 3.54 | 13.6 | 9.82 |
+| `svd:essential@f32` | 3.52 | 10.3 | 9.12 |
 | `svd:ordering@f32` | 3.65 | 11.8 | 17 |
 | `svd:scale-up@f32` | 4.02 | 14.3 | 13.7 |
-| `svd:scale-down@f32` | 3.85 | 12 | 11.5 |
+| `svd:scale-down@f32` | 3.61 | 12 | 11.5 |
 
 **Large sample.** `measure_svd3`: $5\times10^4$ matrices per family and precision, scored against a
 double-double reference of the stored matrix (max / p99.9 / mean).
 - The overall maximum is 8.14 `u` at `f64` (`top-1e-0`) and 7.20 at `f32` (`random`).
 - Every mean is between 1.6 and 2.6.
 - Each proptest, over 10⁶ cases with two seeds, reads for the planted bounds: `back` 8.7, `sv`
-  10.3, `ang` 6.4, and 4.5 on the frames. These are under the bounds `svd3_tests` records,
+  10.3, `ang` 6.4, and 4.7 on the frames. These are under the bounds `svd3_tests` records,
   `K = 21` and `FRAME = 10`.
 
 | family | `f64` max | p99.9 | mean | `f32` max | p99.9 | mean |
 |---|---|---|---|---|---|---|
-| `random` | 7.02 | 6.04 | 2.60 | 7.20 | 5.30 | 2.41 |
-| `col-graded` | 5.93 | 4.84 | 2.06 | 4.06 | 3.42 | 1.58 |
-| `rank1` | 5.89 | 4.25 | 1.94 | 5.21 | 4.01 | 1.86 |
-| `rank2` | 7.53 | 5.54 | 2.37 | 6.10 | 5.00 | 2.19 |
-| `essential` | 5.57 | 4.64 | 2.13 | 4.82 | 3.95 | 1.88 |
-| `ordering` | 6.48 | 4.91 | 2.04 | 5.66 | 4.46 | 1.89 |
-| `rotation` | 5.46 | 4.44 | 2.15 | 4.12 | 3.64 | 1.81 |
-| `bottom-1e-0` | 7.03 | 5.49 | 2.49 | 6.65 | 4.89 | 2.28 |
-| `top-1e-0` | 8.14 | 5.58 | 2.43 | 6.10 | 5.07 | 2.24 |
+| `random` | 7.20 | 6.03 | 2.60 | 7.20 | 5.30 | 2.41 |
+| `col-graded` | 5.93 | 4.84 | 2.05 | 4.11 | 3.42 | 1.58 |
+| `rank1` | 5.91 | 4.26 | 1.93 | 5.00 | 4.01 | 1.84 |
+| `rank2` | 7.53 | 5.53 | 2.37 | 5.77 | 5.04 | 2.19 |
+| `essential` | 5.00 | 4.28 | 2.05 | 4.77 | 3.77 | 1.81 |
+| `ordering` | 6.48 | 4.90 | 2.04 | 5.61 | 4.46 | 1.89 |
+| `rotation` | 5.37 | 4.43 | 2.15 | 4.12 | 3.64 | 1.81 |
+| `bottom-1e-0` | 7.03 | 5.49 | 2.48 | 6.65 | 4.90 | 2.27 |
+| `top-1e-0` | 8.14 | 5.59 | 2.43 | 6.10 | 5.07 | 2.24 |
 | `bottom-1e-2` | 6.90 | 5.52 | 2.40 | 5.84 | 4.97 | 2.23 |
-| `top-1e-2` | 6.62 | 5.37 | 2.48 | 5.54 | 4.52 | 2.28 |
-| `bottom-1e-4` | 7.06 | 5.46 | 2.38 | 4.92 | 4.05 | 1.96 |
-| `top-1e-4` | 6.75 | 4.96 | 2.42 | 6.05 | 4.73 | 2.27 |
-| `bottom-1e-8` | 5.38 | 4.67 | 2.11 | 4.94 | 3.96 | 1.91 |
-| `top-1e-8` | 5.56 | 4.71 | 2.24 | 4.37 | 3.71 | 1.85 |
-| `bottom-1e-12` | 5.74 | 4.58 | 2.09 | 5.01 | 4.02 | 1.91 |
-| `top-1e-12` | 5.68 | 4.64 | 2.18 | 4.36 | 3.78 | 1.84 |
+| `top-1e-2` | 6.62 | 5.38 | 2.47 | 5.54 | 4.52 | 2.28 |
+| `bottom-1e-4` | 7.00 | 5.46 | 2.38 | 4.92 | 4.08 | 1.96 |
+| `top-1e-4` | 6.75 | 4.95 | 2.42 | 6.50 | 4.73 | 2.27 |
+| `bottom-1e-8` | 5.38 | 4.64 | 2.11 | 4.88 | 3.96 | 1.91 |
+| `top-1e-8` | 5.56 | 4.71 | 2.24 | 4.52 | 3.71 | 1.85 |
+| `bottom-1e-12` | 5.74 | 4.57 | 2.09 | 5.00 | 4.02 | 1.91 |
+| `top-1e-12` | 5.67 | 4.64 | 2.18 | 4.36 | 3.78 | 1.84 |
 | `graded-1e-4` | 6.27 | 5.10 | 2.17 | 5.03 | 3.93 | 1.86 |
-| `graded-1e-8` | 5.83 | 4.43 | 1.98 | 5.41 | 3.96 | 1.87 |
-| `near-rotation-1e-4` | 6.35 | 5.30 | 2.58 | 6.18 | 5.24 | 2.46 |
-| `near-rotation-1e-8` | 6.45 | 5.41 | 2.55 | 4.40 | 3.64 | 1.85 |
-| `near-reflection-1e-4` | 6.37 | 5.36 | 2.58 | 6.78 | 5.24 | 2.46 |
-| `near-reflection-1e-8` | 6.32 | 5.36 | 2.55 | 4.57 | 3.66 | 1.85 |
+| `graded-1e-8` | 5.83 | 4.43 | 1.98 | 5.41 | 3.93 | 1.85 |
+| `near-rotation-1e-4` | 6.35 | 5.30 | 2.58 | 6.17 | 5.22 | 2.46 |
+| `near-rotation-1e-8` | 6.61 | 5.41 | 2.55 | 4.40 | 3.64 | 1.84 |
+| `near-reflection-1e-4` | 6.37 | 5.34 | 2.58 | 6.86 | 5.24 | 2.46 |
+| `near-reflection-1e-8` | 6.32 | 5.36 | 2.55 | 4.58 | 3.67 | 1.85 |
 
 **Cost.** In ns. This program's timings are criterion's estimates from
-`cargo bench -p helicoid --bench linalg -- svd3`, run with `taskset -c 2` while other sessions held
-the load at 5–9. The same four matrices were timed through two others:
+`cargo bench -p helicoid --bench linalg -- svd3`, run with `taskset -c 2` at a load of 2–5. The
+same four matrices were timed through two others, while other sessions held the load at 5–9:
 - nalgebra's `SVD::new(m, true, true)`, in a paired scratch harness, interleaved, min of 31 runs of
   $2\times10^4$;
 - Eigen's `JacobiSVD` with full `U` and `V`, built with `g++ -O2 -ffp-contract=off` in the Sophus
@@ -347,15 +357,36 @@ rows.
 
 | row | `f64` | nalgebra | Eigen | `f32` | nalgebra | Eigen |
 |---|---|---|---|---|---|---|
-| random | 416 | 565 | 662 | 351 | 451 | 456 |
-| `gap-1e-8` | 260 | 505 | 664 | 189 | 312 | 408 |
-| `near-rotation-1e-8` | 378 | 567 | 786 | 162 | 310 | 120 |
-| rank 2 | 467 | 564 | 661 | 401 | 452 | 509 |
-| the four in turn | 1523 | | | 1099 | | |
+| random | 412 | 565 | 662 | 351 | 451 | 456 |
+| `gap-1e-8` | 265 | 505 | 664 | 195 | 312 | 408 |
+| `near-rotation-1e-8` | 6.61 | 5.41 | 2.55 | 4.40 | 3.64 | 1.84 |
+| rank 2 | 411 | 564 | 661 | 364 | 452 | 509 |
+| the four in turn | 1468 | | | 1067 | | |
 
-The scratch harness reads this program at 0.48–0.84 of nalgebra's time on every row. It is also
-faster than Eigen on every row but one, `near-rotation-1e-8` at `f32`: 162 against 120. That row
-was not looked into further.
+The scratch harness read this program at 0.48–0.84 of nalgebra's time on every row before the review
+below; the rows above are 0.52–0.81 of its column. It is also faster than Eigen on every row but
+one, `near-rotation-1e-8` at `f32`: 167 against 120. That row was not looked into further.
+
+**The review.** The first implementation had four defects, now fixed, each with a regression test
+in `svd3_tests`:
+- The `f32` floor of $2^{-16}$, which SV.6 derived from the block rather than the column norm. A
+  graded matrix read 114 `u` there.
+- `eig3`'s `f32` steps, which do not reach that floor from a subnormal input. `Window::reaches` now
+  checks every window at compile time.
+- A floored exit that null columns could not meet.
+- One projection on a residual whose square underflows, which put `U` $1.7\times10^{14}$ `u` from a
+  rotation.
+
+The window, the exit and the second projection move 16 committed rows by at most 0.4 `u`; every
+other id's rows are bit-identical. A paired harness (one binary per variant, `taskset`-pinned,
+interleaved, min of 10) reads, against the first implementation:
+- **Rank-deficient input leaves at the exit.** rank 1 runs at 0.77× (`f64`) and 0.53× (`f32`),
+  rank 2 at 0.88× and 0.87×.
+- **The second projection costs 4–6 ns.** Generic rows read 1.00–1.05×.
+- **The ladder takes no product on its chain and passes only scalars.** It costs 31 ns, against
+  46, and `eig3`'s `f32` ladder arm reads 0.81×.
+- **The price of the floor.** An `f32` matrix whose largest entry is in $[2^{-16}, 2^{-7})$ now
+  takes the ladder: 1.10×.
 
 ## Further work
 
