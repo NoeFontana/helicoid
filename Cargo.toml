@@ -41,7 +41,7 @@ unused_must_use = "deny"
 # setting here can change a computed bit: Rust has no fast-math, and the corpus and threshold tests
 # compare bits at every opt-level below (D16).
 [profile.dev]
-# Backtraces keep file and line; full debuginfo made the dev target directory 60% larger.
+# Backtraces keep file and line, which is all a failing test prints.
 debug = "line-tables-only"
 
 # Third-party code compiled once and run by every test: `libm` under each transcendental,

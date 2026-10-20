@@ -32,7 +32,7 @@ Not shipped in the crates.
   `debug_assert!` and overflow checks off, instead of `--release`. The dev profile optimizes the
   hot third-party crates and `xtask`, and keeps line tables only. After an edit to
   `helicoid-linalg`, the two passes take 125 s instead of 400 s (392 CPU-s instead of 1252), and
-  the dev target directory is 40% smaller. `just determinism` and CI also digest the corpus at
+  the dev target directory is 30% smaller. `just determinism` and CI also digest the corpus at
   `ndebug`, so an opt-level that moved an output bit fails the comparison.
 
 ## [0.0.6] - 2026-10-19
