@@ -86,12 +86,15 @@ lowest MSRV among consumers (D17).
 ## Commands
 
 Everything goes through `just`; CI invokes the recipes 1:1. Tests: **nextest, not `cargo test`**.
-Single test: `cargo nextest run -p helicoid -- so3_exp_log_roundtrip`. The generator is Python
-(`uv`), the container oracles are C++; everything else is Rust.
+Single test: `cargo nextest run -p helicoid -- so3_exp_log_roundtrip`. Iterate on the crate you
+touch and its dependents (`helicoid-linalg` → `helicoid` → `xtask`), then `just test` once before
+pushing; add `--cargo-profile ndebug` when the code under test has a `cfg(debug_assertions)` arm.
+Never `--release` for a test run: `ndebug` has its semantics at a third of the rebuild. The
+generator is Python (`uv`), the container oracles are C++; everything else is Rust.
 
 | Recipe | Purpose |
 |---|---|
-| `just build` / `test` | build; nextest (dev and release profiles) + doctests |
+| `just build` / `test` | build; nextest (`dev` and `ndebug` profiles) + doctests |
 | `just lint` | fmt, clippy `-D warnings`, `cargo xtask lint` (line citations, draft citations, generated-file headers, dependency closure, `__sweep`, untracked files, `libm::` only in D16's kernel, no fused multiply-add; twin table owed), `cargo deny` |
 | `just doc` | rustdoc, warnings denied |
 | `just msrv` | build at `rust-version` |

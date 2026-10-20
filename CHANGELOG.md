@@ -28,6 +28,12 @@ Not shipped in the crates.
   the projection's conditioning, the weight exact in integers. A self-test pair goes with it, and
   nalgebra's `Rotation3::from_matrix_eps` (its input at unit scale) and Sophus's `SO3::fitToSO3`
   are oracles.
+- **Test profiles.** `just test`'s second pass runs at the new `ndebug` profile, the dev profile with
+  `debug_assert!` and overflow checks off, instead of `--release`. The dev profile optimizes the
+  hot third-party crates and `xtask`, and keeps line tables only. After an edit to
+  `helicoid-linalg`, the two passes take 125 s instead of 400 s (392 CPU-s instead of 1252), and
+  the dev target directory is 40% smaller. `just determinism` and CI also digest the corpus at
+  `ndebug`, so an opt-level that moved an output bit fails the comparison.
 
 ## [0.0.6] - 2026-10-19
 
