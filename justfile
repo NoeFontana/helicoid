@@ -9,11 +9,12 @@ default:
 build:
     cargo build --workspace --all-targets
 
-# Unit + integration tests (nextest) in the dev profile, then in release, where `debug_assert!` is
-# compiled out and the out-of-domain behaviour the docs state is what is tested; then doctests.
+# Unit + integration tests (nextest) in the dev profile, then in `ndebug` (`Cargo.toml`), where
+# `debug_assert!` is compiled out and the out-of-domain behaviour the docs state is what is tested;
+# then doctests.
 test:
     cargo nextest run --workspace --no-tests=pass
-    cargo nextest run --workspace --release --no-tests=pass
+    cargo nextest run --workspace --cargo-profile ndebug --no-tests=pass
     cargo test --doc --workspace
     cargo nextest run -p helicoid-linalg --features mint
     cargo test --doc -p helicoid-linalg --features mint
@@ -25,12 +26,12 @@ test:
 lint:
     cargo fmt --all -- --check
     cargo clippy --workspace --all-targets -- -D warnings
-    # The release profile too. `debug_assertions` is off there, so every `cfg(not(debug_assertions))`
-    # test body -- the ones `just test`'s release run is the only thing that executes -- is cfg'd out
+    # The `ndebug` profile too. `debug_assertions` is off there, so every `cfg(not(debug_assertions))`
+    # test body -- the ones `just test`'s `ndebug` run is the only thing that executes -- is cfg'd out
     # of the dev pass above and would otherwise never be checked against the denied `unwrap_used`,
     # `expect_used`, `panic`, `todo`, `unimplemented` and `dbg_macro`. The `mint` pass below stays
     # dev-only, as `just test`'s `mint` run is.
-    cargo clippy --workspace --all-targets --release -- -D warnings
+    cargo clippy --workspace --all-targets --profile ndebug -- -D warnings
     cargo clippy -p helicoid -- -D warnings
     cargo xtask lint
     cargo clippy -p helicoid-linalg --all-targets --features mint -- -D warnings
@@ -258,15 +259,17 @@ bench-replay dir:
 
 # D16 (`docs/PHASE6.md` §3): the shipped subject's outputs over the whole corpus, one SHA-256 per
 # id and precision, digested on this host and under wasmtime for `wasm32-wasip1`, then compared; any
-# difference fails and names the id. CI digests x86_64, aarch64 and wasm32 in separate jobs with the
-# two recipes below and compares the three files with `cargo xtask determinism --compare`.
-determinism: (determinism-digest "target/determinism/native.txt") (determinism-wasm "target/determinism/wasm32.txt")
-    cargo xtask determinism --compare target/determinism/native.txt target/determinism/wasm32.txt
+# difference fails and names the id. The host digests twice, at `release` and at `ndebug`'s
+# opt-level 0: `just test` runs at the second, so an optimizer that moved a bit would fail here.
+# CI digests x86_64 (both profiles), aarch64 and wasm32 in separate jobs with the two recipes below
+# and compares the four files with `cargo xtask determinism --compare`.
+determinism: (determinism-digest "target/determinism/native.txt") (determinism-digest "target/determinism/ndebug.txt" "ndebug") (determinism-wasm "target/determinism/wasm32.txt")
+    cargo xtask determinism --compare target/determinism/native.txt target/determinism/ndebug.txt target/determinism/wasm32.txt
 
-# This host's digest table into `out`.
-determinism-digest out:
+# This host's digest table into `out`, built at `profile`.
+determinism-digest out profile="release":
     mkdir -p "$(dirname '{{out}}')"
-    cargo run --quiet --release --locked -p xtask -- determinism --write '{{out}}'
+    cargo run --quiet --profile '{{profile}}' --locked -p xtask -- determinism --write '{{out}}'
 
 # The `wasm32-wasip1` digest table into `out` (needs `wasmtime`). The guest reads the corpus through
 # the checkout's absolute path, which is the one the harness was compiled with.

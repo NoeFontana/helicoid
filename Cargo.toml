@@ -37,6 +37,52 @@ missing_docs = "warn"
 unreachable_pub = "warn"
 unused_must_use = "deny"
 
+# Profiles are read from the workspace root only, so none of this reaches a consumer's build. No
+# setting here can change a computed bit: Rust has no fast-math, and the corpus and threshold tests
+# compare bits at every opt-level below (D16).
+[profile.dev]
+# Backtraces keep file and line, which is all a failing test prints.
+debug = "line-tables-only"
+
+# Third-party code compiled once and run by every test: `libm` under each transcendental,
+# `num-bigint` under the conformance metric, proptest's generators, the corpus hash and parse.
+# Named, not `"*"`: that also optimizes `syn`, `criterion` and `clap`, which tripled the cold build.
+[profile.dev.package.libm]
+opt-level = 3
+[profile.dev.package.num-bigint]
+opt-level = 3
+[profile.dev.package.num-integer]
+opt-level = 3
+[profile.dev.package.num-traits]
+opt-level = 3
+[profile.dev.package.proptest]
+opt-level = 3
+[profile.dev.package.rand]
+opt-level = 3
+[profile.dev.package.rand_core]
+opt-level = 3
+[profile.dev.package.rand_xorshift]
+opt-level = 3
+[profile.dev.package.chacha20]
+opt-level = 3
+[profile.dev.package.sha2]
+opt-level = 3
+[profile.dev.package.serde_json]
+opt-level = 3
+
+# The harness's corpus tests run 2.4x faster at opt-level 1 for no more compile time.
+# `debug-assertions` and `overflow-checks` stay on.
+[profile.dev.package.xtask]
+opt-level = 1
+
+# `just test`'s second pass: the dev profile with `debug_assert!` compiled out and wrapping
+# arithmetic, as a consumer's release build has them. What it tests is that cfg, not the optimizer:
+# `--release` compiled the `helicoid` tests alone for 100 s.
+[profile.ndebug]
+inherits = "dev"
+debug-assertions = false
+overflow-checks = false
+
 [workspace.dependencies]
 helicoid = { path = "crates/helicoid", version = "0.0.6" }
 helicoid-linalg = { path = "crates/helicoid-linalg", version = "0.0.6" }
