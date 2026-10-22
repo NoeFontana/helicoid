@@ -663,6 +663,7 @@ mod tests {
                 "gaussian_",
                 "s2_",
                 "sim3_",
+                "se3_inv_act",
             ]
             .iter()
             .any(|p| id.starts_with(p))

@@ -38,6 +38,15 @@ defined by the status tables in `docs/`; they win over this file.
 ### Instrument
 
 Not shipped in the crates.
+- **The corpus ids `so3_inv_act` and `se3_inv_act`** (`0103`): the inverse action and its three
+  Jacobians, the Jacobians from the generators of the Lie algebra at 120 digits. `so3_inv_act`
+  reads `so3_act`'s strata; `se3_inv_act` has `tx:<r>` and `tp:<r>` (`‖t‖` at `r` times `‖x‖` or
+  `‖p‖`, `r` from 1 to 10⁶) and `generic`, 6 records each (64 in the deep tier), with `@f32`
+  twins. The planted `helicoid:composed-inv-act` answers by the composition and reruns the
+  record's tables: up to 4.0·10⁶ `u` on `tx:1e6` and 2.2·10⁶ on `tp:1e6`.
+  On the deep tier helicoid reads at most 4.77 `u` at `f64` and 4.79 at `f32` on
+  `se3_inv_act`, and 5.03 on `so3_inv_act` but on `q:nonunit` (511 `u`, `so3_act`'s carried
+  drift).
 - **The corpus id `nearest_rotation`** (`0102`): 17 binary64 strata (296 records) and 15 binary32
   (264), against `mp.svd_r` at 120 digits. The metric `Rule::Polar` weights the forward error by
   the projection's conditioning, the weight exact in integers. A self-test pair goes with it, and

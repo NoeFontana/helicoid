@@ -64,6 +64,8 @@ pub(crate) fn registry() -> Vec<Registered> {
     all.push(crate::shipped::host_std());
     // `R(q)` in the homogeneous form `0092` (draft) replaced, for `cargo xtask compare`.
     all.push(crate::shipped::homogeneous_r_twin());
+    // The composition `0103` replaces, for `cargo xtask compare`.
+    all.push(crate::shipped::composed_inv_act_twin());
     all.extend(crate::seeded::registry());
     all
 }

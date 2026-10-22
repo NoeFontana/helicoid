@@ -227,6 +227,21 @@ const SIM3_EXP: &[FieldRule] = &[
 ];
 /// `sim3_act`: the moved point, as `so3_act`'s.
 const SIM3_ACT: &[FieldRule] = &[field("Xp", Floor::Unit, SignRule::Fixed)];
+/// `so3_inv_act`, `se3_inv_act` (`0103`): the point and the three Jacobians, each relative to
+/// itself. Not `Floor::Scale` on the translation: dividing by `‖t‖` would excuse the composition
+/// `X.inverse() * p` the `u‖t‖/‖x‖` the record measures it losing.
+const SO3_INV_ACT: &[FieldRule] = &[
+    field("Rinv_p", Floor::Unit, SignRule::Fixed),
+    field("Jr", Floor::Unit, SignRule::Fixed),
+    field("Jl", Floor::Unit, SignRule::Fixed),
+    field("Jp", Floor::Unit, SignRule::Fixed),
+];
+const SE3_INV_ACT: &[FieldRule] = &[
+    field("Xinv_p", Floor::Unit, SignRule::Fixed),
+    field("Jr", Floor::Unit, SignRule::Fixed),
+    field("Jl", Floor::Unit, SignRule::Fixed),
+    field("Jp", Floor::Unit, SignRule::Fixed),
+];
 const SO2_EXP: &[FieldRule] = &[field("z", Floor::Unit, SignRule::Fixed)];
 const SO2_LOG: &[FieldRule] = &[field("theta", Floor::Tiny, SignRule::Fixed)];
 const SE2_EXP: &[FieldRule] = &[
@@ -289,6 +304,8 @@ const TABLE: &[(&str, Rule)] = &[
     ("so3_exp", Forward(SO3_EXP)),
     ("so3_log", Forward(SO3_LOG)),
     ("so3_act", Forward(SO3_ACT)),
+    ("so3_inv_act", Forward(SO3_INV_ACT)),
+    ("se3_inv_act", Forward(SE3_INV_ACT)),
     // `0085`: forward, against the polar factor's quaternion, sign-free.
     ("so3_from_matrix", Rule::Axis("q")),
     ("so3_jr", Forward(JAC)),
@@ -1585,6 +1602,11 @@ mod tests {
         add(&["sim3_exp"], "sigma", Want::Unit, false);
         add(&["sim3_log"], "tau", Want::Tiny, false);
         add(&["sim3_act"], "Xp", Want::Unit, false);
+        add(&["so3_inv_act"], "Rinv_p", Want::Unit, false);
+        add(&["se3_inv_act"], "Xinv_p", Want::Unit, false);
+        for key in ["Jr", "Jl", "Jp"] {
+            add(&["so3_inv_act", "se3_inv_act"], key, Want::Unit, false);
+        }
         add(&["chol_solve_n3", "chol_solve_n6"], "x", Want::Tiny, false);
         add(&["quat_renormalize"], "q", Want::Tiny, false);
         for name in [
