@@ -245,6 +245,8 @@ const RUNNERS: &[Runner] = &[
             "so3_exp",
             "so3_log",
             "so3_act",
+            "so3_inv_act",
+            "se3_inv_act",
             "so3_from_matrix",
             "so3_jl",
             "so3_jr",
@@ -288,8 +290,9 @@ const RUNNERS: &[Runner] = &[
         // C++ on the image's glibc (`0075`).
         backend: Backend::HostStd,
         binary64_only: false,
-        // No id it answers has `@f32` strata (`0077`).
-        answers_f32: &[],
+        // `se3_inv_act` (`0103`) is the one id it answers with `@f32` strata, in
+        // `manif::SE3<float>`.
+        answers_f32: &["se3_inv_act"],
         answers: &[
             "so2_exp",
             "so2_log",
@@ -303,6 +306,8 @@ const RUNNERS: &[Runner] = &[
             "so3_exp",
             "so3_log",
             "so3_act",
+            "so3_inv_act",
+            "se3_inv_act",
             "so3_jl",
             "so3_jr",
             "so3_jl_inv",
@@ -976,12 +981,13 @@ mod tests {
     fn a_binary64_runner_is_not_launched_at_f32() -> Result<(), String> {
         let (root, dir) = (super::super::root()?, corpus_dir()?);
         let scratch = Scratch::new("f64-only");
-        for name in ["tf_tree_math", "sophus_rs", "gtsam", "manif"] {
+        for name in ["tf_tree_math", "sophus_rs", "gtsam"] {
             let none = run(name, &root, &dir, &scratch.0, None, Precision::F32)?;
             assert!(none.is_none(), "{name}");
             assert!(!answers_f32(name), "{name}");
         }
-        assert!(answers_f32("nalgebra") && answers_f32("sophus") && !answers_f32("nope"));
+        assert!(answers_f32("nalgebra") && answers_f32("sophus") && answers_f32("manif"));
+        assert!(!answers_f32("nope"));
         assert!(!scratch.0.exists());
         Ok(())
     }

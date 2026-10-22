@@ -91,6 +91,11 @@ void so3_sides() {
   const gtsam::so3::DexpFunctor local(phi);
   const double b = (kPi / 2 - 1) / std::pow(kPi / 2, 3);
   check(std::fabs(local.Gamma().left()(0, 1) + b * kPi / 2) <= kTol, "DexpFunctor::Gamma().left() is Γ₂");
+  // `unrotate` (0103): R_z(π/2)ᵀ e_x = −e_y, and its H1 is the right `[x]×` at x = −e_y.
+  const gtsam::Rot3 r = oracle::helicoid_to_gtsam_rot3({kHalf, 0, 0, kHalf});
+  gtsam::Matrix3 h1;
+  near(oracle::gtsam_to_helicoid_vec3(r.unrotate(Eigen::Vector3d(1, 0, 0), h1)), {0, -1, 0}, "unrotate is Rᵀ p");
+  near(oracle::gtsam_to_helicoid_matrix(h1), {0, 0, 1, 0, 0, 0, -1, 0, 0}, "Rot3::unrotate's H1 is the right [x]×");
 }
 
 void se3() {
@@ -107,6 +112,18 @@ void se3() {
         {1, 0, 0, 0, 1.5, -1, 0, 1, 0, -1.5, 0, 0.5, 0, 0, 1, 1, -0.5, 0,
          0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1},
         "Pose3::LogmapDerivative is J_r⁻¹");
+  // The inverse action (0103): X⁻¹ (1, 3, 3) = e_x. `transformTo`'s H1 is helicoid's right
+  // `[[x]×, −I]`, rotation-first; the left one, `H1 Ad_{X⁻¹}`, is `[Rᵀ[p]×, −Rᵀ]`; H2 is `Rᵀ`.
+  Eigen::Matrix<double, 3, 6> h1;
+  gtsam::Matrix3 h2;
+  const Eigen::Vector3d x = g.transformTo(Eigen::Vector3d(1, 3, 3), h1, h2);
+  near(oracle::gtsam_to_helicoid_vec3(x), {1, 0, 0}, "se3: transformTo is X⁻¹ p");
+  near(oracle::gtsam_to_helicoid_matrix(h1), {0, 0, 0, 0, 0, 1, 0, -1, 0, -1, 0, 0, 0, -1, 0, 0, 0, -1},
+       "Pose3::transformTo's H1 is the right [[x]×, −I]");
+  const Eigen::Matrix<double, 3, 6> left = h1 * g.inverse().AdjointMap();
+  near(oracle::gtsam_to_helicoid_matrix(left), {3, 0, -3, 0, 3, 1, -1, -3, 0, 0, 1, 0, -1, 0, 0, 0, 0, -1},
+       "H1 Ad_{X⁻¹} is the left [Rᵀ[p]×, −Rᵀ]");
+  near(oracle::gtsam_to_helicoid_matrix(h2), {0, -1, 0, 1, 0, 0, 0, 0, 1}, "transformTo's H2 is Rᵀ");
 }
 
 void extended_pose3() {

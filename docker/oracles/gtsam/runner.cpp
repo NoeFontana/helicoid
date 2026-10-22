@@ -138,6 +138,33 @@ Fields se2_out(const gtsam::Pose2& g) {
 
 gtsam::Pose2 se2_in(const Fields& in) { return helicoid_to_gtsam_pose2(take(in, "z", 2), take(in, "t", 2)); }
 
+// The inverse action (docs/decisions/0103): GTSAM's `unrotate` and `transformTo`, `Rᵀ(p − t)` with
+// their right Jacobians, `Pose3`'s tangent `[ω; v]` being helicoid's rotation-first order. GTSAM
+// has no left one; it is the right one times GTSAM's own `Ad` of the inverse, `J_l = J_r Ad_{X⁻¹}`,
+// since `Exp(τ) X = X Exp(Ad_{X⁻¹} τ)`.
+Fields so3_inv_act(const Fields& in) {
+  const gtsam::Rot3 r = helicoid_to_gtsam_rot3(take(in, "q", 4));
+  gtsam::Matrix3 jr, jp;
+  const Eigen::Vector3d x = r.unrotate(helicoid_to_gtsam_vec3(take(in, "p", 3)), jr, jp);
+  const gtsam::Matrix3 jl = jr * r.inverse().AdjointMap();
+  return {{"Rinv_p", gtsam_to_helicoid_vec3(x)},
+          {"Jr", gtsam_to_helicoid_matrix(jr)},
+          {"Jl", gtsam_to_helicoid_matrix(jl)},
+          {"Jp", gtsam_to_helicoid_matrix(jp)}};
+}
+
+Fields se3_inv_act(const Fields& in) {
+  const gtsam::Pose3 g = helicoid_to_gtsam_pose3(take(in, "q", 4), take(in, "x", 3));
+  Eigen::Matrix<double, 3, 6> jr;
+  gtsam::Matrix3 jp;
+  const Eigen::Vector3d x = g.transformTo(helicoid_to_gtsam_vec3(take(in, "p", 3)), jr, jp);
+  const Eigen::Matrix<double, 3, 6> jl = jr * g.inverse().AdjointMap();
+  return {{"Xinv_p", gtsam_to_helicoid_vec3(x)},
+          {"Jr", gtsam_to_helicoid_matrix(jr)},
+          {"Jl", gtsam_to_helicoid_matrix(jl)},
+          {"Jp", gtsam_to_helicoid_matrix(jp)}};
+}
+
 gtsam::Similarity3 sim3_in(const Fields& in) {
   return helicoid_to_gtsam_similarity3(take(in, "q", 4), take(in, "x", 3), scalar(in, "sigma"));
 }
@@ -184,6 +211,8 @@ std::vector<Id> make_table() {
        {{"q", 4}}},
       {"so3_log", [](const Fields& in) { return Fields{{"phi", gtsam_to_helicoid_vec3(gtsam::Rot3::Logmap(helicoid_to_gtsam_rot3(take(in, "q", 4))))}}; },
        {{"phi", 3}}},
+      {"so3_inv_act", so3_inv_act, {{"Rinv_p", 3}, {"Jr", 9}, {"Jl", 9}, {"Jp", 9}}},
+      {"se3_inv_act", se3_inv_act, {{"Xinv_p", 3}, {"Jr", 18}, {"Jl", 18}, {"Jp", 9}}},
       {"so3_act", [](const Fields& in) { return Fields{{"Rp", gtsam_to_helicoid_vec3(helicoid_to_gtsam_rot3(take(in, "q", 4)).rotate(helicoid_to_gtsam_vec3(take(in, "p", 3))))}}; },
        {{"Rp", 3}}},
       // `Rot3(R).toQuaternion()`: `Rot3` keeps the matrix as given, so this is Eigen's quaternion

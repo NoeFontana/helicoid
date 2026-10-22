@@ -161,6 +161,18 @@ void se3() {
   near(oracle::manif_to_helicoid_se3(g.rplus(shift)).x, {1, 3, 3}, "se3 screw retract: t + R ρ");
   near(oracle::manif_to_helicoid_tangent(g.rplus(shift).rminus(g).coeffs(), oracle::kSe3), {0, 0, 0, 1, 0, 0},
        "se3 screw local");
+  // The inverse action composed (0103): X⁻¹ (1, 3, 3) = e_x; the right Jacobian, `act`'s times
+  // `inverse`'s, is helicoid's `[[x]×, −I]` once its columns are rotation-first, and the left one,
+  // the right times `adj()` of the inverse, `[Rᵀ[p]×, −Rᵀ]`.
+  manif::SE3d::Jacobian j_inv;
+  const manif::SE3d gi = g.inverse(j_inv);
+  Eigen::Matrix<double, 3, 6> j_act;
+  near(oracle::manif_to_helicoid_vec3(gi.act(Eigen::Vector3d(1, 3, 3), j_act)), {1, 0, 0}, "se3 inverse act");
+  const Eigen::Matrix<double, 3, 6> jr = j_act * j_inv;
+  near(oracle::manif_to_helicoid_3x6(jr), {0, 0, 0, 0, 0, 1, 0, -1, 0, -1, 0, 0, 0, -1, 0, 0, 0, -1},
+       "se3 inverse act: the right [[x]×, −I], rotation-first");
+  near(oracle::manif_to_helicoid_3x6(jr * gi.adj()), {3, 0, -3, 0, 3, 1, -1, -3, 0, 0, 1, 0, -1, 0, 0, 0, 0, -1},
+       "se3 inverse act: the left [Rᵀ[p]×, −Rᵀ]");
 }
 
 void world_chart() {

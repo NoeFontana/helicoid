@@ -44,9 +44,11 @@ Not shipped in the crates.
   `‖p‖`, `r` from 1 to 10⁶) and `generic`, 6 records each (64 in the deep tier), with `@f32`
   twins. The planted `helicoid:composed-inv-act` answers by the composition and reruns the
   record's tables: up to 4.0·10⁶ `u` on `tx:1e6` and 2.2·10⁶ on `tp:1e6`.
-  On the deep tier helicoid reads at most 4.77 `u` at `f64` and 4.79 at `f32` on
-  `se3_inv_act`, and 5.03 on `so3_inv_act` but on `q:nonunit` (511 `u`, `so3_act`'s carried
-  drift).
+  GTSAM's `transformTo` and `unrotate` and manif's composition are oracles, manif at `f32` too
+  through a new `--precision f32` in its runner. On the deep tier helicoid reads at most 4.77 `u`
+  at `f64` and 4.79 at `f32` on `se3_inv_act`, below GTSAM's maximum on every stratum, and 5.03
+  on `so3_inv_act` but on `q:nonunit` (511 `u`, `so3_act`'s carried drift; GTSAM reads 806 and
+  manif 1469 there). No stratum of either id fails domination.
 - **The corpus id `nearest_rotation`** (`0102`): 17 binary64 strata (296 records) and 15 binary32
   (264), against `mp.svd_r` at 120 digits. The metric `Rule::Polar` weights the forward error by
   the projection's conditioning, the weight exact in integers. A self-test pair goes with it, and
