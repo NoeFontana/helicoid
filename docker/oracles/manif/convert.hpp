@@ -87,6 +87,17 @@ Vec manif_to_helicoid_matrix(const Eigen::Matrix<double, N, N>& m, const Order<N
 // A 3 × 3 rotation-block matrix (SO(3)'s Jacobians): the same order, column-major.
 inline Vec manif_to_helicoid_matrix3(const Eigen::Matrix3d& m) { return Vec(m.data(), m.data() + 9); }
 
+// A `3 x 6` Jacobian of a point by an SE(3) element (0103), manif's `[ρ; θ]` columns as
+// helicoid's rotation-first `[φ; ρ]`, column-major.
+inline Vec manif_to_helicoid_3x6(const Eigen::Matrix<double, 3, 6>& m) {
+  Vec out;
+  out.reserve(18);
+  for (int j = 0; j < 6; ++j) {
+    for (int i = 0; i < 3; ++i) out.push_back(m(i, kSe3[j]));
+  }
+  return out;
+}
+
 inline Eigen::Vector3d helicoid_to_manif_vec3(const Vec& v) { return Eigen::Vector3d(v.at(0), v.at(1), v.at(2)); }
 
 inline Vec manif_to_helicoid_vec3(const Eigen::Vector3d& v) { return {v.x(), v.y(), v.z()}; }

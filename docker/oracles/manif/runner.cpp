@@ -2,8 +2,11 @@
 // file per function id it answers. It never reads a reference and never scores;
 // `cargo xtask conformance --oracle manif` does, with the harness's exact metric.
 //
-//   manif_runner --version               the pin, one line: the result rows' subject_version
-//   manif_runner --out DIR FILE.jsonl…   DIR/<id>.jsonl for each FILE whose id is answered
+//   manif_runner --version                                the pin, one line: the result rows' subject_version
+//   manif_runner [--precision f32] --out DIR FILE.jsonl…  DIR/<id>.jsonl for each FILE whose id is answered
+//
+// with `--precision f32` the `@f32` records alone, with `manif::SE3<float>` (docs/decisions/0077):
+// `se3_inv_act` (0103) is the one id it answers that has them.
 //
 // An answer line is `{"id":N,"out":{"<field>":["<hex float>",…]}}`, fields flat in the reference's
 // order (matrices column-major). A record manif refuses (it throws `manif::invalid_argument` or
@@ -111,11 +114,52 @@ SO3xR3 so3xr3_in(const Fields& in, const std::string& q, const std::string& x) {
   return helicoid_to_manif_so3xr3(take(in, q, 4), take(in, x, 3));
 }
 
-// One id: its evaluation, and the fields and lengths it answers, which a refusal fills with `nan`.
+// The inverse action (docs/decisions/0103) as manif composes it: `X.inverse().act(p)`, the
+// action's Jacobian chained with `inverse`'s, the composition helicoid's pair replaces. manif's
+// Jacobians are right ones; the left one is the right one times manif's `adj()` of the inverse,
+// `J_l = J_r Ad_{X⁻¹}`, since `Exp(τ) X = X Exp(Ad_{X⁻¹} τ)`.
+Fields so3_inv_act(const Fields& in) {
+  const manif::SO3d r = helicoid_to_manif_so3(take(in, "q", 4));
+  manif::SO3d::Jacobian j_inv;
+  const manif::SO3d ri = r.inverse(j_inv);
+  Eigen::Matrix3d j_act, j_p;
+  const Eigen::Vector3d x = ri.act(helicoid_to_manif_vec3(take(in, "p", 3)), j_act, j_p);
+  const Eigen::Matrix3d jr = j_act * j_inv;
+  const Eigen::Matrix3d jl = jr * ri.adj();
+  return {{"Rinv_p", manif_to_helicoid_vec3(x)},
+          {"Jr", manif_to_helicoid_matrix3(jr)},
+          {"Jl", manif_to_helicoid_matrix3(jl)},
+          {"Jp", manif_to_helicoid_matrix3(j_p)}};
+}
+
+// At `T`: `double`, or `float` for the `@f32` strata, whose inputs narrow exactly and whose
+// outputs widen exactly (docs/decisions/0077).
+template <class T>
+Fields se3_inv_act(const Fields& in) {
+  using V3 = Eigen::Matrix<T, 3, 1>;
+  const Vec q = take(in, "q", 4), t = take(in, "x", 3), p = take(in, "p", 3);
+  const auto at = [](const Vec& v, std::size_t i) { return static_cast<T>(v[i]); };
+  const manif::SE3<T> g(V3(at(t, 0), at(t, 1), at(t, 2)), Eigen::Quaternion<T>(at(q, 0), at(q, 1), at(q, 2), at(q, 3)));
+  typename manif::SE3<T>::Jacobian j_inv;
+  const manif::SE3<T> gi = g.inverse(j_inv);
+  Eigen::Matrix<T, 3, 6> j_act;
+  Eigen::Matrix<T, 3, 3> j_p;
+  const V3 x = gi.act(V3(at(p, 0), at(p, 1), at(p, 2)), j_act, j_p);
+  const Eigen::Matrix<T, 3, 6> jr = j_act * j_inv;
+  const Eigen::Matrix<T, 3, 6> jl = jr * gi.adj();
+  return {{"Xinv_p", manif_to_helicoid_vec3(x.template cast<double>())},
+          {"Jr", manif_to_helicoid_3x6(jr.template cast<double>())},
+          {"Jl", manif_to_helicoid_3x6(jl.template cast<double>())},
+          {"Jp", manif_to_helicoid_matrix3(j_p.template cast<double>())}};
+}
+
+// One id: its evaluation, and the fields and lengths it answers, which a refusal fills with `nan`;
+// and its evaluation in binary32, for the ids whose corpus file has `@f32` strata (0077), or none.
 struct Id {
   std::string name;
   std::function<Fields(const Fields&)> evaluate;
   std::vector<std::pair<std::string, std::size_t>> out;
+  std::function<Fields(const Fields&)> evaluate_f32 = {};
 };
 
 const std::vector<Id>& table() {
@@ -139,6 +183,8 @@ const std::vector<Id>& table() {
        {{"q", 4}}},
       {"so3_log", [](const Fields& in) { return Fields{{"phi", manif_to_helicoid_vec3(helicoid_to_manif_so3(take(in, "q", 4)).log().coeffs())}}; },
        {{"phi", 3}}},
+      {"so3_inv_act", so3_inv_act, {{"Rinv_p", 3}, {"Jr", 9}, {"Jl", 9}, {"Jp", 9}}},
+      {"se3_inv_act", se3_inv_act<double>, {{"Xinv_p", 3}, {"Jr", 18}, {"Jl", 18}, {"Jp", 9}}, se3_inv_act<float>},
       {"so3_act", [](const Fields& in) { return Fields{{"Rp", manif_to_helicoid_vec3(helicoid_to_manif_so3(take(in, "q", 4)).act(helicoid_to_manif_vec3(take(in, "p", 3))))}}; },
        {{"Rp", 3}}},
       {"so3_jl", [](const Fields& in) { return so3_jacobian(in, J::Left); }, {{"J", 9}}},
@@ -204,9 +250,10 @@ const std::vector<Id>& table() {
   return ids;
 }
 
-const Id* find(const std::string& name) {
+// The id `name` answered at `f32` or not, or none.
+const Id* find(const std::string& name, bool f32) {
   for (const Id& id : table()) {
-    if (id.name == name) return &id;
+    if (id.name == name && (!f32 || id.evaluate_f32)) return &id;
   }
   return nullptr;
 }
@@ -236,10 +283,10 @@ Fields inputs(const nlohmann::json& object) {
 }
 
 // The answer to one record: manif's, its shape checked, or `nan` throughout if manif refuses.
-Fields answer(const Id& id, const Fields& in, std::size_t& refused) {
+Fields answer(const Id& id, const Fields& in, bool f32, std::size_t& refused) {
   Fields out;
   try {
-    out = id.evaluate(in);
+    out = f32 ? id.evaluate_f32(in) : id.evaluate(in);
   } catch (const manif::invalid_argument&) {
     ++refused;
     for (const auto& [field, len] : id.out) out[field] = Vec(len, std::nan(""));
@@ -271,8 +318,14 @@ std::string line_of(std::uint64_t record, const Fields& out) {
   return line.str();
 }
 
-// Answers every line of `path` into `target`; returns the number of refused records.
-std::size_t answer_file(const Id& id, const std::string& path, const std::string& target) {
+bool is_f32_stratum(const std::string& stratum) {
+  const std::string suffix = "@f32";
+  return stratum.size() >= suffix.size() && stratum.compare(stratum.size() - suffix.size(), suffix.size(), suffix) == 0;
+}
+
+// Answers every line of `path` at its precision (in binary32 the `@f32` lines alone) into
+// `target`; returns the number of refused records.
+std::size_t answer_file(const Id& id, const std::string& path, const std::string& target, bool f32) {
   std::ifstream file(path);
   if (!file) throw std::runtime_error(path + ": cannot read");
   std::ofstream out(target);
@@ -283,8 +336,9 @@ std::size_t answer_file(const Id& id, const std::string& path, const std::string
     ++number;
     try {
       const auto record = nlohmann::json::parse(text);
+      if (f32 && !is_f32_stratum(record.at("stratum").get<std::string>())) continue;
       const std::uint64_t record_id = record.at("id").get<std::uint64_t>();
-      out << line_of(record_id, answer(id, inputs(record.at("in")), refused));
+      out << line_of(record_id, answer(id, inputs(record.at("in")), f32, refused));
     } catch (const std::exception& e) {
       throw std::runtime_error(path + ": line " + std::to_string(number) + ": " + e.what());
     }
@@ -301,13 +355,15 @@ std::string pin() {
   return text.str();
 }
 
-int run(const std::vector<std::string>& args) {
+int run(std::vector<std::string> args) {
   if (args.size() == 1 && args[0] == "--version") {
     std::cout << pin() << '\n';
     return std::cout.flush() ? 0 : 1;
   }
+  const bool f32 = args.size() >= 2 && args[0] == "--precision" && args[1] == "f32";
+  if (f32) args.erase(args.begin(), args.begin() + 2);
   if (args.size() < 3 || args[0] != "--out") {
-    std::cerr << "usage: manif_runner --version | --out DIR FILE.jsonl…\n";
+    std::cerr << "usage: manif_runner --version | [--precision f32] --out DIR FILE.jsonl…\n";
     return 2;
   }
   const std::string dir = args[1];
@@ -320,15 +376,15 @@ int run(const std::vector<std::string>& args) {
     const std::size_t dot = stem.rfind(".jsonl");
     if (dot == std::string::npos || dot + 6 != stem.size()) throw std::invalid_argument(path + ": not a .jsonl file");
     stem.resize(dot);
-    const Id* id = find(stem);
+    const Id* id = find(stem, f32);
     if (id == nullptr) {
       ++skipped;
       continue;
     }
-    refused += answer_file(*id, path, dir + "/" + stem + ".jsonl");
+    refused += answer_file(*id, path, dir + "/" + stem + ".jsonl", f32);
     answered.push_back(stem);
   }
-  std::cerr << "answered " << answered.size() << " ids; " << refused << " records refused (nan); " << skipped
+  std::cerr << "answered " << answered.size() << " ids in " << (f32 ? "binary32" : "binary64") << "; " << refused << " records refused (nan); " << skipped
             << " files of other ids skipped\n";
   return 0;
 }
