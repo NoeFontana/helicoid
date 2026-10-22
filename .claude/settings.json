@@ -37,8 +37,7 @@
       "Read(./runners/*/target/**)",
       "Edit(./crates/helicoid/src/coeffs/generated*.rs)",
       "Edit(./conformance/corpus/**)",
-      "Edit(./conformance/sweeps/**)",
-      "Edit(./docs/changelog/**)"
+      "Edit(./conformance/sweeps/**)"
     ]
   },
   "hooks": {
