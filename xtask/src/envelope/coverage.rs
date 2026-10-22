@@ -39,6 +39,8 @@ pub(super) fn required() -> Vec<String> {
     // `PHASE4.md` §4's two, required since their corpus files landed (`0045` plan step 3): an
     // owed id with a file fails coverage, so the file, this move and the §4.3 rows are one step.
     ids.extend(["so3_geodesic".to_string(), "se3_geodesic".to_string()]);
+    // `0103`: the inverse action of both groups that have one with a pose Jacobian.
+    ids.extend(["so3_inv_act".to_string(), "se3_inv_act".to_string()]);
     // `0060` decision 8: the three SE(3) charts' `retract` and `local`.
     for chart in ["screw", "decoupled", "world"] {
         ids.extend(["retract", "local"].map(|op| format!("se3_{chart}_{op}")));
