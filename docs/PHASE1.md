@@ -152,6 +152,8 @@ side of `docs/maths/coefficients.md` CO.12.
 | `so3_exp` | $\varphi$ | quaternion power series $\sum p^n/n!$, $p = (0, \varphi/2)$ |
 | `so3_log` | $q$ | the $\varphi$ with $\|\varphi\| \le \pi$ and $\mathrm{Exp}(\varphi) = q/\|q\|$ ($w \ge 0$ after the flip), by Newton's method on the `so3_exp` series; `mp.logm` of $R(q/\|q\|)$ is a test cross-check only, since it returns complex results near $\pi$; stratum `q:w0` uses the sign rule of `NUMERICS.md` §3.2 |
 | `so3_act` | $(q, p)$ | $R(q/\|q\|)\,p$ |
+| `so3_inv_act` | $(q, p)$ | $x = R(q/\|q\|)^\top p$; the right and left Jacobians as the derivatives at $0$ of $(R\,\mathrm{Exp}\,\varphi)^{-1}p$ and $(\mathrm{Exp}(\varphi)\,R)^{-1}p$, column $j$ from the generator: $-e_j^\wedge x$, $R^\top(-e_j^\wedge p)$; $\partial/\partial p = R^\top$. Cross-checks: $Rx = p$ by the sandwich, and `NUMERICS.md` §2.4's rows. `so3_act`'s strata ([`0103`](./decisions/0103-the-inverse-action-has-its-own-jacobians.md)) |
+| `se3_inv_act` | $(q, x, p)$ | the same over $\mathrm{SE}(3)$ with $x$ the translation: $R^\top(p - x)$, the generators of $\mathfrak{se}(3)$ on homogeneous points. Strata `tx:<r>`, `tp:<r>`, `generic` (§4.4), with `@f32` twins (`0103`) |
 | `so3_from_matrix` | $R$ | the quaternion of the rotation nearest to $R$ in Frobenius norm (the polar factor): a rounded or scaled $R$ is not a rotation, so its `mp.logm` is not skew. The quaternion strata, then `matrix:exact`, then the `@f32` twin of each; scored by §11's sign-free direction metric ([`0085`](./decisions/0085-from-matrix-is-measured-on-exact-rotations.md)) |
 | `so3_jr`, `so3_jl` | $\varphi$ | $\sum (\mp W)^n/(n+1)!$ |
 | `so3_jr_inv`, `so3_jl_inv` | $\varphi$ | `mp.inverse` of the above |
@@ -247,6 +249,15 @@ Series are summed until the term's norm is below $10^{-110}$ relative. Phase 2's
   `geo:consecutive` for $10^4$; giving the other two the same span costs nothing and is what
   `PHASE4.md` §5.2's left-invariance bound is measured against). $t = 0$ and $t = 1$ are kept and
   are the cheapest rows in the corpus: they catch an endpoint error no interior $t$ sees.
+- `tx:<r>`, `tp:<r>`, $r \in \{1, 10^2, 10^4, 10^6\}$, and `generic` (`se3_inv_act`,
+  [`0103`](./decisions/0103-the-inverse-action-has-its-own-jacobians.md)): $q$ uniform on $S^3$;
+  `tx:<r>` draws the body-frame point, $\lVert x\rVert$ uniform in $[1, 10]$, the translation at
+  $r\lVert x\rVert$ and $p = Rx + t$ rounded; `tp:<r>` draws $\lVert p\rVert$ uniform in
+  $[1, 10]$ and the translation at $r\lVert p\rVert$, each in a uniform direction; `generic`
+  draws $t$ and $p$ uniform in $[-10, 10]^3$. The two families are where `X.inverse() * p`
+  cancels (value and right Jacobian; left Jacobian). 6 records each, as SE_N(3)'s, and the
+  `@f32` twin of each: the same draws rounded once to binary32. Rounding $p$ moves $x$ by up to
+  $2\sqrt3\,u r\lVert x\rVert$, so `tx:1e6@f32` holds its ratio to about 4% (measured 3.3%).
 - `q:nonunit`: quaternions at $\|q\|^2 - 1 = \pm 2^{-45}$ (`Log`'s scale invariance, `from_*` normalization); its `@f32` twin at $\pm 2^{-19}$, which binary32 resolves (`0085`).
 - `matrix:exact` (`so3_from_matrix`, [`0085`](./decisions/0085-from-matrix-is-measured-on-exact-rotations.md)):
   the 24 rotations that are signed permutation matrices, built from integers, so exact in both

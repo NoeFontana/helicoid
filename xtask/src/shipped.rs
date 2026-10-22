@@ -31,8 +31,10 @@ use crate::conformance::corpus::{exact_f32, Record};
 use crate::conformance::subject::{Output, Registered, Subject};
 use crate::seeded::{exact_input, input, Coeff, Host, Input, Swept};
 
+mod composed_inv_act;
 mod homogeneous_r;
 
+pub(crate) use composed_inv_act::registered as composed_inv_act_twin;
 pub(crate) use homogeneous_r::registered as homogeneous_r_twin;
 
 /// The group of `id` at `x`, as the shipped kernel evaluates it.
@@ -82,10 +84,7 @@ impl So3 {
     ];
 
     fn of_fn(fn_id: &str) -> Option<Self> {
-        Self::ALL
-            .iter()
-            .find(|(name, _)| *name == fn_id)
-            .map(|&(_, id)| id)
+        lookup(&Self::ALL, fn_id)
     }
 
     /// The shipped answer at `S`; nothing when the record holds no usable input.
@@ -365,10 +364,7 @@ impl Geodesic {
     ];
 
     fn of_fn(fn_id: &str) -> Option<Self> {
-        Self::ALL
-            .iter()
-            .find(|(name, _)| *name == fn_id)
-            .map(|&(_, id)| id)
+        lookup(&Self::ALL, fn_id)
     }
 
     /// The shipped answer at `S`; nothing when the record holds no usable input.
@@ -432,10 +428,7 @@ impl ChartId {
     ];
 
     fn of_fn(fn_id: &str) -> Option<Self> {
-        Self::ALL
-            .iter()
-            .find(|(name, _)| *name == fn_id)
-            .map(|&(_, id)| id)
+        lookup(&Self::ALL, fn_id)
     }
 
     /// The shipped answer at `S`; nothing when the record holds no usable input. The poses reach
@@ -540,10 +533,7 @@ impl Linalg {
     ];
 
     fn of_fn(fn_id: &str) -> Option<Self> {
-        Self::ALL
-            .iter()
-            .find(|(name, _)| *name == fn_id)
-            .map(|&(_, id)| id)
+        lookup(&Self::ALL, fn_id)
     }
 
     /// The shipped answer at `S`; nothing when the record holds no usable input (an `@f32` record
@@ -680,6 +670,13 @@ impl Linalg {
 
 /// The values a record holds under `key` at `S`: binary64 as stored, or at `f32` each exactly a
 /// binary32 (`0016`), else nothing.
+/// The id named `fn_id` in a family's `ALL` table.
+fn lookup<T: Copy>(all: &[(&str, T)], fn_id: &str) -> Option<T> {
+    all.iter()
+        .find(|(name, _)| *name == fn_id)
+        .map(|&(_, id)| id)
+}
+
 pub(crate) fn scalars<S: Real>(record: &Record, key: &str) -> Option<Vec<S>> {
     record
         .input(key)?
@@ -745,10 +742,7 @@ impl GaussianId {
     ];
 
     fn of_fn(fn_id: &str) -> Option<Self> {
-        Self::ALL
-            .iter()
-            .find(|(name, _)| *name == fn_id)
-            .map(|&(_, id)| id)
+        lookup(&Self::ALL, fn_id)
     }
 
     /// The shipped answer at `S`; nothing when the record holds no usable input (an `@f32` record
@@ -814,6 +808,7 @@ impl Subject for Helicoid {
             || ChartId::of_fn(fn_id).is_some()
             || Linalg::of_fn(fn_id).is_some()
             || GaussianId::of_fn(fn_id).is_some()
+            || InvActId::of_fn(fn_id).is_some()
     }
 
     fn eval(&self, fn_id: &str, record: &Record, precision: Precision) -> Output {
@@ -842,6 +837,12 @@ impl Subject for Helicoid {
             };
         }
         if let Some(id) = GaussianId::of_fn(fn_id) {
+            return match precision {
+                Precision::F64 => id.answer::<f64>(record),
+                Precision::F32 => id.answer::<f32>(record),
+            };
+        }
+        if let Some(id) = InvActId::of_fn(fn_id) {
             return match precision {
                 Precision::F64 => id.answer::<f64>(record),
                 Precision::F32 => id.answer::<f32>(record),
@@ -909,10 +910,7 @@ impl Unswept {
     const ALL: [(&'static str, Unswept); 1] = [("coeff_alpha", Unswept::Alpha)];
 
     fn of_fn(fn_id: &str) -> Option<Self> {
-        Self::ALL
-            .iter()
-            .find(|(name, _)| *name == fn_id)
-            .map(|&(_, id)| id)
+        lookup(&Self::ALL, fn_id)
     }
 
     /// `z = fl(θ·θ)` at `S`, as the swept coefficients form it; `sinc` returns `d/dz`, the
@@ -946,10 +944,7 @@ impl Gamma {
     const ALL: [(&'static str, Gamma); 1] = [("so3_gamma2", Gamma::Two)];
 
     fn of_fn(fn_id: &str) -> Option<Self> {
-        Self::ALL
-            .iter()
-            .find(|(name, _)| *name == fn_id)
-            .map(|&(_, id)| id)
+        lookup(&Self::ALL, fn_id)
     }
 
     /// `Γ₂(φ)` column-major as `G`, `φ` read exactly at `S` (an `@f32` record holds binary32s).
@@ -987,10 +982,7 @@ impl Sphere {
         [("s2_retract", Sphere::Retract), ("s2_local", Sphere::Local)];
 
     pub(crate) fn of_fn(fn_id: &str) -> Option<Self> {
-        Self::ALL
-            .iter()
-            .find(|(name, _)| *name == fn_id)
-            .map(|&(_, id)| id)
+        lookup(&Self::ALL, fn_id)
     }
 
     fn answer<S: Real + Into<f64>>(self, record: &Record) -> Output {
@@ -1065,10 +1057,7 @@ impl Sim3Id {
     ];
 
     pub(crate) fn of_fn(fn_id: &str) -> Option<Self> {
-        Self::ALL
-            .iter()
-            .find(|(name, _)| *name == fn_id)
-            .map(|&(_, id)| id)
+        lookup(&Self::ALL, fn_id)
     }
 
     fn answer<S: Real + Into<f64>>(self, record: &Record) -> Output {
@@ -1140,6 +1129,97 @@ fn sim3_out<S: Real + Into<f64>>(x: &Sim3<S>) -> Output {
     ])
 }
 
+/// An inverse-action id of `0103` this subject answers, at both precisions: `SO3::inv_act` and
+/// `SE3::inv_act` with their right and left `inv_act_jacobians`.
+///
+/// An enum with an exhaustive `answer`, for the reason the [`So3`] note gives. `Helicoid` and
+/// `HostStd` both dispatch through it.
+#[derive(Clone, Copy)]
+pub(crate) enum InvActId {
+    So3,
+    Se3,
+}
+
+impl InvActId {
+    const ALL: [(&'static str, InvActId); 2] = [
+        ("so3_inv_act", InvActId::So3),
+        ("se3_inv_act", InvActId::Se3),
+    ];
+
+    pub(crate) fn of_fn(fn_id: &str) -> Option<Self> {
+        lookup(&Self::ALL, fn_id)
+    }
+
+    /// The field the moved point is written under.
+    pub(crate) fn value_field(self) -> &'static str {
+        match self {
+            InvActId::So3 => "Rinv_p",
+            InvActId::Se3 => "Xinv_p",
+        }
+    }
+
+    fn answer<S: Real + Into<f64>>(self, record: &Record) -> Output {
+        let Some((r, t, p)) = inv_act_inputs::<S>(self, record) else {
+            return Output::new();
+        };
+        match self {
+            InvActId::So3 => {
+                let (jr, dp) = r.inv_act_jacobians::<Right>(p);
+                let jl = r.inv_act_jacobians::<Left>(p).0;
+                inv_act_out(self, r.inv_act(p), &jr, &jl, &dp)
+            }
+            InvActId::Se3 => {
+                let x = SE3::from_rt(r, t);
+                let pt = helicoid_linalg::Point(p.0);
+                let (jr, dp) = x.inv_act_jacobians::<Right>(pt);
+                let jl = x.inv_act_jacobians::<Left>(pt).0;
+                inv_act_out(self, Vector(x.inv_act(pt).0), &jr, &jl, &dp)
+            }
+        }
+    }
+}
+
+/// `(R, t, p)` of an inverse-action record, exactly at `S`; `t` is `0` for `so3_inv_act`, whose
+/// records hold none. The quaternion is moved in as a struct literal, as `so3_act`'s is.
+pub(crate) fn inv_act_inputs<S: Real>(
+    id: InvActId,
+    record: &Record,
+) -> Option<(SO3<S>, Vec3<S>, Vec3<S>)> {
+    let q = scalars::<S>(record, "q").filter(|q| q.len() == 4)?;
+    let p = scalars::<S>(record, "p").filter(|p| p.len() == 3)?;
+    let t = match id {
+        InvActId::So3 => vec![S::zero(); 3],
+        InvActId::Se3 => scalars::<S>(record, "x").filter(|x| x.len() == 3)?,
+    };
+    let r = SO3::from_quat_unchecked(Quat {
+        w: q[0],
+        x: q[1],
+        y: q[2],
+        z: q[3],
+    });
+    Some((r, Vector([t[0], t[1], t[2]]), Vector([p[0], p[1], p[2]])))
+}
+
+/// An inverse-action answer as the corpus holds it: the point, then `Jr`, `Jl` (`3 x 3` for
+/// SO(3), `3 x 6` for SE(3)) and `Jp`, column-major.
+pub(crate) fn inv_act_out<S: Real + Into<f64>, const C: usize>(
+    id: InvActId,
+    x: Vec3<S>,
+    jr: &Matrix<S, 3, C>,
+    jl: &Matrix<S, 3, C>,
+    dp: &Mat3<S>,
+) -> Output {
+    let flat = |m: &Matrix<S, 3, C>| -> Vec<f64> {
+        (0..C).flat_map(|c| m.col(c).0).map(Into::into).collect()
+    };
+    Output::from([
+        (id.value_field().to_string(), x.0.map(Into::into).to_vec()),
+        ("Jr".to_string(), flat(jr)),
+        ("Jl".to_string(), flat(jl)),
+        ("Jp".to_string(), cols_out(dp)),
+    ])
+}
+
 /// The library's own host-`std` twin: this subject's program at [`Host`], whose transcendentals
 /// are Rust `std`'s — the host's libm, so glibc on Linux — where a default build routes them
 /// through the `libm` crate (D16).
@@ -1187,6 +1267,9 @@ impl Subject for HostStd {
             return id.answer::<Host>(record);
         }
         if let Some(id) = Sim3Id::of_fn(fn_id) {
+            return id.answer::<Host>(record);
+        }
+        if let Some(id) = InvActId::of_fn(fn_id) {
             return id.answer::<Host>(record);
         }
         if let Some(id) = So3::of_fn(fn_id) {
@@ -1371,6 +1454,18 @@ mod tests {
         for (id, _) in GaussianId::ALL {
             assert!(twin.supports(id), "{id}");
         }
+        // `InvActId`'s, answered: `0103`'s four fields at the identity.
+        let at_rest = record(
+            &[("q", &at), ("x", &[1.0, 2.0, 3.0]), ("p", &[1.5, 2.0, 3.0])],
+            &[],
+        )?;
+        for (id, field) in InvActId::ALL.map(|(n, i)| (n, i.value_field())) {
+            assert!(twin.supports(id), "{id}");
+            let out = twin.eval(id, &at_rest, Precision::F64);
+            for key in [field, "Jr", "Jl", "Jp"] {
+                assert!(out.contains_key(key), "{id} {key}");
+            }
+        }
         let d2 = twin.eval("gaussian_mahalanobis_se3", &gauss, Precision::F64);
         assert_eq!(
             (d2.get("d2"), d2.get("valid")),
@@ -1419,6 +1514,38 @@ mod tests {
         // `f64` only, for the reason the subject's doc gives.
         assert!(twin.eval("sen3_log_n1", &rec, Precision::F32).is_empty());
         assert!(twin.eval("so3_exp", &rec, Precision::F32).is_empty());
+        Ok(())
+    }
+
+    /// `0103`'s four fields at the identity rotation, where every entry is a hand value: the
+    /// column-major order, the `3 x 6` width, the `−I` and `−Rᵀ` blocks, and both precisions.
+    #[test]
+    fn the_inverse_action_writes_its_four_fields_column_major() -> Result<(), String> {
+        let rec = record(
+            &[
+                ("q", &[1.0, 0.0, 0.0, 0.0]),
+                ("x", &[1.0, 2.0, 3.0]),
+                ("p", &[1.5, 2.0, 3.0]),
+            ],
+            &[],
+        )?;
+        let neg_i = [-1.0, 0.0, 0.0, 0.0, -1.0, 0.0, 0.0, 0.0, -1.0];
+        // `[x]_×` at `x = p − t = (0.5, 0, 0)`, and `[p]_×`, column by column.
+        let hat_x = [0.0, 0.0, 0.0, 0.0, 0.0, 0.5, 0.0, -0.5, 0.0];
+        let hat_p = [0.0, 3.0, -2.0, -3.0, 0.0, 1.5, 2.0, -1.5, 0.0];
+        let eye = [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0];
+        for precision in [Precision::F64, Precision::F32] {
+            let se3 = Helicoid.eval("se3_inv_act", &rec, precision);
+            assert_eq!(se3["Xinv_p"], vec![0.5, 0.0, 0.0]);
+            assert_eq!(se3["Jr"], [hat_x, neg_i].concat());
+            assert_eq!(se3["Jl"], [hat_p, neg_i].concat());
+            assert_eq!(se3["Jp"], eye.to_vec());
+        }
+        let so3 = Helicoid.eval("so3_inv_act", &rec, Precision::F64);
+        assert_eq!(so3["Rinv_p"], vec![1.5, 2.0, 3.0]);
+        assert_eq!(so3["Jr"], hat_p.to_vec());
+        assert_eq!(so3["Jl"], hat_p.to_vec());
+        assert_eq!(so3["Jp"], eye.to_vec());
         Ok(())
     }
 

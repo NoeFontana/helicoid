@@ -109,6 +109,12 @@
       "records": 3328,
       "sha256": "da6be7372fd5da6a45d650835085c0700f8b4ad26799d5ca5dbea00e35e7f50e"
     },
+    "se3_inv_act.jsonl": {
+      "kind": "corpus",
+      "rechecked": 18,
+      "records": 1152,
+      "sha256": "0aab091b5b1f84115399b4b5779fc5ed7edf676a3d1d6f454bb16baed1f91924"
+    },
     "se3_screw_local.jsonl": {
       "kind": "corpus",
       "rechecked": 52,
@@ -314,7 +320,7 @@
       "sha256": "7bd399f0ae738f3d78612f17e0bf88aaf94c9838ef423af5834cc13cbb6708ca"
     }
   },
-  "generator": "sha256:13472f6ce970232e62f72dd2f236463bfbf6bd2622556cffd65e70633921da45",
+  "generator": "sha256:c566818ffa49ec88a1af1ed8544ecd3e72e2f5837cbc46251438e1d914f13d21",
   "mpmath": "1.4.1",
   "python": "3.12",
   "recheck": {

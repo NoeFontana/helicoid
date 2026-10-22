@@ -25,6 +25,7 @@ uv run --frozen python -m gen list
 | `gen/check_linalg.py`, `gen/check_real.py`, `gen/check_gaussian.py` | their cross-checks |
 | `gen/charts.py`, `gen/s2.py`, `gen/check_charts.py` | the chart ids (`docs/decisions/0060` decision 8, `0063`) and their cross-checks |
 | `gen/sim3.py`, `gen/check_sim3.py` | the Sim(3) ids (`docs/decisions/0070`) and their cross-checks |
+| `gen/inv_act.py`, `gen/check_inv_act.py` | the inverse-action ids (`docs/decisions/0103`), `se3_inv_act`'s strata, and their cross-checks |
 | `gen/sim3coeff.py` | `sim3_series.jsonl` (`1/n!` per precision) and `sim3_ref.jsonl` (the Sim(3) coefficients on rays, for `cargo xtask thresholds`) |
 | `gen/fmt.py`, `gen/corpus.py`, `gen/manifest.py` | text formats and `Mat`, assembly (parallel by stratum) and recheck, `MANIFEST.json` |
 
@@ -105,6 +106,8 @@ strata of their own, after the θ strata (`Stratum.quaternions`):
 | `so3_jr_inv`, `so3_jl_inv` | `phi` | `J` | `mp.inverse` of the above |
 | `so3_log` | `q` | `phi` | the φ with Exp(φ) = q/‖q‖ on θ ∈ [0, π], by Newton's method on the series |
 | `so3_act` | `q`, `p` | `Rp` | R(q/‖q‖) p, R(q) of `docs/NUMERICS.md` §1; p uniform on S² |
+| `so3_inv_act` | `q`, `p` | `Rinv_p`, `Jr`, `Jl`, `Jp` (3×3) | x = Rᵀp; column j of the right and left Jacobians −e_j^ x and Rᵀ(−e_j^ p), the derivatives of (R Exp φ)⁻¹p and (Exp(φ) R)⁻¹p at 0; Rᵀ. `so3_act`'s records (`0103`) |
+| `se3_inv_act` | `q`, `x`, `p` | `Xinv_p`, `Jr`, `Jl` (3×6), `Jp` | the same in se(3) on homogeneous points, x the translation: Rᵀ(p − x); strata `tx:<r>`, `tp:<r>`, `generic`, 6 records each, with `@f32` twins (`0103`) |
 | `so3_from_matrix` | `R` (3×3) | `q` | the quaternion of the rotation nearest to R in Frobenius norm |
 
 - **Series** stop when two terms in a row are below 10^-(dps−10) of the partial sum, entry by entry

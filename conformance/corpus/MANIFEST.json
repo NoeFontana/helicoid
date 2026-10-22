@@ -253,6 +253,12 @@
       "records": 180,
       "sha256": "9540e36ebf453906a4d89a7f74b8452338ad41e466e95521868763a899085535"
     },
+    "se3_inv_act.jsonl": {
+      "kind": "corpus",
+      "rechecked": 18,
+      "records": 108,
+      "sha256": "bf6adbf672639aa6947e33f7f6e65e4381457c2bc2b13280d222ecac26a378c9"
+    },
     "se3_screw_local.jsonl": {
       "kind": "corpus",
       "rechecked": 52,
@@ -505,6 +511,12 @@
       "records": 180,
       "sha256": "1bf15ca67765b40b69a9523937904e771c085e551872d81af1dbd423369e28ab"
     },
+    "so3_inv_act.jsonl": {
+      "kind": "corpus",
+      "rechecked": 38,
+      "records": 2594,
+      "sha256": "45c9262013956b97c7584c41a2713b69e8ac043a9ca9f885b480a85a39120569"
+    },
     "so3_jl.jsonl": {
       "kind": "corpus",
       "rechecked": 36,
@@ -548,7 +560,7 @@
       "sha256": "a4f5783bfca8ae06c9e63ec21b221b2b25ee146d761e662bb292d73b123609ff"
     }
   },
-  "generator": "sha256:13472f6ce970232e62f72dd2f236463bfbf6bd2622556cffd65e70633921da45",
+  "generator": "sha256:c566818ffa49ec88a1af1ed8544ecd3e72e2f5837cbc46251438e1d914f13d21",
   "mpmath": "1.4.1",
   "python": "3.12",
   "recheck": {
