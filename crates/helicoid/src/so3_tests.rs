@@ -568,6 +568,81 @@ fn act_jacobians_differentiate_the_action() {
     assert!(worst <= 11.0, "{worst} u");
 }
 
+/// §2.4's inverse-action rows against `Dual<f64, 3>` differentiation of `inv_act`, both sides and
+/// `∂/∂v` (`0103`), on `act_jacobians_differentiate_the_action`'s draws. `INV_ACT_DUAL` is twice
+/// the worst of them, 6.019 `u`, rounded up.
+#[test]
+fn inv_act_jacobians_differentiate_the_inverse_action() {
+    type D3 = Dual<f64, 3>;
+    let mut st = 0x6A09_E667_F3BC_C908_u64;
+    let mut next = || {
+        st ^= st << 13;
+        st ^= st >> 7;
+        st ^= st << 17;
+        (st >> 11) as f64 / (1u64 << 53) as f64 * 4.0 - 2.0
+    };
+    let col_major = |m: &Mat3<f64>| -> [f64; 9] { core::array::from_fn(|i| m.get(i % 3, i / 3)) };
+    let lanes = |v: &Vector<D3, 3>| -> [f64; 9] { core::array::from_fn(|i| v.0[i % 3].d[i / 3]) };
+    let mut worst = 0.0_f64;
+    for _ in 0..20_000 {
+        let (phi, p) = ([next(), next(), next()], [next(), next(), next()]);
+        let x = SO3::<f64>::exp(&tan(phi));
+        let xd = SO3::<D3>::exp(&SO3Tangent {
+            phi: Vector(phi.map(D3::constant)),
+        });
+        let delta = SO3Tangent {
+            phi: Vector(core::array::from_fn(|i| D3::variable(0.0, i))),
+        };
+        for right in [true, false] {
+            let moved = match right {
+                true => xd.rplus(&delta),
+                false => xd.lplus(&delta),
+            };
+            let (j, dp) = match right {
+                true => x.inv_act_jacobians::<Right>(Vector(p)),
+                false => x.inv_act_jacobians::<Left>(Vector(p)),
+            };
+            let got = lanes(&moved.inv_act(Vector(p.map(D3::constant))));
+            worst = crate::laws::worst(worst, crate::laws::e::<f64>(&got, &col_major(&j)));
+            let pv = Vector(core::array::from_fn(|i| D3::variable(p[i], i)));
+            let got = lanes(&xd.inv_act(pv));
+            worst = crate::laws::worst(worst, crate::laws::e::<f64>(&got, &col_major(&dp)));
+        }
+    }
+    assert!(worst <= INV_ACT_DUAL, "{worst} u");
+}
+
+const INV_ACT_DUAL: f64 = 13.0;
+
+/// `inv_act` is `inverse().act` to the bit, the right block is the hat of that value to the bit,
+/// and `∂/∂v` is `to_matrix`'s transpose on both sides (`0103`).
+#[test]
+fn inv_act_is_the_inverse_s_action_and_the_right_block_its_hat() {
+    let mut st = 0x0103_5033_0000_0001_u64;
+    let mut next = || {
+        st ^= st << 13;
+        st ^= st >> 7;
+        st ^= st << 17;
+        (st >> 11) as f64 / (1u64 << 53) as f64 * 8.0 - 4.0
+    };
+    let bits =
+        |m: &Mat3<f64>| -> [u64; 9] { core::array::from_fn(|i| m.get(i / 3, i % 3).to_bits()) };
+    for _ in 0..20_000 {
+        let r = SO3::<f64>::exp(&tan([next(), next(), next()]));
+        let v = Vector([next(), next(), next()]);
+        let got = r.inv_act(v);
+        assert_eq!(
+            got.0.map(f64::to_bits),
+            r.inverse().act(v).0.map(f64::to_bits)
+        );
+        let rt = r.to_matrix().transpose();
+        let (j, dp) = r.inv_act_jacobians::<Right>(v);
+        assert_eq!(bits(&j), bits(&hat(got)));
+        assert_eq!(bits(&dp), bits(&rt));
+        assert_eq!(bits(&r.inv_act_jacobians::<Left>(v).1), bits(&rt));
+    }
+}
+
 /// `mul_hat` against the generic `Mat3 * hat(v)` it replaces, entry by entry on the bits.
 ///
 /// Finite entries must agree exactly — that is the whole licence for skipping `hat`'s zeros — and
@@ -891,6 +966,7 @@ fn from_matrix_is_nan_where_the_column_norm_overflows() {
 /// (`CLAUDE.md`), not this PR's to make.
 mod act_twin {
     use super::*;
+    use helicoid_linalg::StridedMut;
     use proptest::prelude::*;
 
     proptest! {
@@ -912,6 +988,66 @@ mod act_twin {
                 prop_assert!(err <= 10.0, "act_many vs act: {err} u at point {i}");
             }
         }
+
+        /// `inv_act_jacobians`' §14 twin, the composition `act_jacobians(R⁻¹, v) ·
+        /// inverse_jacobian(R)` (`0103`); the value's twin is `inverse().act`, to the bit
+        /// (`inv_act_is_the_inverse_s_action_and_the_right_block_its_hat`). `INV_ACT_TWIN` is
+        /// twice the worst of `inv_act_twin_measure`'s 10^6 draws, 23.574 `u`, rounded up: the
+        /// composed right block `Rᵀ[v]_× R` rounds two products whose diagonal cancels to `0`.
+        #[test]
+        fn so3_inv_act_matches_reference(
+            a in prop::array::uniform3(-4.0_f64..4.0),
+            p in prop::array::uniform3(-4.0_f64..4.0),
+        ) {
+            prop_assert!(inv_act_vs_reference(a, p) <= INV_ACT_TWIN);
+        }
+    }
+
+    /// `[∂/∂R right, left, ∂/∂v]` against the composition, in `u` of each result.
+    fn inv_act_vs_reference(a: [f64; 3], p: [f64; 3]) -> f64 {
+        let (r, v) = (SO3::<f64>::exp(&tan(a)), Vector(p));
+        let flat = |m: &Mat3<f64>| -> [f64; 9] { core::array::from_fn(|i| m.get(i / 3, i % 3)) };
+        let (mut right, mut left) = ([0.0; 9], [0.0; 9]);
+        crate::reference::so3_inv_act_jacobian::<f64, Right>(
+            &r,
+            v,
+            &mut StridedMut::row_major(&mut right, 3, 3),
+        );
+        crate::reference::so3_inv_act_jacobian::<f64, Left>(
+            &r,
+            v,
+            &mut StridedMut::row_major(&mut left, 3, 3),
+        );
+        let ((jr, dp), jl) = (
+            r.inv_act_jacobians::<Right>(v),
+            r.inv_act_jacobians::<Left>(v).0,
+        );
+        let w = crate::laws::e::<f64>(&flat(&jr), &right);
+        let w = crate::laws::worst(w, crate::laws::e::<f64>(&flat(&jl), &left));
+        let ap = r.inverse().act_jacobians::<Right>(v).1;
+        crate::laws::worst(w, crate::laws::e::<f64>(&flat(&dp), &flat(&ap)))
+    }
+
+    const INV_ACT_TWIN: f64 = 48.0;
+
+    /// The figure `INV_ACT_TWIN` is recorded from.
+    #[test]
+    #[allow(clippy::print_stdout)]
+    #[ignore = "a measurement, not a law; its result is the bound above"]
+    fn inv_act_twin_measure() {
+        let mut st = 0x0103_5F74_7769_6E00_u64;
+        let mut next = || {
+            st ^= st << 13;
+            st ^= st >> 7;
+            st ^= st << 17;
+            (st >> 11) as f64 / (1u64 << 53) as f64 * 8.0 - 4.0
+        };
+        let mut w = 0.0;
+        for _ in 0..1_000_000 {
+            let (a, p) = ([next(), next(), next()], [next(), next(), next()]);
+            w = crate::laws::worst(w, inv_act_vs_reference(a, p));
+        }
+        std::println!("so3 inv_act twin: {w:.3} u");
     }
 }
 

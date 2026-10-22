@@ -37,10 +37,13 @@ pub type Mat3<S> = Matrix<S, 3, 3>;
 
 impl<S: Real, const R: usize, const C: usize> Matrix<S, R, C> {
     /// The matrix whose `c`-th column is `cols[c]`.
+    ///
+    /// Indexed, as `scale` and `Neg` are, not `map`ped: `map` over the columns stayed an
+    /// out-of-line call and a `memcpy` in a `3 x 6` Jacobian, half its time (`0103`).
     #[inline]
     pub fn from_cols(cols: [Vector<S, R>; C]) -> Self {
         Self {
-            cols: cols.map(|v| v.0),
+            cols: array::from_fn(|c| cols[c].0),
         }
     }
 
@@ -118,7 +121,7 @@ impl<S: Real, const R: usize, const C: usize> Matrix<S, R, C> {
     #[inline]
     pub fn scale(self, s: S) -> Self {
         Self {
-            cols: self.cols.map(|col| col.map(|x| x * s)),
+            cols: array::from_fn(|c| array::from_fn(|r| self.cols[c][r] * s)),
         }
     }
 }
@@ -215,7 +218,7 @@ impl<S: Real, const R: usize, const C: usize> Neg for Matrix<S, R, C> {
     #[inline]
     fn neg(self) -> Self {
         Self {
-            cols: self.cols.map(|col| col.map(Neg::neg)),
+            cols: array::from_fn(|c| array::from_fn(|r| -self.cols[c][r])),
         }
     }
 }

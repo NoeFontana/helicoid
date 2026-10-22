@@ -400,6 +400,33 @@ impl<S: Real> SO3<S> {
         (left, r)
     }
 
+    /// `R⁻¹ v = Rᵀ v` (`NUMERICS.md` §3.3): [`act`](Self::act) of the conjugate, which is
+    /// `self.inverse().act(v)` to the bit, since the conjugate negates `u` exactly (`0103`).
+    ///
+    /// # Domain
+    ///
+    /// [`act`](Self::act)'s: a unit `q`.
+    #[inline]
+    pub fn inv_act(&self, v: Vec3<S>) -> Vec3<S> {
+        self.inverse().act(v)
+    }
+
+    /// `(∂(R⁻¹ v)/∂R, ∂(R⁻¹ v)/∂v)` in the convention of `Sd` (`NUMERICS.md` §2.4): right
+    /// `([Rᵀv]_×, Rᵀ)`, left `(Rᵀ [v]_×, Rᵀ)` (`0103`).
+    ///
+    /// The right block is the hat of [`inv_act`](Self::inv_act)'s own sandwich, not `Rᵀ v` through
+    /// the matrix: it is `hat(self.inv_act(v))` to the bit, and a caller that also asks for the
+    /// value evaluates one sandwich once both are inlined. `Rᵀ` is the transpose of one `R(q)`.
+    #[inline]
+    pub fn inv_act_jacobians<Sd: Side>(&self, v: Vec3<S>) -> (Mat3<S>, Mat3<S>) {
+        let rt = self.to_matrix().transpose();
+        let block = match Sd::IS_RIGHT {
+            true => hat(self.inv_act(v)),
+            false => mul_hat(&rt, v),
+        };
+        (block, rt)
+    }
+
     /// One Newton step back onto the unit sphere (`NUMERICS.md` §3.6): [`Quat::renormalize`] on
     /// the stored quaternion, bit for bit.
     ///

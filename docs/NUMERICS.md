@@ -87,6 +87,17 @@ $X \oplus_R \delta$. Left: perturb as $X \oplus_L \delta$.
 $\partial(X p)/\partial X$: right $[\,-R[p]_\times,\ R\,]$; left $[\,-[Rp + t]_\times,\ I\,]$.
 $\partial(Xp)/\partial p = R$. SO(3): right $-R[p]_\times$, left $-[Rp]_\times$.
 
+The inverse action, with $x = X^{-1}p$
+([`0103`](./decisions/0103-the-inverse-action-has-its-own-jacobians.md)):
+$\partial(X^{-1}p)/\partial X$: right $[\,[x]_\times,\ -I\,]$; left $[\,R^\top[p]_\times,\ -R^\top\,]$.
+$\partial(X^{-1}p)/\partial p = R^\top$. SO(3), with $x = R^\top v$: right $[x]_\times$, left
+$R^\top[v]_\times$. Right: $(X\,\mathrm{Exp}\,\tau)^{-1}p = \mathrm{Exp}(-\tau)\,x$; left:
+$(\mathrm{Exp}(\tau)\,X)^{-1}p = X^{-1}\,\mathrm{Exp}(-\tau)\,p$. The right block is the hat of the
+value `inv_act` returns, $R^\top$ the transpose of one $R(q)$. Never the composition
+$\mathrm{act\_jacobians}(X^{-1}, p)\cdot\mathrm{inverse\_jacobian}(X)$: its right block cancels
+$R^\top[p]_\times R - R^\top[t]_\times R$ down to $[x]_\times$, its left one
+$[x]_\times R^\top + [R^\top t]_\times R^\top$ down to $R^\top[p]_\times$.
+
 ## 3. SO(3)
 
 ### 3.1 Exp
@@ -114,7 +125,9 @@ rounding returns the `Log` of its normalization. **Never $\mathrm{acos}((\mathrm
 ### 3.3 Action
 
 $v' = v + 2w\,(u \times v) + 2\,u \times (u \times v)$. `act_many` forms $R(q)$ once and applies it
-per point; its reference twin is the per-point `act`.
+per point; its reference twin is the per-point `act`. `inv_act` is $R^\top v$, the same sandwich of
+the conjugate $q^*$, which negates $u$ exactly
+([`0103`](./decisions/0103-the-inverse-action-has-its-own-jacobians.md)).
 
 ### 3.4 From a matrix
 
@@ -286,6 +299,13 @@ the reference twin (§14).
 ### 5.5 Action (N = 1)
 
 $X p = Rp + t$, with §2.4's Jacobians.
+
+$X^{-1}p = R^\top(p - t)$: the subtraction first, then §3.3's `inv_act` of the difference, with
+§2.4's Jacobians ([`0103`](./decisions/0103-the-inverse-action-has-its-own-jacobians.md)). The
+difference rounds once relative to itself, $\lvert\mathrm{fl}(p - t) - (p - t)\rvert \le u\lvert p - t\rvert$
+componentwise (exactly, where $p$ and $t$ agree to within a factor of two), so the rotation sees
+$x$'s scale. **Never $R^\top p - R^\top t$**, which is `X.inverse() * p`: it rounds two vectors of
+size $\lVert t\rVert$ and cancels them to $\lVert x\rVert$, losing $u\lVert t\rVert/\lVert x\rVert$.
 
 ## 6. SO(2) and SE(2)
 
@@ -546,7 +566,7 @@ $X(t) = X_0\,\mathrm{Exp}(t\,d)$ with $d = X_1 \ominus_R X_0$ and $\Delta = X_0^
 | `SO3::log` | all unit $q$; at $w = +0$ a function of $q$'s sign (§3.2) | — |
 | `jr_inv`, `jl_inv` (SO(3), SE_N(3)) | $\theta < 2\pi$ | unspecified finite value |
 | `from_wxyz_unchecked` | $\lvert\|q\|^2 - 1\rvert \le 2^{-40}$ (`f64`), $2^{-16}$ (`f32`) | garbage in, garbage out |
-| `SO3::from_quat_unchecked` (carried, §3.6) | $\lvert\eta\rvert \le 2^{-26.29}$ (`f64`), $2^{-11.79}$ (`f32`), $\eta = \|q\|^2 - 1$; nothing asserted, NaN propagates. To first order in $\eta$: `log` returns the `Log` of $q/\|q\|$; `act` returns $Rv + \eta(Rv - v)$; `to_matrix` returns $(1 + \eta)R - \eta I$, `act`'s term ([`0092`](./decisions/0092-r-of-q-takes-the-unit-diagonal.md)); `Mul` gives $\eta_{ab} = \eta_a + \eta_b + \eta_a\eta_b$; `inverse` keeps $\eta$; `geodesic` keeps both endpoints bit-exact and is scale-invariant below `r`'s second switch, while the blend tilts by $\sin((1-t)\alpha)\sin(t\alpha)/\sin\alpha \cdot \lvert\eta_1 - \eta_0\rvert$; SE_N(3)'s columns carry `act`'s term ([`0058`](./decisions/0058-a-drifted-quaternion-is-carried-not-vouched-for.md)) | garbage in, garbage out |
+| `SO3::from_quat_unchecked` (carried, §3.6) | $\lvert\eta\rvert \le 2^{-26.29}$ (`f64`), $2^{-11.79}$ (`f32`), $\eta = \|q\|^2 - 1$; nothing asserted, NaN propagates. To first order in $\eta$: `log` returns the `Log` of $q/\|q\|$; `act` returns $Rv + \eta(Rv - v)$; `to_matrix` returns $(1 + \eta)R - \eta I$, `act`'s term ([`0092`](./decisions/0092-r-of-q-takes-the-unit-diagonal.md)); `Mul` gives $\eta_{ab} = \eta_a + \eta_b + \eta_a\eta_b$; `inverse` keeps $\eta$, so `inv_act` returns $R^\top v + \eta(R^\top v - v)$; `geodesic` keeps both endpoints bit-exact and is scale-invariant below `r`'s second switch, while the blend tilts by $\sin((1-t)\alpha)\sin(t\alpha)/\sin\alpha \cdot \lvert\eta_1 - \eta_0\rvert$; SE_N(3)'s columns carry `act`'s term ([`0058`](./decisions/0058-a-drifted-quaternion-is-carried-not-vouched-for.md)) | garbage in, garbage out |
 | `from_wxyz_normalized` | $\|q\|^2$ normal (components within $\approx 10^{\pm154}$ `f64`, $10^{\pm19}$ `f32`); `debug_assert!` on the result (§3.6, [`0027`](./decisions/0027-a-normalizing-constructor-normalizes.md)) | NaN at $q = 0$; zero above the overflow |
 | `renormalize` | none; a normalization only for $\lvert\|q\|^2 - 1\rvert \le 2^{-26.29}$ (`f64`), $2^{-11.79}$ (`f32`) (§3.6) | defined everywhere; $0$ at $\|q\|^2 = 3$, $q$ reversed beyond |
 | `solve_cubic` | every input; the mask is the report: a non-finite coefficient, $a = 0$, or $1/a$, $b/a$, $c/a$ or $d/a$ overflowing gives no valid slot (§16) | — |
@@ -613,6 +633,7 @@ row spells the composition and the proptest writes it inline
 | `LieGroup::jl` (`jr(-τ)`) | $\mathrm{Ad}_{\mathrm{Exp}(\tau)}\,J_r(\tau)$, dense | 3 |
 | `*_jacobians` (§2.3 closed forms) | chains of primitive Jacobians, dense | 3 |
 | `SO3::act_many` | per-point `act` | 3 |
+| `SO3::inv_act`, `SE3::inv_act` ($R^\top(p - t)$, subtracting before the rotation) and their `inv_act_jacobians` | the composition `X.inverse() * p` and the dense `act_jacobians(X⁻¹, p) · inverse_jacobian(X)`; SO(3)'s value is the composition to the bit, SE(3)'s is not (`so3_inv_act_matches_reference`, `se3_inv_act_matches_reference`, [`0103`](./decisions/0103-the-inverse-action-has-its-own-jacobians.md)) | 5 |
 | `SEn3Jac::mul`, `inverse` | dense product / Gauss–Jordan | 3 |
 | `SEn3::mul_inv` ($a\,b^{-1}$, one rotation per column) | the composition `a * b.inverse()`, which it is **not** bit-identical to; it is `lminus`'s body ([`0048`](./decisions/0048-the-relative-transform-pair-earns-the-surface-dot-and-norm-do-not.md)) | 4 |
 | `SEn3::inv_mul` ($b^{-1}a$, subtracting before the rotation) | the composition `b.inverse() * a`; it is `rminus`'s body ([`0048`](./decisions/0048-the-relative-transform-pair-earns-the-surface-dot-and-norm-do-not.md)) | 4 |

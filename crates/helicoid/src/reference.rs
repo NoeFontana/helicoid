@@ -27,10 +27,11 @@
 
 use crate::dualmat::{dof, SEn3Jac};
 use crate::product::ProductJac;
+use crate::side::Side;
 use crate::so3::SO3Tangent;
 use crate::traits::{Jac, LieGroup, Tangent};
-use crate::{Chart, Quat, RnTangent, S2Chart, Sim3Jac, S2, SO3};
-use helicoid_linalg::{Mask, Matrix, Precision, Real, StridedMut, Vec3, Vector};
+use crate::{Chart, Quat, RnTangent, S2Chart, Sim3Jac, S2, SE3, SO3};
+use helicoid_linalg::{Mask, Mat3, Matrix, Point3, Precision, Real, StridedMut, Vec3, Vector};
 
 /// The terms added left to right from the first, `+0` when there are none.
 ///
@@ -97,6 +98,67 @@ fn factorial(m: usize) -> f64 {
 /// [`LieGroup::geodesic`]'s.
 pub fn geodesic<S: Real, G: LieGroup<S>>(x0: &G, x1: &G, t: S) -> G {
     x0.rplus(&x1.rminus(x0).scale(t))
+}
+
+/// `SO3::inv_act_jacobians`' twin (`NUMERICS.md` §14, `0103`): the composition it replaces,
+/// `act_jacobians(R⁻¹, v) · inverse_jacobian(R)`, each entry summed left to right from its first
+/// term. Writes `∂(R⁻¹ v)/∂R` in the convention of `Sd` to the `3 x 3` view `out`. `∂/∂v` has no
+/// twin: `act_jacobians(R⁻¹, v)`'s `R(q*)` is `R(q)ᵀ` to the bit.
+///
+/// # Domain
+///
+/// `out` is `3 x 3`, checked by `debug_assert!`; a smaller view panics in the strided access (D11).
+pub fn so3_inv_act_jacobian<S: Real, Sd: Side>(
+    r: &SO3<S>,
+    v: Vec3<S>,
+    out: &mut StridedMut<'_, S>,
+) {
+    debug_assert!(
+        out.rows() == 3 && out.cols() == 3,
+        "so3_inv_act_jacobian: the view is not 3 x 3"
+    );
+    let a = r.inverse().act_jacobians::<Sd>(v).0;
+    let b = dense::<S, _, Mat3<S>, 3>(&r.inverse_jacobian::<Sd>());
+    product_into(&a, &b, out);
+}
+
+/// `SE3::inv_act_jacobians`' twin (`NUMERICS.md` §14, `0103`): `act_jacobians(X⁻¹, p) ·
+/// inverse_jacobian(X)`, the second written dense, each entry of the `3 x 6` product summed left
+/// to right from its first term. Writes `∂(X⁻¹ p)/∂X` in the convention of `Sd` to the `3 x 6`
+/// view `out`; `∂/∂p` has no twin, for [`so3_inv_act_jacobian`]'s reason.
+///
+/// # Domain
+///
+/// `out` is `3 x 6`, checked by `debug_assert!`; a smaller view panics in the strided access (D11).
+pub fn se3_inv_act_jacobian<S: Real, Sd: Side>(
+    x: &SE3<S>,
+    p: Point3<S>,
+    out: &mut StridedMut<'_, S>,
+) {
+    debug_assert!(
+        out.rows() == 3 && out.cols() == 6,
+        "se3_inv_act_jacobian: the view is not 3 x 6"
+    );
+    let a = x.inverse().act_jacobians::<Sd>(p).0;
+    let b = dense::<S, _, SEn3Jac<S, 1>, 6>(&x.inverse_jacobian::<Sd>());
+    product_into(&a, &b, out);
+}
+
+/// `a · b` for a `3 x D` and a row-major `D x D`, into `out`, summed left to right.
+fn product_into<S: Real, const D: usize>(
+    a: &Matrix<S, 3, D>,
+    b: &[[S; D]; D],
+    out: &mut StridedMut<'_, S>,
+) {
+    for r in 0..3 {
+        for c in 0..D {
+            out.set(
+                r,
+                c,
+                sum(b.iter().enumerate().map(|(k, bk)| a.get(r, k) * bk[c])),
+            );
+        }
+    }
 }
 
 /// `S2Chart::local`'s twin, its definition (`NUMERICS.md` §14, `0063` decision 4): the minimal
