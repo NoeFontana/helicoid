@@ -430,6 +430,46 @@ impl<S: Real> SEn3<S, 1> {
         });
         (Matrix::from_cols(cols), r)
     }
+
+    /// `X⁻¹ p = Rᵀ (p − t)` (`NUMERICS.md` §5.5): the subtraction first, then
+    /// [`SO3::inv_act`] (`0103`). `X.inverse() * p` rotates `p` and `t` apart and cancels two
+    /// vectors of size `‖t‖` down to `‖X⁻¹ p‖`; here the difference rounds once relative to
+    /// itself and the rotation sees its scale. It is
+    /// [`inv_mul`](Self::inv_mul)'s column arithmetic, to the bit.
+    #[inline]
+    pub fn inv_act(&self, p: Point3<S>) -> Point3<S> {
+        Point(self.rotation().inv_act(Vector(p.0) - self.x[0]).0)
+    }
+
+    /// `(∂(X⁻¹ p)/∂X, ∂(X⁻¹ p)/∂p)` in the convention of `Sd` (`NUMERICS.md` §2.4): rotation-first
+    /// `[[X⁻¹ p]_×, −I]` on the right, `[Rᵀ [p]_×, −Rᵀ]` on the left, and `Rᵀ` (`0103`).
+    ///
+    /// The rotation block is [`SO3::inv_act_jacobians`]' at `p − t` (right) or `p` (left): the
+    /// right one is `hat(self.inv_act(p))` to the bit, the left one `Rᵀ [p]_×` with no `t` to
+    /// cancel. Dense for [`act_jacobians`](Self::act_jacobians)' reason (`0005`).
+    #[inline]
+    pub fn inv_act_jacobians<Sd: Side>(&self, p: Point3<S>) -> (Matrix<S, 3, 6>, Mat3<S>) {
+        let v = match Sd::IS_RIGHT {
+            true => Vector(p.0) - self.x[0],
+            false => Vector(p.0),
+        };
+        let (rot, rt) = self.rotation().inv_act_jacobians::<Sd>(v);
+        // `−I` written, not negated: `-Mat3::identity()` would put `−0` off its diagonal.
+        let trans = match Sd::IS_RIGHT {
+            true => Mat3::from_cols(array::from_fn(|c| {
+                Vector(array::from_fn(|r| match r == c {
+                    true => -S::one(),
+                    false => S::zero(),
+                }))
+            })),
+            false => -rt,
+        };
+        let cols = array::from_fn(|c| match c < 3 {
+            true => rot.col(c),
+            false => trans.col(c - 3),
+        });
+        (Matrix::from_cols(cols), rt)
+    }
 }
 
 impl<S: Real> SEn3<S, 2> {

@@ -10,6 +10,13 @@ defined by the status tables in `docs/`; they win over this file.
 
 ### Added
 
+- **`SO3::inv_act`, `SE3::inv_act` and their `inv_act_jacobians::<Sd>`** (`0103`): the inverse
+  action $X^{-1}p = R^\top(p - t)$, subtracting before the rotation, with its own Jacobians, right
+  `[[x]×, −I]` and left `[Rᵀ[p]×, −Rᵀ]`, and `∂/∂p = Rᵀ`. The composition `X.inverse() * p` with
+  `act_jacobians(X⁻¹, p) · inverse_jacobian(X)` loses `u‖t‖/‖x‖` on the value and the right side,
+  `u‖t‖/‖p‖` on the left; it is the pair's reference twin. The value and right Jacobians together
+  take 20.4 ns at `f64` (21.2 at `f32`).
+
 - **`helicoid_linalg::nearest_rotation`** (`0102`): the Frobenius-nearest rotation of a 3×3,
   `U diag(1, 1, det UVᵀ) Vᵀ`, one of the nearest where it is not unique. It runs Newton's polar
   iteration with Frobenius scaling where `det M > τ‖M‖³`. Where `det M < −τ‖M‖³` it takes the
@@ -19,6 +26,14 @@ defined by the status tables in `docs/`; they win over this file.
   precisions, and dominates nalgebra's `from_matrix_eps` and Sophus's `fitToSO3` on every stratum
   at both precisions, by at least 4.24× (`f64`) and 3.24× (`f32`). It runs in 99.5 ns on a
   rotation `1e-8` off SO(3) at `f64` and 52.6 at `f32`, 286–603 ns and 227–486 elsewhere.
+
+### Changed
+
+- **`Matrix::from_cols`, `scale` and `Neg` index** (`0103`) instead of `map`ping, which left an
+  out-of-line call and a `memcpy` in a `3 x 6` built from columns. Every output keeps its bits.
+  `SE3::inv_act_jacobians` takes 0.47× (right) and 0.34× (left) of its time at `f64`,
+  `Gaussian::propagate` 0.65×, `to_left` 0.70×, `to_right` 0.75× and `mahalanobis_sq` 0.89×;
+  no other `so3/*` or `se3/*` row moved beyond its noise floor.
 
 ### Instrument
 

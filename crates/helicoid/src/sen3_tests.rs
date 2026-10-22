@@ -197,11 +197,11 @@ mod group {
     // Not `use super::*`: the file's glob of `proptest::prelude` would shadow the one
     // `laws_for!` imports into each case module, and an unused import is a denied warning.
     use crate::laws::{laws_for, tangent as law_tangent, Bounds, Sample};
-    use crate::{reference, Jac, Left, LieGroup, Right, SEn3, SEn3Jac, SE23, SE3};
+    use crate::{reference, Jac, Left, LieGroup, Right, SEn3, SEn3Jac, SE23, SE3, SO3};
     use crate::{SEn3Tangent, Tangent, Twist};
     use core::array;
+    use helicoid_linalg::{hat, Mat3, Point, StridedMut};
     use helicoid_linalg::{Dual, Vector};
-    use helicoid_linalg::{Mat3, Point, StridedMut};
 
     // Measured maxima over the six runs, in `u`: axioms 6.085, exp_log 4.171, adjoint 8.279,
     // jl_ad_jr 4.490, rows 0 (exact), ad 7.855, sides 1.118, tangent_order 0 at `f64` and `Dual`
@@ -400,6 +400,106 @@ mod group {
             crate::laws::within(rel_vs_reference::<f64, 2, 9>(&v, true), 18.0)?;
             crate::laws::within(rel_vs_reference::<f32, 2, 9>(&v, true), 18.0)?;
         }
+    }
+
+    /// `inv_act` and `inv_act_jacobians` against their §14 twin, the composition `X.inverse() * p`
+    /// and the dense `act_jacobians(X⁻¹, p) · inverse_jacobian(X)` (`0103`): `[value, right,
+    /// left, ∂/∂p]`, the worst over translation and point scales `1`, `10³`, `10⁶`.
+    ///
+    /// The first three are in `u` of `max(‖p‖, ‖t‖, 1)`, `rel_vs_reference`'s denominator: the
+    /// composition carries that error of its own, which is what `0103` replaces it for, so the
+    /// result's norm would score the twin's cancellation and not either routine. `∂/∂p` is `Rᵀ`
+    /// against `R(q*)`, in `u` of itself.
+    fn inv_act_vs_reference<S: Sample>(v: &[f64; 9]) -> [f64; 4] {
+        let g = SE3::<S>::exp(&law_tangent::<S, SE3<S>, 6>(&array::from_fn(|i| v[i])));
+        let f = |a: &[S]| {
+            a.iter()
+                .map(|s| s.value_f64())
+                .collect::<std::vec::Vec<_>>()
+        };
+        let mut out = [0.0; 4];
+        for e in [1.0, 1e3, 1e6] {
+            let k = S::lit(e);
+            let x = SE3::from_rt(g.rotation(), g.translation().scale(k));
+            let p = Point(array::from_fn(|i| S::constant(v[6 + i]) * k));
+            let xi = x.inverse();
+            let scale = crate::laws::worst(
+                crate::laws::norm(&f(&p.0)),
+                crate::laws::norm(&f(&x.translation().0)),
+            );
+            let at = |got: &[f64], want: &[f64]| crate::laws::e_at::<S>(got, want, scale);
+            out[0] = crate::laws::worst(out[0], at(&f(&x.inv_act(p).0), &f(&(xi * p).0)));
+            for (slot, right) in [(1, true), (2, false)] {
+                let mut composed = [S::zero(); 18];
+                let mut view = StridedMut::row_major(&mut composed, 3, 6);
+                let ((j, dp), ap) = match right {
+                    true => {
+                        reference::se3_inv_act_jacobian::<S, Right>(&x, p, &mut view);
+                        (
+                            x.inv_act_jacobians::<Right>(p),
+                            xi.act_jacobians::<Right>(p).1,
+                        )
+                    }
+                    false => {
+                        reference::se3_inv_act_jacobian::<S, Left>(&x, p, &mut view);
+                        (
+                            x.inv_act_jacobians::<Left>(p),
+                            xi.act_jacobians::<Left>(p).1,
+                        )
+                    }
+                };
+                let direct: [S; 18] = array::from_fn(|i| j.get(i / 6, i % 6));
+                out[slot] = crate::laws::worst(out[slot], at(&f(&direct), &f(&composed)));
+                let (dp, ap): ([S; 9], [S; 9]) = (
+                    array::from_fn(|i| dp.get(i / 3, i % 3)),
+                    array::from_fn(|i| ap.get(i / 3, i % 3)),
+                );
+                out[3] = crate::laws::worst(out[3], crate::laws::e::<S>(&f(&dp), &f(&ap)));
+            }
+        }
+        out
+    }
+
+    proptest::proptest! {
+        /// `INV_ACT_TWIN` is twice the worst of 10^6 `laws::shaped` draws at three scales each,
+        /// rounded up (`inv_act_twin_measure`): value / right / left 9.630 / 12.700 / 8.138 `u`
+        /// at `f64`, 7.345 / 12.112 / 9.335 at `f32`. `∂/∂p` reads 0: `R(q)ᵀ` and `R(q*)` are
+        /// the same nine roundings. `Dual`'s values are `f64`'s (`0003`).
+        #[test]
+        fn se3_inv_act_matches_reference(v in crate::laws::sample::<9>()) {
+            let worst = |e: [f64; 4]| e.into_iter().fold(0.0, crate::laws::worst);
+            crate::laws::within(worst(inv_act_vs_reference::<f64>(&v)), INV_ACT_TWIN)?;
+            crate::laws::within(worst(inv_act_vs_reference::<f32>(&v)), INV_ACT_TWIN)?;
+            crate::laws::within(worst(inv_act_vs_reference::<Dual<f64, 6>>(&v)), INV_ACT_TWIN)?;
+        }
+    }
+
+    const INV_ACT_TWIN: f64 = 26.0;
+
+    /// The figures `INV_ACT_TWIN` is recorded from, per output and width.
+    /// `cargo nextest run -p helicoid --cargo-profile ndebug -- inv_act_twin_measure --ignored
+    /// --no-capture`.
+    #[test]
+    #[allow(clippy::print_stdout)]
+    #[ignore = "a measurement, not a law; its result is the bound above"]
+    fn inv_act_twin_measure() {
+        fn run<S: Sample>(name: &str) {
+            let mut rng = crate::laws::Rng(0x0103_696E_765F_6163);
+            let mut w = [0.0; 4];
+            for _ in 0..1_000_000 {
+                let e = inv_act_vs_reference::<S>(&rng.shaped());
+                w = array::from_fn(|i| crate::laws::worst(w[i], e[i]));
+            }
+            std::println!(
+                "{name}: value {:.3}, right {:.3}, left {:.3}, dp {:.3}",
+                w[0],
+                w[1],
+                w[2],
+                w[3]
+            );
+        }
+        run::<f64>("se3 f64");
+        run::<f32>("se3 f32");
     }
 
     /// `plus_minus`'s figure, which `0048` moved by making `rminus`/`lminus` the relative
@@ -820,6 +920,96 @@ mod group {
             let m = x64.rotation().to_matrix();
             for r in 0..3 {
                 close(&dp.row(r).0, &m.row(r).0, 0.0);
+            }
+        }
+    }
+
+    /// §2.4's inverse-action rows against `Dual` differentiation of `inv_act` itself, both sides
+    /// and `∂/∂p` (`0103`), as `act_jacobians_differentiate_the_action` does for the action.
+    #[test]
+    fn inv_act_jacobians_differentiate_the_inverse_action() {
+        type D6 = Dual<f64, 6>;
+        type D3 = Dual<f64, 3>;
+        let base = [0.3, -0.7, 1.1, 0.5, -2.0, 0.25];
+        let p = [1.5, -0.5, 2.0];
+        let x64 = SE3::<f64>::exp(&twist(base));
+        let xd = SE3::<D6>::exp(&SEn3Tangent::read_dense(&base.map(D6::constant)));
+        let delta =
+            SEn3Tangent::<D6, 1>::read_dense(&array::from_fn::<D6, 6, _>(|i| D6::variable(0.0, i)));
+        for right in [true, false] {
+            let moved = match right {
+                true => xd.rplus(&delta),
+                false => xd.lplus(&delta),
+            };
+            let got = moved.inv_act(Point(p.map(D6::constant)));
+            let (j, dp): (_, Mat3<f64>) = match right {
+                true => x64.inv_act_jacobians::<Right>(Point(p)),
+                false => x64.inv_act_jacobians::<Left>(Point(p)),
+            };
+            for r in 0..3 {
+                for c in 0..6 {
+                    let (lane, want) = (got.0[r].d[c], j.get(r, c));
+                    assert!(
+                        (lane - want).abs() <= 1e-13,
+                        "{right} ({r}, {c}): {lane} vs {want}"
+                    );
+                }
+            }
+            // `∂(X⁻¹ p)/∂p = Rᵀ` on both sides, by differentiating in `p` instead.
+            let x3 = SE3::<D3>::exp(&SEn3Tangent::read_dense(&base.map(D3::constant)));
+            let moved = x3.inv_act(Point(array::from_fn(|i| D3::variable(p[i], i))));
+            for r in 0..3 {
+                let lanes: [f64; 3] = array::from_fn(|c| moved.0[r].d[c]);
+                close(&lanes, &dp.row(r).0, 1e-15);
+            }
+        }
+    }
+
+    /// The bit relations `0103` states: `inv_act` is `inv_mul`'s column arithmetic, the right
+    /// rotation block is the hat of `inv_act`'s own value, the left translation block is `−Rᵀ`,
+    /// and `∂/∂p` is `SO3::inv_act_jacobians`' `Rᵀ`, on both sides.
+    #[test]
+    fn inv_act_is_inv_mul_s_column_and_its_jacobians_reuse_it() {
+        let mut st = 0x0103_1A7C_0000_0001_u64;
+        let mut next = || {
+            st ^= st << 13;
+            st ^= st >> 7;
+            st ^= st << 17;
+            (st >> 11) as f64 / (1u64 << 53) as f64 * 4.0 - 2.0
+        };
+        let bits = |m: &[f64]| m.iter().map(|v| v.to_bits()).collect::<std::vec::Vec<_>>();
+        for _ in 0..2000 {
+            let x = SE3::<f64>::exp(&twist(array::from_fn(|i| match i < 3 {
+                true => next(),
+                false => 1e3 * next(),
+            })));
+            let p = Point(array::from_fn(|_| 1e3 * next()));
+            let got = x.inv_act(p);
+            let want = SE3::from_rt(SO3::identity(), Vector(p.0))
+                .inv_mul(&x)
+                .translation();
+            assert_eq!(bits(&got.0), bits(&want.0));
+            let rt = x.rotation().to_matrix().transpose();
+            // `−I` with `+0` off its diagonal: the block is written, not negated.
+            let neg_i = Mat3::from_rows([
+                Vector([-1.0, 0.0, 0.0]),
+                Vector([0.0, -1.0, 0.0]),
+                Vector([0.0, 0.0, -1.0]),
+            ]);
+            for right in [true, false] {
+                let (j, dp) = match right {
+                    true => x.inv_act_jacobians::<Right>(p),
+                    false => x.inv_act_jacobians::<Left>(p),
+                };
+                let (rot, trans) = match right {
+                    true => (hat(Vector(got.0)), neg_i),
+                    false => (x.rotation().inv_act_jacobians::<Left>(Vector(p.0)).0, -rt),
+                };
+                for c in 0..3 {
+                    assert_eq!(bits(&j.col(c).0), bits(&rot.col(c).0), "{right} {c}");
+                    assert_eq!(bits(&j.col(c + 3).0), bits(&trans.col(c).0), "{right} {c}");
+                    assert_eq!(bits(&dp.col(c).0), bits(&rt.col(c).0), "{right} {c}");
+                }
             }
         }
     }

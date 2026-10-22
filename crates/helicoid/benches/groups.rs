@@ -43,8 +43,8 @@ use core::time::Duration;
 use criterion::measurement::WallTime;
 use criterion::{criterion_group, criterion_main, BatchSize, BenchmarkGroup, Criterion};
 use helicoid::{
-    reference, so3, Chart, Gaussian, Jac, LieGroup, Right, RnTangent, S2Chart, SEn3, SEn3Tangent,
-    SO3Tangent, Sim3, Sim3Jac, Sim3Tangent, Tangent, S2, SE3, SO3,
+    reference, so3, Chart, Gaussian, Jac, Left, LieGroup, Right, RnTangent, S2Chart, SEn3,
+    SEn3Tangent, SO3Tangent, Sim3, Sim3Jac, Sim3Tangent, Tangent, S2, SE3, SO3,
 };
 use helicoid_linalg::{Mat2, Mat3, Matrix, Point, Point3, Real, Vec3, Vector};
 
@@ -80,6 +80,29 @@ fn gamma_apply_jacobians_of<const M: usize, S: Real>(
     v: Vec3<S>,
 ) -> (Vec3<S>, Mat3<S>, Mat3<S>) {
     so3::gamma_apply_jacobians::<M, S>(phi, v)
+}
+
+/// `SE3::inv_act` with its right Jacobians behind one call, for `geodesic_of`'s reason: the
+/// shape a reprojection residual asks for, where `0103` claims the value's sandwich is evaluated
+/// once for both.
+#[inline(never)]
+fn inv_act_pair<S: Real>(x: &SE3<S>, p: Point3<S>) -> (Point3<S>, Matrix<S, 3, 6>, Mat3<S>) {
+    let (j, dp) = x.inv_act_jacobians::<Right>(p);
+    (x.inv_act(p), j, dp)
+}
+
+/// [`inv_act_pair`]'s twin, the composition `0103` replaces: `X⁻¹ p`, and
+/// `reference::se3_inv_act_jacobian`, `act_jacobians(X⁻¹, p) · inverse_jacobian(X)` dense.
+#[inline(never)]
+fn inv_act_composed<S: Real>(x: &SE3<S>, p: Point3<S>) -> (Point3<S>, [S; 18], Mat3<S>) {
+    let xi = x.inverse();
+    let mut j = [S::zero(); 18];
+    reference::se3_inv_act_jacobian::<S, Right>(
+        x,
+        p,
+        &mut helicoid_linalg::StridedMut::col_major(&mut j, 3, 6),
+    );
+    (xi * p, j, xi.act_jacobians::<Right>(p).1)
 }
 
 /// `S2Chart`'s methods behind calls, for `geodesic_of`'s reason.
@@ -323,6 +346,21 @@ fn se3_action<S: Fixture>(g: &mut BenchmarkGroup<'_, WallTime>, name: &str, thet
     });
     g.bench_function(format!("se3/act_many/{name}"), |b| {
         b.iter_batched_ref(|| pts, |q| black_box(&x).act_many(q), BatchSize::SmallInput);
+    });
+    g.bench_function(format!("se3/inv_act/{name}"), |b| {
+        b.iter(|| black_box(&x).inv_act(black_box(p)));
+    });
+    g.bench_function(format!("se3/inv_act_jacobians/right/{name}"), |b| {
+        b.iter(|| black_box(&x).inv_act_jacobians::<Right>(black_box(p)));
+    });
+    g.bench_function(format!("se3/inv_act_jacobians/left/{name}"), |b| {
+        b.iter(|| black_box(&x).inv_act_jacobians::<Left>(black_box(p)));
+    });
+    g.bench_function(format!("se3/inv_act_pair/{name}"), |b| {
+        b.iter(|| inv_act_pair(black_box(&x), black_box(p)));
+    });
+    g.bench_function(format!("se3/inv_act_composed/{name}"), |b| {
+        b.iter(|| inv_act_composed(black_box(&x), black_box(p)));
     });
 }
 
