@@ -157,10 +157,12 @@ oracle-gtsam:
 
 # The manif oracle (`docs/decisions/0075`): as `oracle-sophus`, for docker/oracles/manif, pinned by
 # base digest, Ubuntu snapshot and manif commit; its build runs the conversions' hand-computed
-# tests. `subject_version` names manif, Eigen, gcc and glibc; it answers in binary64. Rows in
-# conformance/results/manif.csv.
+# tests. `subject_version` names manif, Eigen, gcc and glibc; it answers in binary64, and in
+# binary32 the one id with `@f32` strata it answers, `se3_inv_act` (`0103`). Rows in
+# conformance/results/manif.csv and manif--f32.csv.
 oracle-manif:
     cargo xtask conformance --oracle manif
+    cargo xtask conformance --oracle manif --precision f32
 
 # Every oracle runner (`docs/PHASE1.md` §3, §7): the three crates' checks and rows, then the three
 # containers', each image built from its pins. Local only: it needs docker, and the first GTSAM
@@ -201,6 +203,7 @@ conformance-deep:
     cargo xtask conformance --oracle sophus --deep --precision f32
     cargo xtask conformance --oracle gtsam --deep
     cargo xtask conformance --oracle manif --deep
+    cargo xtask conformance --oracle manif --deep --precision f32
 
 # The one-variable twins (`0037`, draft): a candidate's program at a scalar whose transcendentals
 # are the host's `std` instead of the `libm` crate, into conformance/results/*-host-std.csv. Both
