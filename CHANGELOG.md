@@ -8,6 +8,10 @@ defined by the status tables in `docs/`; they win over this file.
 
 ## [Unreleased]
 
+## [0.0.7] - 2026-10-22
+
+The nearest-rotation and inverse-action release. `helicoid_linalg::nearest_rotation` projects a 3×3 onto SO(3), by Newton's polar iteration where that is well posed and through `svd3` elsewhere, and dominates nalgebra and Sophus on every stratum. `SO3` and `SE3` gain `inv_act` and `inv_act_jacobians`, the inverse action $R^\top(p - t)$ with its own Jacobians. The composition consumers wrote loses up to $4\times10^6\,u$ where $\lVert t\rVert \gg \lVert x\rVert$; the pair reads at most 4.79 `u`, in half the time. `Matrix` builds from columns without a call, so `Gaussian::propagate` takes 0.65× its time. **No API break**, and every existing output keeps its bits.
+
 ### Added
 
 - **`SO3::inv_act`, `SE3::inv_act` and their `inv_act_jacobians::<Sd>`** (`0103`): the inverse
@@ -61,38 +65,12 @@ Not shipped in the crates.
   the dev target directory is 30% smaller. `just determinism` and CI also digest the corpus at
   `ndebug`, so an opt-level that moved an output bit fails the comparison.
 
-## [0.0.6] - 2026-10-19
-
-The 3×3 SVD release. `helicoid_linalg::svd3` uses the signed convention, so `UVᵀ` is the nearest rotation where that is unique. It is backward stable at every finite input and dominates nalgebra's `SVD` and Eigen's `JacobiSVD` on every stratum at both precisions. `eig3`'s scaling ladder gets faster with bit-identical outputs. **No API break.**
-
-### Added
-
-- **`helicoid_linalg::svd3`** (`0101`): the 3×3 SVD in the signed convention, `U, V ∈ SO(3)`,
-  `σ₁ ≥ σ₂ ≥ |σ₃|`, `sign σ₃ = sign det A`, so `UVᵀ` is the nearest rotation where that is unique.
-  One-sided Jacobi on `eig3`'s rotation, with `eig3`'s exit and polish, then Gram–Schmidt with the
-  projection taken twice. It is backward stable column by column at every finite input, subnormal
-  ones included: 6.03 `u` at most over the corpus at `f64`, 5.08 at `f32`. It dominates nalgebra's
-  `SVD` (McAdams, `4.2×10⁷ u` at `graded-1e-8`) and Eigen's `JacobiSVD` on every stratum at both
-  precisions. It runs in 265–412 ns at `f64` and 167–364 ns at `f32`.
-
-### Changed
-
-- **`eig3`'s ladder** (`0101`) passes only scalars and takes no product on its chain. Its `f32`
-  arm runs 0.81× as long; every output is bit-identical.
-
-### Instrument
-
-Not shipped in the crates.
-- **The corpus id `svd3`** (`0101`): 34 binary64 strata (580 records) and 27 binary32 strata
-  (468), against `mp.svd_r` at 120 digits. The metric `Rule::Svd` and a self-test pair go with it,
-  and nalgebra's `SVD` and Eigen's `JacobiSVD` (in the Sophus image) are oracles. A record part may
-  key its `shape` by field.
-
 ## Released versions
 
 Frozen history, newest first, in [`docs/changelog/`](./docs/changelog/); leave it
 out of searches and sweeps.
 
+- [`0.0.6`](./docs/changelog/0.0.6.md) — 2026-10-19 (`svd3` in the signed convention)
 - [`0.0.5`](./docs/changelog/0.0.5.md) — 2026-10-16 (closed-form SE_N(3) Jacobians, `Exp` near `π`, the deep tier)
 - [`0.0.4`](./docs/changelog/0.0.4.md) — 2026-10-14 (`from_matrix` on the unit sphere, `round_from_f64`, `just determinism`)
 - [`0.0.3`](./docs/changelog/0.0.3.md) — 2026-10-13 (Phase 5, `eig3` as Jacobi, three C++ oracles)
@@ -105,3 +83,4 @@ out of searches and sweeps.
 [0.0.4]: https://github.com/NoeFontana/helicoid/releases/tag/v0.0.4
 [0.0.5]: https://github.com/NoeFontana/helicoid/releases/tag/v0.0.5
 [0.0.6]: https://github.com/NoeFontana/helicoid/releases/tag/v0.0.6
+[0.0.7]: https://github.com/NoeFontana/helicoid/releases/tag/v0.0.7
