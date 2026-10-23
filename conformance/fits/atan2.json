@@ -1,42 +1,57 @@
 {
   "source": "conformance/generate: python -m fit atan2 (docs/decisions/0105, draft)",
   "f64": {
-    "umax": "1/2",
-    "terms": 13,
+    "centres": 8,
+    "terms": 5,
     "coeffs": [
-      "0xbfd5555555555552",
-      "0x3fc9999999999020",
-      "0xbfc2492492450064",
-      "0x3fbc71c71a9df875",
-      "0xbfb745d1375353c2",
-      "0x3fb3b135f0e71905",
-      "0xbfb110c5f6257e32",
-      "0x3fae181cce4ece20",
-      "0xbfaac6d476348b13",
-      "0x3fa77e911f780f94",
-      "0xbfa2ff18f0c41006",
-      "0x3f98334175a1b2b6",
-      "0xbf811b2176b95063"
+      "0xbfd5555555555537",
+      "0x3fc99999999637c5",
+      "0xbfc2492482a7fce7",
+      "0x3fbc7188204db713",
+      "0xbfb70c2fc907d940"
     ],
-    "minimax_log2": -62.05,
-    "rounded_log2": -56.8,
+    "minimax_log2": -62.57,
+    "rounded_log2": -62.56,
+    "atan_hi": [
+      "0x0000000000000000",
+      "0x3fbfd5ba9aac2f6e",
+      "0x3fcf5b75f92c80dd",
+      "0x3fd6f61941e4def1",
+      "0x3fddac670561bb4f",
+      "0x3fe1e00babdefeb4",
+      "0x3fe4978fa3269ee1",
+      "0x3fe700a7c5784634",
+      "0x3fe921fb54442d18"
+    ],
+    "atan_lo": [
+      "0x0000000000000000",
+      "0xbc4cd37686760c17",
+      "0x3c68ab6e3cf7afbd",
+      "0xbc7c63aae6f6e918",
+      "0x3c7a2b7f222f65e2",
+      "0xbc5928df287a668f",
+      "0x3c72419a87f2a458",
+      "0xbc78c34d25aadef6",
+      "0x3c81a62633145c07"
+    ],
     "pi4_hi": "0x3fe921fb54442d18",
     "pi4_lo": "0x3c81a62633145c07"
   },
   "f32": {
-    "umax": "1/2",
-    "terms": 6,
+    "evaluated_at": "f64",
+    "fold": "1/2",
+    "terms": 8,
     "coeffs": [
-      "0xbfd5555520000000",
-      "0x3fc9996ec0000000",
-      "0xbfc244acc0000000",
-      "0x3fbc024860000000",
-      "0xbfb4706fc0000000",
-      "0x3fa3d38980000000"
+      "0xbfd55555550f78eb",
+      "0x3fc999995191e87b",
+      "0xbfc24917d3299649",
+      "0x3fbc6f94c9c53245",
+      "0xbfb72ab5d66a0f22",
+      "0x3fb2ea5428771bd9",
+      "0xbfab3f6e03afbe18",
+      "0x3f981b295c87fbb3"
     ],
-    "minimax_log2": -31.88,
-    "rounded_log2": -27.76,
-    "pi4_hi": "0x3fe921fb80000000",
-    "pi4_lo": "0xbe75dde980000000"
+    "minimax_log2": -40.58,
+    "rounded_log2": -40.58
   }
 }

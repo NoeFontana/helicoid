@@ -1,22 +1,25 @@
-"""The polynomial and the constants of the portable `atan2` candidate (docs/decisions/0105, draft).
+"""The polynomials and tables of the portable `atan2` candidate (docs/decisions/0105, draft).
 
-The kernel folds its quotient to |u| <= umax and evaluates atan(u) = u + u s P(s), s = u^2. P is
-the weighted minimax polynomial of h(s) = (g(s) - 1)/s, g(s) = atan(sqrt s)/sqrt s, on [0, umax^2],
-the weight w(s) = s/g(s) making the error the one atan(u) carries: relative, u s (P - h)/atan(u).
+Both kernels reduce to atan(v) = v + v s P(s), s = v^2, P the weighted minimax polynomial of
+h(s) = (g(s) - 1)/s, g(s) = atan(sqrt s)/sqrt s, on [0, vmax^2], the weight w(s) = s/g(s) making
+the error the one atan(v) carries: relative, v s (P - h)/atan(v). P's coefficients are rounded one
+at a time, lowest first, each rounding followed by a refit of the rest: naive rounding of the
+binary64 fit on |v| <= 1/2 loses five of its 62 bits.
+
+- binary64: t = n/d in [0, 1] is reduced about the nearest centre c = j/C, j in 0..C, by
+  atan(t) = atan(c) + atan(v), v = (n - c d)/(d + c n), so |v| <= 1/(2C). atan(c) is a pair hi + lo.
+- binary32: evaluated in binary64, folded at t = 1/2 by (n - d)/(n + d), so |v| <= 1/2.
+
+pi/4 is split as hi + lo with hi rounded to 51 bits, so k hi is exact for k in {0, ..., 4}.
 No coefficient is typed anywhere; this module is their only source.
-
-pi/4 is split as hi + lo with hi rounded to p - 2 bits, so k hi is exact for k in {0, ..., 4}.
 """
 
 import json
 import struct
-from fractions import Fraction
 
 from mpmath import mp, mpf
 
-from gen.precision import setup, signed_man_exp, to_f32, to_f64
-
-PRECISIONS = {"f64": (53, to_f64), "f32": (24, to_f32)}
+from gen.precision import setup, signed_man_exp, to_f64
 
 # Points of the Chebyshev-distributed grid the exchange and the reported error read.
 GRID = 2000
@@ -74,29 +77,56 @@ def _alternating(xs, e, count):
     return [xs[i] for i in runs]
 
 
-def remez(terms, top, iterations=40):
-    """`terms` coefficients of P, lowest first, and the levelled weighted error."""
+def remez(terms, top, fixed=(), iterations=40):
+    """`terms` coefficients of P, lowest first, and the levelled weighted error, the first
+    `len(fixed)` of them held at `fixed`."""
     xs = grid(top)
-    hv = [h(x) for x in xs]
+    m = len(fixed)
+    free = terms - m
+    hv = [h(x) - horner(list(fixed), x) for x in xs]
     wv = [x / g(x) for x in xs]
-    ref = [top / 2 * (1 - mp.cos(mp.pi * (i + 1) / (terms + 1))) for i in range(terms + 1)]
+    if free == 0:
+        return list(fixed), max(abs(w * hx) for w, hx in zip(wv, hv))
+    ref = [top / 2 * (1 - mp.cos(mp.pi * (i + 1) / (free + 1))) for i in range(free + 1)]
+    best = None
     for _ in range(iterations):
-        a = mp.matrix(terms + 1, terms + 1)
-        b = mp.matrix(terms + 1, 1)
+        a = mp.matrix(free + 1, free + 1)
+        b = mp.matrix(free + 1, 1)
         for i, x in enumerate(ref):
-            for j in range(terms):
-                a[i, j] = x**j
-            a[i, terms] = (-1) ** i * g(x) / x
-            b[i] = h(x)
+            for j in range(free):
+                a[i, j] = x ** (m + j)
+            a[i, free] = (-1) ** i * g(x) / x
+            b[i] = h(x) - horner(list(fixed), x)
         sol = mp.lu_solve(a, b)
-        c = [sol[j] for j in range(terms)]
-        level = abs(sol[terms])
-        e = [w * (horner(c, x) - hx) for x, hx, w in zip(xs, hv, wv)]
+        c = list(fixed) + [sol[j] for j in range(free)]
+        level = abs(sol[free])
+        e = [w * (horner(c[m:], x) * x**m - hx) for x, hx, w in zip(xs, hv, wv)]
         worst = max(abs(v) for v in e)
         if worst <= level * (1 + mpf(2) ** -20):
             return c, worst
-        ref = _alternating(xs, e, terms + 1)
+        if best is None or worst < best[1]:
+            best = (c, worst)
+        try:
+            ref = _alternating(xs, e, free + 1)
+        except ArithmeticError:
+            if not fixed:
+                raise
+            break
+    # With rounded coefficients held, the rest may level only to the grid's resolution; the best
+    # exchange still fixes the next coefficient to far below its rounding.
+    if fixed and best is not None:
+        return best
     raise ArithmeticError(f"no levelling after {iterations} exchanges")
+
+
+def rounded(terms, top, rnd):
+    """P's coefficients rounded by `rnd` one at a time, lowest first, each rounding followed by a
+    refit of the rest; and the weighted error the rounded coefficients carry."""
+    fixed = []
+    for j in range(terms):
+        c, _ = remez(terms, top, fixed)
+        fixed.append(mpf(rnd(c[j])))
+    return [float(x) for x in fixed], weighted_error(fixed, top)
 
 
 def weighted_error(c, top):
@@ -123,32 +153,61 @@ def bits_hex(x: float) -> str:
     return "0x" + struct.pack(">d", x).hex()
 
 
-def fit(precision: str, terms: int, umax: Fraction) -> dict[str, object]:
-    p, rnd = PRECISIONS[precision]
-    top = mpf(umax.numerator) ** 2 / mpf(umax.denominator) ** 2
-    exact, level = remez(terms, top)
-    rounded = [rnd(x) for x in exact]
-    pi4 = mp.pi / 4
-    hi = rnd(round_bits(pi4, p - 2))
-    lo = rnd(pi4 - mpf(hi))
-    log2 = lambda v: round(float(mp.log(v, 2)), 2)
+# The fold and the centres' comparisons round, so |v| may pass its bound by an ulp or so.
+MARGIN = 1 + mpf(2) ** -40
+
+
+def log2(v) -> float:
+    return round(float(mp.log(v, 2)), 2)
+
+
+def polynomial(terms: int, vmax) -> dict[str, object]:
+    """P at binary64 on |v| <= vmax."""
+    top = (vmax * MARGIN) ** 2
+    _, level = remez(terms, top)
+    coeffs, error = rounded(terms, top, to_f64)
     return {
-        "umax": f"{umax.numerator}/{umax.denominator}",
         "terms": terms,
-        "coeffs": [bits_hex(x) for x in rounded],
+        "coeffs": [bits_hex(x) for x in coeffs],
         "minimax_log2": log2(level),
-        "rounded_log2": log2(weighted_error([mpf(x) for x in rounded], top)),
+        "rounded_log2": log2(error),
+    }
+
+
+def binary64(centres: int, terms: int) -> dict[str, object]:
+    """The binary64 kernel: `centres` a power of two, |v| <= 1/(2 centres)."""
+    if centres < 1 or centres & (centres - 1):
+        raise ValueError(f"{centres} centres: a power of two keeps n - c d exact")
+    pi4 = mp.pi / 4
+    hi = to_f64(round_bits(pi4, 51))
+    lo = to_f64(pi4 - mpf(hi))
+    atan_hi, atan_lo = [], []
+    for j in range(centres + 1):
+        a = mp.atan(mpf(j) / centres)
+        h = to_f64(a)
+        atan_hi.append(bits_hex(h))
+        atan_lo.append(bits_hex(to_f64(a - mpf(h))))
+    return {
+        "centres": centres,
+        **polynomial(terms, mpf(1) / (2 * centres)),
+        "atan_hi": atan_hi,
+        "atan_lo": atan_lo,
         "pi4_hi": bits_hex(hi),
         "pi4_lo": bits_hex(lo),
     }
 
 
-def write(specs: list[tuple[str, int, Fraction]]) -> str:
-    """The committed file's text, one fit per precision."""
+def binary32(terms: int) -> dict[str, object]:
+    """The binary32 kernel, evaluated in binary64 and folded at 1/2."""
+    return {"evaluated_at": "f64", "fold": "1/2", **polynomial(terms, mpf(1) / 2)}
+
+
+def write(centres: int, terms64: int, terms32: int) -> str:
+    """The committed file's text."""
     setup()
-    out: dict[str, object] = {
+    out = {
         "source": "conformance/generate: python -m fit atan2 (docs/decisions/0105, draft)",
+        "f64": binary64(centres, terms64),
+        "f32": binary32(terms32),
     }
-    for precision, terms, umax in specs:
-        out[precision] = fit(precision, terms, umax)
     return json.dumps(out, indent=2) + "\n"

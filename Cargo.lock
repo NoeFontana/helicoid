@@ -637,6 +637,7 @@ dependencies = [
 name = "xtask"
 version = "0.0.7"
 dependencies = [
+ "criterion",
  "helicoid",
  "helicoid-linalg",
  "libm",

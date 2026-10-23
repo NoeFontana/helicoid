@@ -1,352 +1,21 @@
 //! `helicoid:portable-atan2`: the shipped program at [`Portable`], whose `atan2` is the portable
-//! candidate of `0105` (draft) and whose every other operation is the shipped scalar's.
-//!
-//! The kernel is basic operations only, in one fixed sequence per precision:
-//! - `n = min`, `d = max` of `|x|, |y|`, rescaled by an exact power of two where `d` leaves the
-//!   window the compensations need;
-//! - the fold `n − d` over `n + d` where `d/2 < n`, so `|u| ≤ ½` and the numerator is exact
-//!   (Sterbenz), the denominator's rounding kept by `fast_two_sum`;
-//! - the quotient's residual by Dekker's product, with no fused multiply-add (D16);
-//! - `|atan2| = k·π/4 + atan(u)` with `k·π/4_hi` exact for `k ≤ 4`, `atan(u) = u + u s P(s)`.
-//!
-//! `P` and the split of `π/4` are `conformance/fits/atan2.json`, written by
-//! `python -m gen atan-fit`; nothing here is a typed coefficient. The window and the splitter are
-//! the formats' own: `2^⌈p/2⌉ + 1` splits a `p`-bit significand, and the window keeps
-//! `c·(n + d)` finite and the residual's products normal.
+//! candidate of `0105` (draft) and whose every other operation is the shipped scalar's. The kernels
+//! and their fit are [`kernel`]'s.
 //!
 //! Planted, as `helicoid:host-std` is: a twin is not a candidate, and no bar reads its rows. It
 //! answers both precisions, since every operation but `atan2` is the shipped scalar's own.
 
-use std::sync::OnceLock;
+pub(crate) mod kernel;
 
-use helicoid_linalg::{Mask, Precision, Real};
-use serde::Deserialize;
+use helicoid_linalg::Precision;
 
 use super::{program, Helicoid};
 use crate::conformance::corpus::Record;
 use crate::conformance::subject::{Output, Registered, Subject};
+use kernel::{fits, Portable};
 
 /// The subject's name, and the value of `--subject`.
 pub(crate) const NAME: &str = "helicoid:portable-atan2";
-
-/// The committed fit, as the generator wrote it.
-const FIT: &str = include_str!("../../../conformance/fits/atan2.json");
-
-/// One precision's polynomial and `π/4` split.
-#[derive(Debug)]
-pub(crate) struct Fit<S> {
-    /// `P`'s coefficients, constant term first.
-    pub(crate) coeffs: Vec<S>,
-    pub(crate) pi4_hi: S,
-    pub(crate) pi4_lo: S,
-}
-
-#[derive(Deserialize)]
-struct FitFile {
-    f64: FitJson,
-    f32: FitJson,
-}
-
-#[derive(Deserialize)]
-struct FitJson {
-    umax: String,
-    terms: usize,
-    coeffs: Vec<String>,
-    pi4_hi: String,
-    pi4_lo: String,
-}
-
-fn bits(hex: &str) -> Result<f64, String> {
-    let digits = hex.strip_prefix("0x").ok_or(format!("{hex}: no 0x"))?;
-    u64::from_str_radix(digits, 16)
-        .map(f64::from_bits)
-        .map_err(|e| format!("{hex}: {e}"))
-}
-
-impl FitJson {
-    /// The fit at `S`, every value exactly representable there.
-    fn at<S: Real>(&self) -> Result<Fit<S>, String> {
-        // The kernel's fold is at `d/2 < n`, so `|u| ≤ ½`; a fit on another interval is a
-        // different kernel.
-        if self.umax != "1/2" || self.coeffs.len() != self.terms {
-            return Err(format!(
-                "fit on |u| <= {} with {} of {} terms; the kernel folds to 1/2",
-                self.umax,
-                self.coeffs.len(),
-                self.terms
-            ));
-        }
-        let exact = |hex: &str| -> Result<S, String> {
-            let x = bits(hex)?;
-            let at = S::round_from_f64(x);
-            (at.value_f64().to_bits() == x.to_bits())
-                .then_some(at)
-                .ok_or(format!("{hex} is not exact at {:?}", S::PRECISION))
-        };
-        Ok(Fit {
-            coeffs: self
-                .coeffs
-                .iter()
-                .map(|c| exact(c))
-                .collect::<Result<_, _>>()?,
-            pi4_hi: exact(&self.pi4_hi)?,
-            pi4_lo: exact(&self.pi4_lo)?,
-        })
-    }
-}
-
-/// The binary64 fit, then the binary32 one.
-pub(crate) type Fits = (Fit<f64>, Fit<f32>);
-
-/// The two fits, parsed once.
-pub(crate) fn fits() -> Result<&'static Fits, &'static str> {
-    static FITS: OnceLock<Result<Fits, String>> = OnceLock::new();
-    FITS.get_or_init(|| {
-        let file: FitFile = serde_json::from_str(FIT).map_err(|e| format!("atan2.json: {e}"))?;
-        Ok((file.f64.at()?, file.f32.at()?))
-    })
-    .as_ref()
-    .map_err(String::as_str)
-}
-
-/// The format's constants: the window on `d`, the powers of two that bring `d` back into it, the
-/// splitter, and the numerator below which the residual's products are not all normal.
-struct Format<S> {
-    lo: S,
-    hi: S,
-    up: S,
-    down: S,
-    split: S,
-    residual: S,
-}
-
-impl<S: Real> Format<S> {
-    fn of() -> Self {
-        let pow2 = |e: i32| S::lit(libm::ldexp(1.0, e));
-        match S::PRECISION {
-            // `(2^27 + 1)·2d` stays below `2^1024` for `d < 2^995`; `num·2^-53` is normal for
-            // `|num| ≥ 2^-969`.
-            Precision::F64 => Self {
-                lo: pow2(-460),
-                hi: pow2(990),
-                up: pow2(512),
-                down: pow2(-512),
-                split: pow2(27) + S::one(),
-                residual: pow2(-969),
-            },
-            // `(2^12 + 1)·2d` stays below `2^128` for `d < 2^114`; `num·2^-24` is normal for
-            // `|num| ≥ 2^-102`.
-            Precision::F32 => Self {
-                lo: pow2(-50),
-                hi: pow2(110),
-                up: pow2(64),
-                down: pow2(-64),
-                split: pow2(12) + S::one(),
-                residual: pow2(-102),
-            },
-        }
-    }
-}
-
-/// `(s, e)` with `s + e = a + b` exactly, for `|a| ≥ |b|` or `a = 0`.
-fn fast_two_sum<S: Real>(a: S, b: S) -> (S, S) {
-    let s = a + b;
-    (s, b - (s - a))
-}
-
-/// `(h, l)` with `h + l = a·b` exactly where no product underflows (Dekker), without `mul_add`.
-fn two_product<S: Real>(a: S, b: S, split: S) -> (S, S) {
-    let halves = |x: S| {
-        let c = split * x;
-        let hi = c - (c - x);
-        (hi, x - hi)
-    };
-    let h = a * b;
-    let ((ah, al), (bh, bl)) = (halves(a), halves(b));
-    (h, ((ah * bh - h) + ah * bl + al * bh) + al * bl)
-}
-
-/// `(n, d)` with `d` brought into the window by an exact power of two, or, where `d` is infinite,
-/// IEEE 754's limits: each infinite argument `1`, each finite one `0`. A NaN passes through.
-#[cold]
-#[inline(never)]
-fn rescale<S: Real>(n: S, d: S, f: &Format<S>) -> (S, S) {
-    let inf = S::lit(f64::INFINITY);
-    let (n_inf, d_inf) = (inf.le(n), inf.le(d));
-    let big = f.hi.lt(d);
-    let scale = S::select(big, f.down, f.up);
-    let n = S::select(d_inf, S::select(n_inf, S::one(), S::zero()), n * scale);
-    let d = S::select(d_inf, S::one(), d * scale);
-    (n, d)
-}
-
-/// `atan2(y, x)` by the portable kernel of `0105` (draft), at `fit`'s precision.
-pub(crate) fn atan2<S: Real>(y: S, x: S, fit: &Fit<S>) -> S {
-    let (zero, one) = (S::zero(), S::one());
-    let f = Format::<S>::of();
-    let (ax, ay) = (x.abs(), y.abs());
-    let swap = ax.lt(ay);
-    let (n, d) = (S::select(swap, ax, ay), S::select(swap, ay, ax));
-    let inside = f.lo.le(d).and(d.le(f.hi));
-    let fr = &f;
-    let (n, d) = S::branch(inside, move || (n, d), move || rescale(n, d, fr));
-
-    // `|u| ≤ ½`: the fold's numerator is exact by Sterbenz (`d/2 < n ≤ d`), its denominator's
-    // rounding is `den_lo`.
-    let fold = (S::lit(0.5) * d).lt(n);
-    let (sum, sum_lo) = fast_two_sum(d, n);
-    let num = S::select(fold, n - d, n);
-    let empty = d.le(zero);
-    let den = S::select(empty, one, S::select(fold, sum, d));
-    let den_lo = S::select(fold, sum_lo, zero);
-    let u = num / den;
-    // `num − ph` is exact (Sterbenz: `ph` is `num` to a rounding).
-    let (ph, pl) = two_product(u, den, f.split);
-    let rem = ((num - ph) - pl) - u * den_lo;
-    let normal = f.residual.le(num.abs());
-    let du = S::select(normal.and(empty.not()), rem / den, zero);
-
-    // The octant: `k·π/4 ± atan(u)`, the sign flipped where exactly one of `x < 0`, `|y| > |x|`.
-    let neg_x = one.copysign(x).lt(zero);
-    let flip = neg_x.and(swap.not()).or(swap.and(neg_x.not()));
-    let sign = S::select(flip, -one, one);
-    let q = S::select(swap, S::lit(2.0), S::select(neg_x, S::lit(4.0), zero));
-    let k = q + S::select(fold, sign, zero);
-    let (us, dus) = (sign * u, sign * du);
-
-    let s = us * us;
-    let mut p = zero;
-    for &c in fit.coeffs.iter().rev() {
-        p = p * s + c;
-    }
-    // `atan(u + du) = atan(u) + du/(1 + s)`, `1/(1 + s)` to first order.
-    let tail = (us * s) * p + dus * (one - s);
-    let (hi, lo) = fast_two_sum(k * fit.pi4_hi, us);
-    let mag = hi + (lo + (k * fit.pi4_lo + tail));
-    let nan = x.le(x).and(y.le(y)).not();
-    S::select(nan, x + y, mag.copysign(y))
-}
-
-/// The shipped scalar `T` with `atan2` alone replaced by [`atan2`].
-#[derive(Clone, Copy, Debug, PartialEq, PartialOrd)]
-pub(crate) struct Portable<T>(pub(crate) T);
-
-macro_rules! portable {
-    ($t:ty, $fit:tt) => {
-        impl core::ops::Add for Portable<$t> {
-            type Output = Self;
-            fn add(self, o: Self) -> Self {
-                Portable(self.0 + o.0)
-            }
-        }
-        impl core::ops::Sub for Portable<$t> {
-            type Output = Self;
-            fn sub(self, o: Self) -> Self {
-                Portable(self.0 - o.0)
-            }
-        }
-        impl core::ops::Mul for Portable<$t> {
-            type Output = Self;
-            fn mul(self, o: Self) -> Self {
-                Portable(self.0 * o.0)
-            }
-        }
-        impl core::ops::Div for Portable<$t> {
-            type Output = Self;
-            fn div(self, o: Self) -> Self {
-                Portable(self.0 / o.0)
-            }
-        }
-        impl core::ops::Neg for Portable<$t> {
-            type Output = Self;
-            fn neg(self) -> Self {
-                Portable(-self.0)
-            }
-        }
-        impl From<Portable<$t>> for f64 {
-            fn from(x: Portable<$t>) -> f64 {
-                f64::from(x.0)
-            }
-        }
-
-        // Every method but `atan2` is the shipped scalar's, so the twin changes one variable.
-        impl Real for Portable<$t> {
-            type Mask = bool;
-            const PRECISION: Precision = <$t as Real>::PRECISION;
-            fn lit(x: f64) -> Self {
-                Portable(<$t as Real>::lit(x))
-            }
-            fn round_from_f64(x: f64) -> Self {
-                Portable(<$t as Real>::round_from_f64(x))
-            }
-            fn zero() -> Self {
-                Portable(<$t as Real>::zero())
-            }
-            fn one() -> Self {
-                Portable(<$t as Real>::one())
-            }
-            fn lt(self, rhs: Self) -> bool {
-                <$t as Real>::lt(self.0, rhs.0)
-            }
-            fn le(self, rhs: Self) -> bool {
-                <$t as Real>::le(self.0, rhs.0)
-            }
-            fn select(m: bool, t: Self, f: Self) -> Self {
-                Portable(<$t as Real>::select(m, t.0, f.0))
-            }
-            fn sqrt(self) -> Self {
-                Portable(Real::sqrt(self.0))
-            }
-            fn cbrt(self) -> Self {
-                Portable(Real::cbrt(self.0))
-            }
-            fn sin_cos(self) -> (Self, Self) {
-                let (s, c) = Real::sin_cos(self.0);
-                (Portable(s), Portable(c))
-            }
-            fn sin(self) -> Self {
-                Portable(Real::sin(self.0))
-            }
-            fn cos(self) -> Self {
-                Portable(Real::cos(self.0))
-            }
-            fn acos(self) -> Self {
-                Portable(Real::acos(self.0))
-            }
-            fn exp(self) -> Self {
-                Portable(Real::exp(self.0))
-            }
-            fn exp_m1(self) -> Self {
-                Portable(Real::exp_m1(self.0))
-            }
-            /// The candidate. An unparsed fit answers NaN; [`Twin::eval`] answers nothing first.
-            fn atan2(self, x: Self) -> Self {
-                Portable(match fits() {
-                    Ok(fits) => atan2(self.0, x.0, &fits.$fit),
-                    Err(_) => <$t>::NAN,
-                })
-            }
-            fn abs(self) -> Self {
-                Portable(Real::abs(self.0))
-            }
-            fn copysign(self, sign: Self) -> Self {
-                Portable(Real::copysign(self.0, sign.0))
-            }
-            fn value_f64(self) -> f64 {
-                Real::value_f64(self.0)
-            }
-        }
-    };
-}
-
-portable!(f64, 0);
-portable!(f32, 1);
-
-impl From<f64> for Portable<f64> {
-    fn from(x: f64) -> Self {
-        Portable(x)
-    }
-}
 
 /// The shipped program at [`Portable`].
 pub(crate) struct Twin;
@@ -381,7 +50,7 @@ pub(crate) fn registered() -> Registered {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use super::kernel::{atan2_f32, atan2_f64, centre, fits, CENTRES};
 
     /// splitmix64, so a draw is the same on every host.
     struct Draw(u64);
@@ -413,12 +82,27 @@ mod tests {
     /// A double-double reference, about `2^-100` relative: enough to read an error in binary64
     /// ulps to many digits. `π/4` is its own `atan(1)`, so nothing here is a typed constant.
     mod dd {
-        use super::super::{fast_two_sum, two_product};
-
         #[derive(Clone, Copy, Debug)]
         pub(super) struct Dd(pub(super) f64, pub(super) f64);
 
         const SPLIT: f64 = 134_217_729.0;
+
+        fn fast_two_sum(a: f64, b: f64) -> (f64, f64) {
+            let s = a + b;
+            (s, b - (s - a))
+        }
+
+        /// Dekker's exact product, for operands whose halves' products are normal.
+        fn two_product(a: f64, b: f64) -> (f64, f64) {
+            let halves = |x: f64| {
+                let c = SPLIT * x;
+                let hi = c - (c - x);
+                (hi, x - hi)
+            };
+            let h = a * b;
+            let ((ah, al), (bh, bl)) = (halves(a), halves(b));
+            (h, ((ah * bh - h) + ah * bl + al * bh) + al * bl)
+        }
 
         fn two_sum(a: f64, b: f64) -> (f64, f64) {
             let s = a + b;
@@ -441,7 +125,7 @@ mod tests {
                 Dd(-self.0, -self.1)
             }
             pub(super) fn mul(self, o: Self) -> Self {
-                let (p, e) = two_product(self.0, o.0, SPLIT);
+                let (p, e) = two_product(self.0, o.0);
                 let (p, e) = fast_two_sum(p, e + (self.0 * o.1 + self.1 * o.0));
                 Dd(p, e)
             }
@@ -547,38 +231,33 @@ mod tests {
         Ok(())
     }
 
-    /// The candidate's worst binary64 error per arm: `k` and whether the quotient folded.
+    /// The candidate's worst binary64 error per centre `j` and quadrant `q`.
     #[test]
     #[ignore = "a measurement, printed for 0105 (draft) to cite"]
     #[allow(clippy::print_stdout)]
     fn the_binary64_kernel_reads_its_error_per_arm() -> Result<(), String> {
         let mut draw = Draw(6);
-        let mut worst = std::collections::BTreeMap::<(u8, bool), (f64, f64)>::new();
+        let mut worst = std::collections::BTreeMap::<(u8, u8), (f64, f64)>::new();
         for _ in 0..1 << 20 {
             let (y, x) = (draw.wide(-2, 2), draw.wide(-2, 2));
             let (n, d) = (y.abs().min(x.abs()), y.abs().max(x.abs()));
-            let (fold, swap, neg_x) = (0.5 * d < n, y.abs() > x.abs(), x < 0.0);
-            // The kernel's `k = q ± fold`, the sign `−` where exactly one of `neg_x`, `swap`.
-            let q: u8 = if swap {
-                2
-            } else if neg_x {
-                4
-            } else {
-                0
-            };
-            let k = match (fold, neg_x != swap) {
-                (false, _) => q,
-                (true, false) => q + 1,
-                (true, true) => q - 1,
+            let (c, ..) = centre(n, d);
+            let j = (0u8..=8)
+                .find(|&j| (f64::from(j) / 8.0).to_bits() == c.to_bits())
+                .unwrap_or(9);
+            let q = match (y.abs() > x.abs(), x < 0.0) {
+                (true, _) => 2,
+                (false, true) => 4,
+                (false, false) => 0,
             };
             let err = ulps(at64(y, x)?, dd::atan2(y, x), 53);
-            let cell = worst.entry((k, fold)).or_insert((0.0, 0.0));
+            let cell = worst.entry((j, q)).or_insert((0.0, 0.0));
             if err > cell.0 {
                 *cell = (err, n / d);
             }
         }
-        for ((k, fold), (err, t)) in &worst {
-            println!("k {k} fold {fold:5}: max {err:.4} ulp at n/d = {t:.4}");
+        for ((j, q), (err, t)) in &worst {
+            println!("j {j} q {q}: max {err:.4} ulp at n/d = {t:.4}");
         }
         Ok(())
     }
@@ -595,11 +274,12 @@ mod tests {
     }
 
     fn at64(y: f64, x: f64) -> Result<f64, String> {
-        Ok(atan2(y, x, &fits()?.0))
+        Ok(atan2_f64(y, x, &fits()?.f64))
     }
 
     fn at32(y: f32, x: f32) -> Result<f32, String> {
-        Ok(atan2(y, x, &fits()?.1))
+        let f = fits()?;
+        Ok(atan2_f32(y, x, &f.f32, (f.f64.pi4_hi, f.f64.pi4_lo)))
     }
 
     fn same64(a: f64, b: f64) -> bool {
@@ -610,20 +290,51 @@ mod tests {
         a.to_bits() == b.to_bits() || (a.is_nan() && b.is_nan())
     }
 
+    /// The last centre is `1`, so its `atan` is the split of `π/4`; `q·π/4_hi` is exact for
+    /// `q ≤ 4` because `π/4_hi` has two spare low bits.
     #[test]
-    fn the_committed_fit_parses() -> Result<(), String> {
-        let (f64_fit, f32_fit) = fits()?;
-        assert!(!f64_fit.coeffs.is_empty() && !f32_fit.coeffs.is_empty());
+    fn the_committed_fit_ends_at_pi_over_4_with_two_spare_bits() -> Result<(), String> {
+        let f = &fits()?.f64;
+        assert_eq!(f.atan_hi[CENTRES].to_bits(), f.pi4_hi.to_bits());
+        assert_eq!(f.atan_lo[CENTRES].to_bits(), f.pi4_lo.to_bits());
+        assert!(f.pi4_hi.to_bits().trailing_zeros() >= 2);
         Ok(())
     }
 
-    /// `k·π/4_hi` is exact for `k ≤ 4`: `π/4_hi` has two spare low bits at each precision.
+    /// `centre`'s claims, against the double-double reference: `num = n − c·d` exactly, and
+    /// `den + den_lo = d + c·n` to `2⁻¹⁰⁴`, on draws across the window and at every midpoint.
     #[test]
-    fn the_high_part_of_pi_over_4_has_two_spare_bits() -> Result<(), String> {
-        let (a, b) = fits()?;
-        assert!(a.pi4_hi.to_bits().trailing_zeros() >= 2);
-        assert!(b.pi4_hi.to_bits().trailing_zeros() >= 2);
-        Ok(())
+    fn the_centred_numerator_is_exact() {
+        let mut draw = Draw(8);
+        for i in 0u32..200_000 {
+            let d = draw.wide(-460, 989).abs();
+            let n = if i % 2 == 0 {
+                d * draw.wide(-60, -1).abs()
+            } else {
+                let mid = f64::from(2 * (i / 2 % 8) + 1) / 16.0;
+                let k = draw.next() % 5;
+                f64::from_bits(((d * mid).to_bits() + k) - 2)
+            }
+            .min(d);
+            let (c, num, den, den_lo) = centre(n, d);
+            assert!(
+                (n / d - c).abs() <= 1.0 / 16.0 + 1e-15,
+                "n {n:e} d {d:e} c {c}"
+            );
+            let exact = dd::Dd::of(n).add(dd::Dd::of(c).mul(dd::Dd::of(d)).neg());
+            assert_eq!(
+                (num.to_bits(), exact.1),
+                (exact.0.to_bits(), 0.0),
+                "n {n:e} d {d:e}"
+            );
+            let want = dd::Dd::of(d).add(dd::Dd::of(c).mul(dd::Dd::of(n)));
+            let got = dd::Dd::of(den).add(dd::Dd::of(den_lo));
+            let off = got.add(want.neg());
+            assert!(
+                (off.0 + off.1).abs() <= libm::ldexp(den, -104),
+                "n {n:e} d {d:e}"
+            );
+        }
     }
 
     /// Wherever an argument is zero, infinite or NaN, the answer is IEEE 754's, correctly rounded:
@@ -712,23 +423,35 @@ mod tests {
         Ok(())
     }
 
-    /// Monotone in `y` at `x = 1` through the fold (`y = ½`), the swap (`y = 1`) and the swapped
-    /// fold (`y = 2`), a thousand ulps either side of each.
+    /// Monotone in `y` at fixed `x`, a thousand ulps either side of every place two formulas
+    /// meet: binary64's midpoints between centres, `n/d = (2j + 1)/16`, and the swap, on both sides
+    /// of the diagonal; binary32's fold at `½` and swap.
     #[test]
-    fn monotone_through_the_fold_and_the_swap() -> Result<(), String> {
-        for at in [0.5f64, 1.0, 2.0] {
+    fn monotone_where_the_formulas_meet() -> Result<(), String> {
+        let mut at: Vec<f64> = (0..8).map(|j| f64::from(2 * j + 1) / 16.0).collect();
+        at.push(1.0);
+        at.extend((0..8).map(|j| 16.0 / f64::from(2 * j + 1)));
+        let mut draw = Draw(9);
+        for x in [1.0, draw.wide(-40, 40).abs(), draw.wide(-40, 40).abs()] {
+            for &t in &at {
+                let mut y = t * x;
+                for _ in 0..1000 {
+                    y = f64::from_bits(y.to_bits() - 1);
+                }
+                let mut last = at64(y, x)?;
+                for _ in 0..2000 {
+                    y = f64::from_bits(y.to_bits() + 1);
+                    let next = at64(y, x)?;
+                    assert!(
+                        last <= next,
+                        "f64 at ({y:e}, {x:e}): {last:e} then {next:e}"
+                    );
+                    last = next;
+                }
+            }
+        }
+        for at in [0.5f32, 1.0, 2.0] {
             let mut y = at;
-            for _ in 0..1000 {
-                y = f64::from_bits(y.to_bits() - 1);
-            }
-            let mut last = at64(y, 1.0)?;
-            for _ in 0..2000 {
-                y = f64::from_bits(y.to_bits() + 1);
-                let next = at64(y, 1.0)?;
-                assert!(last <= next, "f64 at y = {y:e}: {last:e} then {next:e}");
-                last = next;
-            }
-            let mut y = at as f32;
             for _ in 0..1000 {
                 y = f32::from_bits(y.to_bits() - 1);
             }
@@ -796,14 +519,14 @@ mod tests {
         Ok(())
     }
 
-    /// The guard every run keeps: within an ulp of the reference at both precisions, on a sample
-    /// the ignored readouts above take sixteen times over.
+    /// The guard every run keeps: within `0.51` ulp of the reference at binary64 and `0.5001` at
+    /// binary32, near correct rounding, on a sample the ignored readouts take sixteen times over.
     #[test]
-    fn the_kernel_is_within_an_ulp() -> Result<(), String> {
+    fn the_kernels_stay_near_correct_rounding() -> Result<(), String> {
         let (err, y, x) = f64_error(1 << 16, 7, (-30, 30), at64)?;
-        assert!(err < 1.0, "f64 {err} ulp at atan2({y:e}, {x:e})");
+        assert!(err < 0.51, "f64 {err} ulp at atan2({y:e}, {x:e})");
         let (err, y, x) = f32_error(1 << 16, 7, at32)?;
-        assert!(err < 1.0, "f32 {err} ulp at atan2({y:e}, {x:e})");
+        assert!(err < 0.5001, "f32 {err} ulp at atan2({y:e}, {x:e})");
         Ok(())
     }
 }
