@@ -185,7 +185,7 @@ pub fn svd3<S: Real>(a: &Mat3<S>) -> (Mat3<S>, Vec3<S>, Mat3<S>) {
         Precision::F32 => &WINDOW_F32,
     };
     let e: [S; 9] = core::array::from_fn(|k| a.get(k % 3, k / 3));
-    let (e, finite, _, back) = into_window(e, window);
+    let (e, _, _, back) = into_window(e, window);
 
     let b = [
         Vector([e[0], e[1], e[2]]),
@@ -292,11 +292,9 @@ pub fn svd3<S: Real>(a: &Mat3<S>) -> (Mat3<S>, Vec3<S>, Mat3<S>) {
     );
     let (s1, s2, u1, u2, v0, v1) = first((s1, s2, u1, u2, v0, v1));
 
-    let nan = S::zero() / S::zero();
-    let value = |s: S| S::select(finite, s * back, nan);
     (
         Mat3::from_cols([u1, u2, u3]),
-        Vector([value(s1), value(s2), value(s3)]),
+        Vector([s1, s2, s3].map(|s| s * back)),
         Mat3::from_cols([v0, v1, v2]),
     )
 }

@@ -117,7 +117,8 @@ fn ladder<S: Real>(steps: &[f64], m: S) -> (S, S) {
 
 /// The entries, all zero where one is not finite (the safe argument), scaled by an exact power of
 /// two into the window `w`: `(entries, finite, m, back)`, `m` their largest `|entry|` and `back`
-/// the power of two that undoes the scaling. The largest entry stays normal, so it scales exactly;
+/// the power of two that undoes the scaling, `NaN` where an entry is not finite, so one product
+/// per value both scales back and reports. The largest entry stays normal, so it scales exactly;
 /// an entry that falls below the smallest normal rounds, at most twice by less than `2^-1074` of
 /// `2^k`, far below `u |A|`.
 #[inline(always)]
@@ -140,7 +141,7 @@ pub(crate) fn into_window<S: Real, const N: usize>(
             (e.map(|x| x * f * g), m * f * g, (one / f) * (one / g))
         },
     );
-    (e, finite, m, back)
+    (e, finite, m, S::select(finite, back, S::zero() / S::zero()))
 }
 
 /// One Newton step on `1 / |v|`, `v (3 - |v|^2) / 2`: the normalisation, with no root and no
@@ -269,8 +270,7 @@ fn polish<S: Real, const FRAME: bool>(
 }
 
 /// The rotations of [`eig3`], the frame only with `FRAME`: the polished `(value, column)` pairs in
-/// the exit's cyclic order and the power of two that scales the values back, `NaN` for a
-/// non-finite input, so one product per value both scales and reports.
+/// the exit's cyclic order and [`into_window`]'s `back`.
 #[inline(always)]
 fn jacobi<S: Real, const FRAME: bool>(a: &Mat3<S>) -> (Pairs<S>, S) {
     let (zero, one) = (S::zero(), S::one());
@@ -287,7 +287,7 @@ fn jacobi<S: Real, const FRAME: bool>(a: &Mat3<S>) -> (Pairs<S>, S) {
         Precision::F64 => &WINDOW_F64,
         Precision::F32 => &WINDOW_F32,
     };
-    let ([d0, d1, d2, o01, o02, o12], finite, m, back) = into_window(e, window);
+    let ([d0, d1, d2, o01, o02, o12], _, m, back) = into_window(e, window);
 
     let two = S::lit(2.0);
     let ident = [
@@ -310,8 +310,7 @@ fn jacobi<S: Real, const FRAME: bool>(a: &Mat3<S>) -> (Pairs<S>, S) {
         // A scalar leaves at its exit; lanes run on, each one held by the branch above.
         k = calm.decide(|| ROTATIONS, || k + 1, |_, _, next| next);
     }
-    let nan = S::zero() / S::zero();
-    (polish::<S, FRAME>(st), S::select(finite, back, nan))
+    (polish::<S, FRAME>(st), back)
 }
 
 /// The compare-exchange network that sorts [`eig3`]'s values ascending, and its three exchanges'

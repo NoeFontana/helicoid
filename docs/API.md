@@ -57,10 +57,11 @@ covariance. Ambient Jacobians (Phase 6) follow the same rule.
 **NORMATIVE.** Every function with a restricted domain carries a `# Domain` rustdoc section naming
 it (`NUMERICS.md` §12) and a `debug_assert!` enforcing it. Release builds never check; out-of-domain
 release behaviour is an unspecified value, never a panic (bar out-of-bounds strided access, D11),
-never UB. The functions that assert nothing are `chol`, `solve_cubic`, `eig3` and `eig3_values`:
-each accepts every input; the first two report through a mask (R4), the `eig3` pair reads one
-triangle and reports a non-finite entry by `NaN` eigenvalues
-([`0081`](./decisions/0081-eig3-is-four-jacobi-sweeps.md)).
+never UB. The functions that assert nothing are `chol`, `solve_cubic`, `eig3`, `eig3_values`,
+`svd3` and `nearest_rotation`: each accepts every input; the first two report through a mask (R4),
+the `eig3` pair reads one triangle and reports a non-finite entry by `NaN` eigenvalues
+([`0081`](./decisions/0081-eig3-is-four-jacobi-sweeps.md)), `svd3` by `NaN` singular values and
+`nearest_rotation` by a matrix of `NaN`.
 Unit-norm inputs are checked by `*_unchecked` constructors in debug only; `*_normalized`
 constructors normalize.
 

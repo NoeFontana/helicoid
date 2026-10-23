@@ -78,10 +78,13 @@ second draw): no difference.
 
 ## Consequences
 
-- `eig3` and `eig3_values` stay bit-identical. They share the kernel, its scale-back factor
-  (`NaN` for a non-finite input) and one sort network, `ascending`, whose masks `eig3` replays on
-  its columns; `eig3_values_matches_reference` draws matrices scaled by up to $2^{\pm1000}$, so the
-  scale-back is exercised too.
+- `eig3` and `eig3_values` stay bit-identical. They share the kernel, `into_window`'s scale-back
+  factor (`NaN` for a non-finite input, which `svd3` reads too) and one sort network, `ascending`,
+  whose masks `eig3` replays on its columns; `eig3_values_matches_reference` draws matrices scaled
+  by $2^{-1080}$ to $2^{1000}$, so the scale-back and subnormal input are exercised too.
+- Measured again after the review folded the `NaN` into the scale-back (`#199`): `eig3_values`
+  takes 0.46–0.83× `eig3`'s time, `eig3`, `svd3` and `nearest_rotation` within noise of
+  their times before it.
 - No bar changes: the corpus id `eig3` and its strata score the values both functions return.
 - A public item at `0.0.x`; removing it later is a breaking change.
 
