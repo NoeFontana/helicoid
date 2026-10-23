@@ -269,9 +269,10 @@ fn polish<S: Real, const FRAME: bool>(
 }
 
 /// The rotations of [`eig3`], the frame only with `FRAME`: the polished `(value, column)` pairs in
-/// the exit's cyclic order, the finiteness mask and the power of two that scales the values back.
+/// the exit's cyclic order and the power of two that scales the values back, `NaN` for a
+/// non-finite input, so one product per value both scales and reports.
 #[inline(always)]
-fn jacobi<S: Real, const FRAME: bool>(a: &Mat3<S>) -> (Pairs<S>, S::Mask, S) {
+fn jacobi<S: Real, const FRAME: bool>(a: &Mat3<S>) -> (Pairs<S>, S) {
     let (zero, one) = (S::zero(), S::one());
     let e = [
         a.get(0, 0),
@@ -309,7 +310,23 @@ fn jacobi<S: Real, const FRAME: bool>(a: &Mat3<S>) -> (Pairs<S>, S::Mask, S) {
         // A scalar leaves at its exit; lanes run on, each one held by the branch above.
         k = calm.decide(|| ROTATIONS, || k + 1, |_, _, next| next);
     }
-    (polish::<S, FRAME>(st), finite, back)
+    let nan = S::zero() / S::zero();
+    (polish::<S, FRAME>(st), S::select(finite, back, nan))
+}
+
+/// The compare-exchange network that sorts [`eig3`]'s values ascending, and its three exchanges'
+/// masks in the order taken, `(0, 1)`, `(1, 2)`, `(0, 1)`: the one sort of `eig3` and
+/// `eig3_values`, so their values cannot part.
+#[inline(always)]
+fn ascending<S: Real>([d0, d1, d2]: [S; 3]) -> ([S; 3], [S::Mask; 3]) {
+    let exchange = |x: S, y: S| {
+        let swap = y.lt(x);
+        (swap, S::select(swap, y, x), S::select(swap, x, y))
+    };
+    let (s0, p0, p1) = exchange(d0, d1);
+    let (s1, p1, p2) = exchange(p1, d2);
+    let (s2, p0, p1) = exchange(p0, p1);
+    ([p0, p1, p2], [s0, s1, s2])
 }
 
 /// The eigenvalues, ascending, and an orthonormal basis of eigenvectors of the symmetric matrix `a`.
@@ -371,32 +388,32 @@ fn jacobi<S: Real, const FRAME: bool>(a: &Mat3<S>) -> (Pairs<S>, S::Mask, S) {
 /// ```
 #[inline]
 pub fn eig3<S: Real>(a: &Mat3<S>) -> (Vec3<S>, Mat3<S>) {
-    let ([(d0, v0), (d1, v1), (d2, v2)], finite, back) = jacobi::<S, true>(a);
+    let ([(d0, v0), (d1, v1), (d2, v2)], back) = jacobi::<S, true>(a);
+    let (l, [s0, s1, s2]) = ascending([d0, d1, d2]);
     let mut sign = S::one();
-    let mut exchange = |(x, vx): (S, Vec3<S>), (y, vy): (S, Vec3<S>)| {
-        let swap = y.lt(x);
+    let mut exchange = |swap: S::Mask, vx: Vec3<S>, vy: Vec3<S>| {
         sign = S::select(swap, -sign, sign);
-        (
-            (S::select(swap, y, x), Vec3::blend(swap, vy, vx)),
-            (S::select(swap, x, y), Vec3::blend(swap, vx, vy)),
-        )
+        (Vec3::blend(swap, vy, vx), Vec3::blend(swap, vx, vy))
     };
-    let (p0, p1) = exchange((d0, v0), (d1, v1));
-    let (p1, p2) = exchange(p1, (d2, v2));
-    let (p0, p1) = exchange(p0, p1);
-    let nan = S::zero() / S::zero();
-    let value = |l: S| S::select(finite, l * back, nan);
+    let (v0, v1) = exchange(s0, v0, v1);
+    let (v1, v2) = exchange(s1, v1, v2);
+    let (v0, v1) = exchange(s2, v0, v1);
     // Each column is within about `17 u` of unit length (measured), so one Newton step normalises
     // it to rounding.
     (
-        Vector([value(p0.0), value(p1.0), value(p2.0)]),
-        Mat3::from_cols([unit(p0.1.scale(sign)), unit(p1.1), unit(p2.1)]),
+        Vector(l.map(|l| l * back)),
+        Mat3::from_cols([unit(v0.scale(sign)), unit(v1), unit(v2)]),
     )
 }
 
 /// The eigenvalues of the symmetric 3x3 `a`, ascending: [`eig3`]`(a).0`, bit for bit at every
-/// `S: Real` (a `NaN` is one value; `eig3_values_matches_reference`), without the frame. The same
-/// Jacobi rotations, not accumulated, take 0.46–0.82x [`eig3`]'s time (`0104`).
+/// `S: Real` (a `NaN` is one value; `eig3_values_matches_reference`), the same rotations with the
+/// frame not accumulated (`0104`).
+///
+/// # Accuracy
+///
+/// [`eig3`]'s, including its `Dual` paragraph: at a repeated eigenvalue, as in the example below,
+/// the lanes are finite but in general no directional derivative.
 ///
 /// # Domain
 ///
@@ -419,14 +436,6 @@ pub fn eig3<S: Real>(a: &Mat3<S>) -> (Vec3<S>, Mat3<S>) {
 /// ```
 #[inline]
 pub fn eig3_values<S: Real>(a: &Mat3<S>) -> Vec3<S> {
-    let ([(d0, _), (d1, _), (d2, _)], finite, back) = jacobi::<S, false>(a);
-    let exchange = |x: S, y: S| {
-        let swap = y.lt(x);
-        (S::select(swap, y, x), S::select(swap, x, y))
-    };
-    let (p0, p1) = exchange(d0, d1);
-    let (p1, p2) = exchange(p1, d2);
-    let (p0, p1) = exchange(p0, p1);
-    let nan = S::zero() / S::zero();
-    Vector([p0, p1, p2].map(|l| S::select(finite, l * back, nan)))
+    let ([(d0, _), (d1, _), (d2, _)], back) = jacobi::<S, false>(a);
+    Vector(ascending([d0, d1, d2]).0.map(|l| l * back))
 }

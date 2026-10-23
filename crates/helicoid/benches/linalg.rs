@@ -1,5 +1,6 @@
 //! `helicoid-linalg`'s solvers by stratum (`docs/PHASE1.md` §9): `solve_cubic` (a closed form) and
-//! `eig3` (Jacobi with an exit, `0084`), at `f64` and `f32` (`0053` *Further work* 2), and
+//! `eig3` (Jacobi with an exit, `0084`) with its values alone, `eig3_values` (`0104`), at `f64` and
+//! `f32` (`0053` *Further work* 2), and
 //! `chol` at the three clauses of `0021`'s bar (`0080`): positive definite and failing input at
 //! `f64` and `f32`, and `Dual`.
 //!
@@ -10,11 +11,11 @@
 //! baseline and candidate alike (`benches/groups.rs`, `geodesic_of`). Fixtures are one input per
 //! stratum of the corpus ids (`0056`), so a row's arm is the stratum's: `solve_cubic` at three
 //! distinct roots (the trigonometric arm), one real root, a small root beside a complex pair, and a
-//! triple root; `eig3` at a random spectrum, a pair `1e-8` apart, and a triple eigenvalue, and the
-//! three in turn, and `eig3_values` (`0104`) at the same four; `svd3` (one-sided Jacobi with an exit, `0101`) at generic singular values,
-//! a pair `1e-8` apart, a rotation `1e-8` off SO(3) and a rank-2 matrix, and the four in turn;
-//! `nearest_rotation` (`0102`) at one input per arm: Newton near SO(3) and at generic singular
-//! values, the reflection, and `svd3`'s at a rank-2 matrix.
+//! triple root; `eig3` and `eig3_values` at a random spectrum, a pair `1e-8` apart, and a triple
+//! eigenvalue, and the three in turn; `svd3` (one-sided Jacobi with an exit, `0101`) at generic
+//! singular values, a pair `1e-8` apart, a rotation `1e-8` off SO(3) and a rank-2 matrix, and the
+//! four in turn; `nearest_rotation` (`0102`) at one input per arm: Newton near SO(3) and at
+//! generic singular values, the reflection, and `svd3`'s at a rank-2 matrix.
 //!
 //! A baseline binary for `--against` is built in this tree with only the bodies under test
 //! reverted, as `benches/groups.rs` says.

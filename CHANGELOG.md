@@ -13,7 +13,8 @@ defined by the status tables in `docs/`; they win over this file.
 - **`helicoid_linalg::eig3_values`** (`0104`): `eig3`'s eigenvalues without its frame, bit for bit
   at every `S: Real` (`eig3_values_matches_reference`; the composition `eig3(a).0` is its twin).
   It takes 0.46–0.82× `eig3`'s time, the least gain on a random spectrum and the most at a triple
-  eigenvalue. No existing output moves.
+  eigenvalue. The two share one sort network and fold the non-finite `NaN` into the scale-back,
+  three selects fewer: `eig3` takes 0.95–0.98× its time at `f64`. No existing output moves.
 
 ## [0.0.7] - 2026-10-22
 
