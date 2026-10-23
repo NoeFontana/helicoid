@@ -1,0 +1,169 @@
+# 0106: `Log` rounds its vector once on the exact arm
+
+**Status:** draft
+**Owner:** @NoeFontana
+**Implementation:** this record's PR (draft)
+
+## Context
+
+[`0090`](./0090-log-scales-its-vector-by-an-exact-two.md) made `r`'s series arms round each
+component of `φ` once and kept the exact arm as `r · (sign u)`, `r = 2 atan2(n, w)/n`: "there the
+quotient rounds whatever the arrangement, so a split would add a rounding without removing one".
+That holds for a split. A compensated product removes both roundings, and the exact arm is where
+`so3_log`'s largest maxima now sit: `theta:dense` 2.317 `u` (its record at `θ = 1`, against
+sophus-rs's 1.368), `theta:1e0` 1.741, `q:nonunit` 1.814, `theta:pi-1e-k` 1.24–1.79.
+
+**Where the exact arm's error comes from.** A scratch attribution (not committed) drew about
+$10^6$ exact-arm rotations per stratum and scored them with the conformance metric against a
+double-double reference, replacing one stage at a time with its exact value. The median over
+blocks of a stratum's size of the block maximum, the stand-in for a corpus maximum, in `u`:
+
+| variant | dense | `1e0` | `pi-1e-k` | nonunit |
+|---|---|---|---|---|
+| shipped | 1.99 | 2.00 | 1.80 | 1.99 |
+| `atan2` correctly rounded | 1.74 | 1.84 | 1.79 | 1.88 |
+| `n` correctly rounded | 1.99 | 1.95 | 1.87 | 1.92 |
+| `r` correctly rounded, then `r · uᵢ` | 1.42 | 1.37 | 1.14 | 1.32 |
+| `r · u` compensated (F1) | 1.52 | 1.59 | 1.56 | 1.63 |
+| F1 and `n` compensated (F2, this record) | 1.51 | 1.51 | 1.19 | 1.45 |
+| F2 and `0105`'s `atan2` (draft) | 1.19 | 1.23 | 1.19 | 1.30 |
+| `φ` correctly rounded (the floor) | 0.76 | 0.81 | 0.73 | 0.80 |
+
+- **The arrangement is the largest share in every stratum.** `r ∈ [2.03, π]` sits just above a
+  power of two, so `r` rounded costs up to a whole `u`, and `r · uᵢ` rounded another. Removing
+  only the first moves nothing (`theta:dense` 1.99 → 1.83): both must go.
+- **`atan2` is second**, 0.1–0.25 `u`, and nothing near `π`, where `libm` is already accurate.
+  `0105` (draft, PR #200, not on `main`) measured that an
+  `atan2` within 0.503 ulp alone moves `so3_log`'s maxima both ways.
+- **`n` matters near `π`**, where `w → 0` and its error passes through `/n` whole; elsewhere it
+  nearly cancels between `atan2(n, w)` and `/n`.
+
+## Decision
+
+1. **`coeffs::log_ratio_scale(w, sign, u)` forms `n² = (x² + y²) + z²` itself**, the one sum the
+   exact arm recovers the error of, so the precondition is the code's and not a caller's.
+   `SO3::log` passes `u` and the flip only. `log_ratio` and its arms are unchanged.
+2. **The exact arm is `NUMERICS.md` §3.2's compensated form**, in `coeffs::exact_scale`:
+   - `a = atan2(n, w)`, `rh = 2a·(1/n)`; `1/n` divides beside `atan2`, off its path.
+   - `n_ℓ = ((n² − fl(n)²) + δ(n²))/(2n)`, with `δ(n²)` the exact errors of the three squares and
+     the two sums (Knuth's two-sum), and `fl(n)²`'s error exact (Dekker).
+   - `r_ℓ = ((2a − rh·n) + (2w n_ℓ/(n² + w²) − rh n_ℓ))/n`, `2a − rh·n` exact (Dekker): the
+     first-order change of `2 atan2(n, w)/n` with `n`.
+   - `φᵢ = rh uᵢ + (εᵢ + r_ℓ uᵢ)`, `εᵢ` the exact error of `rh uᵢ`: one rounding per component.
+3. **Error-free products without a fused multiply-add (D16):** Veltkamp halves with the splitter
+   `2^⌈p/2⌉ + 1`, `2²⁷ + 1` at `f64` and `2¹² + 1` at `f32`, selected by `S::PRECISION`. The
+   splitter is the format's, not a fitted value; nothing is typed that `0004` forbids.
+4. **The compensation is a branch of its own**, taken for `n ≥ 2⁻⁴⁵⁰` (`2⁻³⁸` at `f32`), where
+   every error term, down to `2⁻¹⁰⁶ n²` (`2⁻⁴⁸ n²`), stays normal; below it the arm is `rh u`.
+   The bound is the format's too. The branch is also what keeps LLVM's SLP vectorizer from packing
+   the compensation's products with `rh`'s, which measured 14 ns longer in one block.
+5. **`helicoid:r-times-u`**, a planted twin: the shipped `SO3::log` with the exact arm `r · u`,
+   dispatched by the kernel's own predicate (`__sweep::log_ratio_takes_exact_arm`), so
+   `cargo xtask compare` re-measures this choice (`0078`).
+6. **No new switch, no new coefficient.** `generated.rs` is unchanged: the sweep reads `exact_r`,
+   not `log_ratio_scale` (`just thresholds-check`).
+
+## Rationale
+
+**`so3_log`, `cargo xtask compare --a helicoid:r-times-u --b helicoid --fn so3_log`.** 921 of
+5 124 records better, 71 worse (sign test $p = 2.6\times10^{-189}$); of 30 strata, 17 maxima fall
+and none rises. The series strata keep their bits. Maxima in `u`:
+
+| stratum | `r · u` | this |
+|---|---|---|
+| `theta:dense` | 2.317 | **1.578** |
+| `theta:1e0` | 1.741 | 1.680 |
+| `theta:1e-1` | 1.664 | 1.298 |
+| `q:nonunit` | 1.814 | 1.405 |
+| `q:w0` | 1.194 | 0.909 |
+| `theta:pi-1e-1` to `pi-1e-12` | 1.24–1.79 | **0.68–0.88** |
+
+**Every caller, `just envelope` against `main`'s rows.** 180 of 4 565 maxima move: 150 fall and
+30 rise. No domination failure is added; the bar reads none on this branch.
+- **Falls**, by caller: `sim3_log` 49, `sen3_log_n1`–`_n3` 52, `so3_log` 17, the SE(3) chart
+  `local`s 30, `gaussian_mahalanobis_se23` 2. The largest: `se3_screw_local` at `theta:pi-1e-8`
+  4.835 → 2.663 and `pi-1e-2` 5.944 → 3.825, `sim3_log` at `sigma:-1/theta:3` 3.190 → 1.416,
+  `sen3_log_n1`–`_n3` at `theta:pi-1e-1` 2.28–2.55 → 0.84–0.92.
+- **Rises**, each in a stratum of 4–12 records where `ρ`'s or `σ`'s own rounding reshuffles which
+  record is the maximum when `φ`'s last bit moves, as in `0090`: the three SE(3) charts at
+  `rho:1e-6/theta=1` 1.805 → 2.389, `se3_screw_local` at `rho:1e3/theta=1` 2.145 → 2.686,
+  `sim3_log` at `sigma:1/theta:pi-1e-6` 2.366 → 2.796, and 25 more under 0.46 `u`.
+
+**At `f32`** there is no `so3_log` stratum (`0016`), so it was measured directly, as `0090` did:
+200 000 rotations per band against a binary64 `Log` of the same binary32 quaternion. Maximum and
+mean in `u`:
+
+| band | `main` | this |
+|---|---|---|
+| `θ ∈ [0.5, 1)` (mostly a series arm) | 1.038 / 0.397 | 1.038 / 0.397 |
+| `θ ∈ [1, 2)` | 3.133 / 0.698 | 2.358 / 0.551 |
+| `θ ∈ [2, 3)` | 3.217 / 0.733 | 2.166 / 0.585 |
+| `θ ∈ [3, π)` | 2.657 / 0.680 | 1.580 / 0.519 |
+
+**Rejected arrangements**, each measured with `compare` against the twin:
+- **`θ · (uᵢ/n)`, uncompensated (F0):** free, but near `π` it is worse than `r · u`:
+  `theta:pi-1e-6` 1.255 → 2.266, `q:w0` 1.194 → 2.207; the id's maximum rises 1.13×.
+- **`r · u` compensated, `n` not (F1):** every stratum the attribution named falls, but
+  `theta:pi-1e-k` keeps up to 1.57 and one stratum rises 1.19×; F2's `n` takes `pi-1e-k` to
+  0.68–0.88 and lets none rise.
+- **`atan2` alone** (`0105`, draft): moves maxima both ways, as above.
+
+**Cost.** A consumer loop over 4 096 rotations per band, independent calls (throughput) and
+calls chained through `w` (latency), best of 50, one pinned core of the bench host with the load
+under 2.5, one binary per variant, three interleaved rounds; ns per `Log`:
+
+| band | `main` | F1 | F2 in one block | **F2, this** |
+|---|---|---|---|---|
+| `θ ∈ [10⁻⁸, 10⁻⁶)`, `f64` | 4.6 / 23.3 | 4.6 / 23.3 | 4.6 / 23.3 | 4.6 / 23.3 |
+| `θ ∈ [0.1, 0.5)`, `f64` | 10.9 / 39.8 | 10.9 / 39.8 | 10.9 / 39.9 | 10.9 / 40.0 |
+| `θ ∈ [0.5, 2)`, `f64` | 14.9 / 38.8 | 28.0 / 46.5 | 40.9 / 71.1 | 40.4 / 57.6 |
+| `θ ∈ [π − 0.1, π)`, `f64` | 13.1 / 37.0 | 27.5 / 44.2 | 41.9 / 71.1 | 40.6 / 56.9 |
+| `θ ∈ [0.5, 2)`, `f32` | 10.8 / 36.3 | 16.0 / 39.8 | 20.8 / 51.0 | 20.5 / 44.8 |
+| `θ ∈ [π − 0.1, π)`, `f32` | 10.1 / 29.5 | 20.5 / 37.7 | 33.4 / 64.3 | 32.8 / 48.8 |
+
+Throughput / latency. The series arms keep their time. On the exact arm F2 costs 2.7–3.1× `main`'s
+throughput and 1.5× its latency; F1 1.9–2.1× and 1.2×. Without a fused multiply-add each exact
+product is eight operations where `fma` would be one, and one `Log` then executes about twice
+`main`'s instructions, `atan2` included, too many for consecutive calls to overlap. Measured and
+not taken: the dispatch by `n² < T w²` instead of dividing `s` first (within ±2%), and the
+square's error in five operations instead of Dekker's eight (within ±2%).
+
+## Consequences
+
+- **Bits.** `cargo xtask determinism` against `main` moves 13 of 123 digests, the set `0090`
+  moved: `so3_log`; `sen3_log_n1`, `_n2`, `_n3`; `sim3_log` at both precisions;
+  `se3_decoupled_local`, `se3_screw_local`, `se3_world_local`; `gaussian_mahalanobis_se3` and
+  `_se23` at both precisions. Native, `ndebug` and `wasm32` agree on every digest.
+- **`Dual` derivatives on the exact arm** carry the compensation's error terms, which vanish to
+  first order, so their derivative parts are rounding noise: within 23.5 `u` of `r · u`'s
+  derivative at `f64` and 27.7 at `f32` on `log_ratio_scale_is_r_u`'s grid, where the value is
+  within 1.3. Whether that is closer to the true derivative is not measured.
+- **Scale invariance** holds within rounding, as on the series arms
+  (`log_is_scale_invariant_across_the_unchecked_domain`).
+- **The envelope baseline** moves with the maxima above; `--bless` is the owner's.
+
+## Implementation plan
+
+1. `log_ratio_scale`, `exact_scale` and its helpers, `SO3::log`, `NUMERICS.md` §3.2, the test
+   `log_ratio_scale_is_r_u_{f64,f32}` (now within `tol` of `r u` rounded twice on every arm,
+   value and derivative, the derivative's bound wider on the exact arm), and the twin
+   `helicoid:r-times-u` with its control test. Verified by `just test`, `cargo xtask compare`,
+   `just envelope`, `just determinism` (native, `ndebug` and `wasm32` identical) and
+   `just thresholds-check`.
+
+## Open questions
+
+1. **Is the exact arm's cost worth its accuracy?** 2.7× throughput and 1.5× latency there (*Cost*),
+   for `so3_log`'s maximum 2.317 → 1.680 `u` and the near-`π` strata halved.
+2. **`n` compensated (F2) or not (F1)?** F2 is the only variant that lets no `so3_log` stratum
+   rise; F1 costs half as much throughput.
+3. **`f32` near `π`** costs 32.8 ns against 20.5 at `θ ∈ [0.5, 2)`, where `main` is flat; a
+   subnormal intermediate in `n`'s compensation is the suspect, not yet read.
+4. **The rises in the callers' 4–12-record strata**: accepted as `0090` accepted its own?
+
+## Further work
+
+- With `0105`'s `atan2` (draft) on top, the attribution reads about 1.2 `u` in every stratum.
+- **Fewer instructions.** A bit-mask split (one `and`, one subtraction) would replace Veltkamp's
+  four operations, but `Real` has no bit access; a lighter `n` compensation (the root's error
+  only) is not measured.
