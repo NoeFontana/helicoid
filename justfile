@@ -281,6 +281,21 @@ thresholds:
 thresholds-check:
     cargo xtask thresholds --check
 
+# The portable `atan2` candidate's polynomials and `π/4` split (`0105`, draft) into
+# conformance/fits/atan2.json, read by `helicoid:portable-atan2`. The arguments are the tuning:
+# precision, terms of P in s, and the fold's bound on |u|.
+atan-fit:
+    cd conformance/generate && uv run --frozen python -m fit atan2 --fit f64:13:1/2 --fit f32:6:1/2 --out ../fits/atan2.json
+
+# Check conformance/fits/atan2.json is what `atan-fit` writes.
+atan-fit-check:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    tmp=$(mktemp)
+    trap 'rm -f "$tmp"' EXIT
+    (cd conformance/generate && uv run --frozen python -m fit atan2 --fit f64:13:1/2 --fit f32:6:1/2 --out "$tmp" > /dev/null)
+    diff -u conformance/fits/atan2.json "$tmp"
+
 # Regenerate the mpmath corpus into conformance/corpus (`docs/PHASE1.md` §4; needs `uv`).
 corpus:
     cd conformance/generate && uv run --frozen python -m gen all --out ../corpus

@@ -33,10 +33,12 @@ use crate::seeded::{exact_input, input, Coeff, Host, Input, Swept};
 
 mod composed_inv_act;
 mod homogeneous_r;
+mod portable_atan2;
 mod r_times_u;
 
 pub(crate) use composed_inv_act::registered as composed_inv_act_twin;
 pub(crate) use homogeneous_r::registered as homogeneous_r_twin;
+pub(crate) use portable_atan2::registered as portable_atan2_twin;
 pub(crate) use r_times_u::registered as r_times_u_twin;
 
 /// The group of `id` at `x`, as the shipped kernel evaluates it.
@@ -814,86 +816,97 @@ impl Subject for Helicoid {
     }
 
     fn eval(&self, fn_id: &str, record: &Record, precision: Precision) -> Output {
-        if let Some(id) = Linalg::of_fn(fn_id) {
-            return match precision {
-                Precision::F64 => id.answer::<f64>(record),
-                Precision::F32 => id.answer::<f32>(record),
-            };
-        }
-        if let Some(id) = Gamma::of_fn(fn_id) {
-            return match precision {
-                Precision::F64 => id.answer::<f64>(record),
-                Precision::F32 => id.answer::<f32>(record),
-            };
-        }
-        if let Some(id) = Sphere::of_fn(fn_id) {
-            return match precision {
-                Precision::F64 => id.answer::<f64>(record),
-                Precision::F32 => id.answer::<f32>(record),
-            };
-        }
-        if let Some(id) = Sim3Id::of_fn(fn_id) {
-            return match precision {
-                Precision::F64 => id.answer::<f64>(record),
-                Precision::F32 => id.answer::<f32>(record),
-            };
-        }
-        if let Some(id) = GaussianId::of_fn(fn_id) {
-            return match precision {
-                Precision::F64 => id.answer::<f64>(record),
-                Precision::F32 => id.answer::<f32>(record),
-            };
-        }
-        if let Some(id) = InvActId::of_fn(fn_id) {
-            return match precision {
-                Precision::F64 => id.answer::<f64>(record),
-                Precision::F32 => id.answer::<f32>(record),
-            };
-        }
-        if let Some(id) = So3::of_fn(fn_id) {
-            // A plain `f32` run skips every `so3_*` id but `so3_from_matrix`; asking for another
-            // by name at `f32` is the harness's error, not this subject's (`So3::answer`).
-            return match (precision, id) {
-                (Precision::F64, _) => id.answer::<f64>(record),
-                (Precision::F32, So3::FromMatrix) => from_matrix::<f32>(record),
-                (Precision::F32, _) => Output::new(),
-            };
-        }
-        if let Some(id) = Geodesic::of_fn(fn_id) {
-            // `f64` as for the other vector ids: the geodesic strata have no `@f32` twin.
-            return match precision {
-                Precision::F64 => id.answer::<f64>(record),
-                Precision::F32 => Output::new(),
-            };
-        }
-        if let Some(id) = ChartId::of_fn(fn_id) {
-            // `f64`, as `0060` decision 8 states: no vector id has an `@f32` stratum.
-            return match precision {
-                Precision::F64 => id.answer::<f64>(record),
-                Precision::F32 => Output::new(),
-            };
-        }
-        if let Some((op, n)) = Sen3::of_fn(fn_id) {
-            // `f32` as for the `so3_*` ids: no vector id has an `@f32` stratum until a record
-            // extends `0016`.
-            return match precision {
-                Precision::F64 => sen3_at::<f64>(op, n, record),
-                Precision::F32 => Output::new(),
-            };
-        }
-        if let Some(id) = Unswept::of_fn(fn_id) {
-            return match precision {
-                Precision::F64 => id.answer::<f64>(record),
-                Precision::F32 => id.answer::<f32>(record),
-            };
-        }
-        let Some(id) = Swept::of_fn(fn_id) else {
-            return Output::new();
+        program::<f64, f32>(fn_id, record, precision)
+    }
+}
+
+/// The shipped program at `D` (binary64) and `F` (binary32), for every id [`Helicoid`] supports.
+/// [`Helicoid`] is it at `f64` and `f32`; a twin is it at a scalar with one variable changed, so
+/// the dispatch it scores is the candidate's by construction.
+pub(crate) fn program<D, F>(fn_id: &str, record: &Record, precision: Precision) -> Output
+where
+    D: Real<Mask = bool> + Into<f64> + From<f64>,
+    F: Real<Mask = bool> + Into<f64>,
+{
+    if let Some(id) = Linalg::of_fn(fn_id) {
+        return match precision {
+            Precision::F64 => id.answer::<D>(record),
+            Precision::F32 => id.answer::<F>(record),
         };
-        match precision {
-            Precision::F64 => answer::<f64>(id, record),
-            Precision::F32 => answer::<f32>(id, record),
-        }
+    }
+    if let Some(id) = Gamma::of_fn(fn_id) {
+        return match precision {
+            Precision::F64 => id.answer::<D>(record),
+            Precision::F32 => id.answer::<F>(record),
+        };
+    }
+    if let Some(id) = Sphere::of_fn(fn_id) {
+        return match precision {
+            Precision::F64 => id.answer::<D>(record),
+            Precision::F32 => id.answer::<F>(record),
+        };
+    }
+    if let Some(id) = Sim3Id::of_fn(fn_id) {
+        return match precision {
+            Precision::F64 => id.answer::<D>(record),
+            Precision::F32 => id.answer::<F>(record),
+        };
+    }
+    if let Some(id) = GaussianId::of_fn(fn_id) {
+        return match precision {
+            Precision::F64 => id.answer::<D>(record),
+            Precision::F32 => id.answer::<F>(record),
+        };
+    }
+    if let Some(id) = InvActId::of_fn(fn_id) {
+        return match precision {
+            Precision::F64 => id.answer::<D>(record),
+            Precision::F32 => id.answer::<F>(record),
+        };
+    }
+    if let Some(id) = So3::of_fn(fn_id) {
+        // A plain `f32` run skips every `so3_*` id but `so3_from_matrix`; asking for another
+        // by name at `f32` is the harness's error, not this subject's (`So3::answer`).
+        return match (precision, id) {
+            (Precision::F64, _) => id.answer::<D>(record),
+            (Precision::F32, So3::FromMatrix) => from_matrix::<F>(record),
+            (Precision::F32, _) => Output::new(),
+        };
+    }
+    if let Some(id) = Geodesic::of_fn(fn_id) {
+        // `f64` as for the other vector ids: the geodesic strata have no `@f32` twin.
+        return match precision {
+            Precision::F64 => id.answer::<D>(record),
+            Precision::F32 => Output::new(),
+        };
+    }
+    if let Some(id) = ChartId::of_fn(fn_id) {
+        // `f64`, as `0060` decision 8 states: no vector id has an `@f32` stratum.
+        return match precision {
+            Precision::F64 => id.answer::<D>(record),
+            Precision::F32 => Output::new(),
+        };
+    }
+    if let Some((op, n)) = Sen3::of_fn(fn_id) {
+        // `f32` as for the `so3_*` ids: no vector id has an `@f32` stratum until a record
+        // extends `0016`.
+        return match precision {
+            Precision::F64 => sen3_at::<D>(op, n, record),
+            Precision::F32 => Output::new(),
+        };
+    }
+    if let Some(id) = Unswept::of_fn(fn_id) {
+        return match precision {
+            Precision::F64 => id.answer::<D>(record),
+            Precision::F32 => id.answer::<F>(record),
+        };
+    }
+    let Some(id) = Swept::of_fn(fn_id) else {
+        return Output::new();
+    };
+    match precision {
+        Precision::F64 => answer::<D>(id, record),
+        Precision::F32 => answer::<F>(id, record),
     }
 }
 
@@ -1253,43 +1266,7 @@ impl Subject for HostStd {
         if precision != Precision::F64 {
             return Output::new();
         }
-        if let Some(id) = Linalg::of_fn(fn_id) {
-            return id.answer::<Host>(record);
-        }
-        if let Some(id) = GaussianId::of_fn(fn_id) {
-            return id.answer::<Host>(record);
-        }
-        if let Some(id) = Unswept::of_fn(fn_id) {
-            return id.answer::<Host>(record);
-        }
-        if let Some(id) = Gamma::of_fn(fn_id) {
-            return id.answer::<Host>(record);
-        }
-        if let Some(id) = Sphere::of_fn(fn_id) {
-            return id.answer::<Host>(record);
-        }
-        if let Some(id) = Sim3Id::of_fn(fn_id) {
-            return id.answer::<Host>(record);
-        }
-        if let Some(id) = InvActId::of_fn(fn_id) {
-            return id.answer::<Host>(record);
-        }
-        if let Some(id) = So3::of_fn(fn_id) {
-            return id.answer::<Host>(record);
-        }
-        if let Some(id) = Geodesic::of_fn(fn_id) {
-            return id.answer::<Host>(record);
-        }
-        if let Some(id) = ChartId::of_fn(fn_id) {
-            return id.answer::<Host>(record);
-        }
-        if let Some((op, n)) = Sen3::of_fn(fn_id) {
-            return sen3_at::<Host>(op, n, record);
-        }
-        let Some(id) = Swept::of_fn(fn_id) else {
-            return Output::new();
-        };
-        answer::<Host>(id, record)
+        program::<Host, f32>(fn_id, record, precision)
     }
 }
 

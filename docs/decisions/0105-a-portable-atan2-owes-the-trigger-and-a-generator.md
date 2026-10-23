@@ -34,7 +34,7 @@ on `r`'s series arms, where no `atan2` is called. D16's `atan2` costs only on th
 The glibc twin of [`0037`](./0037-six-records-cannot-answer-a-one-variable-question.md) (draft)
 moves 15 of 751 rows, and one of them (`coeff_d`, `theta:1e0`) gets **worse**. The `real_atan2`
 rows are committed at 2.20, 2.05 and 1.58 `u` (`yx:generic`, `yx:ratio-1e-8`, `yx:ratio-1e-100`).
-So the accuracy gain is bounded and specific: the exact arm of `r` and the `real_atan2` strata.
+So the accuracy gain is bounded and specific: the exact arm of `r`, and `atan2`'s own value.
 
 **Two of the proposal's parts already exist.** `Dual::atan2` takes its derivative analytically,
 $(x_v y_d - y_v x_d)/(x_v^2 + y_v^2)$, with the domain `NUMERICS.md` §12 states. The fused
@@ -80,17 +80,72 @@ fewer table entries and needs a longer polynomial. A symmetric fold at $\tan\fra
    is `SO3::log` at the identity, and every `y/x` below $2^{-480}$. The cold arm then rescales by
    the maximum only, so for those inputs it changes nothing. The answer is still right; the "fast
    path for 99.999%" is not. The window should test the maximum alone.
-3. **The ≤ 0.52 ULP bound is plausible, but it is not a bar.**
-   - Given a polynomial correct to $\ll u$, the compensated quotient and the exact $k\,\pi/4_{hi}$
-     make a sub-0.6 `u` maximum likely: the residual enters once, through the polynomial tail, and
-     the variable `u3`, which also carries it, is never read.
-   - The bar remains `0006`'s and `0088`'s measured maximum per stratum, not a derivation.
+3. **The ≤ 0.52 ULP bound does not hold for this formulation.** The residual enters once,
+   through the polynomial tail, and the variable `u3`, which also carries it, is never read. With
+   a polynomial correct to $2^{-56.8}$ the maximum is still 0.78 ulp, all of it on one arm (below).
 4. **`Mask` has no `xor`.** The octant sign is written with `and`, `or` and `not`. `S::branch` on a
    scalar is a real branch, so "branchless" holds per lane only. SIMD lanes are out of scope until
    [`0013`](./0013-simd-lanes-owe-a-measurement.md) (draft) has its measurement.
 5. **The fused multiply-add route is already closed.** `cargo xtask lint` rejects `mul_add` and
    `libm::fma`, and Rust does not contract `a * b + c` on its own. The proposal's assembly check
    would guard what the lint already guards at the source.
+
+### The candidate, measured
+
+`helicoid:portable-atan2` is the shipped program at a scalar whose `atan2` alone is the candidate,
+at both precisions. It is planted, so no bar reads it. Its fit is `conformance/fits/atan2.json`:
+
+| precision | terms | minimax | rounded to the precision |
+|---|---|---|---|
+| `f64` | 13 | $2^{-62.05}$ | $2^{-56.8}$ |
+| `f32` | 6 | $2^{-31.88}$ | $2^{-27.76}$ |
+
+Naive rounding costs about 5 bits at `f64`, mostly in the constant term.
+
+To share the dispatch, the shipped subject's body became `shipped::program::<D, F>`. Its 123
+`determinism` digests are unchanged.
+
+**Against a double-double reference.** The reference is about $2^{-100}$ relative, with $\pi/4$
+taken as its own $\operatorname{atan}(1)$. Each row is $2^{20}$ draws. The `f32` row is measured
+against `libm`'s binary64 `atan2`.
+
+| | candidate | `libm` | host glibc 2.39 |
+|---|---|---|---|
+| `f64`, $\lvert y/x
+vert$ within $2^{\pm4}$ | 0.780 ulp | 1.402 | 0.519 |
+| `f64`, within $2^{\pm60}$ | 0.702 | 1.377 | 0.515 |
+| `f32`, within $2^{\pm4}$ and $2^{\pm120}$ | 0.768 | 1.471 (`atan2f`) | — |
+
+Per arm at `f64`:
+
+| arm | max ulp |
+|---|---|
+| $k = 0$, unfolded | 0.764 (at $n/d \approx 0.49$) |
+| $k = 1$, folded | 0.577 |
+| $k = 2$, unfolded | 0.564 |
+| $k = 3$, folded | 0.508 |
+| $k = 4$, unfolded | 0.536 |
+
+The $k = 0$ arm is the whole gap to glibc. There the tail $u s P$ is up to 9% of the answer, so
+each of its roundings costs about 0.035 ulp beside the final 0.5. On every other arm $k\pi/4$
+dominates, and the tail's roundings shrink by that ratio.
+
+**Special values.** At both precisions the candidate returns IEEE 754's limits, correctly
+rounded. `libm::atan2f(±∞, 1)` returns $\pi/2$ one ulp low (`0x3fc90fda`); the candidate returns
+the nearest (`0x3fc90fdb`).
+
+**On the corpus** (`cargo xtask compare --a helicoid --b helicoid:portable-atan2`):
+
+- **`f64` overall:** 155 of 65 051 records move, 93 better and 62 worse (sign test $p = 0.016$).
+  Of 3145 strata, 25 maxima fall and 9 rise, by up to 1.484×; most of those strata hold 4–12
+  records.
+- **`f32` overall:** 16 records better, 9 worse.
+- **`real_atan2`:** 13 of 448 values move, all better ($p = 2.4\times10^{-4}$), but **no stratum
+  maximum moves**. The committed 2.20, 2.05 and 1.58 `u` are read from fields other than the
+  value, so these rows cannot show the kernel's gain.
+- **`so3_log`:** its maximum falls from 2.317 to 2.175 `u` (`0090`'s θ = 1 record on
+  `theta:dense`). But `theta:1e0` rises from 1.741 to 2.175, and `q:nonunit` from 1.814 to 2.090.
+  A better `atan2` composed into `r` is not better on every record.
 
 ## Decision
 
@@ -109,15 +164,15 @@ If the kernel is built, it takes this shape:
    - The quotient compensated by Dekker's product.
    - The rescale arm keyed on $\max(\lvert x\rvert, \lvert y\rvert)$ alone.
    - The interval (one fold or more) is open question 2.
-3. **Generated coefficients.** A generator in `conformance/generate/` fits
-   $(\arctan\sqrt s/\sqrt s - 1)/s$ by Remez in mpmath and rounds the coefficients to each
-   precision. It commits the coefficients with a header naming its source and its error, and a
-   `--check` recipe fails on drift. No coefficient appears in this record or by hand in any source
-   file.
+3. **Generated coefficients.** `conformance/generate/fit/` (`python -m fit atan2`) fits
+   $(\arctan\sqrt s/\sqrt s - 1)/s$ by weighted Remez in mpmath. It rounds the coefficients to
+   each precision and splits $\pi/4$. It writes `conformance/fits/atan2.json` with the source and
+   both errors, and `just atan-fit-check` fails on drift. The package sits beside `gen`, not in it,
+   because `gen`'s sources are hashed into the corpus's provenance. No coefficient appears in this
+   record or by hand in any source file.
 4. **Verified as a candidate before it replaces anything.**
-   - A planted one-variable twin, `seeded:portable-atan2`, follows `seeded:host-std`'s pattern:
-     `f64` with `atan2` alone swapped, validated by reproducing `seeded:correct`'s rows wherever
-     `atan2` is not reached.
+   - A planted one-variable twin, `helicoid:portable-atan2`, follows `helicoid:host-std`'s
+     pattern: the shipped program at a scalar with `atan2` alone swapped, at both precisions.
    - New `real_atan2` strata cover what the corpus lacks: the fold boundary $n = d/2 \pm k$ ulp,
      axis-aligned inputs, angles near $k\pi/4$, and the window's edges.
 
@@ -154,17 +209,21 @@ The alternative of upstreaming the kernel to the `libm` crate keeps `0007` at "`
 ## Implementation plan
 
 1. This record, draft. Verified by `just lint` and `just doc`.
-2. The coefficient generator and its committed output, with `--check` in `just lint`'s neighbours.
-   Verified by the generator's own `--check`, and by a printed minimax error at or below the
-   precision's target on the chosen interval.
-3. `seeded:portable-atan2`, planted. Unit tests check: special values equal to `libm::atan2`
-   (±0, ±∞, NaN, all four signed-zero quadrants); exact odd symmetry; monotone radial sweeps; the
-   fold boundary; the window edges. Verified by
-   `cargo nextest run -p xtask -- portable`, and by reproducing `seeded:correct` wherever `atan2`
-   is unreached.
+2. The coefficient generator and its committed output. Verified by `just atan-fit-check` and
+   `tests/test_fit_atan2.py`. **Done.**
+3. `helicoid:portable-atan2`, planted. Unit tests check:
+   - special values against IEEE 754's correctly rounded limits;
+   - exact odd symmetry;
+   - bit-exact invariance under $2^k$ scaling, through the window and the cold arm;
+   - monotone sweeps through the fold and the swap;
+   - at most one ulp against the double-double reference.
+
+   The readouts above are its ignored measurements. Verified by
+   `cargo nextest run -p xtask -- portable_atan2`, and by the shipped subject's unchanged
+   `determinism` digests. **Done.**
 4. The new `real_atan2` strata, then the comparison: max and p99 `u` per stratum for `libm`, the
    candidate and `seeded:host-std`. Verified by `just corpus-check` and
-   `just conformance --subject seeded:portable-atan2`.
+   `just compare --a helicoid --b helicoid:portable-atan2`.
 5. Latency: an `atan2` group in `crates/helicoid/benches/linalg.rs` in three regimes (one octant,
    random octants, axis-aligned), `so3_log` end to end, and $f$ and $k$ from tf_tree's lookup
    bench. Verified by paired runs; the numbers go into this record.
@@ -176,9 +235,15 @@ The alternative of upstreaming the kernel to the `libm` crate keeps `0007` at "`
 
 1. Is the accuracy gain on `r`'s exact arm and on `real_atan2` enough to proceed without
    `0034`'s latency trigger?
-2. Which interval: one fold to $\lvert u\rvert \le \tfrac12$ (13 terms), a symmetric fold at
-   $\tan\frac\pi8$ (12 terms, numerator rounded and compensated), or FDLIBM's four intervals
-   without a table (11 terms, more selects)? Step 5 measures the cost.
+2. How should the $k = 0$ arm close its gap? It reads 0.76 ulp against glibc's 0.52, and the
+   other arms are at most 0.58. The candidates:
+   - a narrower unfolded interval: a symmetric fold at $\tan\frac\pi8$ (12 terms, the numerator
+     compensated by `two_sum`), or FDLIBM's four intervals without a table (11 terms, more
+     selects);
+   - a compensated cubic term on that arm alone;
+   - a fitted rather than naively rounded constant term.
+
+   Step 5 measures the latency each costs.
 3. Should the kernel be upstreamed to the `libm` crate instead of living in `helicoid-linalg`?
 4. Does binary32 get its own kernel, or stay on `libm::atan2f`? Under `0016` the `@f32` strata
    are the coefficient ids' alone, so a binary32 kernel would also owe strata.

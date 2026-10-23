@@ -1,0 +1,42 @@
+{
+  "source": "conformance/generate: python -m fit atan2 (docs/decisions/0105, draft)",
+  "f64": {
+    "umax": "1/2",
+    "terms": 13,
+    "coeffs": [
+      "0xbfd5555555555552",
+      "0x3fc9999999999020",
+      "0xbfc2492492450064",
+      "0x3fbc71c71a9df875",
+      "0xbfb745d1375353c2",
+      "0x3fb3b135f0e71905",
+      "0xbfb110c5f6257e32",
+      "0x3fae181cce4ece20",
+      "0xbfaac6d476348b13",
+      "0x3fa77e911f780f94",
+      "0xbfa2ff18f0c41006",
+      "0x3f98334175a1b2b6",
+      "0xbf811b2176b95063"
+    ],
+    "minimax_log2": -62.05,
+    "rounded_log2": -56.8,
+    "pi4_hi": "0x3fe921fb54442d18",
+    "pi4_lo": "0x3c81a62633145c07"
+  },
+  "f32": {
+    "umax": "1/2",
+    "terms": 6,
+    "coeffs": [
+      "0xbfd5555520000000",
+      "0x3fc9996ec0000000",
+      "0xbfc244acc0000000",
+      "0x3fbc024860000000",
+      "0xbfb4706fc0000000",
+      "0x3fa3d38980000000"
+    ],
+    "minimax_log2": -31.88,
+    "rounded_log2": -27.76,
+    "pi4_hi": "0x3fe921fb80000000",
+    "pi4_lo": "0xbe75dde980000000"
+  }
+}
