@@ -415,11 +415,14 @@ proptest! {
     }
 }
 
-/// Every lane of `eig3_values` and of `eig3`'s eigenvalues at `S`, a `NaN` as one value; the
-/// derivative lanes of `D` are `d`'s, not symmetric (only the lower triangle is read).
-fn values_bits<S: Lane>(a: &M, d: &M) -> (Vec<u64>, Vec<u64>) {
+/// Every lane of `eig3_values` and of `eig3`'s eigenvalues at `S`, a `NaN` as one value, of `a`
+/// scaled by `2^k`, its two derivative lanes from `d` and `g`.
+fn values_bits<S: Lane>(a: &M, k: i32, d: &M, g: &M) -> (Vec<u64>, Vec<u64>) {
+    let scale = 2f64.powi(k);
     let m = Mat3::from_rows(array::from_fn(|r| {
-        Vector(array::from_fn(|c| S::make(a[r][c], [d[r][c], -d[c][r]])))
+        Vector(array::from_fn(|c| {
+            S::make(a[r][c] * scale, [d[r][c], g[r][c]])
+        }))
     }));
     let bits = |l: Vec3<S>| -> Vec<u64> {
         l.0.iter()
@@ -434,18 +437,21 @@ proptest! {
     #![proptest_config(cfg())]
 
     /// `eig3_values` is `eig3(a).0` bit for bit (`NUMERICS.md` §14, `0104`), on the matrices of
-    /// `any_matrix_gives_an_orthonormal_frame` and at every scalar.
+    /// `any_matrix_gives_an_orthonormal_frame` scaled by `2^k`, `|k| <= 1000` at `f64` and `Dual`
+    /// and `|k| <= 125` at `f32`, so most draws are outside the window and scale back.
     #[test]
     fn eig3_values_matches_reference(
         e in prop::array::uniform6(entry()),
+        k in -1000..=1000i32,
         f in prop::array::uniform6(entry()),
+        g in prop::array::uniform6(entry()),
     ) {
-        let (a, d) = (matrix(e), matrix(f));
-        let (l, r) = values_bits::<f64>(&a, &d);
+        let (a, d, g) = (matrix(e), matrix(f), matrix(g));
+        let (l, r) = values_bits::<f64>(&a, k, &d, &g);
         prop_assert_eq!(l, r);
-        let (l, r) = values_bits::<f32>(&a, &d);
+        let (l, r) = values_bits::<f32>(&a, k / 8, &d, &g);
         prop_assert_eq!(l, r);
-        let (l, r) = values_bits::<D>(&a, &d);
+        let (l, r) = values_bits::<D>(&a, k, &d, &g);
         prop_assert_eq!(l, r);
     }
 }

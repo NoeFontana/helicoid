@@ -2,7 +2,7 @@
 
 **Status:** ready
 **Owner:** @NoeFontana
-**Implementation:** (none yet)
+**Implementation:** #199
 
 ## Context
 
@@ -78,9 +78,10 @@ second draw): no difference.
 
 ## Consequences
 
-- `eig3` and `eig3_values` stay bit-identical: a change to `eig3`'s eigenvalue path (the exit,
-  the scaling, the sort) is a change to both, and `eig3_values_matches_reference` fails if one
-  moves alone.
+- `eig3` and `eig3_values` stay bit-identical. They share the kernel, its scale-back factor
+  (`NaN` for a non-finite input) and one sort network, `ascending`, whose masks `eig3` replays on
+  its columns; `eig3_values_matches_reference` draws matrices scaled by up to $2^{\pm1000}$, so the
+  scale-back is exercised too.
 - No bar changes: the corpus id `eig3` and its strata score the values both functions return.
 - A public item at `0.0.x`; removing it later is a breaking change.
 
