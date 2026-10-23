@@ -649,6 +649,7 @@ row spells the composition and the proptest writes it inline
 | `Sim3::jr_inv`, `jl_inv` (block algebra) | dense Gauss–Jordan inverse of `jr`, `jl` | 5 |
 | `S2Chart::local` | $\mathrm{Log}$ of the minimal rotation taking $n$ to $m$, projected on $B$: `reference::s2_local`, the quaternion $(1 + n\cdot m,\ n \times m)$ normalized through `SO3::log`; `s2_local_matches_reference` scores the difference over `local`'s conditioning $\alpha/\sin\alpha$, 5.870 `u` at binary64 and 6.034 at binary32 ([`0067`](./decisions/0067-the-sphere-takes-plane-coordinates-and-both-precisions.md)) | 5 |
 | `chol_solve` (`helicoid-linalg`) | composition of public fns, no `reference` item: `solve_upper(&l.transpose(), solve_lower(&l, b))` | 2 |
+| `eig3_values` (`helicoid-linalg`, the frame not accumulated) | composition of public fns, no `reference` item: `eig3(a).0`, bit for bit at every `S`, a `NaN` one value (`eig3_values_matches_reference`, [`0104`](./decisions/0104-the-eigenvalues-come-without-the-frame.md)) | 2 |
 
 ## 15. Cholesky and the triangular solves
 

@@ -394,9 +394,31 @@ pub fn eig3<S: Real>(a: &Mat3<S>) -> (Vec3<S>, Mat3<S>) {
     )
 }
 
-/// [`eig3`]'s eigenvalues, bit for bit, without its frame.
+/// The eigenvalues of the symmetric 3x3 `a`, ascending: [`eig3`]`(a).0`, bit for bit at every
+/// `S: Real` (a `NaN` is one value; `eig3_values_matches_reference`), without the frame. The same
+/// Jacobi rotations, not accumulated, take 0.46–0.82x [`eig3`]'s time (`0104`).
+///
+/// # Domain
+///
+/// [`eig3`]'s: every input is legal and nothing is asserted; only the lower triangle is read, and
+/// a non-finite entry gives `NaN` eigenvalues.
+///
+/// # Example
+///
+/// ```
+/// use helicoid_linalg::{eig3_values, Mat3, Vector};
+///
+/// // A covariance block's largest eigenvalue: [[2, 1, 0], [1, 2, 0], [0, 0, 1]] has 1, 1, 3.
+/// let a = Mat3::from_rows([
+///     Vector([2.0_f64, 1.0, 0.0]),
+///     Vector([1.0, 2.0, 0.0]),
+///     Vector([0.0, 0.0, 1.0]),
+/// ]);
+/// let largest = eig3_values(&a).0[2];
+/// assert!((largest - 3.0).abs() < 1e-12);
+/// ```
 #[inline]
-pub(crate) fn eig3_values<S: Real>(a: &Mat3<S>) -> Vec3<S> {
+pub fn eig3_values<S: Real>(a: &Mat3<S>) -> Vec3<S> {
     let ([(d0, _), (d1, _), (d2, _)], finite, back) = jacobi::<S, false>(a);
     let exchange = |x: S, y: S| {
         let swap = y.lt(x);

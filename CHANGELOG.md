@@ -8,6 +8,13 @@ defined by the status tables in `docs/`; they win over this file.
 
 ## [Unreleased]
 
+### Added
+
+- **`helicoid_linalg::eig3_values`** (`0104`): `eig3`'s eigenvalues without its frame, bit for bit
+  at every `S: Real` (`eig3_values_matches_reference`; the composition `eig3(a).0` is its twin).
+  It takes 0.46–0.82× `eig3`'s time, the least gain on a random spectrum and the most at a triple
+  eigenvalue. No existing output moves.
+
 ## [0.0.7] - 2026-10-22
 
 The nearest-rotation and inverse-action release. `helicoid_linalg::nearest_rotation` projects a 3×3 onto SO(3), by Newton's polar iteration where that is well posed and through `svd3` elsewhere, and dominates nalgebra and Sophus on every stratum. `SO3` and `SE3` gain `inv_act` and `inv_act_jacobians`, the inverse action $R^\top(p - t)$ with its own Jacobians. The composition consumers wrote loses up to $4\times10^6\,u$ where $\lVert t\rVert \gg \lVert x\rVert$; the pair reads at most 4.79 `u`, in half the time. `Matrix` builds from columns without a call, so `Gaussian::propagate` takes 0.65× its time. **No API break**, and every existing output keeps its bits.
