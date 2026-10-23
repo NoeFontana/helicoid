@@ -33,9 +33,11 @@ use crate::seeded::{exact_input, input, Coeff, Host, Input, Swept};
 
 mod composed_inv_act;
 mod homogeneous_r;
+mod r_times_u;
 
 pub(crate) use composed_inv_act::registered as composed_inv_act_twin;
 pub(crate) use homogeneous_r::registered as homogeneous_r_twin;
+pub(crate) use r_times_u::registered as r_times_u_twin;
 
 /// The group of `id` at `x`, as the shipped kernel evaluates it.
 pub(crate) fn shipped<S: Real>(id: Swept, x: Input<Dual<S, 1>>) -> Dual<S, 1> {

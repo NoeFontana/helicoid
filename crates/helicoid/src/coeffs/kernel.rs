@@ -473,11 +473,12 @@ pub(crate) fn log_ratio<S: Real>(n2: S, w: S) -> S {
 /// `d + s·tail(s)` is `O(θ²)`, so the second term's roundings are `O(θ²)` of `u`. `1/w` is divided
 /// beside `s`, as [`log_ratio`] divides `2/w`, so after the Horner it is two operations, as there.
 ///
-/// The exact arm is `r · (sign u)`: there the quotient `atan2(n, w)/n` rounds whatever the
-/// arrangement, and a split would add a rounding without removing one. `sign` is the caller's
-/// `±1` flip, exact, applied in each arm: on `t`'s factor, and on `u` off `atan2`'s path. The arms,
-/// their masks and `s` are [`log_ratio`]'s; each arm returns scalars, captured by `move`.
-pub(crate) fn log_ratio_scale<S: Real>(n2: S, w: S, sign: S, (x, y, z): (S, S, S)) -> (S, S, S) {
+/// The exact arm is [`exact_scale`]. `n² = (x² + y²) + z²` is formed here, the one sum the exact
+/// arm's compensation recovers the error of. `sign` is the caller's `±1` flip, exact, applied in
+/// each arm: on `t`'s factor, and on `u` off `atan2`'s path. The arms, their masks and `s` are
+/// [`log_ratio`]'s; each arm returns scalars, captured by `move`.
+pub(crate) fn log_ratio_scale<S: Real>(w: S, sign: S, (x, y, z): (S, S, S)) -> (S, S, S) {
+    let n2 = (x * x + y * y) + z * z;
     nonnegative(n2);
     let r = table::<S, _>(R_F64.arm(), R_F32.arm());
     let positive = S::zero().lt(w);
@@ -500,12 +501,107 @@ pub(crate) fn log_ratio_scale<S: Real>(n2: S, w: S, sign: S, (x, y, z): (S, S, S
                     scale_series(sign + sign, S::select(small, w, S::one()), st, (x, y, z))
                 },
                 move || {
-                    let r = exact_r(S::select(small, S::one(), n2), w);
-                    (r * (sign * x), r * (sign * y), r * (sign * z))
+                    exact_scale(
+                        S::select(small, S::one(), n2),
+                        w,
+                        (sign * x, sign * y, sign * z),
+                    )
                 },
             )
         },
     )
+}
+
+/// Whether [`log_ratio_scale`] takes its exact arm: `small`'s complement, `tiny` implying `small`.
+#[cfg(any(test, feature = "__sweep"))]
+pub(super) fn log_ratio_takes_exact_arm<S: Real>(n2: S, w: S) -> S::Mask {
+    let r = table::<S, _>(R_F64.arm(), R_F32.arm());
+    let positive = S::zero().lt(w);
+    let s = n2 / S::select(positive, w * w, S::one());
+    positive.and(s.lt(r.below())).not()
+}
+
+/// `r u` on [`log_ratio_scale`]'s exact arm (`0106`, draft), `n2 = (x² + y²) + z²` as formed there.
+///
+/// `r = 2 atan2(n, w)/n` lies in `[2, π]`, just above a power of two, so `r` rounded and then
+/// `r · uᵢ` rounded each cost up to a whole `u`. Here `r` is `rh + rl`, `rh = 2a·(1/n)` and `rl`
+/// its remainder, and each component rounds once: `rh uᵢ + (εᵢ + rl uᵢ)`, `εᵢ` the product's exact
+/// error. `n` carries the error of `n2` and of its root as `n_lo`: near `π`, where `w → 0`, it would
+/// pass through `/n` whole. `n2` is a selected lane's own sum, so its two-sums reproduce it.
+///
+/// The compensation is a branch of its own: below [`compensated_from`] its error terms leave the
+/// normal range, and in one block with `rh` LLVM's SLP vectorizer packs its products into lanes,
+/// which measured 14 ns longer (`0106`, draft).
+fn exact_scale<S: Real>(n2: S, w: S, (x, y, z): (S, S, S)) -> (S, S, S) {
+    let two = S::lit(2.0);
+    let n = n2.sqrt();
+    let a = n.atan2(w);
+    let inv = S::one() / n;
+    let t = two * a;
+    let rh = t * inv;
+    S::branch(
+        compensated_from::<S>().le(n),
+        move || {
+            let (xs, ys, zs, ns) = (halves(x), halves(y), halves(z), halves(n));
+            let (px, py, pz) = (x * x, y * y, z * z);
+            let (s1, e1) = two_sum(px, py);
+            let (_, e2) = two_sum(s1, pz);
+            let lost =
+                (e1 + e2) + ((square_error(xs, px) + square_error(ys, py)) + square_error(zs, pz));
+            let nn = n * n;
+            let n_lo = (((n2 - nn) - square_error(ns, nn)) + lost) * (S::lit(0.5) * inv);
+            // `atan2(n + n_lo, w) = a + w n_lo/(n² + w²)` to first order.
+            let a_lo = w * n_lo / (n2 + w * w);
+            let rs = halves(rh);
+            let p = rh * n;
+            let rl = (((t - p) - product_error(rs, ns, p)) + (two * a_lo - rh * n_lo)) * inv;
+            let scale = |v: S, vs: (S, S)| {
+                let h = rh * v;
+                h + (product_error(rs, vs, h) + rl * v)
+            };
+            (scale(x, xs), scale(y, ys), scale(z, zs))
+        },
+        move || (rh * x, rh * y, rh * z),
+    )
+}
+
+/// The least `n` at which [`exact_scale`]'s error terms, down to `2⁻¹⁰⁶ n²` at `f64` and `2⁻⁴⁸ n²`
+/// at `f32`, stay normal: `2⁻⁴⁵⁰` and `2⁻³⁸`, the format's and not a fitted value.
+fn compensated_from<S: Real>() -> S {
+    match S::PRECISION {
+        Precision::F64 => S::lit(f64::from_bits((1023 - 450) << 52)),
+        Precision::F32 => S::lit(f64::from_bits((1023 - 38) << 52)),
+    }
+}
+
+/// `a² − p` exactly, for `p` the rounded `a²` and `a` given as [`halves`] (Dekker, squared).
+fn square_error<S: Real>((ah, al): (S, S), p: S) -> S {
+    ((ah * ah - p) + (ah + ah) * al) + al * al
+}
+
+/// Veltkamp's halves, `a = h + l` exactly with each half at most half `S`'s significand, so the
+/// product of two halves is exact without a fused multiply-add (D16). The splitter
+/// `2^⌈p/2⌉ + 1` is the format's, not a fitted value.
+fn halves<S: Real>(a: S) -> (S, S) {
+    let split = match S::PRECISION {
+        Precision::F64 => S::lit(134_217_729.0),
+        Precision::F32 => S::lit(4_097.0),
+    };
+    let c = split * a;
+    let h = c - (c - a);
+    (h, a - h)
+}
+
+/// `a b − p` exactly, for `p` the rounded `a b` and `a`, `b` given as [`halves`] (Dekker).
+fn product_error<S: Real>((ah, al): (S, S), (bh, bl): (S, S), p: S) -> S {
+    (((ah * bh - p) + ah * bl) + al * bh) + al * bl
+}
+
+/// `(s, e)` with `s = a + b` rounded and `s + e = a + b` exactly, in either order (Knuth).
+fn two_sum<S: Real>(a: S, b: S) -> (S, S) {
+    let s = a + b;
+    let bb = s - a;
+    (s, (a - (s - bb)) + (b - bb))
 }
 
 /// `t + (t/w)·((1 − w) + st)`, `t = c u` exact for `c = ±2`: [`log_ratio_scale`]'s series arms.

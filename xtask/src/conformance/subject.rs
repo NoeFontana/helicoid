@@ -66,6 +66,8 @@ pub(crate) fn registry() -> Vec<Registered> {
     all.push(crate::shipped::homogeneous_r_twin());
     // The composition `0103` replaces, for `cargo xtask compare`.
     all.push(crate::shipped::composed_inv_act_twin());
+    // `Log`'s exact arm as `r · u`, which `0106` (draft) replaces, for `cargo xtask compare`.
+    all.push(crate::shipped::r_times_u_twin());
     all.extend(crate::seeded::registry());
     all
 }

@@ -796,8 +796,7 @@ impl<S: Real> LieGroup<S> for SO3<S> {
         let (x, y, z) = (self.0.x, self.0.y, self.0.z);
         // `r u` of the flipped `q`, the flip applied inside `r`'s arms; `n²` needs none
         // (`0090`).
-        let (px, py, pz) =
-            log_ratio_scale((x * x + y * y) + z * z, flip * self.0.w, flip, (x, y, z));
+        let (px, py, pz) = log_ratio_scale(flip * self.0.w, flip, (x, y, z));
         SO3Tangent {
             phi: Vector([px, py, pz]),
         }
