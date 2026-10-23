@@ -11,7 +11,7 @@
 //! stratum of the corpus ids (`0056`), so a row's arm is the stratum's: `solve_cubic` at three
 //! distinct roots (the trigonometric arm), one real root, a small root beside a complex pair, and a
 //! triple root; `eig3` at a random spectrum, a pair `1e-8` apart, and a triple eigenvalue, and the
-//! three in turn; `svd3` (one-sided Jacobi with an exit, `0101`) at generic singular values,
+//! three in turn, and `eig3_values` (`0104`) at the same four; `svd3` (one-sided Jacobi with an exit, `0101`) at generic singular values,
 //! a pair `1e-8` apart, a rotation `1e-8` off SO(3) and a rank-2 matrix, and the four in turn;
 //! `nearest_rotation` (`0102`) at one input per arm: Newton near SO(3) and at generic singular
 //! values, the reflection, and `svd3`'s at a rank-2 matrix.
@@ -32,7 +32,8 @@ use core::time::Duration;
 use criterion::measurement::WallTime;
 use criterion::{criterion_group, criterion_main, BenchmarkGroup, Criterion};
 use helicoid_linalg::{
-    chol, eig3, nearest_rotation, solve_cubic, svd3, Dual, Mat3, Matrix, Real, Vec3, Vector,
+    chol, eig3, eig3_values, nearest_rotation, solve_cubic, svd3, Dual, Mat3, Matrix, Real, Vec3,
+    Vector,
 };
 
 /// Four scalars, not `[S; 4]`: an array by value reaches the callee through the stack, and a wide
@@ -47,6 +48,11 @@ fn cubic_of<S: Real>(a: S, b: S, c: S, d: S) -> (Vec3<S>, [S::Mask; 3]) {
 #[inline(never)]
 fn eig3_of<S: Real>(a: &Mat3<S>) -> (Vec3<S>, Mat3<S>) {
     eig3(a)
+}
+
+#[inline(never)]
+fn eig3_values_of<S: Real>(a: &Mat3<S>) -> Vec3<S> {
+    eig3_values(a)
 }
 
 #[inline(never)]
@@ -246,6 +252,9 @@ fn rows<S: Fixture>(g: &mut BenchmarkGroup<'_, WallTime>) {
         g.bench_function(format!("eig3/{name}"), |b| {
             b.iter(|| eig3_of(black_box(&a)));
         });
+        g.bench_function(format!("eig3_values/{name}"), |b| {
+            b.iter(|| eig3_values_of(black_box(&a)));
+        });
     }
     for &(name, sigma, eps) in SINGULAR {
         let a = general::<S>(sigma, eps);
@@ -271,6 +280,13 @@ fn rows<S: Fixture>(g: &mut BenchmarkGroup<'_, WallTime>) {
         b.iter(|| {
             for a in black_box(&mixed) {
                 black_box(eig3_of(a));
+            }
+        });
+    });
+    g.bench_function("eig3_values/mixed-three-calls", |b| {
+        b.iter(|| {
+            for a in black_box(&mixed) {
+                black_box(eig3_values_of(a));
             }
         });
     });

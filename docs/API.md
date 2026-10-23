@@ -57,9 +57,10 @@ covariance. Ambient Jacobians (Phase 6) follow the same rule.
 **NORMATIVE.** Every function with a restricted domain carries a `# Domain` rustdoc section naming
 it (`NUMERICS.md` §12) and a `debug_assert!` enforcing it. Release builds never check; out-of-domain
 release behaviour is an unspecified value, never a panic (bar out-of-bounds strided access, D11),
-never UB. The functions that assert nothing are `chol`, `solve_cubic` and `eig3`: each accepts every
-input; the first two report through a mask (R4), `eig3` reads one triangle and reports a non-finite
-entry by `NaN` eigenvalues ([`0081`](./decisions/0081-eig3-is-four-jacobi-sweeps.md)).
+never UB. The functions that assert nothing are `chol`, `solve_cubic`, `eig3` and `eig3_values`:
+each accepts every input; the first two report through a mask (R4), the `eig3` pair reads one
+triangle and reports a non-finite entry by `NaN` eigenvalues
+([`0081`](./decisions/0081-eig3-is-four-jacobi-sweeps.md)).
 Unit-norm inputs are checked by `*_unchecked` constructors in debug only; `*_normalized`
 constructors normalize.
 
@@ -77,7 +78,7 @@ constructors normalize.
 | `Mat2::inverse_adj`, `Mat3::inverse_adj` | fns | `(adjugate/det, det)`; the caller decides what `det` means. `Mat2`'s adjugate is exact, so `det` is its only rounding ([`0061`](./decisions/0061-mat2-keeps-its-adjugate.md)). |
 | `chol<S, N>`, `solve_lower`, `solve_upper`, `chol_solve` | fns | Fixed-size Cholesky; `(L, S::Mask)`. Triangular solves reading one triangle each; `chol_solve(&L, b)` solves `A x = b` from the factor without a transpose ([`0019`](./decisions/0019-a-cholesky-solve-without-the-transpose.md)); `NUMERICS.md` §15. |
 | `Strided<'a, S>`, `StridedMut<'a, S>` | structs | `col_major`, `row_major`, `block`; bounds-checked (`# Panics`). |
-| `eig3`, `svd3`, `nearest_rotation`, `solve_cubic` | fns | `NUMERICS.md` §13 references; signatures in `PHASE2.md` §6. |
+| `eig3`, `eig3_values`, `svd3`, `nearest_rotation`, `solve_cubic` | fns | `NUMERICS.md` §13 references; signatures in `PHASE2.md` §6. `eig3_values` is `eig3(a).0` bit for bit, without the frame; that composition is its §14 twin ([`0104`](./decisions/0104-the-eigenvalues-come-without-the-frame.md)). |
 | `mint` | feature | `From`/`Into` for `Vector`, `Matrix` at sizes 2–4 and `Point` at 2–3 (`mint` has no 4-D point). |
 
 ## 3. `helicoid` — groups and geometry

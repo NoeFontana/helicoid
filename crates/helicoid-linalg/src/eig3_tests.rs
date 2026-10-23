@@ -26,7 +26,7 @@
 
 use crate::linalg_tests::{cfg, unit, Lane, D};
 use crate::tests::L2;
-use crate::{eig3, Dual, Mat3, Real, Vector};
+use crate::{eig3, eig3_values, Dual, Mat3, Real, Vec3, Vector};
 use core::array;
 use proptest::prelude::*;
 use std::vec::Vec;
@@ -412,6 +412,41 @@ proptest! {
     fn any_matrix_gives_an_orthonormal_frame(e in prop::array::uniform6(entry())) {
         frame_of_any::<f64>(&matrix(e))?;
         frame_of_any::<f32>(&matrix(e))?;
+    }
+}
+
+/// Every lane of `eig3_values` and of `eig3`'s eigenvalues at `S`, a `NaN` as one value; the
+/// derivative lanes of `D` are `d`'s, not symmetric (only the lower triangle is read).
+fn values_bits<S: Lane>(a: &M, d: &M) -> (Vec<u64>, Vec<u64>) {
+    let m = Mat3::from_rows(array::from_fn(|r| {
+        Vector(array::from_fn(|c| S::make(a[r][c], [d[r][c], -d[c][r]])))
+    }));
+    let bits = |l: Vec3<S>| -> Vec<u64> {
+        l.0.iter()
+            .flat_map(|x| (0..S::LANES).map(move |k| x.lane(k)))
+            .map(|x| if x.is_nan() { f64::NAN } else { x }.to_bits())
+            .collect()
+    };
+    (bits(eig3_values(&m)), bits(eig3(&m).0))
+}
+
+proptest! {
+    #![proptest_config(cfg())]
+
+    /// `eig3_values` is `eig3(a).0` bit for bit (`NUMERICS.md` §14, `0104`), on the matrices of
+    /// `any_matrix_gives_an_orthonormal_frame` and at every scalar.
+    #[test]
+    fn eig3_values_matches_reference(
+        e in prop::array::uniform6(entry()),
+        f in prop::array::uniform6(entry()),
+    ) {
+        let (a, d) = (matrix(e), matrix(f));
+        let (l, r) = values_bits::<f64>(&a, &d);
+        prop_assert_eq!(l, r);
+        let (l, r) = values_bits::<f32>(&a, &d);
+        prop_assert_eq!(l, r);
+        let (l, r) = values_bits::<D>(&a, &d);
+        prop_assert_eq!(l, r);
     }
 }
 
