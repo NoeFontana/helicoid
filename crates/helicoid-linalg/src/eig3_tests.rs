@@ -437,12 +437,13 @@ proptest! {
     #![proptest_config(cfg())]
 
     /// `eig3_values` is `eig3(a).0` bit for bit (`NUMERICS.md` §14, `0104`), on the matrices of
-    /// `any_matrix_gives_an_orthonormal_frame` scaled by `2^k`, `|k| <= 1000` at `f64` and `Dual`
-    /// and `|k| <= 125` at `f32`, so most draws are outside the window and scale back.
+    /// `any_matrix_gives_an_orthonormal_frame` scaled by `2^k`, `-1080 <= k <= 1000` at `f64` and
+    /// `Dual` and `k / 8` at `f32`: most draws are outside the window and scale back, subnormal
+    /// ones included.
     #[test]
     fn eig3_values_matches_reference(
         e in prop::array::uniform6(entry()),
-        k in -1000..=1000i32,
+        k in -1080..=1000i32,
         f in prop::array::uniform6(entry()),
         g in prop::array::uniform6(entry()),
     ) {
