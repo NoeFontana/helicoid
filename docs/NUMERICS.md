@@ -115,8 +115,15 @@ $\cos\tfrac{\theta}{2}$ from its own series (generated alongside $k$).
 3. $\varphi = r(n^2, w)\,u$ with $r = 2\,\mathrm{atan2}(n, w)/n$ (§4). On $r$'s series arms it is
    evaluated as $t + (t/w)\,(d + s\,\tau(s))$ with $t = 2u$, $d = 1 - w$ and $\tau$ the series less
    its constant term: $t$ and $d$ are exact (Sterbenz), and $r$ lies just above $2$, where rounding
-   it costs a whole $u$, so this rounds once at full size instead. The exact arm is $r\,u$
-   ([`0090`](./decisions/0090-log-scales-its-vector-by-an-exact-two.md)).
+   it costs a whole $u$, so this rounds once at full size instead
+   ([`0090`](./decisions/0090-log-scales-its-vector-by-an-exact-two.md)). On the exact arm
+   ([`0106`](./decisions/0106-log-rounds-its-vector-once-on-the-exact-arm.md), draft), $r$ is carried
+   as $r_h + r_\ell$ with $r_h = 2a\cdot(1/n)$, $a = \mathrm{atan2}(n, w)$, and each component rounds
+   once, $r_h u_i + (\epsilon_i + r_\ell u_i)$, $\epsilon_i$ the product's exact error; $n$ carries the
+   errors of $n^2$ and of its root as $n_\ell$, entering $r_\ell$ as
+   $(2wn_\ell/(n^2 + w^2) - r_h n_\ell)/n$. Error-free products are Dekker's, on Veltkamp halves,
+   without a fused multiply-add (D16); below $n = 2^{-450}$ ($2^{-38}$ at `f32`) the error terms
+   leave the normal range and the arm is $r_h u$.
 
 `Log` is exactly scale-invariant in $q$ ($\mathrm{atan2}$ and $u/n$ are), so a non-unit input within
 rounding returns the `Log` of its normalization. **Never $\mathrm{acos}((\mathrm{tr}R - 1)/2)$**

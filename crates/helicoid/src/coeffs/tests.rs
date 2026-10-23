@@ -1327,31 +1327,38 @@ fn jr_coeffs_sinc_is_b_s_own_f32() {
     jr_coeffs_sinc_is_b_s_own::<f32>();
 }
 
-/// `log_ratio_scale` is `r u` (`0090`): on the exact arm to the bit, so `SO3::log` there is
-/// the `r · u` it was; on a series arm within `3u` of `r u` rounded once, in value and derivative,
-/// `r`'s own rounding and the correction's being of that size; and a `−1` sign negates it to the
-/// bit. The tail Horner starts at the series' second term, so this also fails if `R`'s first term
-/// is not 1.
+/// `log_ratio_scale` is `r u` (`0090`, `0106` draft): within `tol` of `r u` rounded twice, in value
+/// and derivative, that rounding and the series' correction being of that size; and
+/// a `−1` sign negates it to the bit. The tail Horner starts at the series' second term, so this also
+/// fails if `R`'s first term is not 1. `n²` is `u`'s own, as `log_ratio_scale` forms it.
 fn log_ratio_scale_is_r_u<S: Real<Mask = bool> + Into<f64>>(tol: f64) {
     let (below, _, _) = chosen::<S>()[7];
-    let u = (at::<S>(0.6), at::<S>(-0.3), at::<S>(1e-3));
+    let dir: (f64, f64, f64) = (0.6, -0.3, 1e-3);
+    let unit = ((dir.0 * dir.0 + dir.1 * dir.1) + dir.2 * dir.2).sqrt();
     for &w in &[1.0, 0.999_999_9, 0.99, 0.9, 0.7, 0.5, 0.05, 0.0, -0.5, -1.0] {
+        // No `n² = 0`: `u = 0` there, and a zero's derivative carries no sign worth pinning.
         for &n2 in &[
-            0.0, 1e-30, 1e-14, 1e-8, 1e-6, 1e-4, 1e-3, 0.01, 0.05, 0.2, 0.5, 0.99,
+            1e-30, 1e-14, 1e-8, 1e-6, 1e-4, 1e-3, 0.01, 0.05, 0.2, 0.5, 0.99,
         ] {
-            if n2 <= 0.0 && w <= 0.0 {
-                continue;
-            }
-            let (n2, w) = (D::variable(at::<S>(n2), 0), D::constant(at::<S>(w)));
+            let k = n2.sqrt() / unit;
+            let v = (
+                D::variable(at::<S>(k * dir.0), 0),
+                D::constant(at::<S>(k * dir.1)),
+                D::constant(at::<S>(k * dir.2)),
+            );
+            let w = D::constant(at::<S>(w));
+            let n2 = (v.0 * v.0 + v.1 * v.1) + v.2 * v.2;
             let small = S::zero()
                 .lt(w.v)
                 .and((n2.v / (w.v * w.v)).lt(S::lit(below)));
-            let v = (D::constant(u.0), D::constant(u.1), D::constant(u.2));
-            let got = log_ratio_scale(n2, w, D::one(), v);
+            // The exact arm's error terms vanish to first order, so their derivatives are rounding
+            // noise: 23.5 (`f64`) and 27.7 (`f32`) units of `tol/3` on this grid.
+            let d_tol = if small { tol } else { 12.0 * tol };
+            let got = log_ratio_scale(w, D::one(), v);
             let r = log_ratio(n2, w);
             let want = (r * v.0, r * v.1, r * v.2);
             let at = (n2.v.value_f64(), w.v.value_f64());
-            let neg = log_ratio_scale(n2, w, -D::one(), v);
+            let neg = log_ratio_scale(w, -D::one(), v);
             for (g, n) in [(got.0, neg.0), (got.1, neg.1), (got.2, neg.2)] {
                 assert_eq!(
                     (bits(g.v), bits(g.d[0])),
@@ -1360,19 +1367,11 @@ fn log_ratio_scale_is_r_u<S: Real<Mask = bool> + Into<f64>>(tol: f64) {
                 );
             }
             for (g, e) in [(got.0, want.0), (got.1, want.1), (got.2, want.2)] {
-                if small {
-                    for (x, y) in [(g.v, e.v), (g.d[0], e.d[0])] {
-                        let (x, y) = (x.value_f64(), y.value_f64());
-                        assert!(
-                            (x - y).abs() <= tol * y.abs(),
-                            "{at:?}: {x:e} against {y:e}"
-                        );
-                    }
-                } else {
-                    assert_eq!(
-                        (bits(g.v), bits(g.d[0])),
-                        (bits(e.v), bits(e.d[0])),
-                        "{at:?}"
+                for (x, y, tol) in [(g.v, e.v, tol), (g.d[0], e.d[0], d_tol)] {
+                    let (x, y) = (x.value_f64(), y.value_f64());
+                    assert!(
+                        (x - y).abs() <= tol * y.abs(),
+                        "{at:?}: {x:e} against {y:e}"
                     );
                 }
             }
