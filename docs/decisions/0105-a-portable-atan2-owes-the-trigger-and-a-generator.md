@@ -115,10 +115,14 @@ fed into the next call's `y`, on an AMD EPYC Milan (Zen 3) at about 3.7 GHz. Wha
 3. **The proposal's 3–4× speedup does not exist on this host.** Division plus polynomial with no
    compensation at all (12 terms, 1.49 ulp) already costs `libm`'s latency, about 23 ns. Without
    a fused multiply-add, every compensated variant above costs 30–37 ns.
-4. **The latency depends on codegen that a consumer's build controls.** The candidate takes 35 ns
-   at the default `-O3` and 25 ns under `-C llvm-args=-vectorize-slp=false`. LLVM's SLP
-   vectorizer packs the residual's products into vector lanes, and the shuffles land on the
-   critical path. No source shape tried here moved that.
+4. **The residual belongs behind a branch.** In one basic block, LLVM's SLP vectorizer at the
+   default `-O3` packs the residual's products into vector lanes, and the shuffles land on the
+   critical path: 35 ns, against 25 ns under `-C llvm-args=-vectorize-slp=false`. Computing the
+   residual under the branch that already skips it below the window (`if |num| ≥ 2⁻⁹⁶⁹`) puts it
+   in a block of its own: the same bits on $2^{22}$ draws, at the SLP-off time. Skipping it
+   where it is a small part of an ulp does not pay: at most 0.52 ulp needs it wherever
+   $\lvert v\rvert$ exceeds $2^{-6}$ of the rest of the answer, and the test, late on the critical
+   path, made the kernel slower (31–33 ns).
 5. **Binary32 evaluated in binary64 needs no compensation.** Folded at $\tfrac12$ with 8 terms
    ($2^{-40.6}$), it misrounds **none** of $2^{21}$ draws. With 7 terms it misrounds 28, at most
    0.50016 ulp. `libm::atan2f` misrounds 10% of them, at most 1.47 ulp.
@@ -167,15 +171,14 @@ either chained through `y` (latency) or independent (throughput). `mixed` draws 
 
 | | `libm` | candidate | host glibc |
 |---|---|---|---|
-| `f64` latency, mixed / one octant | 24.5 / 22.1 ns | 35.5 / 35.4 | 23.1 / 24.1 |
-| `f64` throughput, mixed | 7.3 ns | 20.6 | 11.6 |
+| `f64` latency, mixed / one octant | 25.0 / 22.1 ns | 26.5 / 26.6 | 23.2 / 24.2 |
+| `f64` throughput, mixed | 7.3 ns | 15.0 | 11.6 |
 | `f32` latency, mixed / one octant | 18.0 / 15.9 ns | 21.9 / 21.5 | 23.5 / 21.1 |
 | `f32` throughput, mixed | 5.9 ns | 6.0 | 7.8 |
-| `so3_log`, $\theta \in [0.6, 3.1)$ (the exact arm) | 13.8 ns | 32.1 | — |
-| `so3_log`, $\theta \in [0.01, 0.5)$ (the series arms) | 11.2 ns | 13.8 | — |
+| `so3_log`, $\theta \in [0.6, 3.1)$ (the exact arm) | 13.9 ns | 28.4 | — |
 
-The binary64 kernel costs 1.45–1.6× `libm`'s latency and 2.8× its throughput, and 2.3× on
-`so3_log`'s exact arm. The binary32 kernel matches `atan2f`'s throughput at 1.2–1.35× its latency.
+The binary64 kernel costs 1.06–1.2× `libm`'s latency and 2× its throughput, and 2× on
+`so3_log`'s exact arm, whose rows are independent calls and so read throughput. The binary32 kernel matches `atan2f`'s throughput at 1.2–1.35× its latency.
 
 **On the corpus** (`cargo xtask compare --a helicoid --b helicoid:portable-atan2`):
 
@@ -194,7 +197,7 @@ The binary64 kernel costs 1.45–1.6× `libm`'s latency and 2.8× its throughput
 ## Decision
 
 Proposed, not settled: **do not swap binary64's `atan2`.** The candidate is within 0.503 ulp of
-the reference, but it is slower than `libm` (1.45–1.6× latency, 2.8× throughput, 2.3× on
+the reference, but it is slower than `libm` (1.06–1.2× latency, 2× throughput, 2× on
 `so3_log`'s exact arm). So `0034`'s trigger, a speedup, cannot fire, and no domination or
 no-regress maximum moves. The binary32 kernel is the one open trade: correctly rounded on every
 draw read, at `atan2f`'s throughput (open question 4).
@@ -280,11 +283,21 @@ The alternative of upstreaming the kernel to the `libm` crate keeps `0007` at "`
 
 ## Open questions
 
-1. Is a near-correctly-rounded `atan2` worth 2.3× on `so3_log`'s exact arm with no bar moving?
-   This record proposes no.
+1. Is a near-correctly-rounded `atan2` worth 2× on `so3_log`'s exact arm with no bar moving?
+   This record proposes no. Most of that arm's error is not `atan2`'s: `r` rounded, then
+   `r · uᵢ` rounded, each up to a whole `u` with `r` just above 2. Compensating that arrangement
+   is a separate draft record.
 2. *(Answered by the tuning.)* The $k = 0$ gap closes when the tail shrinks: 9 centres $j/8$
    reach 0.503 ulp with a 5-term polynomial and no compensated tail.
 3. Should the kernel be upstreamed to the `libm` crate instead of living in `helicoid-linalg`?
+   A correctly rounded `atan2` is the form worth upstreaming. CORE-MATH has one for binary64
+   (MIT; its fast phase's bound is empirical, so correct rounding is not proven), and `libm`
+   0.2.16 already ships CORE-MATH's `cbrt`. Correct rounding makes the bits the same on every
+   target with or without a fused multiply-add, but no fused multiply-add is reachable here
+   anyway: `f64::mul_add` is not in `core`, the intrinsics need `unsafe` (`0007`), and
+   `libm::fma` dispatches at run time on x86_64. A scratch port without one read correctly
+   rounded on $4 \times 2^{22}$ draws at about 1.3× `libm`'s latency natively and 1.2× on
+   wasm32. Upstream keeps D16 as worded.
 4. Does binary32 get the binary64-evaluated kernel? It costs nothing in throughput and 1.2–1.35×
    in latency, and moves `atan2f` from 1.47 ulp to correctly rounded on every draw read, but no
    `@f32` maximum falls for it. Under `0016` the `@f32` strata are the coefficient ids' alone, so a

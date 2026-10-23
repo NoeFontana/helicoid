@@ -1,6 +1,6 @@
 //! The portable `atan2` candidate of `0105` (draft) against `libm` and the host's `atan2`, and
-//! `so3_log` end to end at the shipped scalar and at the twin's: the latency and throughput `0105`
-//! cites. `cargo bench -p xtask --bench atan2`.
+//! `so3_log` end to end at the shipped scalar and at the twin's: the time per call that draft
+//! record cites. `cargo bench -p xtask --bench atan2`.
 //!
 //! Rows are batches of 256 calls: `latency` feeds each result into the next call's `y` through
 //! `r·0`, `throughput` sums independent calls. The regimes are random octants (`mixed`), one octant

@@ -208,15 +208,6 @@ pub(crate) fn atan2_f64(y: f64, x: f64, fit: &Fit64) -> f64 {
     };
     let (c, num, den, den_lo) = centre(n, d);
     let v = num / den;
-    let inv = 1.0 / den;
-    // `num − v·(den + den_lo)`: `vh·bh` and `vh·bl` are exact and `num − vh·bh` is exact
-    // (Sterbenz); the rest rounds at `2⁻²⁵` of the residual.
-    let bc = SPLIT * den;
-    let bh = bc - (bc - den);
-    let bl = den - bh;
-    let vh = f64::from_bits(v.to_bits() & !((1 << 27) - 1));
-    let vl = v - vh;
-    let rem = ((num - vh * bh) - vh * bl) - (vl * den + v * den_lo);
 
     // The quadrant: `q·π/4 ± (atan(c) + atan(v))`, `−` where exactly one of `x < 0`, `|y| > |x|`.
     let neg_x = x.is_sign_negative();
@@ -237,10 +228,24 @@ pub(crate) fn atan2_f64(y: f64, x: f64, fit: &Fit64) -> f64 {
     let k = &fit.coeffs;
     let s2 = s * s;
     let p = (k[0] + k[1] * s) + s2 * ((k[2] + k[3] * s) + s2 * k[4]);
-    // `atan(v + dv) = atan(v) + dv/(1 + s)`, `1/(1 + s)` to `s² ≤ 2⁻¹⁶`.
-    let ok = if RESIDUAL <= num.abs() { sign } else { 0.0 };
+    // A branch, not a select: in one basic block LLVM's SLP vectorizer packs the residual's
+    // products into lanes and lengthens the chain by a third (`0105`, draft).
+    let dv = if RESIDUAL <= num.abs() {
+        // `num − v·(den + den_lo)`: `vh·bh` and `vh·bl` are exact and `num − vh·bh` is exact
+        // (Sterbenz); the rest rounds at `2⁻²⁵` of the residual.
+        let bc = SPLIT * den;
+        let bh = bc - (bc - den);
+        let bl = den - bh;
+        let vh = f64::from_bits(v.to_bits() & !((1 << 27) - 1));
+        let vl = v - vh;
+        let rem = ((num - vh * bh) - vh * bl) - (vl * den + v * den_lo);
+        // `atan(v + dv) = atan(v) + dv/(1 + s)`, `1/(1 + s)` to `s² ≤ 2⁻¹⁶`.
+        sign * (rem * ((1.0 / den) * (1.0 - s)))
+    } else {
+        0.0
+    };
     let early = (l1 + l0) + (q * fit.pi4_lo + sign * fit.atan_lo[j]);
-    let mag = h1 + ((early + rem * (ok * (inv * (1.0 - s)))) + (us * s) * p);
+    let mag = h1 + ((early + dv) + (us * s) * p);
     if x.is_nan() || y.is_nan() {
         x + y
     } else {
