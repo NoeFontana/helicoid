@@ -1,6 +1,6 @@
 //! `helicoid:r-times-u`: the shipped `SO3::log` with one variable changed, the exact arm of `r` as
 //! `r · (sign u)`, `r` rounded and then each component (`0090` decision 1). It is the arrangement
-//! `0106` (draft) replaces with `r` as two terms and one rounding per component, kept as a subject so
+//! `0106` replaces with `r` as two terms and one rounding per component, kept as a subject so
 //! `cargo xtask compare` can re-measure the choice (`0078`).
 //!
 //! On a series arm the twin is the shipped `SO3::log`, by construction: it dispatches on the masks
