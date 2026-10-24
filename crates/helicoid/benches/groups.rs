@@ -222,6 +222,15 @@ fn so3<S: Fixture>(g: &mut BenchmarkGroup<'_, WallTime>, name: &str, theta: f64)
     g.bench_function(format!("so3/log/{name}"), |b| {
         b.iter(|| black_box(&x).log());
     });
+    // `Log` of a rotation just composed, as a consumer takes it: the row the one above cannot see
+    // when `log` stops inlining and reads its argument back across two fresh stores. `e` is the
+    // identity, so the product is `x` to the bit and the stratum the label's.
+    let e = SO3::<S>::exp(&SO3Tangent {
+        phi: phi::<S>(0.0, false),
+    });
+    g.bench_function(format!("so3/compose_log/{name}"), |b| {
+        b.iter(|| (*black_box(&x) * *black_box(&e)).log());
+    });
     // The stratum picks the pivot: the trace below `π/2`, an axis near `π`.
     let m = x.to_matrix();
     g.bench_function(format!("so3/from_matrix/{name}"), |b| {

@@ -60,7 +60,8 @@ blocks of a stratum's size of the block maximum, the stand-in for a corpus maxim
    error term, down to `2⁻¹⁰⁶ n²` (`2⁻⁴⁸ n²`), stays normal from `2⁻⁴⁵⁸` (`2⁻³⁹`); the bound is
    that with a margin, the format's too, and no unit quaternion comes near it. Below it the arm is
    `exact_r`'s `(2a/n) u`, rounded as `main` rounds it. The branch is also what keeps LLVM's SLP vectorizer from packing
-   the compensation's products with `rh`'s, which measured 14 ns longer in one block.
+   the compensation's products with `rh`'s, which measured 14 ns longer in one block. The arm is
+   a function of its own, not inlined, given scalars and the squares (*Consequences*, inlining).
 5. **`helicoid:r-times-u`**, a planted twin: the shipped `SO3::log` with the exact arm `r · u`,
    dispatched on the masks `log_ratio_scale` branches on (`__sweep::log_ratio_takes_exact_arm`
    shares their one definition), so
@@ -152,6 +153,26 @@ square's error in five operations instead of Dekker's eight (within ±2%).
   first order, so their derivative parts are rounding noise: within 23.5 `u` of `r · u`'s
   derivative at `f64` and 27.7 at `f32` on `log_ratio_scale_is_r_u`'s grid, where the value is
   within 1.3. Whether that is closer to the true derivative is not measured.
+- **Inlining.** With the exact arm inline, `SO3::log` grew past what LLVM inlines at a caller
+  with several call sites, and an out-of-line `log` loads `(x, y)` as one 16-byte read across the
+  two 16-byte stores of a quaternion just written (a non-inlined `compose`'s result, a by-value
+  argument): the store does not forward, and consecutive calls stop overlapping. `log` of a
+  composed rotation in a consumer loop (`f64`, ns per call, interleaved, one pinned core):
+
+  | θ band | before `0106` | exact arm inline | exact arm out of line |
+  |---|---|---|---|
+  | `[10⁻⁸, 10⁻⁶)` | 10.5 | 25.3 | 10.4 |
+  | `[0.1, 0.5)` | 19.0 | 42.0 | 15–18 |
+  | `[0.5, 2)` | 21–29 | 64–67 | 48–49 |
+  | `[π − 0.1, π)` | 18–26 | 63–64 | 47–48 |
+
+  (Two rounds on a loaded host; the ranges are the rounds'.)
+
+  Out of line, the arm costs at most 2–3 ns of isolated throughput and none of its latency; the
+  bench gate (`so3/log`, and `so3/compose_log`, which times this pattern) finds no row above its
+  A/A floor. The bits are unchanged (2·10⁶ draws at `f64`, `f32`, `Dual`; `just determinism`).
+  A `log` that a caller does not inline still reads its argument that way, as it did before
+  `0106`; making that load forward is not attempted.
 - **Signed zeros.** A zero component keeps its sign on the exact arm, as `r · u` kept it, so
   `Log` of the conjugate is `−Log` to the bit there (`log_ratio_scale_keeps_signed_zeros`).
 - **Scale invariance** holds within rounding, as on the series arms

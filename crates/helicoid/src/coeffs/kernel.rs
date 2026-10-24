@@ -503,8 +503,10 @@ pub(crate) fn log_ratio_scale<S: Real>(w: S, sign: S, (x, y, z): (S, S, S)) -> (
                     exact_scale(
                         S::select(small, S::one(), n2),
                         w,
-                        (sign * x, sign * y, sign * z),
-                        (px, py, pz, s1),
+                        sign * x,
+                        sign * y,
+                        sign * z,
+                        (px, py, pz),
                     )
                 },
             )
@@ -532,8 +534,8 @@ pub(super) fn log_ratio_takes_exact_arm<S: Real>(n2: S, w: S) -> S::Mask {
     log_ratio_scale_arms(n2, w).2.not()
 }
 
-/// `r u` on [`log_ratio_scale`]'s exact arm (`0106`): `n2 = s1 + pz`, `s1 = px + py` and
-/// `pᵢ = uᵢ²` the sums and squares formed there, of `u` before its sign, which squares away.
+/// `r u` on [`log_ratio_scale`]'s exact arm (`0106`): `n2 = (px + py) + pz` and `pᵢ = uᵢ²` the
+/// sum and squares formed there, of `u` before its sign, which squares away.
 ///
 /// `r = 2 atan2(n, w)/n` lies in `[2, π]`, just above a power of two, so `r` rounded and then
 /// `r · uᵢ` rounded each cost up to a whole `u`. Here `r` is `rh + rl`, `rh = 2a·(1/n)` and `rl`
@@ -545,12 +547,14 @@ pub(super) fn log_ratio_takes_exact_arm<S: Real>(n2: S, w: S) -> S::Mask {
 /// The compensation is a branch of its own: below [`compensated_from`] its error terms leave the
 /// normal range, and in one block with `atan2` LLVM's SLP vectorizer packs its products into lanes,
 /// which measured 14 ns longer (`0106`). The other arm is `exact_r`'s `2a/n`, rounded twice.
-fn exact_scale<S: Real>(
-    n2: S,
-    w: S,
-    (x, y, z): (S, S, S),
-    (px, py, pz, s1): (S, S, S, S),
-) -> (S, S, S) {
+///
+/// Not inlined, and given scalars: inlined, it makes `SO3::log` too large to inline at a caller,
+/// and an out-of-line `log` reads `(x, y)` as one load across the two stores of a quaternion just
+/// written, a stalled store forward that took a composed `Log` near the identity from 10 to 25 ns
+/// (`0106`).
+#[inline(never)]
+fn exact_scale<S: Real>(n2: S, w: S, x: S, y: S, z: S, (px, py, pz): (S, S, S)) -> (S, S, S) {
+    let s1 = px + py;
     let two = S::lit(2.0);
     let n = n2.sqrt();
     let t = two * n.atan2(w);
