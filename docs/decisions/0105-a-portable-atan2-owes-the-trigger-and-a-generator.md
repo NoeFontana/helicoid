@@ -29,8 +29,10 @@ profile in the stack, tf_tree's lookup, has no `libm` row.
 
 **What a better `atan2` would buy in accuracy is already attributed.**
 [`0090`](./0090-log-scales-its-vector-by-an-exact-two.md) places `so3_log`'s two resolved losses
-on `r`'s series arms, where no `atan2` is called. D16's `atan2` costs only on the exact arm
-($\theta \gtrsim 0.58$ at `f64`), for example 2.317 `u` against sophus-rs's 1.368 at $\theta = 1$.
+on `r`'s series arms, where no `atan2` is called. D16's `atan2` is called only on the exact arm
+($\theta \gtrsim 0.58$ at `f64`), which then read 2.317 `u` against sophus-rs's 1.368 at
+$\theta = 1$; [`0106`](./0106-log-rounds-its-vector-once-on-the-exact-arm.md) has since rounded
+that arm's vector once, and `so3_log` reads 1.680 `u`, below every oracle on every stratum.
 The glibc twin of [`0037`](./0037-six-records-cannot-answer-a-one-variable-question.md) (draft)
 moves 15 of 751 rows, and one of them (`coeff_d`, `theta:1e0`) gets **worse**. The `real_atan2`
 rows are committed at 2.20, 2.05 and 1.58 `u` (`yx:generic`, `yx:ratio-1e-8`, `yx:ratio-1e-100`).
@@ -126,18 +128,28 @@ fed into the next call's `y`, on an AMD EPYC Milan (Zen 3) at about 3.7 GHz. Wha
 5. **Binary32 evaluated in binary64 needs no compensation.** Folded at $\tfrac12$ with 8 terms
    ($2^{-40.6}$), it misrounds **none** of $2^{21}$ draws. With 7 terms it misrounds 28, at most
    0.50016 ulp. `libm::atan2f` misrounds 10% of them, at most 1.47 ulp.
+6. **Neither one division nor an integer centre index pays** (the committed bench, below). One
+   division, $r = 1/(d + c\,n)$ and $v = (n - c\,d)\,r$ with the residual taken against that
+   $v$, reads the same or lower maxima on $3 \times 2^{22}$ draws but costs 28.0 ns against
+   27.3: the multiply lengthens the chain, and the divider is not the throughput bound (14.6
+   against 14.8 ns). Counting the midpoints passed as an integer and converting it to $c$ puts a
+   popcount and an integer-to-float conversion ahead of the division: 39.7 ns against 27.3. $c$
+   is a tree sum of floating-point terms, and the table index is derived from it off the critical
+   path.
 
 ### The candidate, measured
 
 `helicoid:portable-atan2` is the shipped program at a scalar whose `atan2` alone is the candidate,
 at both precisions. It is planted, so no bar reads it. Its kernels are in
-`xtask/src/shipped/portable_atan2/kernel.rs`, and its fit is `conformance/fits/atan2.json`.
+`xtask/src/shipped/portable_atan2/kernel.rs`, and its fit is `conformance/fits/atan2.json`, read
+at compile time, so a fit of another shape is a build error.
 
 - **binary64.** $t = n/d$ is reduced about the nearest of 9 centres $c = j/8$:
   $\arctan t = \arctan c + \arctan v$, with $v = (n - c\,d)/(d + c\,n)$ and $\lvert v\rvert \le \tfrac1{16}$.
   - Because $c$ has at most 4 significant bits, $c\,d$ and $c\,n$ are each two exact products once
     the low 4 bits of $d$ and $n$ are split off. $n - c\,d$ is then exact (Sterbenz, then a
-    representable difference), and $d + c\,n$ is kept as a pair.
+    representable difference), and $d + c\,n$ is an exact pair: both of its low parts are
+    multiples of $\mathrm{ulp}(n)/8$ within $\mathrm{ulp}(d + c\,n)$, so their sum rounds nothing.
   - The quotient's residual takes Dekker's halves.
   - The tail $v s P(s)$ is at most $2^{-9.6}$ of the answer, so it is not compensated.
   - $P$ has 5 terms at $2^{-62.56}$, and $\arctan(j/8)$ is a table of `hi + lo` pairs.
@@ -158,48 +170,63 @@ against `libm`'s binary64 `atan2`.
 | `f64`, worst arm ($j = 0$, $q = 0$, another seed) | 0.5031 | — | — |
 | `f32`, within $2^{\pm4}$ and $2^{\pm120}$ | 0.5000 | 1.471 (`atan2f`) | — |
 
-- **Exactness and monotonicity.** Unit tests check that $n - c\,d$ is exact against the
-  reference, and that the kernels are monotone through every midpoint between centres, the fold
-  and the swap.
+On $2^{22}$ draws per range the binary64 maximum is 0.5032 ulp within $2^{\pm4}$, 0.5025 within
+$2^{\pm60}$ and 0.5010 within $2^{\pm1000}$; 268 of the $3 \times 2^{22}$ draws are above half an
+ulp.
+
+- **Exactness and monotonicity.** Unit tests check, in integer arithmetic, that $n - c\,d$ and
+  $d + c\,n$ are exact, and that the kernels are monotone through every midpoint between centres,
+  the fold and the swap.
 - **Special values.** At both precisions the candidate returns IEEE 754's limits, correctly
   rounded. `libm::atan2f(±∞, 1)` returns $\pi/2$ one ulp low (`0x3fc90fda`); the candidate returns
   the nearest (`0x3fc90fdb`).
 
-**Time per call** (`cargo bench -p xtask --bench atan2`, the same host). Each row is 256 calls,
-either chained through `y` (latency) or independent (throughput). `mixed` draws random octants;
-`axis` has $y = 0$, where `libm` returns early.
+**Time per call** (`cargo bench -p xtask --bench atan2`, the same host, pinned to one core,
+medians of 3 interleaved rounds, one binary per variant). Each row is 256 calls, either chained
+through `y` (latency) or independent (throughput). `mixed` draws random octants; `axis` has
+$y = 0$, where `libm` returns early. `so3_log` is `Log` with `0106`'s exact arm, $\theta$ uniform
+in the range named, about random axes.
 
 | | `libm` | candidate | host glibc |
 |---|---|---|---|
-| `f64` latency, mixed / one octant | 25.0 / 22.1 ns | 26.5 / 26.6 | 23.2 / 24.2 |
-| `f64` throughput, mixed | 7.3 ns | 15.0 | 11.6 |
-| `f32` latency, mixed / one octant | 18.0 / 15.9 ns | 21.9 / 21.5 | 23.5 / 21.1 |
+| `f64` latency, mixed / one octant | 24.5 / 22.1 ns | 27.3 / 27.4 | 23.1 / 24.2 |
+| `f64` throughput, mixed | 7.2 ns | 14.8 | 11.5 |
+| `f32` latency, mixed / one octant | 18.0 / 15.8 ns | 21.9 / 21.4 | 23.6 / 21.0 |
 | `f32` throughput, mixed | 5.9 ns | 6.0 | 7.8 |
-| `so3_log`, $\theta \in [0.6, 3.1)$ (the exact arm) | 13.9 ns | 28.4 | — |
+| `so3_log`, $\theta \in [0.6, 3.1)$ (the exact arm) | 42.7 ns | 45.6 | — |
+| `so3_log`, $\theta \in [0.01, 0.5)$ (a series arm, no `atan2`) | 11.9 ns | 11.9 | — |
 
-The binary64 kernel costs 1.06–1.2× `libm`'s latency and 2× its throughput, and 2× on
-`so3_log`'s exact arm, whose rows are independent calls and so read throughput. The binary32 kernel matches `atan2f`'s throughput at 1.2–1.35× its latency.
+The binary64 kernel costs 1.1–1.25× `libm`'s latency and 2× its throughput. On `so3_log`'s exact
+arm, whose rows are independent calls, that is 2.9 ns of 42.7, 1.07×. An earlier reading here,
+13.9 against 28.4 ns, came before `0106` and from a bench whose $\theta$ ran past each row's range
+(37 of the series row's 256 rotations were on the exact arm) and whose candidate looked its fit
+up on every call. The binary32 kernel matches `atan2f`'s throughput at 1.2–1.35× its latency.
 
-**On the corpus** (`cargo xtask compare --a helicoid --b helicoid:portable-atan2`):
+**On the corpus** (`cargo xtask compare --a helicoid --b helicoid:portable-atan2`, with `0106`'s
+`Log`):
 
-- **`f64` overall:** 152 of 65 051 records move, 89 better and 63 worse (sign test $p = 0.042$).
-  Of 3145 strata, 26 maxima fall and 9 rise, by up to 1.484×.
-- **`f32` overall:** 24 records move, 16 better and 8 worse. Of 1420 strata, 2 maxima fall and 3
-  rise, the largest being `coeff_r`'s by 1.075×.
+- **`f64` overall:** 201 of 65 051 records move, 123 better and 78 worse (sign test
+  $p = 1.8\times10^{-3}$). Of 3145 strata, 27 maxima fall, by down to 0.481×, and 6 rise, all in
+  strata of 4–12 records: `sen3_log_n2`'s `rho:1e3/theta=1` by 1.449×, `se3_world_local`'s
+  `rho:1e0/theta=1` by 1.286×, `sim3_log`'s `sigma:700/theta:1` by 1.268× (at 0.022 `u`).
+- **`f32` overall:** 26 records move, 18 better and 8 worse ($p = 0.076$). Of 1420 strata, 3
+  maxima fall and 2 rise, the largest `sim3_log`'s `sigma:1e-8/theta:3@f32` by 1.158×.
 - **`real_atan2`:** at `f64`, 13 of 448 values move and all are better ($p = 2.4\times10^{-4}$);
   at `f32`, 6 move and all are better. But **no stratum maximum moves**: the committed maxima are
   read from fields other than the value.
-- **`so3_log`:** `theta:dense` falls from 2.317 to 2.029 `u`. `theta:1e0` rises from 1.741 to
-  2.175, and `q:nonunit` from 1.814 to 2.090. An `atan2` within 0.503 ulp still leaves `so3_log`'s
-  maxima to the program around it: each record moves by its own rounding luck, and they move both
-  ways.
+- **`so3_log`:** 34 records better and 26 worse; 3 maxima fall and none rises. The overall
+  maximum falls from 1.680 to 1.405 `u`, `theta:1e0` from 1.680 to 1.108, `theta:dense` from
+  1.578 to 1.271 and `theta:1e-1` from 1.298 to 1.137. Before `0106` the same candidate moved
+  `so3_log`'s maxima both ways (`theta:1e0` 1.741 to 2.175); with each component of `φ` rounded
+  once, the exact arm's maxima now follow `atan2`'s error.
 
 ## Decision
 
 Proposed, not settled: **do not swap binary64's `atan2`.** The candidate is within 0.503 ulp of
-the reference, but it is slower than `libm` (1.06–1.2× latency, 2× throughput, 2× on
-`so3_log`'s exact arm). So `0034`'s trigger, a speedup, cannot fire, and no domination or
-no-regress maximum moves. The binary32 kernel is the one open trade: correctly rounded on every
+the reference, but it is slower than `libm` (1.1–1.25× latency, 2× throughput, 1.07× on
+`so3_log`'s exact arm). So `0034`'s trigger, a speedup, cannot fire. Since `0106`, maxima move:
+`so3_log`'s fall (1.680 to 1.405 `u` overall) and none of its strata rises, but 6 strata of other
+ids rise, by up to 1.449×. The binary32 kernel is the one open trade: correctly rounded on every
 draw read, at `atan2f`'s throughput (open question 4).
 
 If the kernel is built, it takes this shape:
@@ -258,8 +285,8 @@ The alternative of upstreaming the kernel to the `libm` crate keeps `0007` at "`
 ## Implementation plan
 
 1. This record, draft. Verified by `just lint` and `just doc`.
-2. The coefficient generator and its committed output. Verified by `just atan-fit-check` and
-   `tests/test_fit_atan2.py`. **Done.**
+2. The coefficient generator and its committed output. Verified by `just atan-fit-check`, a CI job,
+   and `tests/test_fit_atan2.py`. **Done.**
 3. `helicoid:portable-atan2`, planted. Unit tests check:
    - special values against IEEE 754's correctly rounded limits;
    - exact odd symmetry;
@@ -283,10 +310,11 @@ The alternative of upstreaming the kernel to the `libm` crate keeps `0007` at "`
 
 ## Open questions
 
-1. Is a near-correctly-rounded `atan2` worth 2× on `so3_log`'s exact arm with no bar moving?
-   This record proposes no. Most of that arm's error is not `atan2`'s: `r` rounded, then
-   `r · uᵢ` rounded, each up to a whole `u` with `r` just above 2. Compensating that arrangement
-   is a separate draft record.
+1. Is a near-correctly-rounded `atan2` worth 1.07× on `so3_log`'s exact arm? Before `0106` it
+   was not: most of that arm's error was `r` rounded, then `r · uᵢ` rounded. With `0106` each
+   component rounds once, and the candidate lowers `so3_log`'s maximum from 1.680 to 1.405 `u`
+   with no `so3_log` stratum rising, while 6 strata of other ids rise. This record still proposes
+   no binary64 swap; the trade is the owner's to reweigh.
 2. *(Answered by the tuning.)* The $k = 0$ gap closes when the tail shrinks: 9 centres $j/8$
    reach 0.503 ulp with a 5-term polynomial and no compensated tail.
 3. Should the kernel be upstreamed to the `libm` crate instead of living in `helicoid-linalg`?
