@@ -33,15 +33,25 @@ use kernel::{atan2_f32, atan2_f64, Portable, FITS};
 const BATCH: usize = 256;
 
 /// splitmix64, so a batch is the same on every host.
-fn draws(seed: u64) -> impl FnMut() -> f64 {
-    let mut state = seed;
-    move || {
-        state = state.wrapping_add(0x9E37_79B9_7F4A_7C15);
-        let mut z = state;
+struct Draw(u64);
+
+impl Draw {
+    fn bits(&mut self) -> u64 {
+        self.0 = self.0.wrapping_add(0x9E37_79B9_7F4A_7C15);
+        let mut z = self.0;
         z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
         z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
-        z ^= z >> 31;
-        // `±m·2^e`, `m` in `[1, 2)`, `e` in `[-2, 2]`.
+        z ^ (z >> 31)
+    }
+
+    /// Uniform in `[0, 1)`.
+    fn unit(&mut self) -> f64 {
+        (self.bits() >> 11) as f64 / (1u64 << 53) as f64
+    }
+
+    /// `±m·2^e`, `m` in `[1, 2)`, `e` in `[-2, 2]`.
+    fn wide(&mut self) -> f64 {
+        let z = self.bits();
         let m = 1.0 + (z >> 11) as f64 / (1u64 << 53) as f64;
         let x = libm::ldexp(m, (z % 5) as i32 - 2);
         if z & 1 == 0 {
@@ -53,10 +63,10 @@ fn draws(seed: u64) -> impl FnMut() -> f64 {
 }
 
 fn batch(regime: &str) -> (Vec<f64>, Vec<f64>) {
-    let mut draw = draws(9);
+    let mut draw = Draw(9);
     (0..BATCH)
         .map(|_| {
-            let (y, x) = (draw(), draw());
+            let (y, x) = (draw.wide(), draw.wide());
             match regime {
                 "octant" => (y.abs().min(x.abs()), y.abs().max(x.abs())),
                 "axis" => (0.0, x.abs()),
@@ -127,17 +137,25 @@ fn atan2(c: &mut Criterion) {
     g.finish();
 }
 
-/// `BATCH` rotations at `θ` in `[lo, hi)` about random axes.
+/// `BATCH` rotations at `θ` uniform in `[lo, hi)`, `0 < lo < hi < π`, about random axes. `Log`
+/// gives each `θ` back, which the setup checks, so a row reads the arm its range names.
 fn rotations<S: Real>(lo: f64, hi: f64) -> Vec<SO3<S>> {
-    let mut draw = draws(3);
+    let mut draw = Draw(3);
     (0..BATCH)
         .map(|_| {
-            let axis = [draw(), draw(), draw()];
+            let axis = [draw.wide(), draw.wide(), draw.wide()];
             let norm = (axis[0] * axis[0] + axis[1] * axis[1] + axis[2] * axis[2]).sqrt();
-            let theta = lo + (hi - lo) * (draw().abs() - 0.25) / 3.75;
-            SO3::exp(&SO3Tangent {
+            let theta = lo + (hi - lo) * draw.unit();
+            let x = SO3::exp(&SO3Tangent {
                 phi: Vector(axis.map(|a| S::round_from_f64(a / norm * theta))),
-            })
+            });
+            let back = x.log().phi.0.map(Real::value_f64);
+            let back = (back[0] * back[0] + back[1] * back[1] + back[2] * back[2]).sqrt();
+            assert!(
+                lo <= theta && theta < hi && (back - theta).abs() < 1e-9,
+                "θ {theta} drawn for [{lo}, {hi}), {back} read back"
+            );
+            x
         })
         .collect()
 }
