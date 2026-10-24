@@ -22,4 +22,19 @@ jobs:
       - uses: taiki-e/install-action@v2
         with:
           tool: just
-      - run: just corpus-check fresh
+      - run: just corpus-verify
+      - id: key
+        run: echo "key=$(just corpus-key)" >> "$GITHUB_OUTPUT"
+      - run: just corpus-regen fresh
+      - run: just corpus-test
+      # On the default branch, where pull requests can read them: the proof and the memo of a run
+      # of every task, under an interpreter a runner update may have moved.
+      - run: echo "${{ steps.key.outputs.key }}" > .corpus-verified
+      - uses: actions/cache/save@v6
+        with:
+          path: .corpus-verified
+          key: corpus-verified-${{ steps.key.outputs.key }}
+      - uses: actions/cache/save@v6
+        with:
+          path: conformance/generate/.memo
+          key: corpus-memo-${{ runner.os }}-${{ github.run_id }}

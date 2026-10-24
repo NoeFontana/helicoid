@@ -6,13 +6,14 @@ Its output is a function of four things, and the memo replays it only while all 
 - the code it ran: every file of `gen` in which a function started during the task
   (`sys.monitoring`, one event per code object per task);
 - the module-level values that code read: the static import closure of those files within `gen`,
-  without `registry` or `cli`, whose only effect on a task is the spec it names (unless their own
-  code ran);
+  without `NOT_IMPORTED` (unless their own code ran);
 - the spec or builder that names it: `describe` of it, by qualified name, code, closure values and
   fields;
 - the interpreter: Python's full version, mpmath's, the platform and HELICOID_CORPUS_DEEP.
 
-A hit is re-run with probability `audit`, and a byte that differs fails the run: the memo is an
+A hit is re-run with probability `audit`. A byte that differs fails the run and marks the whole
+memo stale (`STALE`): a dependency the rules missed for one task may have been missed for others,
+so nothing replays until a fresh run (`--fresh`) has rewritten every entry. The memo is an
 optimisation of `corpus-check`, never a substitute for the fresh run that `main` and the nightly
 job make.
 """
@@ -34,10 +35,14 @@ from typing import Any
 import mpmath
 
 GEN = Path(__file__).resolve().parent
-# Their effect on a task is the spec `describe` reads: an import of them is not a dependency.
-NOT_IMPORTED = frozenset({"registry.py", "cli.py", "__main__.py"})
-# Bumped when an entry's layout or meaning changes.
+# An import of these is not a dependency. The registry's and the command line's effect on a task is
+# the spec `describe` reads; this module's runs around a task, never in it, and reaches the entries
+# through `FORMAT`.
+NOT_IMPORTED = frozenset({"registry.py", "cli.py", "__main__.py", "memo.py"})
+# Bumped when an entry's layout or what a key covers changes: every entry is then stale.
 FORMAT = 1
+# In a memo's directory: an audit failed, and no entry replays until a fresh run.
+STALE = "STALE"
 
 
 class MemoError(Exception):
@@ -123,6 +128,13 @@ def _started(code: types.CodeType, _offset: int) -> Any:
     return sys.monitoring.DISABLE
 
 
+@functools.cache
+def _canonical_path(name: str) -> Path:
+    """A code object's file, resolved as `GEN` is: a module reached through a symlink or a relative
+    entry of `sys.path` is still one of `gen`'s."""
+    return Path(name).resolve()
+
+
 def _watch() -> None:
     """Start recording which files' functions run; once per process, then re-armed per task."""
     global _tool
@@ -160,7 +172,7 @@ def _imports(path: Path) -> frozenset[Path]:
 def dependencies(ran: set[str]) -> list[Path]:
     """The files of `gen` a task depends on: those it ran, `__init__`, and their import closure
     without `NOT_IMPORTED`."""
-    todo = [Path(f) for f in ran if Path(f).parent == GEN] + [GEN / "__init__.py"]
+    todo = [p for p in map(_canonical_path, ran) if p.parent == GEN] + [GEN / "__init__.py"]
     found: set[Path] = set()
     while todo:
         path = todo.pop()
@@ -196,6 +208,11 @@ def run(memo: Memo | None, task: tuple[str, str], spec: Any, compute: Callable[[
     returns a JSON value; `spec` is what names the task (see `describe`)."""
     if memo is None:
         return compute(), "fresh"
+    if memo.replay and (Path(memo.root) / STALE).exists():
+        raise MemoError(
+            f"memo: {memo.root} is marked stale by a failed audit; "
+            "run every task once with `just corpus fresh` (docs/decisions/0108)"
+        )
     try:
         key = hashlib.sha256(
             f"{environment()}\0{task}\0{describe(spec)}".encode()
@@ -212,23 +229,41 @@ def run(memo: Memo | None, task: tuple[str, str], spec: Any, compute: Callable[[
         if all((GEN / rel).is_file() and _hash(GEN / rel) == h for rel, h in deps.items()):
             if not _audited(memo, key):
                 return entry["value"], "hit"
-            value = _fresh(memo, task, key, path, compute)
+            value, deps = _watched(compute)
             if json.dumps(value, sort_keys=True) != json.dumps(entry["value"], sort_keys=True):
+                # The entry stays as the evidence, and the memo is closed until a fresh run.
+                (Path(memo.root) / STALE).write_text(f"{task}\n")
                 raise MemoError(
-                    f"memo: {task} replayed a value its fresh run does not give; "
-                    "rerun with --fresh and report it (docs/decisions/0108)"
+                    f"memo: {task} replayed a value its fresh run does not give, so a dependency "
+                    "went unseen; the memo is marked stale. Report it, then run every task with "
+                    "`just corpus fresh` (docs/decisions/0108)"
                 )
             return value, "audited"
-    return _fresh(memo, task, key, path, compute), "fresh"
+    value, deps = _watched(compute)
+    if deps:
+        _store(path, task, key, deps, value)
+    return value, "fresh"
 
 
-def _fresh(memo: Memo, task: tuple[str, str], key: str, path: Path, compute: Callable[[], Any]) -> Any:
+def _watched(compute: Callable[[], Any]) -> tuple[Any, dict[str, str]]:
+    """`compute()`, and the hashes of the files of `gen` it depends on; none when no function of
+    `gen` started, which a task that ran its own code cannot show, so such a task is not stored."""
     _watch()
     value = compute()
     ran = set(_ran)
-    deps = {p.relative_to(GEN).as_posix(): _hash(p) for p in dependencies(ran)}
+    if not any(_canonical_path(f).parent == GEN for f in ran):
+        return value, {}
+    return value, {p.relative_to(GEN).as_posix(): _hash(p) for p in dependencies(ran)}
+
+
+def _store(path: Path, task: tuple[str, str], key: str, deps: dict[str, str], value: Any) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(f".{os.getpid()}.tmp")
     tmp.write_text(json.dumps({"task": list(task), "key": key, "deps": deps, "value": value}))
     tmp.replace(path)
-    return value
+
+
+def begin(memo: Memo | None) -> None:
+    """Before a run: a fresh one clears a stale mark, since it rewrites every entry it reaches."""
+    if memo is not None and not memo.replay:
+        (Path(memo.root) / STALE).unlink(missing_ok=True)

@@ -303,7 +303,7 @@ atan-fit-check:
 # whose code, imports, spec and interpreter are unchanged replays from the git-ignored memo
 # conformance/generate/.memo (`0108`); `just corpus fresh` runs every task and refills it.
 corpus mode="memo":
-    cd conformance/generate && uv run --frozen python -m gen all --out ../corpus --memo .memo {{ if mode == "fresh" { "--fresh" } else { "" } }}
+    cd conformance/generate && uv run --frozen python -m gen all --out ../corpus --memo .memo {{ if mode == "fresh" { "--fresh" } else if mode == "memo" { "" } else { error("mode is `memo` or `fresh`, not `" + mode + "`") } }}
 
 # The generator's unit tests, one test class per core (`0108`).
 corpus-test:
@@ -318,19 +318,20 @@ corpus-verify:
 corpus-key:
     @cd conformance/generate && uv run --frozen --quiet python -m gen key --corpus ../corpus
 
-# `corpus-verify`, then regenerate into a temporary directory and compare with the committed corpus
-# byte for byte: any differing, extra or missing file fails. Unchanged tasks replay from the memo
-# and 2% of the replays run again and must agree; `just corpus-regen fresh` runs every task.
-corpus-regen mode="memo": corpus-verify
+# Regenerate into a temporary directory and compare with the committed corpus byte for byte: any
+# differing, extra or missing file fails. Unchanged tasks replay from the memo and 2% of the
+# replays run again and must agree; `just corpus-regen fresh` runs every task.
+corpus-regen mode="memo":
     #!/usr/bin/env bash
     set -euo pipefail
     tmp=$(mktemp -d)
     trap 'rm -rf "$tmp"' EXIT
-    (cd conformance/generate && uv run --frozen python -m gen all --out "$tmp" --memo .memo {{ if mode == "fresh" { "--fresh" } else { "" } }})
+    (cd conformance/generate && uv run --frozen python -m gen all --out "$tmp" --memo .memo {{ if mode == "fresh" { "--fresh" } else if mode == "memo" { "" } else { error("mode is `memo` or `fresh`, not `" + mode + "`") } }})
     diff -rq "$tmp" conformance/corpus
 
-# `corpus-regen`, then the generator's own tests; `just corpus-check fresh` runs every task.
-corpus-check mode="memo": (corpus-regen mode) corpus-test
+# `corpus-verify`, `corpus-regen`, then the generator's own tests; `just corpus-check fresh` runs
+# every task.
+corpus-check mode="memo": corpus-verify (corpus-regen mode) corpus-test
 
 # Everything `cargo publish` checks, without publishing (`0049` step 2). The tree must be clean:
 # no `--allow-dirty`, because a release is cut from committed state.
