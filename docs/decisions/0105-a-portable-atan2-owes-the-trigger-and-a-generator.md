@@ -2,7 +2,7 @@
 
 **Status:** ready
 **Owner:** @NoeFontana
-**Implementation:** `helicoid_linalg::math::{atan2, atan2f}` behind `Real::atan2`; `math/generated.rs` from `just atan-fit`; `helicoid:libm-atan2` the planted twin.
+**Implementation:** #205: `helicoid_linalg::math::{atan2, atan2f}` behind `Real::atan2`; `math/generated.rs` from `just atan-fit`; `helicoid:libm-atan2` the planted twin.
 
 ## Context
 
