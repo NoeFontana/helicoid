@@ -214,13 +214,24 @@ fn rescale(n: f64, d: f64) -> (f64, f64) {
 /// `num = n − c·d` exactly, `den + den_lo = d + c·n` exactly.
 pub(crate) fn centre(n: f64, d: f64) -> (usize, f64, f64, f64) {
     let w = 1.0 / CENTRES as f64;
-    // `j` counts the midpoints passed; they round, which moves `|v|`'s bound by an ulp.
-    let mut j = 0;
-    for i in 0..CENTRES {
+    // `c` sums, as a tree, `w` for each midpoint passed; the midpoints round, which moves `|v|`'s
+    // bound by an ulp. Counting them as an integer `j` puts a popcount and an integer-to-float
+    // conversion ahead of the division: 39.5 against 27.3 ns at `f64` (`0105`, draft).
+    let mut parts = [0.0; CENTRES];
+    for (i, part) in parts.iter_mut().enumerate() {
         let mid = (2 * i + 1) as f64 * (0.5 * w);
-        j += usize::from(d * mid < n);
+        *part = if d * mid < n { w } else { 0.0 };
     }
-    let c = j as f64 * w;
+    let mut len = CENTRES;
+    while len > 1 {
+        len /= 2;
+        for i in 0..len {
+            parts[i] = parts[2 * i] + parts[2 * i + 1];
+        }
+    }
+    let c = parts[0];
+    // Exact: `c = j/C`. Off the critical path; only the tables read it.
+    let j = ((c * CENTRES as f64) as usize).min(CENTRES);
     // `c` has at most `log₂ C + 1` significant bits: clearing that many low bits of `d` and `n`
     // leaves halves whose products by `c` are exact.
     let keep = !(2 * CENTRES as u64 - 1);
