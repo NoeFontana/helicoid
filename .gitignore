@@ -20,6 +20,8 @@
 /runners/*/target/
 
 # Python reference generator (`uv`).
+# Its memo of corpus tasks (`0108`): a cache, rebuilt by any fresh run.
+/conformance/generate/.memo/
 __pycache__/
 *.py[cod]
 .venv/

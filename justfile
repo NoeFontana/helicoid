@@ -299,23 +299,38 @@ atan-fit-check:
     (cd conformance/generate && uv run --frozen python -m fit atan2 {{atan_fit_tuning}} --out "$tmp" > /dev/null)
     diff -u crates/helicoid-linalg/src/math/generated.rs "$tmp"
 
-# Regenerate the mpmath corpus into conformance/corpus (`docs/PHASE1.md` §4; needs `uv`).
-corpus:
-    cd conformance/generate && uv run --frozen python -m gen all --out ../corpus
+# Regenerate the mpmath corpus into conformance/corpus (`docs/PHASE1.md` §4; needs `uv`). A task
+# whose code, imports, spec and interpreter are unchanged replays from the git-ignored memo
+# conformance/generate/.memo (`0108`); `just corpus fresh` runs every task and refills it.
+corpus mode="memo":
+    cd conformance/generate && uv run --frozen python -m gen all --out ../corpus --memo .memo {{ if mode == "fresh" { "--fresh" } else { "" } }}
 
-# The generator's unit tests (stdlib unittest).
+# The generator's unit tests, one test class per core (`0108`).
 corpus-test:
-    cd conformance/generate && uv run --frozen python -m unittest discover -s tests
+    cd conformance/generate && uv run --frozen python -m tests.parallel
 
-# Regenerate into a temporary directory and compare with the committed corpus byte for byte:
-# any differing, extra or missing file fails. Then the generator's own tests.
-corpus-check: && corpus-test
+# Seconds: the committed manifest names this generator, and every file is there with its hash.
+# Only regeneration proves the files' contents (`0108`).
+corpus-verify:
+    cd conformance/generate && uv run --frozen python -m gen verify --corpus ../corpus
+
+# One hash of what a full check of the committed corpus by this generator proves; CI keys on it.
+corpus-key:
+    @cd conformance/generate && uv run --frozen --quiet python -m gen key --corpus ../corpus
+
+# `corpus-verify`, then regenerate into a temporary directory and compare with the committed corpus
+# byte for byte: any differing, extra or missing file fails. Unchanged tasks replay from the memo
+# and 2% of the replays run again and must agree; `just corpus-regen fresh` runs every task.
+corpus-regen mode="memo": corpus-verify
     #!/usr/bin/env bash
     set -euo pipefail
     tmp=$(mktemp -d)
     trap 'rm -rf "$tmp"' EXIT
-    (cd conformance/generate && uv run --frozen python -m gen all --out "$tmp")
+    (cd conformance/generate && uv run --frozen python -m gen all --out "$tmp" --memo .memo {{ if mode == "fresh" { "--fresh" } else { "" } }})
     diff -rq "$tmp" conformance/corpus
+
+# `corpus-regen`, then the generator's own tests; `just corpus-check fresh` runs every task.
+corpus-check mode="memo": (corpus-regen mode) corpus-test
 
 # Everything `cargo publish` checks, without publishing (`0049` step 2). The tree must be clean:
 # no `--allow-dirty`, because a release is cut from committed state.

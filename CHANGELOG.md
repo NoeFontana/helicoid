@@ -15,6 +15,12 @@ Not shipped in the crates.
   binary32 fold, the diagonal, the axes, the window's low edge and both ends of the derivative's
   domain, 896 records. `math::atan2`'s value reads at most 0.939 `u` on them at `f64` (`libm`
   1.579) and 0.981 at `f32` (1.679).
+- **`corpus-check` proves each thing once** (`0108`): `just corpus-verify` checks the manifest
+  and every file's hash in seconds; CI skips the regeneration on a pull request whose generator,
+  interpreter and manifest a full check already passed, and otherwise replays unchanged tasks from
+  a memo keyed on the code each ran, 2% of them run again. `main` and a nightly job run every task.
+  The generator's tests run a test class per core in their own job. Locally `just corpus-check`
+  takes about a minute with the memo warm, against 17.
 
 ## [0.0.8] - 2026-10-24
 

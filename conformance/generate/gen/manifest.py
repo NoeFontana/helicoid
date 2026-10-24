@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+import platform
 import sys
 from pathlib import Path
 from typing import NamedTuple
@@ -61,3 +62,37 @@ def render(files: dict[str, Built], root: Path = ROOT) -> bytes:
         "seed": f"0x{SEED:016x}",
     }
     return (json.dumps(manifest, indent=2, sort_keys=True) + "\n").encode()
+
+
+def verify(corpus: Path, root: Path = ROOT) -> list[str]:
+    """What keeps `corpus` from being the output of this generator, short of running it: its
+    manifest must name this generator, interpreter minor version, mpmath, precisions and seed,
+    and list exactly the `*.jsonl` files present, each with its hash (docs/decisions/0108).
+    Empty when nothing does; only regeneration proves the files' contents."""
+    try:
+        committed = json.loads((corpus / "MANIFEST.json").read_text())
+    except (OSError, ValueError) as e:
+        return [f"no readable MANIFEST.json in {corpus}: {e}"]
+    problems = []
+    here = json.loads(render({}, root))
+    for field in sorted(set(here) | set(committed)):
+        if field != "files" and committed.get(field) != here.get(field):
+            problems.append(f"manifest `{field}` is {committed.get(field)!r}, here {here.get(field)!r}")
+    listed = committed.get("files", {})
+    present = {p.name for p in corpus.glob("*.jsonl")}
+    problems += [f"{name} is listed and missing" for name in sorted(set(listed) - present)]
+    problems += [f"{name} is present and not listed" for name in sorted(present - set(listed))]
+    for name in sorted(present & set(listed)):
+        if hashlib.sha256((corpus / name).read_bytes()).hexdigest() != listed[name]["sha256"]:
+            problems.append(f"{name} does not have its listed sha256")
+    return problems
+
+
+def check_key(corpus: Path, root: Path = ROOT) -> str:
+    """One hash of everything a full `corpus-check` of `corpus` depends on: the generator, the
+    exact interpreter and the manifest, which hashes every file (docs/decisions/0108)."""
+    h = hashlib.sha256()
+    for part in (generator_identity(root), sys.version, platform.machine()):
+        h.update(part.encode() + b"\0")
+    h.update((corpus / "MANIFEST.json").read_bytes())
+    return h.hexdigest()
