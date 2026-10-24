@@ -1,5 +1,6 @@
 """The `real_*` ids: their strata's ranges and signs, and the cross-checks' reach."""
 
+import math
 import unittest
 
 from mpmath import mp, mpf
@@ -76,11 +77,72 @@ class StrataTest(unittest.TestCase):
                 top, low = (mpf(2) ** 128, 2.0**-126) if s.f32 else (mpf(2) ** 1024, 2.0**-1022)
                 if name == "real_exp" and s.name.startswith("x:subnormal"):
                     continue  # its outputs are subnormal by design (0068), held below
+                # `yx:axis` (0105, draft) has exact zeros by design, which the metric does not
+                # divide by; held below
+                zero_ok = s.name.startswith("yx:axis")
                 for r in s.records()[:8]:
                     if s.f32:
                         self.assertTrue(all(is_binary32(x) for x in r.values()), (name, s.name))
                     for v in spec.evaluate(r).values():
+                        if zero_ok and v == 0:
+                            continue
                         self.assertTrue(low <= abs(v) < top, (name, s.name, r, v))
+
+    def test_the_0105_atan2_strata_hold_what_they_are_named_for(self):
+        strata = by_name(real.ATAN2_STRATA)
+        added = ["centre-mid", "fold", "diagonal", "axis", "window-lo", "domain-low"]
+        added += ["domain-high", "subnormal"]
+        names = list(strata)
+        # after the earlier strata of their precision
+        self.assertEqual(names[7:15], [f"yx:{n}" for n in added])
+        self.assertEqual(
+            names[22:], [f"yx:{n}@f32" for n in added if n not in ("centre-mid", "window-lo")]
+        )
+        for name, s in strata.items():
+            f32 = s.f32
+            lo, hi = (mpf(2) ** -63, mpf(2) ** 63) if f32 else (mpf(2) ** -511, mpf(2) ** 511)
+            records = s.records()
+            self.assertEqual(len(records), 64, name)
+            for r in records:
+                y, x = mpf(r["y"]), mpf(r["x"])
+                # the derivative's domain (docs/NUMERICS.md section 12): the larger argument
+                self.assertTrue(lo <= max(abs(x), abs(y)) < hi, (name, r))
+                self.assertFalse(r["y"] == 0 and math.copysign(1, r["y"]) < 0, (name, r))
+                if f32:
+                    self.assertTrue(is_binary32(r["y"]) and is_binary32(r["x"]), (name, r))
+            nd = [(min(abs(r["y"]), abs(r["x"])), max(abs(r["y"]), abs(r["x"]))) for r in records]
+            ulp = 2.0**-23 if f32 else 2.0**-52
+            base = name.split("@")[0]
+            if base == "yx:centre-mid":
+                mids = [d * (2 * ((i // 8) % 8) + 1) / 16 for i, (_, d) in enumerate(nd)]
+                for (n, d), mid in zip(nd, mids, strict=True):
+                    self.assertLessEqual(abs(n - mid), 3 * ulp * mid, (n, d))
+                self.assertTrue(any(n == mid for (n, _), mid in zip(nd, mids, strict=True)))
+            if base == "yx:fold":
+                self.assertTrue(all(abs(n - d / 2) <= 4 * ulp * d / 2 for n, d in nd), name)
+                self.assertTrue({n < d / 2 for n, d in nd} == {True, False}, name)
+            if base == "yx:diagonal":
+                self.assertTrue(all(d - 4 * ulp * d <= n <= d for n, d in nd), name)
+                self.assertTrue(any(n == d for n, d in nd), name)
+            if base[3:] not in added:
+                continue
+            if base != "yx:axis":
+                for i, r in enumerate(records):
+                    y, x = abs(r["y"]), abs(r["x"])
+                    self.assertTrue(y >= x if (i // 4) % 2 else y <= x, (name, i, r))
+                signs = [(r["x"] > 0, r["y"] > 0) for r in records[:4]]
+                self.assertEqual(signs, [(True, True), (False, True), (False, False), (True, False)])
+            else:
+                first = [(r["y"], math.copysign(1, r["x"])) for r in records[:4]]
+                self.assertEqual([y for y, _ in first[:2]], [0.0, 0.0])
+                self.assertEqual([s for _, s in first], [1.0, -1.0, 1.0, -1.0])
+                self.assertEqual([r["x"] for r in records[2:4]], [0.0, 0.0])
+            if base == "yx:window-lo":
+                self.assertTrue(all(abs(d / 2.0**-460 - 1) <= 4 * ulp for n, d in nd), name)
+                self.assertTrue({d < 2.0**-460 for n, d in nd} == {True, False}, name)
+            if base == "yx:subnormal":
+                tiny = 2.0**-126 if f32 else 2.0**-1022
+                self.assertTrue(all(0 < n < tiny for n, d in nd), name)
 
 
     def test_the_exp_strata_hold_what_they_are_named_for(self):
@@ -171,6 +233,17 @@ class CrossCheckTest(unittest.TestCase):
                 with self.assertRaises(check_real.CrossCheckError, msg=(name, key)):
                     spec.check(inputs, {**good, key: good[key] * (1 + mpf(10) ** -95)})
                 spec.check(inputs, {**good, key: good[key] * (1 + mpf(10) ** -105)})
+
+    def test_the_atan2_cross_check_holds_on_the_axes(self):
+        """0105 (draft): a zero argument and a zero derivative, at each of `yx:axis`'s four."""
+        spec = FUNCTIONS["real_atan2"]
+        for inputs in ({"y": 0.0, "x": 3.0}, {"y": 0.0, "x": -3.0}, {"y": -3.0, "x": -0.0}):
+            good = spec.evaluate(inputs)
+            spec.check(inputs, good)
+            for key in good:
+                bad = good[key] * (1 + mpf(10) ** -95) or mpf(10) ** -95
+                with self.assertRaises(check_real.CrossCheckError, msg=(inputs, key)):
+                    spec.check(inputs, {**good, key: bad})
 
     def test_mp_diff_holds_the_derivative_to_60_digits(self):
         d = real.sin_cos({"x": 1e22})["d_sin"]

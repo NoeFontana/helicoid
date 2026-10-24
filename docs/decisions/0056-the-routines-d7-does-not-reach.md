@@ -113,6 +113,12 @@ record.
 | | `x:tiny` | `±` log-uniform in `[1e-300, 1e-8)` (`[1e-30, 1e-4)`) |
 | `real_atan2` | `yx:generic` | Angle uniform, radius log-uniform in `[1e-3, 1e3]` |
 | | `yx:ratio-1e-k`, `yx:ratio-1e+k`, k ∈ {8, 100, 300} ({4, 15, 30}) | `‖y/x‖ = 10^∓k` in each quadrant |
+| | (added by `0105`, draft, after the earlier strata of their precision) | `n = min`, `d = max` of `‖x‖, ‖y‖`; each quadrant, and `‖y‖ > ‖x‖` in every other run of four |
+| | `yx:centre-mid` (binary64 only) | `n/d = (2j + 1)/16` exactly, then `n` moved by up to 3 ulps, `j = 0…7`: the midpoints between the binary64 kernel's centres |
+| | `yx:fold`, `yx:diagonal` | `n = d/2` moved by up to 4 ulps (the binary32 kernel's fold); `n = d` moved down by up to 4 ulps (`kπ/4`) |
+| | `yx:axis` | `(y, x) = (+0, ±d)`, `(±d, ±0)`; never `y = −0`, which the reference cannot tell from `+0` |
+| | `yx:window-lo` (binary64 only) | `d = 2^-460` moved by up to 4 ulps, `n/d` uniform in `[1/16, 1]` |
+| | `yx:domain-low`, `yx:domain-high`, `yx:subnormal` | `d` log-uniform in `[2^-511, 2^-460)`, `[2^460, 2^511)` (`[2^-63, 2^-50)`, `[2^50, 2^63)`), `n/d` uniform in `[1/16, 1]`; a subnormal `n`, `[1e-310, 1e-309)` (`[1e-40, 1e-39)`), over the low `d`. Every field is scored, so nothing is drawn past `Dual::atan2`'s derivative domain (`NUMERICS.md` §12) |
 | `real_div` | `nd:generic` | `n`, `d` log-uniform in `[1e-3, 1e3]`, signs alternating |
 | | `nd:wide` | `n`, `d` log-uniform in `[1e-100, 1e100]` (`[1e-12, 1e12]`), so `n/d²` stays in range |
 
