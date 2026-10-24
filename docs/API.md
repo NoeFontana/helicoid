@@ -75,6 +75,7 @@ constructors normalize.
 | `Precision` | enum | `F32`, `F64`; selects generated constants. |
 | `Dual<S, const N: usize>` | struct | `{ v: S, d: [S; N] }`; `variable(v, i)`, `constant(v)`; nests. |
 | `Vector<S, N>`, `Matrix<S, R, C>`, `Point<S, N>` | structs | `repr(C)`; `Matrix` column-major `[[S; R]; C]`; aliases `Vec2`, `Vec3`, `Mat2`, `Mat3`, `Point2`, `Point3`. |
+| `math::atan2`, `math::atan2f` | fns | `libm`'s names and argument order; what `Real::atan2` computes at `f64` and `f32`. Within 0.504 ulp at `f64` and correctly rounded at `f32` on every draw read, IEEE 754's limits at zeros and infinities, the same bits on every target ([`0105`](./decisions/0105-a-portable-atan2-owes-the-trigger-and-a-generator.md)). |
 | `hat`, `vee` | fns | `Vec3 ↔ Mat3` skew. |
 | `Mat2::inverse_adj`, `Mat3::inverse_adj` | fns | `(adjugate/det, det)`; the caller decides what `det` means. `Mat2`'s adjugate is exact, so `det` is its only rounding ([`0061`](./decisions/0061-mat2-keeps-its-adjugate.md)). |
 | `chol<S, N>`, `solve_lower`, `solve_upper`, `chol_solve` | fns | Fixed-size Cholesky; `(L, S::Mask)`. Triangular solves reading one triangle each; `chol_solve(&L, b)` solves `A x = b` from the factor without a transpose ([`0019`](./decisions/0019-a-cholesky-solve-without-the-transpose.md)); `NUMERICS.md` §15. |
@@ -132,7 +133,7 @@ changes outputs without changing the API**: it ships in a minor release with a c
 naming the functions, strata and the old/new max error.
 
 **Bits.** Outputs are bit-identical across targets for a given `helicoid` and a given resolved
-`libm` (D16). From 1.0, a `helicoid` change that moves any output bit, whether a kernel, a switch
+`libm` (D16); `atan2`'s are fixed by `helicoid` alone (`0105`). From 1.0, a `helicoid` change that moves any output bit, whether a kernel, a switch
 point or a formula, ships in a minor release, never a patch, and the envelope's bars hold. A `libm`
 patch release that a consumer's lockfile resolves can move bits with no `helicoid` release. An
 application that stores or replays outputs pins `libm`, and `helicoid` if it needs more, in its own

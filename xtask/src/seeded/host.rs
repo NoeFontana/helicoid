@@ -403,7 +403,7 @@ mod tests {
             let (s, c) = h.sin_cos();
             let (ls, lc) = libm::sincos(x);
             sin_cos += usize::from(s.0 != ls || c.0 != lc);
-            atan2 += usize::from(h.atan2(Host(y)).0 != libm::atan2(x, y));
+            atan2 += usize::from(h.atan2(Host(y)).0 != helicoid_linalg::math::atan2(x, y));
             let wide = (x - 1.6) * libm::exp2(libm::round(40.0 * y - 64.0));
             cbrt += usize::from(Host(wide).cbrt().0 != libm::cbrt(wide));
         }

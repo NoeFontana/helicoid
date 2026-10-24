@@ -38,8 +38,8 @@ helicoid = { workspace = true, features = ["__sweep"] }
 [dev-dependencies]
 criterion.workspace = true
 
-# `harness = false`: criterion supplies its own `main`. The portable `atan2` candidate (`0105`,
-# draft) against `libm`, and `so3_log` end to end at each.
+# `harness = false`: criterion supplies its own `main`. `math::atan2` (`0105`) against `libm`'s,
+# and `so3_log` end to end at each.
 [[bench]]
 name = "atan2"
 harness = false

@@ -373,7 +373,7 @@ fn f64_routes_through_libm_bit_for_bit() {
         for y in [prev, 1.0, -1.0, 0.0] {
             assert_eq!(
                 bits(atan2(x, y)),
-                bits(libm::atan2(x, y)),
+                bits(crate::math::atan2(x, y)),
                 "atan2({x:e}, {y:e})"
             );
             assert_eq!(bits(copysign(x, y)), bits(libm::copysign(x, y)));
@@ -402,7 +402,7 @@ fn f32_routes_through_libm_bit_for_bit() {
         for y in [prev, 1.0, -1.0, 0.0] {
             assert_eq!(
                 atan2(x, y).to_bits(),
-                libm::atan2f(x, y).to_bits(),
+                crate::math::atan2f(x, y).to_bits(),
                 "atan2({x:e}, {y:e})"
             );
             assert_eq!(copysign(x, y).to_bits(), libm::copysignf(x, y).to_bits());

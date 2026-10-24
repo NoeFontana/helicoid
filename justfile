@@ -281,23 +281,23 @@ thresholds:
 thresholds-check:
     cargo xtask thresholds --check
 
-# The portable `atan2` candidate's tuning (`0105`, draft): binary64's centres and terms of P,
-# binary32's terms of P. The kernels read the shape back from the fit at compile time.
+# `math::atan2`'s tuning (`0105`): binary64's centres and terms of P, binary32's terms of P. The
+# kernels take the shape from the generated arrays, so another tuning is a build error until they
+# are rewritten for it.
 atan_fit_tuning := "--f64 8:5 --f32 8"
 
-# The portable `atan2` candidate's polynomials and tables (`0105`, draft) into
-# conformance/fits/atan2.json, read by `helicoid:portable-atan2`.
+# `math::atan2`'s polynomials and tables (`0105`) into crates/helicoid-linalg/src/math/generated.rs.
 atan-fit:
-    cd conformance/generate && uv run --frozen python -m fit atan2 {{atan_fit_tuning}} --out ../fits/atan2.json
+    cd conformance/generate && uv run --frozen python -m fit atan2 {{atan_fit_tuning}} --out ../../crates/helicoid-linalg/src/math/generated.rs
 
-# Check conformance/fits/atan2.json is what `atan-fit` writes.
+# Check crates/helicoid-linalg/src/math/generated.rs is what `atan-fit` writes.
 atan-fit-check:
     #!/usr/bin/env bash
     set -euo pipefail
     tmp=$(mktemp)
     trap 'rm -f "$tmp"' EXIT
     (cd conformance/generate && uv run --frozen python -m fit atan2 {{atan_fit_tuning}} --out "$tmp" > /dev/null)
-    diff -u conformance/fits/atan2.json "$tmp"
+    diff -u crates/helicoid-linalg/src/math/generated.rs "$tmp"
 
 # Regenerate the mpmath corpus into conformance/corpus (`docs/PHASE1.md` §4; needs `uv`).
 corpus:

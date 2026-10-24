@@ -33,12 +33,12 @@ use crate::seeded::{exact_input, input, Coeff, Host, Input, Swept};
 
 mod composed_inv_act;
 mod homogeneous_r;
-mod portable_atan2;
+mod libm_atan2;
 mod r_times_u;
 
 pub(crate) use composed_inv_act::registered as composed_inv_act_twin;
 pub(crate) use homogeneous_r::registered as homogeneous_r_twin;
-pub(crate) use portable_atan2::registered as portable_atan2_twin;
+pub(crate) use libm_atan2::registered as libm_atan2_twin;
 pub(crate) use r_times_u::registered as r_times_u_twin;
 
 /// The group of `id` at `x`, as the shipped kernel evaluates it.

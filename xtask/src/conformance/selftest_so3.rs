@@ -386,7 +386,7 @@ mod tests {
         // The correct kernel's max over strata, in u, per id (bit-deterministic, D16).
         for line in [
             "so3_exp 2.743e0 (theta:pi-1e-9)",
-            "so3_log 2.901e0 (theta:dense)",
+            "so3_log 2.175e0 (theta:1e0)",
             "seeded:log-acos -> theta:1e-k, pi-1e-k >= 1e7 u -> detected ok theta:1e-k max 9.0e15 u, \
              every stratum from k = 4 (gate 4); theta:pi-1e-k max 8.5e7 u, from k = 7 (gate 7)",
             "seeded:log-no-flip -> negated half of so3_log fails -> detected ok 27 of 29 strata fail, \
@@ -478,12 +478,13 @@ mod tests {
     #[test]
     fn a_bar_below_the_measured_maximum_fails_the_correct_kernel_on_each_id() -> Result<(), String>
     {
-        let report = run(cases(), 2.5)?;
-        // Each id's own maximum (2.743, 2.901) is over 2.5, so the bar is held on both.
+        let report = run(cases(), 2.0)?;
+        // Each id's own maximum (2.743, 2.175 since `0105`'s `atan2`) is over 2.0, so the bar is
+        // held on both.
         for id in ["so3_exp", "so3_log"] {
             let over = |f: &String| {
                 f.starts_with(&format!("seeded:correct: {id} "))
-                    && f.contains("over the bar of 2.5 u")
+                    && f.contains("over the bar of 2 u")
             };
             assert!(
                 report.failures.iter().any(over),

@@ -426,7 +426,7 @@ pub(super) mod tests {
             note(libm::expm1(self.0))
         }
         fn atan2(self, x: Self) -> Self {
-            note(libm::atan2(self.0, x.0))
+            note(helicoid_linalg::math::atan2(self.0, x.0))
         }
         fn abs(self) -> Self {
             Lane(libm::fabs(self.0))

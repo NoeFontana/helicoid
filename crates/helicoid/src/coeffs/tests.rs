@@ -944,7 +944,7 @@ impl<const F32: bool, M: Mask + From<bool> + 'static> Real for Lane<F32, M> {
     }
     fn atan2(self, x: Self) -> Self {
         tally(|c| c.atan2 += 1);
-        Self::note(libm::atan2(self.0, x.0))
+        Self::note(helicoid_linalg::math::atan2(self.0, x.0))
     }
     fn abs(self) -> Self {
         Self::new(libm::fabs(self.0))

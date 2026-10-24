@@ -142,7 +142,7 @@ fn lead_ladder<S: Real>(steps: &[f64], start: (S, S, S, S)) -> (S, S, S, S) {
 ///
 /// The literal per precision, not `atan2(+0, -1)`: that spelling is bit-equal at both precisions
 /// (`pi_and_acos_are_within_their_ulps` asserts it against `core::f64::consts::PI` and
-/// `core::f32::consts::PI`) but is a `libm` call for a compile-time constant, and `libm::atan2` is
+/// `core::f32::consts::PI`) but is a kernel call for a compile-time constant, and `math::atan2` is
 /// neither generic nor `#[inline]`, so without workspace LTO it cannot be folded away. `f32`'s
 /// value is widened exactly into `lit`'s `f64`, never the `f64` constant rounded down to `f32`,
 /// which would be a double rounding.

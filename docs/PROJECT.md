@@ -164,7 +164,10 @@ Status per phase: the §0.0 table heading each spec is authoritative.
   `helicoid` version and a given resolved `libm` version, outputs are bit-identical across x86_64,
   aarch64 and wasm32 (NaN sign and payload apart); `just determinism` checks it. Every
   transcendental goes through one private kernel, `helicoid-linalg`'s `Real` impls for `f32` and
-  `f64`, which call the `libm` crate; `cargo xtask lint` keeps every `libm::` call there. No
+  `f64`, which call the `libm` crate; `cargo xtask lint` keeps every `libm::` call there. `atan2`
+  is the exception: `helicoid_linalg::math`'s own portable kernel, basic operations only, so its
+  bits are fixed by the `helicoid` version alone
+  ([`0105`](./decisions/0105-a-portable-atan2-owes-the-trigger-and-a-generator.md)). No
   `mul_add`, no `target-cpu`, no fast-math. This is what makes D8's no-regress bar exact. `libm`'s `arch` feature is on: it routes only exactly rounded
   operations to the target's instruction ([`0018`](./decisions/0018-libm-arch-is-bit-identical-for-exact-operations.md)).
 - **D17 — MSRV never exceeds a consumer's.** Today **1.85** (omnisac; `tf_tree` is 1.87). Raising it is a record

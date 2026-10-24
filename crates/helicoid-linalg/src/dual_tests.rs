@@ -280,7 +280,7 @@ fn dual_matches_mpmath_derivative() {
     }
     for [y, x, dy, dx, ..] in ATAN2 {
         let r = D2::variable(y, 0).atan2(D2::variable(x, 1));
-        assert_eq!(r.v.to_bits(), libm::atan2(y, x).to_bits());
+        assert_eq!(r.v.to_bits(), crate::math::atan2(y, x).to_bits());
         near(r.d[0], dy, 1, format_args!("atan2 d/dy at ({y:e}, {x:e})"));
         near(r.d[1], dx, 1, format_args!("atan2 d/dx at ({y:e}, {x:e})"));
     }
@@ -317,7 +317,7 @@ fn dual_atan2_derivative_is_accurate_to_the_edge_of_its_domain_and_only_there() 
     let at = |y: f64, x: f64| D2::variable(y, 0).atan2(D2::variable(x, 1));
     for [y, x, dy, dx] in ATAN2_EDGE {
         let r = at(y, x);
-        assert_eq!(r.v.to_bits(), libm::atan2(y, x).to_bits());
+        assert_eq!(r.v.to_bits(), crate::math::atan2(y, x).to_bits());
         near(r.d[0], dy, 1, format_args!("atan2 d/dy at ({y:e}, {x:e})"));
         near(r.d[1], dx, 1, format_args!("atan2 d/dx at ({y:e}, {x:e})"));
     }
@@ -331,7 +331,7 @@ fn dual_atan2_derivative_is_accurate_to_the_edge_of_its_domain_and_only_there() 
         (under, (1e-200, 2e-200)),
         (origin, (0.0, 0.0)),
     ] {
-        assert_eq!(r.v.to_bits(), libm::atan2(y, x).to_bits());
+        assert_eq!(r.v.to_bits(), crate::math::atan2(y, x).to_bits());
     }
 }
 
@@ -366,7 +366,7 @@ fn nesting_gives_the_hessian_of_atan2() {
             let ok = (got - want).abs() <= 1e-15 * want.abs();
             assert!(ok, "{what} at ({y:e}, {x:e}): got {got:e}, want {want:e}");
         };
-        assert_eq!(r.v.v.to_bits(), libm::atan2(y, x).to_bits());
+        assert_eq!(r.v.v.to_bits(), crate::math::atan2(y, x).to_bits());
         close(r.v.d[0], dy, "d/dy");
         close(r.d[1].v, dx, "d/dx");
         close(r.d[0].d[0], hyy, "d2/dy2");

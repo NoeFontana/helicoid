@@ -1,6 +1,7 @@
-//! `Mask` for `bool` and `Real` for `f64`/`f32`, every transcendental through `libm` (D16). `abs` and
-//! `copysign` are `core`'s: exact sign-bit operations, the same bits as `libm`'s, but inline where
-//! `libm`'s are calls across the crate boundary (`0055`).
+//! `Mask` for `bool` and `Real` for `f64`/`f32`, every transcendental through `libm` but `atan2`,
+//! which is [`crate::math`]'s portable kernel (D16, `0105`). `abs` and `copysign` are `core`'s:
+//! exact sign-bit operations, the same bits as `libm`'s, but inline where `libm`'s are calls across
+//! the crate boundary (`0055`).
 
 use crate::real::{Mask, Precision, Real};
 
@@ -108,7 +109,7 @@ macro_rules! impl_real {
             }
             #[inline]
             fn atan2(self, x: Self) -> Self {
-                libm::$atan2(self, x)
+                crate::math::$atan2(self, x)
             }
             #[inline]
             fn abs(self) -> Self {

@@ -68,8 +68,8 @@ pub(crate) fn registry() -> Vec<Registered> {
     all.push(crate::shipped::composed_inv_act_twin());
     // `Log`'s exact arm as `r · u`, which `0106` replaces, for `cargo xtask compare`.
     all.push(crate::shipped::r_times_u_twin());
-    // The portable `atan2` candidate of `0105` (draft), the shipped program with `atan2` swapped.
-    all.push(crate::shipped::portable_atan2_twin());
+    // The shipped program with `libm`'s `atan2`, the arrangement `0105` replaced.
+    all.push(crate::shipped::libm_atan2_twin());
     all.extend(crate::seeded::registry());
     all
 }
