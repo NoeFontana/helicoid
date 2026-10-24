@@ -10,8 +10,8 @@
 //! **Both precisions** (`0077`): each subject's rows are its binary64 file's and its `f32` one's,
 //! and a bar pairs rows by `(fn, stratum, precision)`, so an `@f32` stratum is judged against the
 //! oracles that answered it in binary32. An oracle that answers in binary32 owes its `f32` file;
-//! one that does not has none. The one-variable twin has no `f32` kernel, so a binary32 failure no
-//! `libm`-crate oracle wins is unattributed.
+//! one that does not has none. The one-variable twin has no `f32` kernel, so a binary32 failure is
+//! unattributed.
 //!
 //! Where the specs are silent, the smallest reading was taken:
 //!
@@ -32,9 +32,8 @@
 //! - **`--check`** compares the page without the columns the oracle runners fill in
 //!   ([`evidence::candidate_view`]), and the baseline exactly. A runner's numbers depend on its own
 //!   resolved dependencies, and a runner on the host's `std` on the host's system library too, which
-//!   D16 does not cover (`docs/maths/error-analysis.md` EA.13(d)). Not every runner is host-bound:
-//!   `tf_tree_math` routes through the `libm` crate as we do, which is what makes it the control in
-//!   `0032` (draft) and what the domination split reports (`conformance::Backend`).
+//!   D16 does not cover (`docs/maths/error-analysis.md` EA.13(d)); every runner is on it
+//!   (`conformance::Backend`).
 //! - **The CSVs read** are `results_path`'s for the named subjects at each precision, so a stale
 //!   `--fn` run's file or a planted defect's is never merged.
 
@@ -284,20 +283,14 @@ fn summary(
         ),
         false => format!("no baseline: {} scored rows are not judged", v.scored),
     };
-    // The split by backend is the first thing to know about a domination failure: an oracle on the
-    // `libm` crate computes the same transcendentals we do, so a stratum it wins is the program's
-    // (`0036`, draft).
-    let classified = v.dominated_same_backend
-        + v.dominated_libm_bound
-        + v.dominated_unexplained
-        + v.dominated_host_std;
+    // Whether D16 explains a domination failure is the first thing to know about it: the twin
+    // answers on the host's transcendentals, as the winning oracle did (`0037`, draft).
+    let classified = v.dominated_libm_bound + v.dominated_unexplained + v.dominated_host_std;
     let split = match classified {
         0 => String::new(),
         _ => format!(
-            "\n  domination failures: {} the program's (an oracle on the `libm` crate won), \
-             {} D16's (`{}` closes the gap), {} neither (it does not), {} unattributed (no twin \
-             row)",
-            v.dominated_same_backend,
+            "\n  domination failures: {} D16's (`{}` closes the gap), {} neither (it does not), \
+             {} unattributed (no twin row)",
             v.dominated_libm_bound,
             twin.unwrap_or("no twin"),
             v.dominated_unexplained,

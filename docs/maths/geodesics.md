@@ -322,7 +322,7 @@ the screw parameters of GE.10 in GE.11(a), the series $\exp(t\Lambda)$, and the 
 $9.4\times10^{-111}$, $1.3\times10^{-110}$, $1.1\times10^{-110}$. Strata $\theta \in \{10^{-30}, 10^{-10}, 10^{-3}, 0.29, 0.31, 1, 2, 3, \pi - 10^{-3}, \pi - 10^{-6}\}$, each with $\lVert\mathbf t\rVert \sim 2$ and
 "far" ($X_0$ and $\mathbf t$ with entries $\mathcal N(0, (10^4)^2)$), two poses each, $t \in \{0, 0.125, 0.7314, 1 - 10^{-9}, 1, 1.5, -0.5\}$. (c) The grouped formulas fed $-q$, without the flip, at
 $\theta \in \{0.5, 1, 2, 3\}$, $t \in \{0.25, 0.5\}$: the pose differs from the canonical one by $1.06$ to $12$ (relative to the largest entry) and agrees at $t = 1$ ($7.6\times10^{-111}$).
-Script not committed. **Permanent:** planned, `se3_geodesic_matches_reference`, `tf_tree_math_differential` ([`0010`](../decisions/0010-seeded-from-tf-tree-math.md)), corpus `se3_geodesic`
+Script not committed. **Permanent:** planned, `se3_geodesic_matches_reference`, corpus `se3_geodesic`
 (`geo:consecutive`, `geo:generic`, `geo:near-pi`).
 
 ## 8. Rounding and the branch at $\pi$
@@ -414,7 +414,7 @@ grouped middle expression is **bit-identical** to $q_0\mathrm{Exp}(t\mathrm{Log}
 re-associated), so GE.12's rotation part is not an alternative to it. `NUMERICS.md` §10 carries the normative spelling. The sign of the output quaternion does not matter: the rotation is the same.
 
 **Checked:** as GE.5 (slerp against $R_0\mathrm{Exp}(s\,\mathrm{Log}(R_0^\top R_1))$ by matrices, $4.0\times10^{-111}$); the identity $\sin((1-t)\alpha) + \sin(t\alpha)\cos\alpha = \sin\alpha\cos t\alpha$ exactly in sympy.
-Script not committed. **Permanent:** planned, corpus `so3_geodesic`, with `tf_tree_math`'s `slerp` as oracle (`PHASE4.md` §4).
+Script not committed. **Permanent:** planned, corpus `so3_geodesic`, with Sophus, GTSAM and manif as oracles (`PHASE4.md` §4).
 
 ## 10. The power in the world frame, in two arms
 
