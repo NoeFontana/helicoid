@@ -46,6 +46,14 @@ The portable `atan2` release. `Real::atan2` is now `helicoid`'s own kernel at bo
   scale-back factor that is `NaN` for a non-finite input, one product per value where a product
   and a select were; every latency is within noise of its time before. No existing output moves.
 
+### Instrument
+
+Not shipped in the crates.
+- **`real_atan2` strata where `math::atan2`'s formulas meet** (`0105`): the centre midpoints, the
+  binary32 fold, the diagonal, the axes, the window's low edge and both ends of the derivative's
+  domain, 896 records. `math::atan2`'s value reads at most 0.939 `u` on them at `f64` (`libm`
+  1.579) and 0.981 at `f32` (1.679).
+
 ### Removed
 
 - **The `tf_tree_math` oracle** (`0107`): `tf_tree` is migrating onto `helicoid`, so its math is a

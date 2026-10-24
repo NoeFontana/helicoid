@@ -311,8 +311,11 @@ within 0.504 ulp, not correctly rounded, and waiting on a `libm` release would b
    exact numerator and denominator, monotone sweeps where formulas meet, the error readouts.
    **Done**; the tests moved with the kernels to `helicoid-linalg`'s `math_tests`.
 4. The new `real_atan2` strata. Verified by `just corpus-check` and
-   `just compare --a helicoid:libm-atan2 --b helicoid`. **Owed**: the swap shipped ahead of them,
-   on `real_atan2`'s seven strata and every `atan2` consumer's, at the owner's call.
+   `just compare --a helicoid:libm-atan2 --b helicoid`. **Done**, after the swap: 8 binary64 and 6
+   binary32 strata, 896 records, inside `Dual::atan2`'s derivative domain (§12), so the upper window
+   edge and the exponent range's ends stay the kernel's unit tests'. Every stratum's maximum, read
+   over all fields, is the derivative's and does not move; the value alone falls from 1.579 to
+   0.939 `u` at `f64` and from 1.679 to 0.981 at `f32`, 69 and 53 records better, none worse.
 5. Latency: `xtask/benches/atan2.rs`, in three regimes and with `so3_log` end to end. **Done** on one
    x86_64 host; aarch64 and wasm32 are not timed.
 6. The swap: `math`, `Real::atan2` through it, `helicoid:libm-atan2`, the regenerated sweep,
