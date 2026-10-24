@@ -1,13 +1,7 @@
 # `cargo xtask <task>` runs the automation binary in `xtask/`; the `just` recipes call it.
-# Linker configuration accelerates linking for local development; no target-cpu, outputs bit-identical (D16, `0007`).
+# No `target-cpu`, no `rustflags` here: outputs are bit-identical across targets (D16, `0007`).
 [alias]
 xtask = "run --quiet --package xtask --"
-
-[target.x86_64-unknown-linux-gnu]
-rustflags = ["-C", "link-arg=-fuse-ld=lld", "-C", "split-debuginfo=unpacked"]
-
-[target.aarch64-unknown-linux-gnu]
-rustflags = ["-C", "link-arg=-fuse-ld=lld"]
 
 [env]
 # Fast local property test iterations by default; CI and `just test` override with PROPTEST_CASES=256.
