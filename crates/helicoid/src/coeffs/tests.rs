@@ -1327,7 +1327,7 @@ fn jr_coeffs_sinc_is_b_s_own_f32() {
     jr_coeffs_sinc_is_b_s_own::<f32>();
 }
 
-/// `log_ratio_scale` is `r u` (`0090`, `0106` draft): within `tol` of `r u` rounded twice, in value
+/// `log_ratio_scale` is `r u` (`0090`, `0106`): within `tol` of `r u` rounded twice, in value
 /// and derivative, that rounding and the series' correction being of that size; and
 /// a `−1` sign negates it to the bit. The tail Horner starts at the series' second term, so this also
 /// fails if `R`'s first term is not 1. `n²` is `u`'s own, as `log_ratio_scale` forms it.

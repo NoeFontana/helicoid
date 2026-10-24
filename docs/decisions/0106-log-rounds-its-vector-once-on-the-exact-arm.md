@@ -1,8 +1,8 @@
 # 0106: `Log` rounds its vector once on the exact arm
 
-**Status:** draft
+**Status:** ready
 **Owner:** @NoeFontana
-**Implementation:** this record's PR (draft)
+**Implementation:** this record's PR
 
 ## Context
 
@@ -82,6 +82,11 @@ and none rises. The series strata keep their bits. Maxima in `u`:
 | `q:nonunit` | 1.814 | 1.405 |
 | `q:w0` | 1.194 | 0.909 |
 | `theta:pi-1e-1` to `pi-1e-12` | 1.24–1.79 | **0.68–0.88** |
+
+Against the five oracles' rows (`cargo xtask conformance --oracle <name> --fn so3_log`), `helicoid`
+now has the lowest maximum on every `f64` stratum. `r · u` lost `theta:dense` (2.317 against
+sophus-rs's and manif's 2.161), sat 0.08–0.13 `u` above the best at `pi-1e-3`, `-6`, `-10` and `-12`
+(Sophus or manif, unresolved by the swap test), and tied the best on the exact arm's other strata.
 
 **Every caller, `just envelope` against `main`'s rows.** 180 of 4 565 maxima move: 150 fall and
 30 rise. No domination failure is added; the bar reads none on this branch.
@@ -165,16 +170,14 @@ square's error in five operations instead of Dekker's eight (within ±2%).
 
 ## Open questions
 
-1. **Is the exact arm's cost worth its accuracy?** 2.7× throughput and 1.5× latency there (*Cost*),
-   for `so3_log`'s maximum 2.317 → 1.680 `u` and the near-`π` strata halved.
-2. **`n` compensated (F2) or not (F1)?** F2 is the only variant that lets no `so3_log` stratum
-   rise; F1 costs half as much throughput.
-3. **`f32` near `π`** costs 32.8 ns against 20.5 at `θ ∈ [0.5, 2)`, where `main` is flat; a
-   subnormal intermediate in `n`'s compensation is the suspect, not yet read.
-4. **The rises in the callers' 4–12-record strata**: accepted as `0090` accepted its own?
+None. Answered by the owner on 2026-10-24 by taking the change: the exact arm's cost is accepted
+for its accuracy, `n` is compensated (F2), and the callers' rises in 4–12-record strata are
+accepted as `0090`'s were. `f32` near `π` is in *Further work*.
 
 ## Further work
 
+- **`f32` near `π`** costs 32.6 ns against 20.5 at `θ ∈ [0.5, 2)`, where `main` is flat; a
+  subnormal intermediate in `n`'s compensation is the suspect, not yet read.
 - With `0105`'s `atan2` (draft) on top, the attribution reads about 1.2 `u` in every stratum.
 - **Fewer instructions.** A bit-mask split (one `and`, one subtraction) would replace Veltkamp's
   four operations, but `Real` has no bit access; a lighter `n` compensation (the root's error

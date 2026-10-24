@@ -532,7 +532,7 @@ pub(super) fn log_ratio_takes_exact_arm<S: Real>(n2: S, w: S) -> S::Mask {
     log_ratio_scale_arms(n2, w).2.not()
 }
 
-/// `r u` on [`log_ratio_scale`]'s exact arm (`0106`, draft): `n2 = s1 + pz`, `s1 = px + py` and
+/// `r u` on [`log_ratio_scale`]'s exact arm (`0106`): `n2 = s1 + pz`, `s1 = px + py` and
 /// `pᵢ = uᵢ²` the sums and squares formed there, of `u` before its sign, which squares away.
 ///
 /// `r = 2 atan2(n, w)/n` lies in `[2, π]`, just above a power of two, so `r` rounded and then
@@ -544,7 +544,7 @@ pub(super) fn log_ratio_takes_exact_arm<S: Real>(n2: S, w: S) -> S::Mask {
 ///
 /// The compensation is a branch of its own: below [`compensated_from`] its error terms leave the
 /// normal range, and in one block with `atan2` LLVM's SLP vectorizer packs its products into lanes,
-/// which measured 14 ns longer (`0106`, draft). The other arm is `exact_r`'s `2a/n`, rounded twice.
+/// which measured 14 ns longer (`0106`). The other arm is `exact_r`'s `2a/n`, rounded twice.
 fn exact_scale<S: Real>(
     n2: S,
     w: S,

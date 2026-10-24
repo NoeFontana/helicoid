@@ -79,7 +79,7 @@ pub fn log_ratio<S: Real>(n2: S, w: S) -> S {
 }
 
 /// Whether `log_ratio_scale` takes its exact arm at `n² = n2` and `w`, its own dispatch: for
-/// `helicoid:r-times-u`, the arrangement `0106` (draft) replaces.
+/// `helicoid:r-times-u`, the arrangement `0106` replaces.
 pub fn log_ratio_takes_exact_arm<S: Real>(n2: S, w: S) -> S::Mask {
     kernel::log_ratio_takes_exact_arm(n2, w)
 }

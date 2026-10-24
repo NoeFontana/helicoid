@@ -10,7 +10,7 @@ defined by the status tables in `docs/`; they win over this file.
 
 ### Changed
 
-- **`SO3::log` rounds each component once on its exact arm** (`0106`, draft): `r = 2 atan2(n, w)/n`
+- **`SO3::log` rounds each component once on its exact arm** (`0106`): `r = 2 atan2(n, w)/n`
   is carried as two terms and `n` with its own error, where `r · u` rounded `r` just above `2` and
   then each product. `so3_log`'s maximum falls from 2.317 to 1.680 `u`, `theta:dense` to 1.578 and
   `theta:pi-1e-k` from 1.24–1.79 to 0.68–0.88; `sen3_log`, `sim3_log`, the SE(3) charts' `local`

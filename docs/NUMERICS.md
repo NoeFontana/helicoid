@@ -117,7 +117,7 @@ $\cos\tfrac{\theta}{2}$ from its own series (generated alongside $k$).
    its constant term: $t$ and $d$ are exact (Sterbenz), and $r$ lies just above $2$, where rounding
    it costs a whole $u$, so this rounds once at full size instead
    ([`0090`](./decisions/0090-log-scales-its-vector-by-an-exact-two.md)). On the exact arm
-   ([`0106`](./decisions/0106-log-rounds-its-vector-once-on-the-exact-arm.md), draft), $r$ is carried
+   ([`0106`](./decisions/0106-log-rounds-its-vector-once-on-the-exact-arm.md)), $r$ is carried
    as $r_h + r_\ell$ with $r_h = 2a\cdot(1/n)$, $a = \mathrm{atan2}(n, w)$, and each component rounds
    once, $r_h u_i + (\epsilon_i + r_\ell u_i)$, $\epsilon_i$ the product's exact error; $n$ carries the
    errors of $n^2$ and of its root as $n_\ell$, entering $r_\ell$ as
