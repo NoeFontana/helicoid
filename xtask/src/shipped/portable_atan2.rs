@@ -12,7 +12,7 @@ use helicoid_linalg::Precision;
 use super::{program, Helicoid};
 use crate::conformance::corpus::Record;
 use crate::conformance::subject::{Output, Registered, Subject};
-use kernel::{fits, Portable};
+use kernel::Portable;
 
 /// The subject's name, and the value of `--subject`.
 pub(crate) const NAME: &str = "helicoid:portable-atan2";
@@ -30,9 +30,6 @@ impl Subject for Twin {
     }
 
     fn eval(&self, fn_id: &str, record: &Record, precision: Precision) -> Output {
-        if fits().is_err() {
-            return Output::new();
-        }
         program::<Portable<f64>, Portable<f32>>(fn_id, record, precision)
     }
 }
@@ -50,7 +47,7 @@ pub(crate) fn registered() -> Registered {
 
 #[cfg(test)]
 mod tests {
-    use super::kernel::{atan2_f32, atan2_f64, centre, fits, CENTRES};
+    use super::kernel::{atan2_f32, atan2_f64, centre, CENTRES, FITS};
 
     /// splitmix64, so a draw is the same on every host.
     struct Draw(u64);
@@ -237,14 +234,11 @@ mod tests {
     #[allow(clippy::print_stdout)]
     fn the_binary64_kernel_reads_its_error_per_arm() -> Result<(), String> {
         let mut draw = Draw(6);
-        let mut worst = std::collections::BTreeMap::<(u8, u8), (f64, f64)>::new();
+        let mut worst = std::collections::BTreeMap::<(usize, u8), (f64, f64)>::new();
         for _ in 0..1 << 20 {
             let (y, x) = (draw.wide(-2, 2), draw.wide(-2, 2));
             let (n, d) = (y.abs().min(x.abs()), y.abs().max(x.abs()));
-            let (c, ..) = centre(n, d);
-            let j = (0u8..=8)
-                .find(|&j| (f64::from(j) / 8.0).to_bits() == c.to_bits())
-                .unwrap_or(9);
+            let (j, ..) = centre(n, d);
             let q = match (y.abs() > x.abs(), x < 0.0) {
                 (true, _) => 2,
                 (false, true) => 4,
@@ -274,11 +268,11 @@ mod tests {
     }
 
     fn at64(y: f64, x: f64) -> Result<f64, String> {
-        Ok(atan2_f64(y, x, &fits()?.f64))
+        Ok(atan2_f64(y, x, &FITS.f64))
     }
 
     fn at32(y: f32, x: f32) -> Result<f32, String> {
-        let f = fits()?;
+        let f = &FITS;
         Ok(atan2_f32(y, x, &f.f32, (f.f64.pi4_hi, f.f64.pi4_lo)))
     }
 
@@ -293,58 +287,104 @@ mod tests {
     /// The last centre is `1`, so its `atan` is the split of `π/4`; `q·π/4_hi` is exact for
     /// `q ≤ 4` because `π/4_hi` has two spare low bits.
     #[test]
-    fn the_committed_fit_ends_at_pi_over_4_with_two_spare_bits() -> Result<(), String> {
-        let f = &fits()?.f64;
+    fn the_committed_fit_ends_at_pi_over_4_with_two_spare_bits() {
+        let f = &FITS.f64;
         assert_eq!(f.atan_hi[CENTRES].to_bits(), f.pi4_hi.to_bits());
         assert_eq!(f.atan_lo[CENTRES].to_bits(), f.pi4_lo.to_bits());
         assert!(f.pi4_hi.to_bits().trailing_zeros() >= 2);
-        Ok(())
     }
 
-    /// `centre`'s claims, against the double-double reference: `num = n − c·d` exactly, and
-    /// `den + den_lo = d + c·n` to `2⁻¹⁰⁴`, on draws across the window and at every midpoint.
+    /// `x` in units of `2^g`, where it is a multiple of `2^g` and the count fits.
+    fn units(x: f64, g: i32) -> Option<i128> {
+        if x == 0.0 {
+            return Some(0);
+        }
+        let e = libm::ilogb(x) - 52;
+        let m = libm::ldexp(x.abs(), -e) as i128;
+        let v = m << u32::try_from(e - g).ok().filter(|&k| k < 70)?;
+        Some(if x < 0.0 { -v } else { v })
+    }
+
+    /// `centre`'s claims, in exact integer arithmetic: `num = n − c·d` and `den + den_lo = d + c·n`
+    /// exactly, on draws across the window and at every midpoint. `den_lo` rounds nothing: `e1`
+    /// and `e2` are multiples of `ulp(n)/C` at most `ulp(den)` apart, `2⁹` such units at `C = 8`.
     #[test]
-    fn the_centred_numerator_is_exact() {
+    fn the_centred_numerator_and_denominator_are_exact() -> Result<(), String> {
         let mut draw = Draw(8);
-        for i in 0u32..200_000 {
+        let centres = CENTRES as i128;
+        for i in 0..200_000usize {
             let d = draw.wide(-460, 989).abs();
             let n = if i % 2 == 0 {
                 d * draw.wide(-60, -1).abs()
             } else {
-                let mid = f64::from(2 * (i / 2 % 8) + 1) / 16.0;
+                let mid = (2 * (i / 2 % CENTRES) + 1) as f64 / (2 * CENTRES) as f64;
                 let k = draw.next() % 5;
                 f64::from_bits(((d * mid).to_bits() + k) - 2)
             }
             .min(d);
-            let (c, num, den, den_lo) = centre(n, d);
+            let (j, num, den, den_lo) = centre(n, d);
+            let c = j as f64 / CENTRES as f64;
             assert!(
-                (n / d - c).abs() <= 1.0 / 16.0 + 1e-15,
+                (n / d - c).abs() <= 0.5 / CENTRES as f64 + 1e-15,
                 "n {n:e} d {d:e} c {c}"
             );
-            let exact = dd::Dd::of(n).add(dd::Dd::of(c).mul(dd::Dd::of(d)).neg());
+            let g = libm::ilogb(d) - 116;
+            let u = |x: f64| units(x, g).ok_or(format!("{x:e} is not a multiple of 2^{g}"));
+            let j = j as i128;
+            let cn = if j == 0 { 0 } else { j * u(n)? };
             assert_eq!(
-                (num.to_bits(), exact.1),
-                (exact.0.to_bits(), 0.0),
-                "n {n:e} d {d:e}"
+                centres * u(num)?,
+                centres * u(n)? - j * u(d)?,
+                "num, n {n:e} d {d:e}"
             );
-            let want = dd::Dd::of(d).add(dd::Dd::of(c).mul(dd::Dd::of(n)));
-            let got = dd::Dd::of(den).add(dd::Dd::of(den_lo));
-            let off = got.add(want.neg());
-            assert!(
-                (off.0 + off.1).abs() <= libm::ldexp(den, -104),
-                "n {n:e} d {d:e}"
+            assert_eq!(
+                centres * (u(den)? + u(den_lo)?),
+                centres * u(d)? + cn,
+                "den, n {n:e} d {d:e}"
             );
         }
+        Ok(())
     }
 
-    /// Wherever an argument is zero, infinite or NaN, the answer is IEEE 754's, correctly rounded:
-    /// `±0`, `±π/2`, `±π`, `±π/4`, `±3π/4`, or NaN. At `f64` that is `libm`'s to the bit. At `f32`
-    /// it is `libm`'s binary64 answer rounded, since `libm::atan2f` returns `π/2` one ulp low where
-    /// `y` is infinite or dwarfs `x` (`0x3fc90fda` against the nearest, `0x3fc90fdb`); those
-    /// binary64 constants are nowhere near a binary32 midpoint.
+    /// IEEE 754's `atan2` (§9.2.1) where an argument is zero or infinite, the reference elsewhere;
+    /// `None` for NaN.
+    fn ieee(y: f64, x: f64) -> Option<dd::Dd> {
+        if y.is_nan() || x.is_nan() {
+            return None;
+        }
+        let quarter = |k: f64| dd::atan(dd::Dd::of(1.0)).mul(dd::Dd::of(k));
+        let zero = dd::Dd::of(0.0);
+        let mag = if y == 0.0 {
+            if x.is_sign_negative() {
+                quarter(4.0)
+            } else {
+                zero
+            }
+        } else if y.is_infinite() {
+            match (x.is_infinite(), x < 0.0) {
+                (true, true) => quarter(3.0),
+                (true, false) => quarter(1.0),
+                (false, _) => quarter(2.0),
+            }
+        } else if x == 0.0 {
+            quarter(2.0)
+        } else if x.is_infinite() {
+            if x < 0.0 {
+                quarter(4.0)
+            } else {
+                zero
+            }
+        } else {
+            return Some(dd::atan2(y, x));
+        };
+        Some(if y.is_sign_negative() { mag.neg() } else { mag })
+    }
+
+    /// Wherever an argument is zero, infinite or NaN, the answer is IEEE 754's, correctly rounded at
+    /// both precisions: `±0`, `±π/2`, `±π`, `±π/4`, `±3π/4`, or NaN. None of those binary64
+    /// constants is near a binary32 midpoint, so rounding them once more is rounding them once.
     #[test]
     fn special_values_are_ieee_s() -> Result<(), String> {
-        let mut atan2f_off = Vec::new();
         let edge = [0.0, -0.0, f64::INFINITY, f64::NEG_INFINITY, f64::NAN];
         let any = [
             0.0,
@@ -360,26 +400,25 @@ mod tests {
         for &a in &edge {
             for &b in &any {
                 for (y, x) in [(a, b), (b, a)] {
-                    let (got, want) = (at64(y, x)?, libm::atan2(y, x));
+                    let want = ieee(y, x).map_or(f64::NAN, |w| w.0);
+                    let got = at64(y, x)?;
                     assert!(
                         same64(got, want),
-                        "f64 atan2({y:e}, {x:e}) = {got:e}, libm {want:e}"
+                        "f64 atan2({y:e}, {x:e}) = {got:e}, want {want:e}"
                     );
                     let (y, x) = (y as f32, x as f32);
-                    let want = libm::atan2(f64::from(y), f64::from(x)) as f32;
+                    let want = ieee(f64::from(y), f64::from(x)).map_or(f64::NAN, |w| w.0);
+                    let ulp = libm::ldexp(1.0, libm::ilogb(want).max(-126) - 23);
+                    let off = (f64::from(want as f32) - want).abs() / ulp;
+                    assert!(!(0.49..=0.51).contains(&off), "{want:e} is near a midpoint");
                     let got = at32(y, x)?;
                     assert!(
-                        same32(got, want),
+                        same32(got, want as f32),
                         "f32 atan2({y:e}, {x:e}) = {got:e}, want {want:e}"
                     );
-                    if !same32(libm::atan2f(y, x), want) {
-                        atan2f_off.push((y, x));
-                    }
                 }
             }
         }
-        let inf = f32::INFINITY;
-        assert_eq!(atan2f_off, [(inf, 1.0), (-inf, 1.0)]);
         Ok(())
     }
 
@@ -424,13 +463,14 @@ mod tests {
     }
 
     /// Monotone in `y` at fixed `x`, a thousand ulps either side of every place two formulas
-    /// meet: binary64's midpoints between centres, `n/d = (2j + 1)/16`, and the swap, on both sides
-    /// of the diagonal; binary32's fold at `½` and swap.
+    /// meet: binary64's midpoints between centres, `n/d = (2j + 1)/(2C)`, and the swap, on both
+    /// sides of the diagonal; binary32's fold at `½` and swap.
     #[test]
     fn monotone_where_the_formulas_meet() -> Result<(), String> {
-        let mut at: Vec<f64> = (0..8).map(|j| f64::from(2 * j + 1) / 16.0).collect();
+        let mids = (0..CENTRES).map(|j| (2 * j + 1) as f64 / (2 * CENTRES) as f64);
+        let mut at: Vec<f64> = mids.clone().collect();
         at.push(1.0);
-        at.extend((0..8).map(|j| 16.0 / f64::from(2 * j + 1)));
+        at.extend(mids.map(|t| 1.0 / t));
         let mut draw = Draw(9);
         for x in [1.0, draw.wide(-40, 40).abs(), draw.wide(-40, 40).abs()] {
             for &t in &at {
