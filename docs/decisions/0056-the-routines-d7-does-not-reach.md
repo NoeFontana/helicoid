@@ -113,7 +113,7 @@ record.
 | | `x:tiny` | `±` log-uniform in `[1e-300, 1e-8)` (`[1e-30, 1e-4)`) |
 | `real_atan2` | `yx:generic` | Angle uniform, radius log-uniform in `[1e-3, 1e3]` |
 | | `yx:ratio-1e-k`, `yx:ratio-1e+k`, k ∈ {8, 100, 300} ({4, 15, 30}) | `‖y/x‖ = 10^∓k` in each quadrant |
-| | (added by `0105`, draft, after the earlier strata of their precision) | `n = min`, `d = max` of `‖x‖, ‖y‖`; each quadrant, and `‖y‖ > ‖x‖` in every other run of four |
+| | (added by `0105`, after the earlier strata of their precision) | `n = min`, `d = max` of `‖x‖, ‖y‖`; each quadrant, and `‖y‖ > ‖x‖` in every other run of four |
 | | `yx:centre-mid` (binary64 only) | `n/d = (2j + 1)/16` exactly, then `n` moved by up to 3 ulps, `j = 0…7`: the midpoints between the binary64 kernel's centres |
 | | `yx:fold`, `yx:diagonal` | `n = d/2` moved by up to 4 ulps (the binary32 kernel's fold); `n = d` moved down by up to 4 ulps (`kπ/4`) |
 | | `yx:axis` | `(y, x) = (+0, ±d)`, `(±d, ±0)`; never `y = −0`, which the reference cannot tell from `+0` |
