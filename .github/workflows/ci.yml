@@ -231,3 +231,17 @@ jobs:
         with:
           tool: just
       - run: just corpus-check
+
+  # The committed fit of the portable `atan2` candidate (`0105`, draft) must regenerate
+  # byte-identically from the pinned generator.
+  atan-fit-check:
+    name: atan-fit-check
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.3.0
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: just
+      - run: just atan-fit-check

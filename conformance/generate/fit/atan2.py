@@ -149,7 +149,8 @@ def round_bits(x, bits):
 
 
 def bits_hex(x: float) -> str:
-    """The binary64 bits of `x`, which holds a binary32 exactly where the precision is `f32`."""
+    """The binary64 bits of `x`. Every value is a binary64, the binary32 kernel's coefficients too:
+    that kernel evaluates in binary64."""
     return "0x" + struct.pack(">d", x).hex()
 
 
@@ -184,9 +185,9 @@ def binary64(centres: int, terms: int) -> dict[str, object]:
     atan_hi, atan_lo = [], []
     for j in range(centres + 1):
         a = mp.atan(mpf(j) / centres)
-        h = to_f64(a)
-        atan_hi.append(bits_hex(h))
-        atan_lo.append(bits_hex(to_f64(a - mpf(h))))
+        a_hi = to_f64(a)
+        atan_hi.append(bits_hex(a_hi))
+        atan_lo.append(bits_hex(to_f64(a - mpf(a_hi))))
     return {
         "centres": centres,
         **polynomial(terms, mpf(1) / (2 * centres)),
