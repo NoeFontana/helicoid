@@ -15,6 +15,9 @@ defined by the status tables in `docs/`; they win over this file.
   then each product. `so3_log`'s maximum falls from 2.317 to 1.680 `u`, `theta:dense` to 1.578 and
   `theta:pi-1e-k` from 1.24–1.79 to 0.68–0.88; `sen3_log`, `sim3_log`, the SE(3) charts' `local`
   and `gaussian_mahalanobis_se3`/`_se23` move with it. Every caller's bits move on that arm.
+  The compensated arm is a function of its own, so `log` stays small enough to inline: inline, it
+  pushed `log` out of line at callers with several call sites, where reading back a just-written
+  quaternion stalls and a composed `Log` took 25 ns near the identity instead of 10.
 
 ### Added
 
