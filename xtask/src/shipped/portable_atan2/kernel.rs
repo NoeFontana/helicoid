@@ -259,6 +259,9 @@ pub(crate) fn atan2_f64(y: f64, x: f64, fit: &Fit64) -> f64 {
         rescale(n, d)
     };
     let (j, num, den, den_lo) = centre(n, d);
+    // Two divisions, this and the residual's `1/den`: `r = 1/den`, `v = num·r` reads the same
+    // accuracy but puts a multiply on the chain, 28.0 against 27.3 ns, and the divider is not the
+    // throughput bound (`0105`, draft).
     let v = num / den;
 
     // The quadrant: `q·π/4 ± (atan(c) + atan(v))`, `−` where exactly one of `x < 0`, `|y| > |x|`.
