@@ -7,7 +7,7 @@ x86_64, aarch64 and wasm32.
 
 Every switch point is generated from a committed sweep; every routine is measured per stratum
 against an mpmath corpus and an envelope of oracles (Sophus, manif, GTSAM, sophus-rs,
-`tf_tree_math`), and must dominate it.
+nalgebra), and must dominate it.
 
 **Status:** early implementation; each spec's §0.0 table is the source of truth. The design is in [`docs/`](./docs/); start at
 [`docs/PROJECT.md`](./docs/PROJECT.md). Agents: [`CLAUDE.md`](./CLAUDE.md).

@@ -61,7 +61,7 @@ are `no_std`, no `alloc`, `forbid(unsafe_code)`, and depend on `libm` alone (plu
    byte-identically.
 2. `xtask conformance` — runs in-process subjects (helicoid, seeded defects) over the corpus;
    per-stratum max and p99 error in units of `u`.
-3. `runners/` and `docker/oracles/` — `tf_tree_math`, sophus-rs, Sophus, manif, GTSAM through one
+3. `runners/` and `docker/oracles/` — sophus-rs, nalgebra, Sophus, manif, GTSAM through one
    file protocol.
 4. `xtask envelope` — domination over the best oracle and no-regress against the committed
    baseline, per function, per stratum, per precision.
@@ -155,9 +155,10 @@ Status per phase: the §0.0 table heading each spec is authoritative.
   ([`0011`](./decisions/0011-continuous-time-waits-for-a-consumer.md)). `helicoid-spline` opens on
   a consumer's record, not on schedule. What splines will consume (`Ad`, `ad`, `Jr`, `Jr⁻¹`) ships
   in Phase 3 regardless.
-- **D15 — Seeded from `tf_tree_math`, and measured against it**
-  ([`0010`](./decisions/0010-seeded-from-tf-tree-math.md)). `tf_tree_math` is oracle #1;
-  `helicoid` must dominate it on every paired stratum before `tf_tree` migrates.
+- **D15 — Seeded from `tf_tree_math`**
+  ([`0010`](./decisions/0010-seeded-from-tf-tree-math.md)). It was oracle #1 until
+  [`0107`](./decisions/0107-the-consumer-is-not-an-oracle.md): `tf_tree` is migrating onto
+  `helicoid`, so its math is a consumer and is not an oracle.
 - **D16 — Determinism by construction**
   ([`0034`](./decisions/0034-a-second-transcendental-backend-owes-a-measurement.md)). For a given
   `helicoid` version and a given resolved `libm` version, outputs are bit-identical across x86_64,

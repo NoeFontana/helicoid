@@ -4,6 +4,11 @@
 **Owner:** @NoeFontana
 **Implementation:** —
 
+> **Amended by [`0107`](./0107-the-consumer-is-not-an-oracle.md), 2026-10-24.** Decision 3 is
+> withdrawn: `tf_tree` is migrating onto `helicoid`, so `tf_tree_math` is a consumer and not an
+> oracle; `runners/tf_tree_math` is deleted, with `PHASE4.md` §5.2's precondition and decision 2's
+> `tf_tree_math_differential`. Decisions 1, 4 and 5 stand.
+
 ## Context
 
 `tf_tree_math` is the best-tested Lie code in the stack: `log_so3` through the quaternion `atan2`,

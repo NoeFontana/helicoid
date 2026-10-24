@@ -84,7 +84,8 @@ with geometric $\mathrm{Log}$). Group identities cross-check $\theta > 3.0$
 Strata: `geo:consecutive` (relative motion $\|d\| \in [10^{-9}, 10^{-3}]$, $\|t_0\|$ up to $10^4$),
 `geo:generic`, `geo:near-pi` (relative rotation $\pi - 10^{-k}$);
 $t \in \{0, 10^{-9}, 0.25, 0.5, 1 - 10^{-9}, 1\}$ plus uniform samples.
-`tf_tree_math`'s `ScLerp` and `slerp` are the oracles.
+Sophus, GTSAM and manif are the oracles; `tf_tree_math`'s `ScLerp` and `slerp` were, until
+[`0107`](./decisions/0107-the-consumer-is-not-an-oracle.md).
 
 ## 5. What `helicoid` delivers to the `tf_tree` record
 
@@ -108,8 +109,11 @@ $t \in \{0, 10^{-9}, 0.25, 0.5, 1 - 10^{-9}, 1\}$ plus uniform samples.
 
 ### 5.2 Envelope precondition
 
-`helicoid` dominates `tf_tree_math` on every paired stratum in §5.1, or exceptions must be recorded
-in `conformance/baseline/exceptions.toml` ([`0046`](./decisions/0046-explained-by-record-needs-a-record-to-point-at.md)).
+Withdrawn by [`0107`](./decisions/0107-the-consumer-is-not-an-oracle.md): `tf_tree_math` is the
+code migrating, not an oracle. The ids behind §5.1 stay under `PHASE1.md` §8's domination bar
+against the independent oracles, with exceptions in `conformance/baseline/exceptions.toml`
+([`0046`](./decisions/0046-explained-by-record-needs-a-record-to-point-at.md)); `0107` records the
+last run against `tf_tree_math`.
 
 ### 5.3 Bench precondition
 

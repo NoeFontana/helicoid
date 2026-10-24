@@ -471,8 +471,8 @@ mod tests {
         assert_eq!(p(&["--precision", "f32"]), Ok(Some(Precision::F32)));
         assert_eq!(p(&["--precision=f64"]), Ok(Some(Precision::F64)));
         assert_eq!(p(&[]), Ok(None));
-        let o = parse_args(&args(&["--oracle=tf_tree_math", "--fn", "so2_exp"]))?;
-        assert_eq!(o.oracle.as_deref(), Some("tf_tree_math"));
+        let o = parse_args(&args(&["--oracle=sophus_rs", "--fn", "so2_exp"]))?;
+        assert_eq!(o.oracle.as_deref(), Some("sophus_rs"));
         assert!(parse_args(&args(&["--oracle", "gtsam", "--deep"]))?.deep);
         assert!(!parse_args(&args(&["--fn", "so2_exp"]))?.deep);
         for bad in [

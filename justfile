@@ -90,25 +90,14 @@ conformance *args:
 # names one. Each generated file is compiled into xtask: a hand edit that no longer compiles stops
 # this recipe too, and `git restore` of that file is the way back. When the corpus's series change,
 # the first run writes the new series beside placeholder switches and fails: run it again.
-# The tf_tree_math oracle (`docs/PHASE1.md` §7, `0010`): the runner's own checks, since it is
-# workspace-excluded and `lint`, `test`, `doc` and `audit` never reach it, then the corpus through it,
-# scored with the harness's exact metric into conformance/results/tf_tree_math.csv
-# (`subject_version` is the pinned tf_tree commit). A runner that fails, or stops answering an id
-# it owes, fails the recipe; a wrong or non-finite answer is recorded in its row, not a failure
-# (oracles may be wrong: §7). The first build fetches the pinned commit from GitHub.
-oracle-tf-tree-math:
-    cargo fmt --manifest-path runners/tf_tree_math/Cargo.toml -- --check
-    cargo clippy --manifest-path runners/tf_tree_math/Cargo.toml --locked --all-targets -- -D warnings
-    RUSTDOCFLAGS='-D warnings' cargo doc --manifest-path runners/tf_tree_math/Cargo.toml --locked --no-deps --document-private-items
-    cargo deny --manifest-path runners/tf_tree_math/Cargo.toml check advisories licenses sources
-    cargo nextest run --manifest-path runners/tf_tree_math/Cargo.toml --locked
-    cargo xtask conformance --oracle tf_tree_math
-
-# The sophus-rs oracle (`docs/PHASE1.md` §7): as `oracle-tf-tree-math`, for `runners/sophus_rs`
-# (`subject_version` is the pinned `sophus_lie`), audited with the runner's own `deny.toml`, whose
-# one advisory exception is the crate's, not the workspace's: cargo-deny finds it beside the
-# manifest, so no `--config`, which cargo-deny 0.20 moved out of `check`. Rows in
-# conformance/results/sophus_rs.csv.
+# The sophus-rs oracle (`docs/PHASE1.md` §7): the runner's own checks, since it is
+# workspace-excluded and `lint`, `test`, `doc` and `audit` never reach it, then the corpus through
+# it, scored with the harness's exact metric. A runner that fails, or stops answering an id it
+# owes, fails the recipe; a wrong or non-finite answer is recorded in its row, not a failure
+# (oracles may be wrong: §7). `subject_version` is the pinned `sophus_lie`. Audited with the
+# runner's own `deny.toml`, whose one advisory exception is the crate's, not the workspace's:
+# cargo-deny finds it beside the manifest, so no `--config`, which cargo-deny 0.20 moved out of
+# `check`. Rows in conformance/results/sophus_rs.csv.
 oracle-sophus-rs:
     cargo fmt --manifest-path runners/sophus_rs/Cargo.toml -- --check
     cargo clippy --manifest-path runners/sophus_rs/Cargo.toml --locked --all-targets -- -D warnings
@@ -164,10 +153,10 @@ oracle-manif:
     cargo xtask conformance --oracle manif
     cargo xtask conformance --oracle manif --precision f32
 
-# Every oracle runner (`docs/PHASE1.md` §3, §7): the three crates' checks and rows, then the three
+# Every oracle runner (`docs/PHASE1.md` §3, §7): the two crates' checks and rows, then the three
 # containers', each image built from its pins. Local only: it needs docker, and the first GTSAM
 # build takes minutes.
-oracles: oracle-tf-tree-math oracle-sophus-rs oracle-nalgebra oracle-sophus oracle-gtsam oracle-manif
+oracles: oracle-sophus-rs oracle-nalgebra oracle-sophus oracle-gtsam oracle-manif
 
 # The deep tier (`docs/decisions/0088`): every stratum whose sample count is below 64 and whose draw
 # extends without moving its first samples, raised to 64, into the git-ignored
@@ -195,7 +184,6 @@ corpus-deep-check:
 conformance-deep:
     cargo xtask conformance --deep
     cargo xtask conformance --deep --precision f32
-    cargo xtask conformance --oracle tf_tree_math --deep
     cargo xtask conformance --oracle sophus_rs --deep
     cargo xtask conformance --oracle nalgebra --deep
     cargo xtask conformance --oracle nalgebra --deep --precision f32
@@ -209,9 +197,9 @@ conformance-deep:
 # are the host's `std` instead of the `libm` crate, into conformance/results/*-host-std.csv. Both
 # are planted subjects, so a plain `conformance` run skips them; `envelope` reads the rows of the
 # candidate's *own* twin — `helicoid:host-std` for the library, the seeded stand-in's for the
-# stand-in — to say whether a domination failure no `libm`-crate oracle wins is D16's cost or is
-# not explained by D16 either. `helicoid:host-std` is the shipped program at that scalar, so it
-# answers every id the candidate answers; `seeded:host-std` answers `PHASE1.md` §10's kernels.
+# stand-in — to say whether a domination failure is D16's cost or is not explained by D16 either.
+# `helicoid:host-std` is the shipped program at that scalar, so it answers every id the candidate
+# answers; `seeded:host-std` answers `PHASE1.md` §10's kernels.
 conformance-twin:
     cargo xtask conformance --subject seeded:host-std
     cargo xtask conformance --subject helicoid:host-std
@@ -231,7 +219,7 @@ compare *args:
 # records is unresolvable, and `--deep` judges it on `just conformance-deep`'s rows
 # (`docs/decisions/0088`). It first reruns the in-process subjects at both precisions, so the candidate's rows are
 # current (`docs/decisions/0077`: an oracle's `f32` rows pair with the candidate's `@f32` ones); the
-# oracles' rows are what `oracle-tf-tree-math`, `oracle-sophus-rs`, `oracle-nalgebra`, `oracle-sophus`, `oracle-gtsam`, `oracle-manif` last wrote. `--check` also fails on
+# oracles' rows are what `oracle-sophus-rs`, `oracle-nalgebra`, `oracle-sophus`, `oracle-gtsam`, `oracle-manif` last wrote. `--check` also fails on
 # a baseline or docs/evidence/ENVELOPE.md (its oracle columns aside) that `--bless` would write
 # differently (an improved max is blessed in its own PR); `--bless` writes both, and nothing while
 # domination, coverage or a dropped stratum fails (`--dry-run`: says what it would write). While the

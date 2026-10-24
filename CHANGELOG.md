@@ -25,6 +25,15 @@ defined by the status tables in `docs/`; they win over this file.
   scale-back factor that is `NaN` for a non-finite input, one product per value where a product
   and a select were; every latency is within noise of its time before. No existing output moves.
 
+### Removed
+
+- **The `tf_tree_math` oracle** (`0107`): `tf_tree` is migrating onto `helicoid`, so its math is a
+  consumer, not an independent oracle. `runners/tf_tree_math`, `just oracle-tf-tree-math` and the
+  envelope's `libm`-crate class of domination failures are gone; the one-variable twin attributes
+  every failure. No stratum loses its only oracle (2797 paired before and after). Domination
+  loosens on the 42 strata `tf_tree_math` was best on; no-regress, once a baseline is blessed,
+  holds them exactly. Library crates are unchanged.
+
 ## [0.0.7] - 2026-10-22
 
 The nearest-rotation and inverse-action release. `helicoid_linalg::nearest_rotation` projects a 3×3 onto SO(3), by Newton's polar iteration where that is well posed and through `svd3` elsewhere, and dominates nalgebra and Sophus on every stratum. `SO3` and `SE3` gain `inv_act` and `inv_act_jacobians`, the inverse action $R^\top(p - t)$ with its own Jacobians. The composition consumers wrote loses up to $4\times10^6\,u$ where $\lVert t\rVert \gg \lVert x\rVert$; the pair reads at most 4.79 `u`, in half the time. `Matrix` builds from columns without a call, so `Gaussian::propagate` takes 0.65× its time. **No API break**, and every existing output keeps its bits.

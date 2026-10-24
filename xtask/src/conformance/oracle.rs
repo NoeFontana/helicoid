@@ -58,17 +58,13 @@ struct Runner {
 
 /// Where a runner's transcendentals come from, which decides what a domination failure can mean.
 ///
-/// A runner on the **`libm` crate** computes the same `sin`, `cos` and `atan2` we do, so a stratum
-/// it wins cannot be D16's cost and the difference is in the program.
-/// [`0032`](../../../docs/decisions/0032-domination-charges-helicoid-for-d16.md) (draft) measured
-/// `tf_tree_math` bit-identical to `helicoid` on all 30 `so3_log` strata, the clean control. A
-/// runner on the **host's `std`** gets glibc on Linux, whose `atan2` is nearly correctly rounded
-/// where `libm`'s is 1.96 u, so a stratum only such a runner wins may cost nothing but D16
-/// (`error-analysis.md` EA.13(d)).
+/// A runner on the **host's `std`** gets glibc on Linux, whose `atan2` is nearly correctly rounded
+/// where `libm`'s is 1.96 u, so a stratum such a runner wins may cost nothing but D16
+/// (`error-analysis.md` EA.13(d)); the one-variable twin says whether it does (`0037`, draft).
+/// Every runner is on it: the one on the `libm` crate, `tf_tree_math`, is a consumer and not an
+/// oracle ([`0107`](../../../docs/decisions/0107-the-consumer-is-not-an-oracle.md)).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Backend {
-    /// The `libm` crate, as `helicoid` does (D16).
-    LibmCrate,
     /// The host's `std`, so its system library.
     HostStd,
 }
@@ -96,26 +92,6 @@ impl Launch {
 }
 
 const RUNNERS: &[Runner] = &[
-    Runner {
-        name: "tf_tree_math",
-        launch: Launch::Crate("runners/tf_tree_math"),
-        // `tf_tree_math`'s manifest declares `libm.workspace = true`.
-        backend: Backend::LibmCrate,
-        binary64_only: true,
-        // Binary64 by construction (`tf_tree` D6).
-        answers_f32: &[],
-        answers: &[
-            "so3_exp",
-            "so3_log",
-            "so3_act",
-            "so3_from_matrix",
-            "so3_geodesic",
-            "sen3_exp_n1",
-            "sen3_log_n1",
-            "sen3_ad_n1",
-            "se3_geodesic",
-        ],
-    },
     Runner {
         name: "sophus_rs",
         launch: Launch::Crate("runners/sophus_rs"),
@@ -967,9 +943,9 @@ mod tests {
                 .unwrap_or_default()
         };
         assert!(go("nope", None, Precision::F64).contains(
-            "no oracle runner `nope`; have [\"tf_tree_math\", \"sophus_rs\", \"nalgebra\", \"sophus\", \"gtsam\", \"manif\"]"
+            "no oracle runner `nope`; have [\"sophus_rs\", \"nalgebra\", \"sophus\", \"gtsam\", \"manif\"]"
         ));
-        let e = go("tf_tree_math", Some("nope"), Precision::F64);
+        let e = go("sophus_rs", Some("nope"), Precision::F64);
         assert!(e.contains("no corpus file for `--fn nope`"));
         assert!(!scratch.0.exists());
         Ok(())
@@ -981,7 +957,7 @@ mod tests {
     fn a_binary64_runner_is_not_launched_at_f32() -> Result<(), String> {
         let (root, dir) = (super::super::root()?, corpus_dir()?);
         let scratch = Scratch::new("f64-only");
-        for name in ["tf_tree_math", "sophus_rs", "gtsam"] {
+        for name in ["sophus_rs", "gtsam"] {
             let none = run(name, &root, &dir, &scratch.0, None, Precision::F32)?;
             assert!(none.is_none(), "{name}");
             assert!(!answers_f32(name), "{name}");
@@ -1077,7 +1053,7 @@ mod tests {
 
     #[test]
     fn the_runner_is_a_locked_release_run_of_its_own_manifest() {
-        let command = crate_command(Path::new("/r"), "runners/tf_tree_math", true);
+        let command = crate_command(Path::new("/r"), "runners/sophus_rs", true);
         let args: Vec<_> = command.get_args().map(|a| a.to_string_lossy()).collect();
         assert_eq!(
             args,
@@ -1087,7 +1063,7 @@ mod tests {
                 "--locked",
                 "--quiet",
                 "--manifest-path",
-                "/r/runners/tf_tree_math/Cargo.toml",
+                "/r/runners/sophus_rs/Cargo.toml",
                 "--"
             ]
         );
@@ -1185,12 +1161,11 @@ mod tests {
 
     /// Each registered runner's backend, and an unregistered name answering `None`.
     ///
-    /// `tf_tree_math` declares `libm.workspace = true`; sophus-rs and nalgebra are Rust `std`, and
-    /// the Sophus, GTSAM and manif images are C++ on their glibc. The domination split reads this, so a wrong entry
-    /// would silently mislabel a failure (`0036`, draft).
+    /// sophus-rs and nalgebra are Rust `std`, and the Sophus, GTSAM and manif images are C++ on
+    /// their glibc. The domination split reads this, so a wrong entry would silently mislabel a
+    /// failure (`0036`, draft).
     #[test]
     fn every_runner_declares_where_its_transcendentals_come_from() {
-        assert_eq!(backend("tf_tree_math"), Some(Backend::LibmCrate));
         assert_eq!(backend("sophus_rs"), Some(Backend::HostStd));
         assert_eq!(backend("nalgebra"), Some(Backend::HostStd));
         assert_eq!(backend("sophus"), Some(Backend::HostStd));

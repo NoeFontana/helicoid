@@ -7,7 +7,7 @@
 **Deliverable:** a workspace that builds on four targets; a committed mpmath corpus; a conformance
 harness; a threshold sweep; oracle runners; the envelope and its bars; a bench gate — **all shown to
 catch planted defects — and no group code.** The only numeric subjects in this phase are the seeded
-defects and `tf_tree_math`, which becomes oracle #1 ([`0010`](./decisions/0010-seeded-from-tf-tree-math.md)).
+defects and the oracle runners.
 
 ## 0.0 Implementation status
 
@@ -17,7 +17,7 @@ defects and `tf_tree_math`, which becomes oracle #1 ([`0010`](./decisions/0010-s
 | Reference generator and committed corpus v1 (§4) | Partial: generator skeleton and committed corpus v1 with 150-digit mpmath reference generation across scalar and group strata. SE(2) coefficients pending. |
 | Conformance harness and result schema (§5) | Partial: `cargo xtask conformance` runner, result CSV generation, and seeded defect checks; `cargo xtask compare` (`0038`, `0078`). Backward error (`Log` near π) and `@f32` strata for most vector ids pending; `so3_from_matrix` is scored forward at both precisions ([`0085`](./decisions/0085-from-matrix-is-measured-on-exact-rotations.md)). |
 | Threshold sweep and generated-file format (§6) | Partial: two-stage threshold sweep over full domain generating `coeffs` and series tables (`0039`, `0047`). |
-| Oracle runners: `tf_tree_math`, sophus-rs (excluded crates); Sophus, manif, GTSAM (containers) (§7) | Partial: runners implemented for `tf_tree_math`, `sophus_rs` and `nalgebra` (`0056`) over file protocol; the Sophus (`0072`), GTSAM (`0074`) and manif (`0075`) containers done; nalgebra and Sophus answer `@f32` strata in binary32 (`0077`); the Sophus image answers `eig3` with its Eigen ([`0083`](./decisions/0083-eig3-is-also-judged-against-eigen.md)). |
+| Oracle runners: sophus-rs, nalgebra (excluded crates); Sophus, manif, GTSAM (containers) (§7) | Partial: runners implemented for `sophus_rs` and `nalgebra` (`0056`) over file protocol; `tf_tree_math`'s removed, a consumer and not an oracle ([`0107`](./decisions/0107-the-consumer-is-not-an-oracle.md)); the Sophus (`0072`), GTSAM (`0074`) and manif (`0075`) containers done; nalgebra and Sophus answer `@f32` strata in binary32 (`0077`); the Sophus image answers `eig3` with its Eigen ([`0083`](./decisions/0083-eig3-is-also-judged-against-eigen.md)). |
 | Envelope and bars (§8) | Partial: domination and no-regression gating over baseline and oracles (`0006`). Baseline blessing awaiting Phase 3 candidate rows. |
 | Bench harness and gate (§9) | Partial: criterion benchmarks and replicate-outermost gate (`0033` draft). Bench-check CI job pending. |
 | Seeded-defect validation (§10) | Partial: `just conformance --self-test` runs defect injection for coefficient, SO(3), and SE(3) defects. |
@@ -48,7 +48,6 @@ helicoid/
 ├── xtask/                  # corpus, conformance, thresholds, envelope, bench-gate, lint, determinism
 │   └── src/seeded/         # planted defects (§10)
 ├── runners/                # [workspace] exclude — own Cargo.lock each
-│   ├── tf_tree_math/       # git dep pinned to a tf_tree commit
 │   └── sophus_rs/          # pinned crates.io version
 ├── conformance/
 │   ├── generate/           # pyproject.toml + uv.lock (pinned Python, mpmath); gen/ package
@@ -415,16 +414,15 @@ sample count by an edit to this list, never silently.
   ([`0077`](./decisions/0077-an-oracle-answers-at-the-precision-it-is-asked.md)). Convention conversion
   happens inside the runner, in functions named after the foreign convention
   (`sophus_to_helicoid_tangent`, `gtsam_pose3_to_helicoid`), each with a hand-computed unit test.
-- **Runners.** `runners/tf_tree_math` (pinned tf_tree commit): SO(3)/SE(3) `exp`/`log`,
-  the action (`Quat::rotate`), the adjoint (`Iso3::adjoint`, on the six basis twists), the
-  quaternion of a matrix (`quat_from_rot3`), `slerp` and ScLERP (`so3_geodesic`,
-  `se3_geodesic`), $a, b, c$ via its `V`/`V⁻¹`. A runner answers every id its oracle exports and the corpus holds, on every stratum
+- **Runners.** A runner answers every id its oracle exports and the corpus holds, on every stratum
   of the file: selecting strata would make a paired comparison the runner's choice. `runners/sophus_rs` (pinned version):
   SO(3)/SE(3) `exp`/`log`, any exposed Jacobians. `docker/oracles/sophus` (Sophus C++, and
   `eig3` by the image's Eigen `SelfAdjointEigenSolver`,
   [`0083`](./decisions/0083-eig3-is-also-judged-against-eigen.md)),
   `manif` (header-only, small C++ runner), `gtsam` (`Rot3`/`Pose3` `Expmap`/`Logmap` and their
   derivatives).
+- **Independence.** An oracle is independent of `helicoid`: a consumer migrating onto it is not
+  one ([`0107`](./decisions/0107-the-consumer-is-not-an-oracle.md)).
 - **Pinning.** Every runner pins its oracle; the envelope records oracle versions.
 - **Oracles may be wrong.** Their errors are recorded; a stratum where every oracle is bad does not
   lower the bar — the baseline governs.
@@ -458,7 +456,7 @@ sample count by an edit to this list, never silently.
   ratio; **fail when the whole CI lies above $1 + \delta$**, with $\delta$ the host's A/A noise
   floor measured by `bench-gate --aa` and recorded in `baseline/HOST.md`. A measured floor, not an
   asserted percentage.
-- Oracle rows (`tf_tree_math`, sophus-rs) are **reported, never gated**.
+- Oracle rows (sophus-rs) are **reported, never gated**.
 
 ## 10. Seeded-defect validation
 
@@ -485,7 +483,7 @@ any is not detected** by its named mechanism.
 - [ ] `just build test no-std wasm msrv lint doc` green on x86_64 and aarch64.
 - [ ] Corpus v1 committed; `corpus-check` byte-identical on Linux x86_64 and macOS aarch64.
 - [ ] `conformance --self-test` detects all §10 defects.
-- [ ] `tf_tree_math` and sophus-rs runners produce envelope rows for SO(3)/SE(3) `exp`/`log`; the
+- [ ] The sophus-rs runner produces envelope rows for SO(3)/SE(3) `exp`/`log`; the
       three containers build and produce rows (`just oracles`).
 - [ ] The sweep regenerates a seeded `generated.rs` byte-identically; `thresholds-check` fails on a
       hand edit (test).
@@ -501,6 +499,6 @@ any is not detected** by its named mechanism.
 3. Harness: `Subject`, metrics, CSV, seeded defects for coefficients and `Log`.
 4. Sweep against seeded kernels; generated-file format; `thresholds-check`.
 5. `sen3_*`, `so2_*`, `se2_*` ids; the remaining seeded defects; `--self-test`.
-6. Runners: `tf_tree_math`, sophus-rs; then the three containers.
+6. Runners: sophus-rs; then the three containers.
 7. Envelope, bars, `--bless`, `ENVELOPE.md`.
 8. Bench gate and the A/A floor.

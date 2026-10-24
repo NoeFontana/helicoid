@@ -255,9 +255,6 @@ are recorded measurements, not asserted constants.
 - `branch_continuity_*`: at each generated switch point (`NUMERICS.md` §4).
 - `so3_log_w_flip`, `so3_log_at_w0_is_a_function_of_the_sign`.
 - `from_matrix_never_iterates` (§4).
-- `tf_tree_math_differential` (`f64`, runner-backed in CI): helicoid vs `tf_tree_math` on 10⁵
-  random pairs, near-identity and near-π included; the recorded max difference is quoted in the
-  Phase 4 migration evidence.
 - Corpus: every public numeric function id has its corpus file; `just envelope` green.
 
 ## 10. The first envelope
@@ -274,7 +271,7 @@ commit `docs/evidence/ENVELOPE.md`.
 
 `exp`, `log`, `compose`, `act`, `act_many`, `jr`, `jr_inv`, `adjoint`, `SEn3Jac::mul` for SO(3),
 SE(3), SE₂(3); fixtures per stratum (near-identity, generic, near-π); `f64` and `f32`.
-`tf_tree_math` and sophus-rs rows reported beside them. Blessed into `baseline/`.
+sophus-rs rows reported beside them. Blessed into `baseline/`.
 
 ## 12. Definition of done
 

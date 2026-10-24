@@ -85,25 +85,6 @@ updates:
   # 4. Oracle Runners (Workspace-excluded crates with dedicated lockfiles)
   # -------------------------------------------------------------------
   # An oracle runner is a workspace-excluded crate with its own lockfile, reviewed like the root's.
-  # Its git pin (`rev` in Cargo.toml, `PIN` in src/main.rs, Cargo.lock) moves by hand: a test
-  # compares the three.
-  - package-ecosystem: "cargo"
-    directory: "/runners/tf_tree_math"
-    schedule:
-      interval: "weekly"
-      day: "monday"
-      time: "04:00"
-      timezone: "Etc/UTC"
-    cooldown:
-      default-days: 14
-    open-pull-requests-limit: 10
-    rebase-strategy: "auto"
-    labels:
-      - "dependencies"
-      - "rust"
-    commit-message:
-      prefix: "chore(deps)"
-
   # The sophus-rs pin (`=0.15.0`, `PIN` in src/main.rs, Cargo.lock) moves by hand: 0.15.0 changed
   # the tangent order of 0.14.0 and earlier, so a bump is a decision (0014 (draft) question 28).
   - package-ecosystem: "cargo"

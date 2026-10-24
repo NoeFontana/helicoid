@@ -106,9 +106,6 @@ pub(super) struct Verdict {
     pub(super) unpaired: usize,
     /// Scored rows strictly under their baseline: the baseline is stale, not the candidate wrong.
     pub(super) improved: usize,
-    /// Domination failures where the winning oracle shares our transcendental backend, so the
-    /// difference is in the program and not in `libm` (`0036`, draft).
-    pub(super) dominated_same_backend: usize,
     /// Domination failures where only a host-`std` oracle won and the one-variable twin closes
     /// the gap: D16's cost, measured and not inferred (`0037`, draft).
     pub(super) dominated_libm_bound: usize,
@@ -245,21 +242,6 @@ impl<'a> Index<'a> {
             }
         }
         best
-    }
-
-    /// Whether any oracle on the `libm` crate scored `key` on `n` records and beat `max`.
-    ///
-    /// Not "is the best oracle on the `libm` crate": if a same-backend oracle beats the candidate at
-    /// all, the gap is in the program whatever a glibc-backed oracle does, and the two questions
-    /// disagree — on this corpus, 30 strata against 26 (`0036`, draft).
-    pub(super) fn beaten_by_libm_crate(&self, key: &Key, n: usize, max: f64) -> bool {
-        self.0.iter().any(|(o, rows)| {
-            crate::conformance::oracle_backend(&o.name)
-                == Some(crate::conformance::Backend::LibmCrate)
-                && rows.get(key).is_some_and(|theirs| {
-                    theirs.n == n && matches!(status(theirs), Status::Scored(m) if m < max)
-                })
-        })
     }
 }
 
@@ -448,13 +430,10 @@ pub(super) fn judge_excepting(
                     // behind it.
                     let host_std = crate::conformance::oracle_backend(&o.name)
                         == Some(crate::conformance::Backend::HostStd);
-                    let why = if index.beaten_by_libm_crate(&key, r.n, max) {
-                        v.dominated_same_backend += 1;
-                        " [a `libm`-crate oracle also beats this: not D16's cost]"
-                    } else if !host_std {
+                    let why = if !host_std {
                         ""
                     } else {
-                        // Only a glibc-backed oracle won, so D16 is a candidate. Whether it is the
+                        // A glibc-backed oracle won, so D16 is a candidate. Whether it is the
                         // cause is the twin's to say, and saying it without the twin was a claim
                         // with nothing behind it on 37 of 45 strata (`0037`, draft).
                         match swap_closes(twin, &key, r.n, m) {
@@ -750,7 +729,7 @@ mod tests {
                  precision = \"f64\"\nrecord = \"0046\"\nreason = \"a tie\"\n"
             ))
         };
-        let oracles = [one("tf_tree_math", 1.0)];
+        let oracles = [one("sophus_rs", 1.0)];
         let judged = |cand: f64, base: f64, t: &super::super::exceptions::Exceptions| {
             let c = subject("c", vec![row("c", "f", S, cand)]);
             judge_excepting(&c, &oracles, Some(&baseline(base)), None, t, Mode::Strict)
@@ -769,7 +748,7 @@ mod tests {
         );
         assert_eq!(
             (e.candidate, e.oracle, e.oracle_name.as_str()),
-            (2.0, 1.0, "tf_tree_math")
+            (2.0, 1.0, "sophus_rs")
         );
         // The excepted stratum is not counted as a win, and it is still paired.
         assert_eq!((v.paired, v.unpaired), (1, 0));
@@ -806,36 +785,14 @@ mod tests {
         Ok(())
     }
 
-    /// A failure is classified by whether **any** `libm`-crate oracle beats the candidate, not by
-    /// whether the best one does: a same-backend oracle winning at all rules out D16's cost, and the
-    /// two questions disagree on the real corpus by 30 against 26 (`0036`, draft).
+    /// A failure a host-`std` oracle wins is classified, and without the twin it is unattributed:
+    /// D16 is a candidate and nothing here says it is the cause (`0036`, draft).
     #[test]
-    fn a_domination_failure_says_whether_a_same_backend_oracle_also_won() {
+    fn a_domination_failure_says_whether_a_host_std_oracle_won() {
         let (c, base) = (one("c", 3.0), baseline(9.0));
-        // sophus-rs is best, but `tf_tree_math` is on the `libm` crate and also beats us.
-        let v = judge(
-            &c,
-            &[one("tf_tree_math", 2.0), one("sophus_rs", 1.0)],
-            Some(&base),
-        );
+        let v = judge(&c, &[one("gtsam", 4.0), one("sophus_rs", 1.0)], Some(&base));
         assert_eq!(bars(&v), ["domination"]);
-        assert_eq!(
-            (v.dominated_same_backend, v.dominated_host_std),
-            (1, 0),
-            "{:?}",
-            v.failures.iter().map(|f| &f.text).collect::<Vec<_>>()
-        );
-        assert!(
-            v.failures[0].text.contains("not D16's cost"),
-            "{:?}",
-            v.failures[0].text
-        );
-
-        // The same best oracle, but now the `libm`-crate one does not beat us. With no twin the
-        // failure is unattributed: D16 is a candidate and nothing here says it is the cause.
-        let only_glibc = [one("tf_tree_math", 4.0), one("sophus_rs", 1.0)];
-        let v = judge(&c, &only_glibc, Some(&base));
-        assert_eq!((v.dominated_same_backend, v.dominated_host_std), (0, 1));
+        assert_eq!(v.dominated_host_std, 1);
         assert!(
             v.failures[0].text.ends_with(
                 "[only a host-`std` oracle beats this; no twin was read to attribute it]"
@@ -846,7 +803,7 @@ mod tests {
 
         // An oracle with no declared backend is classified as neither, and says nothing.
         let v = judge(&c, &[one("someone_else", 1.0)], Some(&base));
-        assert_eq!((v.dominated_same_backend, v.dominated_host_std), (0, 0));
+        assert_eq!(v.dominated_host_std, 0);
         assert!(
             !v.failures[0].text.contains('['),
             "{:?}",
@@ -854,9 +811,9 @@ mod tests {
         );
 
         // No failure, no classification.
-        let v = judge(&one("c", 0.5), &[one("tf_tree_math", 2.0)], Some(&base));
+        let v = judge(&one("c", 0.5), &[one("sophus_rs", 2.0)], Some(&base));
         assert!(v.failures.is_empty());
-        assert_eq!((v.dominated_same_backend, v.dominated_host_std), (0, 0));
+        assert_eq!(v.dominated_host_std, 0);
     }
 
     /// What the twin adds: a failure only a glibc-backed oracle wins is D16's cost when the
@@ -866,7 +823,7 @@ mod tests {
     #[test]
     fn the_twin_says_whether_the_swap_closes_a_failure_only_glibc_won() {
         let (c, base) = (one("c", 3.0), baseline(9.0));
-        let oracles = [one("tf_tree_math", 4.0), one("sophus_rs", 1.0)];
+        let oracles = [one("gtsam", 4.0), one("sophus_rs", 1.0)];
         let twin = |max: f64| one(crate::seeded::TWIN, max);
 
         // The swap reaches the best oracle: D16's cost, measured.
@@ -905,11 +862,6 @@ mod tests {
             ),
             (0, 0, 1)
         );
-
-        // A same-backend oracle winning answers the question first: the twin is not consulted.
-        let also_tf = [one("tf_tree_math", 2.0), one("sophus_rs", 1.0)];
-        let v = judge_with(&c, &also_tf, Some(&base), Some(&twin(1.0)));
-        assert_eq!((v.dominated_same_backend, v.dominated_libm_bound), (1, 0));
 
         // The twin is never a bar: it is not an oracle and cannot make a failure.
         let v = judge_with(
