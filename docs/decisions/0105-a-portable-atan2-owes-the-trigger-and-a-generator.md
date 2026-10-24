@@ -220,6 +220,22 @@ up on every call. The binary32 kernel matches `atan2f`'s throughput at 1.2–1.3
   `so3_log`'s maxima both ways (`theta:1e0` 1.741 to 2.175); with each component of `φ` rounded
   once, the exact arm's maxima now follow `atan2`'s error.
 
+**At the swap** (`cargo xtask compare --a helicoid:libm-atan2 --b helicoid`, both at the
+regenerated switches below):
+
+- `f64`: 124 records better and 80 worse ($p = 2.5\times10^{-3}$); 27 stratum maxima fall and 7
+  rise, by at most 1.449× (`sen3_log_n2`'s `rho:1e3/theta=1`, 0.820 to 1.188 `u`). `so3_log`'s
+  maximum falls from 1.680 to 1.405 `u`, `coeff_r`'s from 36.64 to 28.11, `sim3_log`'s from 3.533
+  to 2.796.
+- `f32`: 20 better and 8 worse; 4 maxima fall and 1 rises (`sim3_log`'s `sigma:1e-8/theta:3@f32`,
+  1.158×).
+- **`r`'s switch moves.** `cargo xtask thresholds` reads the new exact arm and moves the switch at
+  both precisions: at `f64` from $n^2/w^2 < 0.0898$ to $0.0866$, the derivative objective from
+  36.64 to 28.11 `u`; at `f32` from $0.379$ to $0.328$ with one series term fewer (15 to 14), the
+  derivative objective from 10.41 to 11.19 `u`.
+- `envelope --check`: no domination failure. No `helicoid` baseline is blessed yet, so the
+  no-regress bar does not run.
+
 ## Decision
 
 Settled by the owner on 2026-10-24: **swap `atan2` at both precisions, and make the kernels public.**
@@ -250,7 +266,7 @@ arms. `0034`'s trigger is a speedup and does not fire; the swap is taken for acc
    row; `math_tests` keeps a two-ulp smoke bound against `libm`.
 5. **The strata `0006` asks for.** New `real_atan2` strata cover where the formulas meet: the
    centre midpoints, the binary32 fold, the diagonal, the axes, and the window's and the
-   exponent range's edges.
+   exponent range's edges. They follow the swap (Implementation plan, step 4).
 
 ## Rationale
 
@@ -279,8 +295,8 @@ within 0.504 ulp, not correctly rounded, and waiting on a `libm` release would b
 - **D16** reads: for a given `helicoid` version and resolved `libm`, outputs are bit-identical
   across targets; `atan2`'s bits are fixed by the `helicoid` version alone. `just determinism`
   checks it. The `kernel` lint still keeps every `libm::` call in `float.rs`; `math` has none.
-- `coeffs/generated.rs`'s `Kernel:` header names `math`'s `atan2`, and the sweep, the conformance
-  results and the baselines are regenerated in the swap's PR.
+- `coeffs/generated.rs`'s `Kernel:` header names `math`'s `atan2`, and the sweep is regenerated in
+  the swap's PR; `r`'s switch moves (above).
 - **`math` is public API** (`API.md` §2): its accuracy statement is a measured maximum, not a proof,
   and a tuning that changes a bit is a minor-version event from 1.0.
 - A committed generator joins `corpus` and `thresholds` among the drift-gated artefacts, and the
@@ -294,14 +310,14 @@ within 0.504 ulp, not correctly rounded, and waiting on a `libm` release would b
 3. The candidate as a planted twin, measured: special values, odd symmetry, `2^k` invariance, the
    exact numerator and denominator, monotone sweeps where formulas meet, the error readouts.
    **Done**; the tests moved with the kernels to `helicoid-linalg`'s `math_tests`.
-4. The new `real_atan2` strata, baselined on `libm` before the swap. Verified by
-   `just corpus-check` and `just compare --a helicoid --b helicoid:libm-atan2`.
+4. The new `real_atan2` strata. Verified by `just corpus-check` and
+   `just compare --a helicoid:libm-atan2 --b helicoid`. **Owed**: the swap shipped ahead of them,
+   on `real_atan2`'s seven strata and every `atan2` consumer's, at the owner's call.
 5. Latency: `xtask/benches/atan2.rs`, in three regimes and with `so3_log` end to end. **Done** on one
    x86_64 host; aarch64 and wasm32 are not timed.
 6. The swap: `math`, `Real::atan2` through it, `helicoid:libm-atan2`, the regenerated sweep,
    results and baselines, `API.md`, `NUMERICS.md`, D16 and a changelog entry. Verified by
-   `just test`, `just conformance`, `just envelope` and `just determinism`. The baselines are
-   re-blessed only once the owner has read the comparison.
+   `just test`, `just conformance`, `just envelope --check` and `just determinism`. **Done.**
 
 ## Open questions
 

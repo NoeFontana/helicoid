@@ -16,7 +16,9 @@ defined by the status tables in `docs/`; they win over this file.
   limits at zeros and infinities, and the same bits on every target independent of `libm`. It
   costs 1.1–1.25× `libm`'s latency, 1.07× on `SO3::log`'s exact arm and nothing on its series
   arms. Every `atan2` caller's bits move: `so3_log`'s maximum falls from 1.680 to 1.405 `u`, and
-  `Log` of SO(2), SE(2), SE_N(3) and Sim(3), `S2::local` and `coeffs`' `r` move with it.
+  `Log` of SO(2), SE(2), SE_N(3) and Sim(3), `S2::local` and `coeffs`' `r` move with it. The
+  regenerated sweep moves `r`'s series switch at both precisions (`f32`'s series is one term
+  shorter).
 
 - **`SO3::log` rounds each component once on its exact arm** (`0106`): `r = 2 atan2(n, w)/n`
   is carried as two terms and `n` with its own error, where `r · u` rounded `r` just above `2` and
