@@ -5,9 +5,9 @@ from . import atan2
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="fit", description="candidate kernels' polynomials")
+    parser = argparse.ArgumentParser(prog="fit", description="the portable kernels' polynomials")
     sub = parser.add_subparsers(dest="command", required=True)
-    one = sub.add_parser("atan2", help="the portable atan2 candidate (docs/decisions/0105, draft)")
+    one = sub.add_parser("atan2", help="helicoid-linalg's atan2 (docs/decisions/0105)")
     one.add_argument("--f64", required=True, metavar="CENTRES:TERMS", help="e.g. 8:5")
     one.add_argument("--f32", required=True, metavar="TERMS", type=int, help="e.g. 8")
     one.add_argument("--out", type=Path, required=True)

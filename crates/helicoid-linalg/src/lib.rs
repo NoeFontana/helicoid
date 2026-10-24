@@ -2,7 +2,7 @@
 //!
 //! Implemented so far: the scalar model (`docs/PHASE2.md` §2), i.e. [`Mask`], [`Real`], [`Blend`]
 //! and [`Precision`], with `f64` and `f32` as `Real` (mask `bool`, every transcendental through
-//! `libm`), forward-mode [`Dual`] numbers (§3), also a `Real`, and the fixed-size [`Vector`],
+//! `libm` but `atan2`, which is the portable [`math::atan2`]/[`math::atan2f`]), forward-mode [`Dual`] numbers (§3), also a `Real`, and the fixed-size [`Vector`],
 //! [`Point`] and column-major [`Matrix`] with [`hat`]/[`vee`], [`Mat2::inverse_adj`], [`Mat3::inverse_adj`] and the
 //! Cholesky factorization [`chol`] with [`solve_lower`]/[`solve_upper`]/[`chol_solve`] (§4), the
 //! strided views [`Strided`]/[`StridedMut`] over caller memory (§5), and (§6) the real roots of a
@@ -38,6 +38,7 @@ mod cubic;
 mod dual;
 mod eig3;
 mod float;
+pub mod math;
 mod matrix;
 #[cfg(feature = "mint")]
 mod mint;
@@ -84,6 +85,8 @@ mod dual_tests;
 mod eig3_tests;
 #[cfg(test)]
 mod linalg_tests;
+#[cfg(test)]
+mod math_tests;
 #[cfg(all(test, feature = "mint"))]
 mod mint_tests;
 #[cfg(test)]

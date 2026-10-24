@@ -1,8 +1,8 @@
 # 0105: A portable `atan2` owes the trigger and a generator
 
-**Status:** draft
+**Status:** ready
 **Owner:** @NoeFontana
-**Implementation:** none in a library crate; the generator, the twin and `xtask/benches/atan2.rs` are measurement.
+**Implementation:** `helicoid_linalg::math::{atan2, atan2f}` behind `Real::atan2`; `math/generated.rs` from `just atan-fit`; `helicoid:libm-atan2` the planted twin.
 
 ## Context
 
@@ -139,10 +139,10 @@ fed into the next call's `y`, on an AMD EPYC Milan (Zen 3) at about 3.7 GHz. Wha
 
 ### The candidate, measured
 
-`helicoid:portable-atan2` is the shipped program at a scalar whose `atan2` alone is the candidate,
-at both precisions. It is planted, so no bar reads it. Its kernels are in
-`xtask/src/shipped/portable_atan2/kernel.rs`, and its fit is `conformance/fits/atan2.json`, read
-at compile time, so a fit of another shape is a build error.
+While this record was a draft, `helicoid:portable-atan2` was the shipped program at a scalar whose
+`atan2` alone was the candidate, at both precisions, planted so that no bar read it; the readings
+below are its. The kernels are now `helicoid_linalg::math`, and the twin is inverted:
+`helicoid:libm-atan2` is the shipped program with `libm`'s `atan2`.
 
 - **binary64.** $t = n/d$ is reduced about the nearest of 9 centres $c = j/8$:
   $\arctan t = \arctan c + \arctan v$, with $v = (n - c\,d)/(d + c\,n)$ and $\lvert v\rvert \le \tfrac1{16}$.
@@ -222,116 +222,105 @@ up on every call. The binary32 kernel matches `atan2f`'s throughput at 1.2–1.3
 
 ## Decision
 
-Proposed, not settled: **do not swap binary64's `atan2`.** The candidate is within 0.503 ulp of
-the reference, but it is slower than `libm` (1.1–1.25× latency, 2× throughput, 1.07× on
-`so3_log`'s exact arm). So `0034`'s trigger, a speedup, cannot fire. Since `0106`, maxima move:
-`so3_log`'s fall (1.680 to 1.405 `u` overall) and none of its strata rises, but 6 strata of other
-ids rise, by up to 1.449×. The binary32 kernel is the one open trade: correctly rounded on every
-draw read, at `atan2f`'s throughput (open question 4).
+Settled by the owner on 2026-10-24: **swap `atan2` at both precisions, and make the kernels public.**
+The binary64 kernel is within 0.504 ulp of the reference on every draw read, against `libm`'s
+1.40; the binary32 kernel is correctly rounded on every draw read, against `atan2f`'s 1.47 ulp. The
+price is 1.1–1.25× `libm`'s latency, 1.07× on `so3_log`'s exact arm and nothing on its series
+arms. `0034`'s trigger is a speedup and does not fire; the swap is taken for accuracy, which
+`0034` (iii) admits.
 
-If the kernel is built, it takes this shape:
-
-1. **One private body behind `Real::atan2`** in `helicoid-linalg`'s kernel module, the D16
-   chokepoint. It is pure Rust, uses basic operations only, and runs one fixed operation sequence
-   per precision. `libm::atan2` stays callable as its twin (open question 5).
-2. **The formulation is the candidate's** (above): 9 centres at binary64 with an exact numerator,
-   and binary32 evaluated in binary64. The rescale arm is keyed on
+1. **`helicoid_linalg::math`, public.** [`atan2`](../../crates/helicoid-linalg/src/math.rs) and
+   `atan2f` are free functions, `libm`'s names and argument order, so a consumer migrating off
+   `libm` changes a path. `Real::atan2` for `f64` and `f32` calls them; `Dual::atan2` inherits
+   its value through `Real`. Both are pure Rust, basic operations only, one fixed operation
+   sequence per precision.
+2. **The formulation is the candidate's** (above): 9 centres at binary64 with an exact numerator and
+   a compensated quotient; binary32 evaluated in binary64, folded at ½. The rescale arm is keyed on
    $\max(\lvert x\rvert, \lvert y\rvert)$ alone.
 3. **Generated coefficients and tables.** `conformance/generate/fit/` (`python -m fit atan2`) fits
    $(\arctan\sqrt s/\sqrt s - 1)/s$ by weighted Remez in mpmath, rounding the coefficients one at
-   a time with a refit after each. It tabulates $\arctan(j/C)$ as pairs and splits $\pi/4$. It
-   writes `conformance/fits/atan2.json` with the source and both errors, and
-   `just atan-fit-check` fails on drift. The package sits beside `gen`, not in it,
-   because `gen`'s sources are hashed into the corpus's provenance. No coefficient appears in this
-   record or by hand in any source file.
-4. **Verified as a candidate before it replaces anything.**
-   - A planted one-variable twin, `helicoid:portable-atan2`, follows `helicoid:host-std`'s
-     pattern: the shipped program at a scalar with `atan2` alone swapped, at both precisions.
-   - New `real_atan2` strata cover what the corpus lacks: the fold boundary $n = d/2 \pm k$ ulp,
-     axis-aligned inputs, angles near $k\pi/4$, and the window's edges.
+   a time with a refit after each. It tabulates $\arctan(j/C)$ as pairs, splits $\pi/4$, and
+   writes `crates/helicoid-linalg/src/math/generated.rs`. `just atan-fit-check`, a CI job, fails
+   on drift, and the generated-file lint holds the header. The package sits beside `gen`, not in
+   it, because `gen`'s sources are hashed into the corpus's provenance. No coefficient appears in
+   this record or by hand in any source file.
+4. **`libm`'s `atan2` stays as the twin.** `helicoid:libm-atan2`, planted, is the shipped program
+   with `libm`'s `atan2` at both precisions, so `cargo xtask compare` re-measures the choice
+   (`0078`). `atan2` is a primitive, checked against the corpus, so it has no `NUMERICS.md` §14
+   row; `math_tests` keeps a two-ulp smoke bound against `libm`.
+5. **The strata `0006` asks for.** New `real_atan2` strata cover where the formulas meet: the
+   centre midpoints, the binary32 fold, the diagonal, the axes, and the window's and the
+   exponent range's edges.
 
 ## Rationale
 
 The measurement settles the latency case: without a fused multiply-add, compensation is what an
-`atan2` within 0.52 ulp costs, and it costs more than `libm`'s whole call. The ladder's order is
-`0034`'s, and the arithmetic still holds. At $f = 0.15$, even $k = 4$ gives
-$1/(0.85 + 0.0375) = 1.127\times$ end to end, right at the bar tf_tree's `0016` set for rejecting a
-dependency. $f$ for `atan2` alone is a fraction of that 0.15, because `Exp`, `act` and every
-geodesic call `sin_cos`, not `atan2`. A latency case therefore needs a consumer measurement first.
-The accuracy case is real but narrow, as `0090` bounds it.
+`atan2` within 0.52 ulp costs, and it costs more than `libm`'s whole call. The accuracy case is what
+changed. Before `0106`, most of `so3_log`'s exact-arm error was `r` rounded and then `r · uᵢ`
+rounded, so a better `atan2` moved maxima both ways. With each component rounded once, the exact
+arm's maxima follow `atan2`'s error: `so3_log` falls from 1.680 to 1.405 `u` overall, and none of
+its strata rises. Six small strata of other ids rise, by up to 1.449×; the owner takes that for a
+`Log` whose dominant term is now correctly rounded in all but 268 of $3 \times 2^{22}$ draws.
 
-Building the generator and the twin first costs nothing irreversible. Neither touches a library
-crate, and both are the instruments the swap would need anyway. A kernel shipped first and
-measured later would move every `atan2` consumer's bits (`so3_log`, `s2_local`, the SO(2)/SE(2)
-`Log`, `sim3_log`, `coeff_r`'s exact arm) and the committed baselines, on a claim this record has
-already found wrong in its main number.
+**A module, not a crate.** A `helicoid-math` crate was weighed. Every consumer already depends on
+`helicoid-linalg`, so a crate buys no reach today and costs a publish, an MSRV, a `deny` surface and
+a `0007` budget line. On `0.0.x` a later split is a move plus a re-export. The trigger for one is a
+consumer that wants the kernels without the linear algebra, or the ladder growing past `atan2`.
 
-The alternative of upstreaming the kernel to the `libm` crate keeps `0007` at "`libm` only", and
-`0034` prefers it where possible. It is open question 3, not a rejection.
+**Not upstream, yet.** Upstreaming to the `libm` crate would keep D16 as worded. A correctly rounded
+`atan2` is the form worth upstreaming (open question 3 records the scratch port); this kernel is
+within 0.504 ulp, not correctly rounded, and waiting on a `libm` release would block the consumers.
 
 ## Consequences
 
-- Nothing changes in a library crate until this record is `ready`.
-- If the kernel ships:
-  - the bits of every `atan2` consumer move once. On `0.0.x` any release may move them; from 1.0
-    that is a minor-version event (`0034` item 4);
-  - `coeffs/generated.rs`'s `Kernel:` header names the new kernel, and `thresholds-check`,
-    the conformance results and the baselines are regenerated in that PR;
-  - D16's property, bit identity across targets for a given `helicoid` version, holds by
-    construction for a kernel of basic operations, and `just determinism` checks it;
-  - D16's resolved-`libm` qualifier no longer covers `atan2`.
-- A new committed generator joins `corpus` and `thresholds` among the drift-gated artefacts.
+- The bits of every `atan2` consumer move once: `so3_log`, `s2_local`, the SO(2)/SE(2) `Log`,
+  `sim3_log`, `coeff_r`'s exact arm, `real_atan2`. On `0.0.x` any release may move them; from 1.0
+  that is a minor-version event (`0034` item 4).
+- **D16** reads: for a given `helicoid` version and resolved `libm`, outputs are bit-identical
+  across targets; `atan2`'s bits are fixed by the `helicoid` version alone. `just determinism`
+  checks it. The `kernel` lint still keeps every `libm::` call in `float.rs`; `math` has none.
+- `coeffs/generated.rs`'s `Kernel:` header names `math`'s `atan2`, and the sweep, the conformance
+  results and the baselines are regenerated in the swap's PR.
+- **`math` is public API** (`API.md` §2): its accuracy statement is a measured maximum, not a proof,
+  and a tuning that changes a bit is a minor-version event from 1.0.
+- A committed generator joins `corpus` and `thresholds` among the drift-gated artefacts, and the
+  generated-file registry names a `just` recipe as well as `cargo xtask` tasks.
 
 ## Implementation plan
 
-1. This record, draft. Verified by `just lint` and `just doc`.
+1. This record. Verified by `just lint` and `just doc`. **Done.**
 2. The coefficient generator and its committed output. Verified by `just atan-fit-check`, a CI job,
    and `tests/test_fit_atan2.py`. **Done.**
-3. `helicoid:portable-atan2`, planted. Unit tests check:
-   - special values against IEEE 754's correctly rounded limits;
-   - exact odd symmetry;
-   - bit-exact invariance under $2^k$ scaling, through the window and the cold arm;
-   - the exact numerator against the reference;
-   - monotone sweeps through every place two formulas meet;
-   - at most 0.51 ulp at binary64 and 0.5001 at binary32 against the reference.
-
-   The readouts above are its ignored measurements. Verified by
-   `cargo nextest run -p xtask -- portable_atan2`, and by the shipped subject's unchanged
-   `determinism` digests. **Done.**
-4. The new `real_atan2` strata, then the comparison: max and p99 `u` per stratum for `libm`, the
-   candidate and `seeded:host-std`. Verified by `just corpus-check` and
-   `just compare --a helicoid --b helicoid:portable-atan2`. **Owed** if a kernel goes forward.
-5. Latency: `xtask/benches/atan2.rs`, in three regimes and with `so3_log` end to end, read above.
-   **Done** on one x86_64 host; aarch64 and wasm32 are not timed. $f$ and $k$ from tf_tree's
-   lookup bench are moot while $k < 1$.
-6. On `ready` only: the swap in the kernel module, with the twin, the regenerated artefacts and a
-   changelog entry. Verified by `just test`, `just conformance`, `just envelope` and
-   `just determinism`.
+3. The candidate as a planted twin, measured: special values, odd symmetry, `2^k` invariance, the
+   exact numerator and denominator, monotone sweeps where formulas meet, the error readouts.
+   **Done**; the tests moved with the kernels to `helicoid-linalg`'s `math_tests`.
+4. The new `real_atan2` strata, baselined on `libm` before the swap. Verified by
+   `just corpus-check` and `just compare --a helicoid --b helicoid:libm-atan2`.
+5. Latency: `xtask/benches/atan2.rs`, in three regimes and with `so3_log` end to end. **Done** on one
+   x86_64 host; aarch64 and wasm32 are not timed.
+6. The swap: `math`, `Real::atan2` through it, `helicoid:libm-atan2`, the regenerated sweep,
+   results and baselines, `API.md`, `NUMERICS.md`, D16 and a changelog entry. Verified by
+   `just test`, `just conformance`, `just envelope` and `just determinism`. The baselines are
+   re-blessed only once the owner has read the comparison.
 
 ## Open questions
 
-1. Is a near-correctly-rounded `atan2` worth 1.07× on `so3_log`'s exact arm? Before `0106` it
-   was not: most of that arm's error was `r` rounded, then `r · uᵢ` rounded. With `0106` each
-   component rounds once, and the candidate lowers `so3_log`'s maximum from 1.680 to 1.405 `u`
-   with no `so3_log` stratum rising, while 6 strata of other ids rise. This record still proposes
-   no binary64 swap; the trade is the owner's to reweigh.
+All answered on 2026-10-24.
+
+1. *Is a near-correctly-rounded `atan2` worth 1.07× on `so3_log`'s exact arm?* Yes, at both
+   precisions (Decision).
 2. *(Answered by the tuning.)* The $k = 0$ gap closes when the tail shrinks: 9 centres $j/8$
    reach 0.503 ulp with a 5-term polynomial and no compensated tail.
-3. Should the kernel be upstreamed to the `libm` crate instead of living in `helicoid-linalg`?
-   A correctly rounded `atan2` is the form worth upstreaming. CORE-MATH has one for binary64
-   (MIT; its fast phase's bound is empirical, so correct rounding is not proven), and `libm`
-   0.2.16 already ships CORE-MATH's `cbrt`. Correct rounding makes the bits the same on every
-   target with or without a fused multiply-add, but no fused multiply-add is reachable here
-   anyway: `f64::mul_add` is not in `core`, the intrinsics need `unsafe` (`0007`), and
-   `libm::fma` dispatches at run time on x86_64. A scratch port without one read correctly
-   rounded on $4 \times 2^{22}$ draws at about 1.3× `libm`'s latency natively and 1.2× on
-   wasm32. Upstream keeps D16 as worded.
-4. Does binary32 get the binary64-evaluated kernel? It costs nothing in throughput and 1.2–1.35×
-   in latency, and moves `atan2f` from 1.47 ulp to correctly rounded on every draw read, but no
-   `@f32` maximum falls for it. Under `0016` the `@f32` strata are the coefficient ids' alone, so a
-   binary32 kernel would also owe strata.
-5. Where does the twin live? `NUMERICS.md` §14's twins are composite routines. `libm::atan2` as
-   a test-only twin needs the `kernel` containment lint to admit a test module.
+3. *Upstream to the `libm` crate instead?* Not now: the kernels live in `helicoid-linalg`, public
+   (Rationale). A correctly rounded `atan2` remains the form worth upstreaming. CORE-MATH has one
+   for binary64 (MIT; its fast phase's bound is empirical, so correct rounding is not proven), and
+   `libm` 0.2.16 already ships CORE-MATH's `cbrt`. A scratch port without a fused multiply-add read
+   correctly rounded on $4 \times 2^{22}$ draws at about 1.3× `libm`'s latency natively and 1.2×
+   on wasm32.
+4. *Does binary32 get the binary64-evaluated kernel?* Yes. It costs nothing in throughput and
+   1.2–1.35× in latency, and moves `atan2f` from 1.47 ulp to correctly rounded on every draw read.
+5. *Where does the twin live?* As a planted subject, `helicoid:libm-atan2`, and as `math_tests`'
+   smoke bound; `atan2` is a primitive, so no §14 row (Decision item 4).
 
 ## Further work
 

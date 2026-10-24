@@ -232,7 +232,7 @@ jobs:
           tool: just
       - run: just corpus-check
 
-  # The committed fit of the portable `atan2` candidate (`0105`, draft) must regenerate
+  # `math::atan2`'s generated polynomials and tables (`0105`) must regenerate
   # byte-identically from the pinned generator.
   atan-fit-check:
     name: atan-fit-check

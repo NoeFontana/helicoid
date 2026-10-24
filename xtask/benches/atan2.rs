@@ -1,6 +1,6 @@
-//! The portable `atan2` candidate of `0105` (draft) against `libm` and the host's `atan2`, and
-//! `so3_log` end to end at the shipped scalar and at the twin's: the time per call that draft
-//! record cites. `cargo bench -p xtask --bench atan2`.
+//! `helicoid_linalg::math::atan2` (`0105`) against `libm`'s and the host's `atan2`, and `so3_log`
+//! end to end at the shipped scalar and at `helicoid:libm-atan2`'s: the time per call that record
+//! cites. `cargo bench -p xtask --bench atan2`.
 //!
 //! Rows are batches of 256 calls: `latency` feeds each result into the next call's `y` through
 //! `r·0`, `throughput` sums independent calls. The regimes are random octants (`mixed`), one octant
@@ -21,14 +21,11 @@ use criterion::{criterion_group, criterion_main, BenchmarkGroup, Criterion, Thro
 use helicoid::{LieGroup, SO3Tangent, SO3};
 use helicoid_linalg::{Real, Vector};
 
-#[allow(
-    dead_code,
-    reason = "the twin's module, of which the bench reads the kernels"
-)]
-#[path = "../src/shipped/portable_atan2/kernel.rs"]
-mod kernel;
+#[path = "../src/shipped/libm_atan2/scalar.rs"]
+mod scalar;
 
-use kernel::{atan2_f32, atan2_f64, Portable, FITS};
+use helicoid_linalg::math;
+use scalar::Libm;
 
 const BATCH: usize = 256;
 
@@ -111,15 +108,11 @@ fn group<'a>(c: &'a mut Criterion, name: &str) -> BenchmarkGroup<'a, WallTime> {
 }
 
 fn atan2(c: &mut Criterion) {
-    let (f64_fit, f32_fit) = (&FITS.f64, &FITS.f32);
-    let pi4 = (f64_fit.pi4_hi, f64_fit.pi4_lo);
     let mut g = group(c, "atan2/f64");
     for regime in ["mixed", "octant", "axis"] {
         let (ys, xs) = batch(regime);
         rows(&mut g, &format!("libm/{regime}"), &ys, &xs, libm::atan2);
-        rows(&mut g, &format!("candidate/{regime}"), &ys, &xs, |y, x| {
-            atan2_f64(y, x, f64_fit)
-        });
+        rows(&mut g, &format!("shipped/{regime}"), &ys, &xs, math::atan2);
         rows(&mut g, &format!("host/{regime}"), &ys, &xs, f64::atan2);
     }
     g.finish();
@@ -129,9 +122,7 @@ fn atan2(c: &mut Criterion) {
         let ys: Vec<f32> = ys.iter().map(|&v| v as f32).collect();
         let xs: Vec<f32> = xs.iter().map(|&v| v as f32).collect();
         rows(&mut g, &format!("libm/{regime}"), &ys, &xs, libm::atan2f);
-        rows(&mut g, &format!("candidate/{regime}"), &ys, &xs, |y, x| {
-            atan2_f32(y, x, f32_fit, pi4)
-        });
+        rows(&mut g, &format!("shipped/{regime}"), &ys, &xs, math::atan2f);
         rows(&mut g, &format!("host/{regime}"), &ys, &xs, f32::atan2);
     }
     g.finish();
@@ -164,11 +155,11 @@ fn so3_log(c: &mut Criterion) {
     let mut g = group(c, "so3_log");
     // `r`'s exact arm calls `atan2` (`θ ≳ 0.58`, `0090`); below it a series arm does not.
     for (arm, lo, hi) in [("exact", 0.6, 3.1), ("series", 0.01, 0.5)] {
-        let (a, b) = (rotations::<f64>(lo, hi), rotations::<Portable<f64>>(lo, hi));
-        g.bench_function(format!("f64/libm/{arm}"), |bench| {
+        let (a, b) = (rotations::<f64>(lo, hi), rotations::<Libm<f64>>(lo, hi));
+        g.bench_function(format!("f64/shipped/{arm}"), |bench| {
             bench.iter(|| black_box(&a).iter().map(|x| x.log().phi.0[0]).sum::<f64>());
         });
-        g.bench_function(format!("f64/candidate/{arm}"), |bench| {
+        g.bench_function(format!("f64/libm/{arm}"), |bench| {
             bench.iter(|| {
                 black_box(&b)
                     .iter()
