@@ -478,12 +478,12 @@ pub(crate) fn log_ratio<S: Real>(n2: S, w: S) -> S {
 /// each arm: on `t`'s factor, and on `u` off `atan2`'s path. The arms, their masks and `s` are
 /// [`log_ratio`]'s; each arm returns scalars, captured by `move`.
 pub(crate) fn log_ratio_scale<S: Real>(w: S, sign: S, (x, y, z): (S, S, S)) -> (S, S, S) {
-    let n2 = (x * x + y * y) + z * z;
+    let (px, py, pz) = (x * x, y * y, z * z);
+    let s1 = px + py;
+    let n2 = s1 + pz;
     nonnegative(n2);
     let r = table::<S, _>(R_F64.arm(), R_F32.arm());
-    let positive = S::zero().lt(w);
-    let s = n2 / S::select(positive, w * w, S::one());
-    let tiny = positive.and(s.lt(r.short_below()));
+    let (s, tiny, small) = log_ratio_scale_arms(n2, w);
     S::branch(
         tiny,
         move || {
@@ -492,7 +492,6 @@ pub(crate) fn log_ratio_scale<S: Real>(w: S, sign: S, (x, y, z): (S, S, S)) -> (
             scale_series(sign + sign, S::select(tiny, w, S::one()), st, (x, y, z))
         },
         move || {
-            let small = positive.and(s.lt(r.below()));
             S::branch(
                 small,
                 move || {
@@ -505,6 +504,7 @@ pub(crate) fn log_ratio_scale<S: Real>(w: S, sign: S, (x, y, z): (S, S, S)) -> (
                         S::select(small, S::one(), n2),
                         w,
                         (sign * x, sign * y, sign * z),
+                        (px, py, pz, s1),
                     )
                 },
             )
@@ -512,61 +512,84 @@ pub(crate) fn log_ratio_scale<S: Real>(w: S, sign: S, (x, y, z): (S, S, S)) -> (
     )
 }
 
-/// Whether [`log_ratio_scale`] takes its exact arm: `small`'s complement, `tiny` implying `small`.
-#[cfg(any(test, feature = "__sweep"))]
-pub(super) fn log_ratio_takes_exact_arm<S: Real>(n2: S, w: S) -> S::Mask {
+/// [`log_ratio_scale`]'s `s = n²/w²` and its two series masks, `tiny` implying `small`: the one
+/// definition its exact-arm twin dispatches on too.
+#[inline]
+fn log_ratio_scale_arms<S: Real>(n2: S, w: S) -> (S, S::Mask, S::Mask) {
     let r = table::<S, _>(R_F64.arm(), R_F32.arm());
     let positive = S::zero().lt(w);
     let s = n2 / S::select(positive, w * w, S::one());
-    positive.and(s.lt(r.below())).not()
+    (
+        s,
+        positive.and(s.lt(r.short_below())),
+        positive.and(s.lt(r.below())),
+    )
 }
 
-/// `r u` on [`log_ratio_scale`]'s exact arm (`0106`, draft), `n2 = (x² + y²) + z²` as formed there.
+/// Whether [`log_ratio_scale`] takes its exact arm: `small`'s complement.
+#[cfg(any(test, feature = "__sweep"))]
+pub(super) fn log_ratio_takes_exact_arm<S: Real>(n2: S, w: S) -> S::Mask {
+    log_ratio_scale_arms(n2, w).2.not()
+}
+
+/// `r u` on [`log_ratio_scale`]'s exact arm (`0106`, draft): `n2 = s1 + pz`, `s1 = px + py` and
+/// `pᵢ = uᵢ²` the sums and squares formed there, of `u` before its sign, which squares away.
 ///
 /// `r = 2 atan2(n, w)/n` lies in `[2, π]`, just above a power of two, so `r` rounded and then
 /// `r · uᵢ` rounded each cost up to a whole `u`. Here `r` is `rh + rl`, `rh = 2a·(1/n)` and `rl`
 /// its remainder, and each component rounds once: `rh uᵢ + (εᵢ + rl uᵢ)`, `εᵢ` the product's exact
 /// error. `n` carries the error of `n2` and of its root as `n_lo`: near `π`, where `w → 0`, it would
-/// pass through `/n` whole. `n2` is a selected lane's own sum, so its two-sums reproduce it.
+/// pass through `/n` whole. A zero component is returned as `rh uᵢ`, whose sign the correction's
+/// `+0` would drop.
 ///
 /// The compensation is a branch of its own: below [`compensated_from`] its error terms leave the
-/// normal range, and in one block with `rh` LLVM's SLP vectorizer packs its products into lanes,
-/// which measured 14 ns longer (`0106`, draft).
-fn exact_scale<S: Real>(n2: S, w: S, (x, y, z): (S, S, S)) -> (S, S, S) {
+/// normal range, and in one block with `atan2` LLVM's SLP vectorizer packs its products into lanes,
+/// which measured 14 ns longer (`0106`, draft). The other arm is `exact_r`'s `2a/n`, rounded twice.
+fn exact_scale<S: Real>(
+    n2: S,
+    w: S,
+    (x, y, z): (S, S, S),
+    (px, py, pz, s1): (S, S, S, S),
+) -> (S, S, S) {
     let two = S::lit(2.0);
     let n = n2.sqrt();
-    let a = n.atan2(w);
-    let inv = S::one() / n;
-    let t = two * a;
-    let rh = t * inv;
+    let t = two * n.atan2(w);
     S::branch(
         compensated_from::<S>().le(n),
         move || {
+            let inv = S::one() / n;
+            let rh = t * inv;
             let (xs, ys, zs, ns) = (halves(x), halves(y), halves(z), halves(n));
-            let (px, py, pz) = (x * x, y * y, z * z);
-            let (s1, e1) = two_sum(px, py);
-            let (_, e2) = two_sum(s1, pz);
-            let lost =
-                (e1 + e2) + ((square_error(xs, px) + square_error(ys, py)) + square_error(zs, pz));
+            let lost = (sum_error(px, py, s1) + sum_error(s1, pz, n2))
+                + ((square_error(xs, px) + square_error(ys, py)) + square_error(zs, pz));
             let nn = n * n;
             let n_lo = (((n2 - nn) - square_error(ns, nn)) + lost) * (S::lit(0.5) * inv);
-            // `atan2(n + n_lo, w) = a + w n_lo/(n² + w²)` to first order.
-            let a_lo = w * n_lo / (n2 + w * w);
+            // `atan2(n + n_lo, w) = a + n_lo·w/(n² + w²)` to first order; the quotient is divided
+            // off `n_lo`'s path, 2 ns less latency.
+            let g = (two * w) / (n2 + w * w);
             let rs = halves(rh);
             let p = rh * n;
-            let rl = (((t - p) - product_error(rs, ns, p)) + (two * a_lo - rh * n_lo)) * inv;
+            let rl = (((t - p) - product_error(rs, ns, p)) + n_lo * (g - rh)) * inv;
             let scale = |v: S, vs: (S, S)| {
                 let h = rh * v;
-                h + (product_error(rs, vs, h) + rl * v)
+                S::select(
+                    v.abs().le(S::zero()),
+                    h,
+                    h + (product_error(rs, vs, h) + rl * v),
+                )
             };
             (scale(x, xs), scale(y, ys), scale(z, zs))
         },
-        move || (rh * x, rh * y, rh * z),
+        move || {
+            let r = t / n;
+            (r * x, r * y, r * z)
+        },
     )
 }
 
-/// The least `n` at which [`exact_scale`]'s error terms, down to `2⁻¹⁰⁶ n²` at `f64` and `2⁻⁴⁸ n²`
-/// at `f32`, stay normal: `2⁻⁴⁵⁰` and `2⁻³⁸`, the format's and not a fitted value.
+/// The least power of two `n` at which [`exact_scale`]'s error terms, down to `2⁻¹⁰⁶ n²` at `f64`
+/// and `2⁻⁴⁸ n²` at `f32`, stay normal is `2⁻⁴⁵⁸` and `2⁻³⁹`; this is that with a margin, `2⁻⁴⁵⁰`
+/// and `2⁻³⁸`, the format's and not a fitted value. No unit quaternion comes near either.
 fn compensated_from<S: Real>() -> S {
     match S::PRECISION {
         Precision::F64 => S::lit(f64::from_bits((1023 - 450) << 52)),
@@ -597,11 +620,10 @@ fn product_error<S: Real>((ah, al): (S, S), (bh, bl): (S, S), p: S) -> S {
     (((ah * bh - p) + ah * bl) + al * bh) + al * bl
 }
 
-/// `(s, e)` with `s = a + b` rounded and `s + e = a + b` exactly, in either order (Knuth).
-fn two_sum<S: Real>(a: S, b: S) -> (S, S) {
-    let s = a + b;
+/// `a + b − s` exactly, for `s` the rounded `a + b`, in either order (Knuth).
+fn sum_error<S: Real>(a: S, b: S, s: S) -> S {
     let bb = s - a;
-    (s, (a - (s - bb)) + (b - bb))
+    (a - (s - bb)) + (b - bb)
 }
 
 /// `t + (t/w)·((1 − w) + st)`, `t = c u` exact for `c = ±2`: [`log_ratio_scale`]'s series arms.

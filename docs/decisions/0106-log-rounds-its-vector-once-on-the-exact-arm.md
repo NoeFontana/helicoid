@@ -44,21 +44,26 @@ blocks of a stratum's size of the block maximum, the stand-in for a corpus maxim
    exact arm recovers the error of, so the precondition is the code's and not a caller's.
    `SO3::log` passes `u` and the flip only. `log_ratio` and its arms are unchanged.
 2. **The exact arm is `NUMERICS.md` §3.2's compensated form**, in `coeffs::exact_scale`:
-   - `a = atan2(n, w)`, `rh = 2a·(1/n)`; `1/n` divides beside `atan2`, off its path.
+   - `a = atan2(n, w)`, `rh = 2a·(1/n)`.
    - `n_ℓ = ((n² − fl(n)²) + δ(n²))/(2n)`, with `δ(n²)` the exact errors of the three squares and
      the two sums (Knuth's two-sum), and `fl(n)²`'s error exact (Dekker).
-   - `r_ℓ = ((2a − rh·n) + (2w n_ℓ/(n² + w²) − rh n_ℓ))/n`, `2a − rh·n` exact (Dekker): the
-     first-order change of `2 atan2(n, w)/n` with `n`.
+   - `r_ℓ = ((2a − rh·n) + n_ℓ(2w/(n² + w²) − rh))/n`, `2a − rh·n` exact (Dekker): the
+     first-order change of `2 atan2(n, w)/n` with `n`. `2w/(n² + w²)` divides off `n_ℓ`'s path.
    - `φᵢ = rh uᵢ + (εᵢ + r_ℓ uᵢ)`, `εᵢ` the exact error of `rh uᵢ`: one rounding per component.
+     A zero `uᵢ` returns `rh uᵢ`: the correction is `+0` there and would drop a `−0`.
+   - The squares and the two sums are `log_ratio_scale`'s own, of `u` before the flip, which
+     squares away; only the sums' errors are formed here.
 3. **Error-free products without a fused multiply-add (D16):** Veltkamp halves with the splitter
    `2^⌈p/2⌉ + 1`, `2²⁷ + 1` at `f64` and `2¹² + 1` at `f32`, selected by `S::PRECISION`. The
    splitter is the format's, not a fitted value; nothing is typed that `0004` forbids.
-4. **The compensation is a branch of its own**, taken for `n ≥ 2⁻⁴⁵⁰` (`2⁻³⁸` at `f32`), where
-   every error term, down to `2⁻¹⁰⁶ n²` (`2⁻⁴⁸ n²`), stays normal; below it the arm is `rh u`.
-   The bound is the format's too. The branch is also what keeps LLVM's SLP vectorizer from packing
+4. **The compensation is a branch of its own**, taken for `n ≥ 2⁻⁴⁵⁰` (`2⁻³⁸` at `f32`). Every
+   error term, down to `2⁻¹⁰⁶ n²` (`2⁻⁴⁸ n²`), stays normal from `2⁻⁴⁵⁸` (`2⁻³⁹`); the bound is
+   that with a margin, the format's too, and no unit quaternion comes near it. Below it the arm is
+   `exact_r`'s `(2a/n) u`, rounded as `main` rounds it. The branch is also what keeps LLVM's SLP vectorizer from packing
    the compensation's products with `rh`'s, which measured 14 ns longer in one block.
 5. **`helicoid:r-times-u`**, a planted twin: the shipped `SO3::log` with the exact arm `r · u`,
-   dispatched by the kernel's own predicate (`__sweep::log_ratio_takes_exact_arm`), so
+   dispatched on the masks `log_ratio_scale` branches on (`__sweep::log_ratio_takes_exact_arm`
+   shares their one definition), so
    `cargo xtask compare` re-measures this choice (`0078`).
 6. **No new switch, no new coefficient.** `generated.rs` is unchanged: the sweep reads `exact_r`,
    not `log_ratio_scale` (`just thresholds-check`).
@@ -116,13 +121,17 @@ under 2.5, one binary per variant, three interleaved rounds; ns per `Log`:
 |---|---|---|---|---|
 | `θ ∈ [10⁻⁸, 10⁻⁶)`, `f64` | 4.6 / 23.3 | 4.6 / 23.3 | 4.6 / 23.3 | 4.6 / 23.3 |
 | `θ ∈ [0.1, 0.5)`, `f64` | 10.9 / 39.8 | 10.9 / 39.8 | 10.9 / 39.9 | 10.9 / 40.0 |
-| `θ ∈ [0.5, 2)`, `f64` | 14.9 / 38.8 | 28.0 / 46.5 | 40.9 / 71.1 | 40.4 / 57.6 |
-| `θ ∈ [π − 0.1, π)`, `f64` | 13.1 / 37.0 | 27.5 / 44.2 | 41.9 / 71.1 | 40.6 / 56.9 |
-| `θ ∈ [0.5, 2)`, `f32` | 10.8 / 36.3 | 16.0 / 39.8 | 20.8 / 51.0 | 20.5 / 44.8 |
-| `θ ∈ [π − 0.1, π)`, `f32` | 10.1 / 29.5 | 20.5 / 37.7 | 33.4 / 64.3 | 32.8 / 48.8 |
+| `θ ∈ [0.5, 2)`, `f64` | 14.9 / 38.8 | 28.0 / 46.5 | 40.9 / 71.1 | 38.9 / 54.2 |
+| `θ ∈ [π − 0.1, π)`, `f64` | 13.1 / 37.0 | 27.5 / 44.2 | 41.9 / 71.1 | 40.4 / 54.0 |
+| `θ ∈ [0.5, 2)`, `f32` | 10.8 / 36.3 | 16.0 / 39.8 | 20.8 / 51.0 | 20.5 / 44.1 |
+| `θ ∈ [π − 0.1, π)`, `f32` | 10.1 / 29.5 | 20.5 / 37.7 | 33.4 / 64.3 | 32.6 / 47.4 |
 
-Throughput / latency. The series arms keep their time. On the exact arm F2 costs 2.7–3.1× `main`'s
-throughput and 1.5× its latency; F1 1.9–2.1× and 1.2×. Without a fused multiply-add each exact
+Throughput / latency. The series arms keep their time. On the exact arm F2 costs 2.6–3.1× `main`'s
+throughput and 1.4–1.5× its latency; F1 1.9–2.1× and 1.2×. Against the first branched form
+(`f64` 40.4 / 57.6 and 40.6 / 56.9), reusing `log_ratio_scale`'s squares and sums and taking the
+`−0` fix cost nothing and saved about 2 ns of latency, and dividing `2w/(n² + w²)` off `n_ℓ`'s path
+saved 2 more; both keep the bits on 2·10⁶ draws (`f64`, `f32` and `Dual`), and neither moves
+throughput beyond ±2%. Without a fused multiply-add each exact
 product is eight operations where `fma` would be one, and one `Log` then executes about twice
 `main`'s instructions, `atan2` included, too many for consecutive calls to overlap. Measured and
 not taken: the dispatch by `n² < T w²` instead of dividing `s` first (within ±2%), and the
@@ -138,6 +147,8 @@ square's error in five operations instead of Dekker's eight (within ±2%).
   first order, so their derivative parts are rounding noise: within 23.5 `u` of `r · u`'s
   derivative at `f64` and 27.7 at `f32` on `log_ratio_scale_is_r_u`'s grid, where the value is
   within 1.3. Whether that is closer to the true derivative is not measured.
+- **Signed zeros.** A zero component keeps its sign on the exact arm, as `r · u` kept it, so
+  `Log` of the conjugate is `−Log` to the bit there (`log_ratio_scale_keeps_signed_zeros`).
 - **Scale invariance** holds within rounding, as on the series arms
   (`log_is_scale_invariant_across_the_unchecked_domain`).
 - **The envelope baseline** moves with the maxima above; `--bless` is the owner's.
@@ -146,8 +157,9 @@ square's error in five operations instead of Dekker's eight (within ±2%).
 
 1. `log_ratio_scale`, `exact_scale` and its helpers, `SO3::log`, `NUMERICS.md` §3.2, the test
    `log_ratio_scale_is_r_u_{f64,f32}` (now within `tol` of `r u` rounded twice on every arm,
-   value and derivative, the derivative's bound wider on the exact arm), and the twin
-   `helicoid:r-times-u` with its control test. Verified by `just test`, `cargo xtask compare`,
+   value and derivative, the derivative's bound wider on the exact arm, either side of
+   `compensated_from` and below it), `log_ratio_scale_keeps_signed_zeros`, and the twin
+   `helicoid:r-times-u` with its control test (`the_exact_arm_is_taken_and_moves`). Verified by `just test`, `cargo xtask compare`,
    `just envelope`, `just determinism` (native, `ndebug` and `wasm32` identical) and
    `just thresholds-check`.
 
@@ -167,3 +179,9 @@ square's error in five operations instead of Dekker's eight (within ±2%).
 - **Fewer instructions.** A bit-mask split (one `and`, one subtraction) would replace Veltkamp's
   four operations, but `Real` has no bit access; a lighter `n` compensation (the root's error
   only) is not measured.
+- **`Dual` derivatives without the noise.** The compensation runs on the derivative parts too;
+  compensating the value alone would leave `rh u̇ + ṙ u` there, but `Real` has no hook that tells a
+  value from its derivative.
+- **One error-free-transform kernel.** `halves`, Dekker's products and Knuth's sum also exist,
+  same-shaped, in the test references (`s2_tests`, `eig3_tests`, `svd3_tests`, `sin_tests`);
+  a shared private kernel in `helicoid-linalg`, beside D16's, would be a record of its own.
