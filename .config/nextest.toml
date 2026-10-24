@@ -2,19 +2,39 @@
 # turns a real flake green would hide a determinism failure (D16).
 [profile.default]
 slow-timeout = { period = "60s", terminate-after = 3 }
-final-status-level = "slow"
+status-level = "pass"
+final-status-level = "flaky"
+
+# Dedicated test group for heavy threshold sweep and conformance runs to avoid CPU cache thrashing.
+[test-groups]
+heavy = { max-threads = 2 }
 
 [[profile.default.overrides]]
 # Threshold sweep and check tests evaluate multiple kernels across grids; allow 360s total before terminating.
-filter = 'package(xtask) and test(thresholds::)'
+filter = 'package(xtask) and (test(thresholds::) or test(conformance::selftest))'
 slow-timeout = { period = "120s", terminate-after = 3 }
+test-group = 'heavy'
+
+# Ultra-fast profile for interactive developer iteration
+[profile.quick]
+slow-timeout = { period = "30s", terminate-after = 2 }
+status-level = "pass"
+final-status-level = "flaky"
+fail-fast = true
+
+[[profile.quick.overrides]]
+filter = 'package(xtask) and (test(thresholds::) or test(conformance::selftest))'
+test-group = 'heavy'
 
 [profile.ci]
 slow-timeout = { period = "60s", terminate-after = 3 }
 fail-fast = false
+status-level = "slow"
+final-status-level = "flaky"
 
 [[profile.ci.overrides]]
 # Match default override on CI runners.
-filter = 'package(xtask) and test(thresholds::)'
+filter = 'package(xtask) and (test(thresholds::) or test(conformance::selftest))'
 slow-timeout = { period = "120s", terminate-after = 3 }
+test-group = 'heavy'
 

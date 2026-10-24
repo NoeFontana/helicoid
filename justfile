@@ -9,12 +9,29 @@ default:
 build:
     cargo build --workspace --all-targets
 
+# Fast developer iteration: check and run tests for the crate under active development in seconds.
+dev target="helicoid":
+    cargo check -p {{ if target == "linalg" { "helicoid-linalg" } else { target } }} --lib --tests
+    cargo nextest run --profile quick -p {{ if target == "linalg" { "helicoid-linalg" } else { target } }} --lib
+
+# Fast workspace test pass (dev profile only, quick profile, no duplicate ndebug pass).
+test-fast:
+    cargo nextest run --profile quick --workspace --lib --tests --no-tests=pass
+
+# Fast clippy and check without waiting on docs or heavy sweeps.
+check-fast:
+    cargo clippy --workspace --lib --tests -- -D warnings
+
+# Prune stale build artifacts in target/ while preserving cached dependencies.
+clean-stale:
+    cargo clean -p helicoid -p helicoid-linalg -p xtask
+
 # Unit + integration tests (nextest) in the dev profile, then in `ndebug` (`Cargo.toml`), where
 # `debug_assert!` is compiled out and the out-of-domain behaviour the docs state is what is tested;
-# then doctests.
+# then doctests. Runs full proptest cases (256) for exhaustive verification.
 test:
-    cargo nextest run --workspace --no-tests=pass
-    cargo nextest run --workspace --cargo-profile ndebug --no-tests=pass
+    PROPTEST_CASES=256 cargo nextest run --workspace --no-tests=pass
+    PROPTEST_CASES=256 cargo nextest run --workspace --cargo-profile ndebug --no-tests=pass
     cargo test --doc --workspace
     cargo nextest run -p helicoid-linalg --features mint
     cargo test --doc -p helicoid-linalg --features mint

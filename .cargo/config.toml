@@ -2,3 +2,7 @@
 # No `target-cpu`, no `rustflags` here: outputs are bit-identical across targets (D16, `0007`).
 [alias]
 xtask = "run --quiet --package xtask --"
+
+[env]
+# Fast local property test iterations by default; CI and `just test` override with PROPTEST_CASES=256.
+PROPTEST_CASES = { value = "32", force = false }
