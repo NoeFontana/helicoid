@@ -8,6 +8,10 @@ defined by the status tables in `docs/`; they win over this file.
 
 ## [Unreleased]
 
+## [0.0.8] - 2026-10-24
+
+The portable `atan2` release. `Real::atan2` is now `helicoid`'s own kernel at both precisions, public as `helicoid_linalg::math::{atan2, atan2f}`: within 0.504 ulp at `f64` and correctly rounded at `f32` on every draw read, where `libm` reads 1.40 and 1.47, with the same bits on every target whatever `libm` a consumer resolves. `SO3::log` rounds each component once on its exact arm, and with the new `atan2` its maximum falls from 2.317 to 1.405 `u`; a composed `Log` stays inlinable. `eig3_values` returns `eig3`'s eigenvalues without the frame in up to half the time. **No API break**; every `atan2` and `Log` caller's bits move.
+
 ### Changed
 
 - **`Real::atan2` is `helicoid`'s own portable kernel at both precisions** (`0105`), where it was
@@ -51,68 +55,12 @@ defined by the status tables in `docs/`; they win over this file.
   loosens on the 42 strata `tf_tree_math` was best on; no-regress, once a baseline is blessed,
   holds them exactly. Library crates are unchanged.
 
-## [0.0.7] - 2026-10-22
-
-The nearest-rotation and inverse-action release. `helicoid_linalg::nearest_rotation` projects a 3×3 onto SO(3), by Newton's polar iteration where that is well posed and through `svd3` elsewhere, and dominates nalgebra and Sophus on every stratum. `SO3` and `SE3` gain `inv_act` and `inv_act_jacobians`, the inverse action $R^\top(p - t)$ with its own Jacobians. The composition consumers wrote loses up to $4\times10^6\,u$ where $\lVert t\rVert \gg \lVert x\rVert$; the pair reads at most 4.79 `u`, in half the time. `Matrix` builds from columns without a call, so `Gaussian::propagate` takes 0.65× its time. **No API break**, and every existing output keeps its bits.
-
-### Added
-
-- **`SO3::inv_act`, `SE3::inv_act` and their `inv_act_jacobians::<Sd>`** (`0103`): the inverse
-  action $X^{-1}p = R^\top(p - t)$, subtracting before the rotation, with its own Jacobians, right
-  `[[x]×, −I]` and left `[Rᵀ[p]×, −Rᵀ]`, and `∂/∂p = Rᵀ`. The composition `X.inverse() * p` with
-  `act_jacobians(X⁻¹, p) · inverse_jacobian(X)` loses `u‖t‖/‖x‖` on the value and the right side,
-  `u‖t‖/‖p‖` on the left; it is the pair's reference twin. The value and right Jacobians together
-  take 20.4 ns at `f64` (21.2 at `f32`).
-
-- **`helicoid_linalg::nearest_rotation`** (`0102`): the Frobenius-nearest rotation of a 3×3,
-  `U diag(1, 1, det UVᵀ) Vᵀ`, one of the nearest where it is not unique. It runs Newton's polar
-  iteration with Frobenius scaling where `det M > τ‖M‖³`. Where `det M < −τ‖M‖³` it takes the
-  orthogonal polar factor and a projector reflection, and between them `svd3`'s `UVᵀ`. Its `Dual`
-  tangent is the derivative of the projection wherever that is unique off the `svd3` arm, ties
-  among the singular values included. It reads at most 5.08 `u` over the corpus at both
-  precisions, and dominates nalgebra's `from_matrix_eps` and Sophus's `fitToSO3` on every stratum
-  at both precisions, by at least 4.24× (`f64`) and 3.24× (`f32`). It runs in 99.5 ns on a
-  rotation `1e-8` off SO(3) at `f64` and 52.6 at `f32`, 286–603 ns and 227–486 elsewhere.
-
-### Changed
-
-- **`Matrix::from_cols`, `scale` and `Neg` index** (`0103`) instead of `map`ping, which left an
-  out-of-line call and a `memcpy` in a `3 x 6` built from columns. Every output keeps its bits.
-  `SE3::inv_act_jacobians` takes 0.47× (right) and 0.34× (left) of its time at `f64`,
-  `Gaussian::propagate` 0.65×, `to_left` 0.70×, `to_right` 0.75× and `mahalanobis_sq` 0.89×;
-  no other `so3/*` or `se3/*` row moved beyond its noise floor.
-
-### Instrument
-
-Not shipped in the crates.
-- **The corpus ids `so3_inv_act` and `se3_inv_act`** (`0103`): the inverse action and its three
-  Jacobians, the Jacobians from the generators of the Lie algebra at 120 digits. `so3_inv_act`
-  reads `so3_act`'s strata; `se3_inv_act` has `tx:<r>` and `tp:<r>` (`‖t‖` at `r` times `‖x‖` or
-  `‖p‖`, `r` from 1 to 10⁶) and `generic`, 6 records each (64 in the deep tier), with `@f32`
-  twins. The planted `helicoid:composed-inv-act` answers by the composition and reruns the
-  record's tables: up to 4.0·10⁶ `u` on `tx:1e6` and 2.2·10⁶ on `tp:1e6`.
-  GTSAM's `transformTo` and `unrotate` and manif's composition are oracles, manif at `f32` too
-  through a new `--precision f32` in its runner. On the deep tier helicoid reads at most 4.77 `u`
-  at `f64` and 4.79 at `f32` on `se3_inv_act`, below GTSAM's maximum on every stratum, and 5.03
-  on `so3_inv_act` but on `q:nonunit` (511 `u`, `so3_act`'s carried drift; GTSAM reads 806 and
-  manif 1469 there). No stratum of either id fails domination.
-- **The corpus id `nearest_rotation`** (`0102`): 17 binary64 strata (296 records) and 15 binary32
-  (264), against `mp.svd_r` at 120 digits. The metric `Rule::Polar` weights the forward error by
-  the projection's conditioning, the weight exact in integers. A self-test pair goes with it, and
-  nalgebra's `Rotation3::from_matrix_eps` (its input at unit scale) and Sophus's `SO3::fitToSO3`
-  are oracles.
-- **Test profiles.** `just test`'s second pass runs at the new `ndebug` profile, the dev profile with
-  `debug_assert!` and overflow checks off, instead of `--release`. The dev profile optimizes the
-  hot third-party crates and `xtask`, and keeps line tables only. After an edit to
-  `helicoid-linalg`, the two passes take 125 s instead of 400 s (392 CPU-s instead of 1252), and
-  the dev target directory is 30% smaller. `just determinism` and CI also digest the corpus at
-  `ndebug`, so an opt-level that moved an output bit fails the comparison.
-
 ## Released versions
 
 Frozen history, newest first, in [`docs/changelog/`](./docs/changelog/); leave it
 out of searches and sweeps.
 
+- [`0.0.7`](./docs/changelog/0.0.7.md) — 2026-10-22 (`nearest_rotation`, `inv_act` and its Jacobians)
 - [`0.0.6`](./docs/changelog/0.0.6.md) — 2026-10-19 (`svd3` in the signed convention)
 - [`0.0.5`](./docs/changelog/0.0.5.md) — 2026-10-16 (closed-form SE_N(3) Jacobians, `Exp` near `π`, the deep tier)
 - [`0.0.4`](./docs/changelog/0.0.4.md) — 2026-10-14 (`from_matrix` on the unit sphere, `round_from_f64`, `just determinism`)
@@ -127,3 +75,4 @@ out of searches and sweeps.
 [0.0.5]: https://github.com/NoeFontana/helicoid/releases/tag/v0.0.5
 [0.0.6]: https://github.com/NoeFontana/helicoid/releases/tag/v0.0.6
 [0.0.7]: https://github.com/NoeFontana/helicoid/releases/tag/v0.0.7
+[0.0.8]: https://github.com/NoeFontana/helicoid/releases/tag/v0.0.8
