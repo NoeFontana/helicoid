@@ -1335,11 +1335,17 @@ fn log_ratio_scale_is_r_u<S: Real<Mask = bool> + Into<f64>>(tol: f64) {
     let (below, _, _) = chosen::<S>()[7];
     let dir: (f64, f64, f64) = (0.6, -0.3, 1e-3);
     let unit = ((dir.0 * dir.0 + dir.1 * dir.1) + dir.2 * dir.2).sqrt();
+    // Either side of `compensated_from`, `n = 2⁻⁴⁵⁰` (`f64`) and `2⁻³⁸` (`f32`), and below it.
+    let floor = match S::PRECISION {
+        Precision::F64 => [-898, -902, -1000],
+        Precision::F32 => [-74, -78, -90],
+    };
+    let grid = [
+        1e-30, 1e-14, 1e-8, 1e-6, 1e-4, 1e-3, 0.01, 0.05, 0.2, 0.5, 0.99,
+    ];
     for &w in &[1.0, 0.999_999_9, 0.99, 0.9, 0.7, 0.5, 0.05, 0.0, -0.5, -1.0] {
         // No `n² = 0`: `u = 0` there, and a zero's derivative carries no sign worth pinning.
-        for &n2 in &[
-            1e-30, 1e-14, 1e-8, 1e-6, 1e-4, 1e-3, 0.01, 0.05, 0.2, 0.5, 0.99,
-        ] {
+        for n2 in grid.into_iter().chain(floor.map(|e| 2f64.powi(e))) {
             let k = n2.sqrt() / unit;
             let v = (
                 D::variable(at::<S>(k * dir.0), 0),
@@ -1377,6 +1383,40 @@ fn log_ratio_scale_is_r_u<S: Real<Mask = bool> + Into<f64>>(tol: f64) {
             }
         }
     }
+}
+
+/// `log_ratio_scale`'s exact arm keeps a zero component's sign, as `r · u` does, so `Log` of the
+/// conjugate is `−Log` to the bit there too.
+fn log_ratio_scale_keeps_signed_zeros<S: Real<Mask = bool>>() {
+    let mut exact = 0;
+    for &w in &[0.99, 0.5, 0.05, 0.0, -0.5, -1.0] {
+        for &n2 in &[1e-30, 1e-8, 1e-3, 0.2, 0.99] {
+            let v = (
+                -S::zero(),
+                at::<S>(n2.sqrt() * 0.6),
+                at::<S>(n2.sqrt() * 0.8),
+            );
+            if !super::kernel::log_ratio_takes_exact_arm((v.1 * v.1) + v.2 * v.2, at::<S>(w)) {
+                continue;
+            }
+            exact += 1;
+            for sign in [S::one(), -S::one()] {
+                let got = log_ratio_scale(at::<S>(w), sign, v).0;
+                assert_eq!(bits(got), bits(sign * v.0), "w {w}, n2 {n2}");
+            }
+        }
+    }
+    assert!(exact > 10, "{exact} exact-arm points");
+}
+
+#[test]
+fn log_ratio_scale_keeps_signed_zeros_f64() {
+    log_ratio_scale_keeps_signed_zeros::<f64>();
+}
+
+#[test]
+fn log_ratio_scale_keeps_signed_zeros_f32() {
+    log_ratio_scale_keeps_signed_zeros::<f32>();
 }
 
 #[test]

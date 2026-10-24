@@ -122,8 +122,9 @@ $\cos\tfrac{\theta}{2}$ from its own series (generated alongside $k$).
    once, $r_h u_i + (\epsilon_i + r_\ell u_i)$, $\epsilon_i$ the product's exact error; $n$ carries the
    errors of $n^2$ and of its root as $n_\ell$, entering $r_\ell$ as
    $(2wn_\ell/(n^2 + w^2) - r_h n_\ell)/n$. Error-free products are Dekker's, on Veltkamp halves,
-   without a fused multiply-add (D16); below $n = 2^{-450}$ ($2^{-38}$ at `f32`) the error terms
-   leave the normal range and the arm is $r_h u$.
+   without a fused multiply-add (D16). A zero $u_i$ returns $r_h u_i$, keeping its sign. Below
+   $n = 2^{-450}$ ($2^{-38}$ at `f32`) the error terms leave the normal range and the arm is
+   $(2a/n)\,u$.
 
 `Log` is exactly scale-invariant in $q$ ($\mathrm{atan2}$ and $u/n$ are), so a non-unit input within
 rounding returns the `Log` of its normalization. **Never $\mathrm{acos}((\mathrm{tr}R - 1)/2)$**
