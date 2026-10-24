@@ -216,7 +216,7 @@ pub(crate) fn centre(n: f64, d: f64) -> (usize, f64, f64, f64) {
     let w = 1.0 / CENTRES as f64;
     // `c` sums, as a tree, `w` for each midpoint passed; the midpoints round, which moves `|v|`'s
     // bound by an ulp. Counting them as an integer `j` puts a popcount and an integer-to-float
-    // conversion ahead of the division: 39.5 against 27.3 ns at `f64` (`0105`, draft).
+    // conversion ahead of the division: 39.7 against 27.3 ns at `f64` (`0105`, draft).
     let mut parts = [0.0; CENTRES];
     for (i, part) in parts.iter_mut().enumerate() {
         let mid = (2 * i + 1) as f64 * (0.5 * w);
