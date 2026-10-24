@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from gen import corpus, manifest, memo
+from gen import corpus, fmt, manifest, memo
 from gen.memo import GEN
 from gen.precision import setup
 from gen.registry import FUNCTIONS
@@ -57,12 +57,12 @@ class MemoTest(unittest.TestCase):
         self.assertEqual(how, "fresh")
 
     def test_a_changed_spec_runs_the_task_again(self):
-        compute = lambda: [1]
+        compute = lambda: fmt.dumps({"v": 1})
         memo.run(self.cache, ("t", "s"), {"count": 1}, compute)
         self.assertEqual(memo.run(self.cache, ("t", "s"), {"count": 1}, compute)[1], "hit")
         self.assertEqual(memo.run(self.cache, ("t", "s"), {"count": 2}, compute)[1], "fresh")
 
-    def test_an_audit_fails_a_replay_its_fresh_run_does_not_give(self):
+    def test_an_audit_failure_keeps_the_evidence_and_closes_the_memo(self):
         corpus._registered(*TASK, self.cache)
         entry = json.loads(self.entry().read_text())
         entry["value"][1] += 1
@@ -70,6 +70,25 @@ class MemoTest(unittest.TestCase):
         audited = dataclasses.replace(self.cache, audit=1.0)
         with self.assertRaises(memo.MemoError):
             corpus._registered(*TASK, audited)
+        self.assertEqual(json.loads(self.entry().read_text()), entry)
+        # Nothing replays, audited or not, until a fresh run.
+        with self.assertRaises(memo.MemoError):
+            corpus._registered(*TASK, self.cache)
+        fresh = dataclasses.replace(self.cache, replay=False)
+        memo.begin(fresh)
+        corpus._registered(*TASK, fresh)
+        self.assertEqual(corpus._registered(*TASK, self.cache)[1], "hit")
+
+    def test_a_task_that_ran_no_code_of_gen_is_not_stored(self):
+        self.assertEqual(memo.run(self.cache, ("t", "s"), {}, lambda: [1]), ([1], "fresh"))
+        self.assertEqual(list(Path(self.dir.name).iterdir()), [])
+
+    def test_a_module_reached_through_a_symlink_is_still_a_dependency(self):
+        with tempfile.TemporaryDirectory() as d:
+            link = Path(d) / "gen"
+            link.symlink_to(GEN)
+            deps = memo.dependencies({str(link / "so3.py")})
+            self.assertIn(GEN / "so3.py", deps)
 
     def test_a_fresh_memo_runs_every_task_and_writes_it(self):
         corpus._registered(*TASK, self.cache)

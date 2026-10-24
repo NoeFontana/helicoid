@@ -560,7 +560,7 @@
       "sha256": "a4f5783bfca8ae06c9e63ec21b221b2b25ee146d761e662bb292d73b123609ff"
     }
   },
-  "generator": "sha256:483645d03b9bd31b535faae9810c9ec6c07d2458c30382a67309587ee93baaa6",
+  "generator": "sha256:2e368b453cad60a2e0dacf5a1768aa0e6e007d04fd47ad1aaf0dafeb0019a28b",
   "mpmath": "1.4.1",
   "python": "3.12",
   "recheck": {

@@ -37,26 +37,30 @@ A pull request that touches neither proved nothing new in its 17 minutes; #205, 
    - `python -m gen key` (`just corpus-key`): one sha256 of the generator identity, the exact
      interpreter (`sys.version`, machine) and the manifest's bytes, which hash every file.
    - CI's `corpus-check` verifies, then on a pull request looks the key up in the Actions cache.
-     A hit means a full check of the same inputs passed: the regeneration is skipped. The marker is
-     written only after a full check passes.
-   - `main` always runs every task (`just corpus-regen fresh`), and `corpus-nightly.yml` runs
-     `just corpus-check fresh` with no cache at all.
+     A hit means a run of every task on the same inputs passed: the regeneration is skipped.
+   - Only a run of every task writes the marker and saves the memo: `main`'s, on every push, and
+     `corpus-nightly.yml`'s, which restores no cache. A pull request's replay proves its own run
+     and nothing it could hand on. A push to `main` is never cancelled by the next one.
 2. **A memo of tasks** ([`gen/memo.py`](../../conformance/generate/gen/memo.py)). Each (id,
    stratum) task, and each of the four files beside the registry's, is keyed on:
    - the files of `gen` in which a function started during the task, recorded by
      `sys.monitoring` (one event per code object per task, then disabled);
    - the static import closure of those files within `gen`, for module-level values read without
-     running the module's code; an import of `registry`, `cli` or `__main__` adds nothing, since
-     their only effect on a task is the spec below (a function of theirs that runs is a
-     dependency as any other);
+     running the module's code. An import of `registry`, `cli` or `__main__` adds nothing, since
+     their only effect on a task is the spec below, nor one of `memo`, which runs around a task and
+     reaches its entries through `FORMAT`, bumped when what a key covers changes. A function of
+     theirs that runs is a dependency as any other. A task in which no function of `gen` started
+     is not stored;
    - `describe` of the spec without its strata, and of the stratum: qualified names, code with the
      file name removed, closure values, defaults and dataclass fields. An object it cannot describe
      is not memoised;
    - Python's full version, mpmath's, the machine and `HELICOID_CORPUS_DEEP`.
 
    A task whose key and every dependency's hash are unchanged replays its records. With `--audit p`
-   (2% in every recipe) a share of the replays, chosen by the run's seed, runs again, and a byte
-   that differs fails the run. `--fresh` runs every task and rewrites its entry. The memo is
+   (2% in every recipe) a share of the replays, chosen by the run's seed, runs again. A byte that
+   differs fails the run, keeps the entry as the evidence and marks the whole memo stale: a
+   dependency missed for one task may be missed for others, so nothing replays until `--fresh`
+   has run every task and rewritten its entry. The memo is
    `conformance/generate/.memo/`, git-ignored; CI restores the newest one `main` saved.
 3. **The four files are tasks** of the same pool, started first.
 4. **The generator's tests run a test class per core** (`python -m tests.parallel`,

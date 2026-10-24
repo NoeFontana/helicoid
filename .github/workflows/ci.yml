@@ -9,9 +9,11 @@ on:
 permissions:
   contents: read
 
+# A pull request's newer push supersedes its older one; every push to `main` runs to the end, since
+# its fresh corpus-check fills the cache pull requests skip and replay from (`0108`).
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event_name == 'pull_request' || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   CARGO_TERM_COLOR: always
@@ -234,7 +236,7 @@ jobs:
       - run: just corpus-verify
       - id: key
         run: echo "key=$(just corpus-key)" >> "$GITHUB_OUTPUT"
-      # A full check already passed for this generator, interpreter and manifest: nothing to prove.
+      # A fresh run on `main` already proved this generator, interpreter and manifest.
       - id: verified
         if: github.event_name == 'pull_request'
         uses: actions/cache/restore@v6
@@ -248,17 +250,17 @@ jobs:
           path: conformance/generate/.memo
           key: corpus-memo-${{ runner.os }}-${{ github.run_id }}
           restore-keys: corpus-memo-${{ runner.os }}-
-      # `main` runs every task, the ground truth whose memo pull requests replay.
       - if: steps.verified.outputs.cache-hit != 'true'
         run: just corpus-regen ${{ github.event_name == 'pull_request' && 'memo' || 'fresh' }}
-      - if: steps.verified.outputs.cache-hit != 'true'
+      # Only a run of every task proves the key and fills the memo; a pull request's replay does not.
+      - if: github.event_name != 'pull_request'
         run: echo "${{ steps.key.outputs.key }}" > .corpus-verified
-      - if: steps.verified.outputs.cache-hit != 'true'
+      - if: github.event_name != 'pull_request'
         uses: actions/cache/save@v6
         with:
           path: .corpus-verified
           key: corpus-verified-${{ steps.key.outputs.key }}
-      - if: steps.verified.outputs.cache-hit != 'true'
+      - if: github.event_name != 'pull_request'
         uses: actions/cache/save@v6
         with:
           path: conformance/generate/.memo
@@ -276,6 +278,8 @@ jobs:
       - uses: taiki-e/install-action@v2
         with:
           tool: just
+      # The key reads the manifest, so the files must be the manifest's.
+      - run: just corpus-verify
       - id: key
         run: >-
           echo "key=$(just corpus-key)-${{ hashFiles('conformance/generate/tests/**/*.py',

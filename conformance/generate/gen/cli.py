@@ -69,6 +69,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.memo is not None:
             seed = os.environ.get("GITHUB_RUN_ID") or os.urandom(8).hex()
             cache = memo.Memo(str(args.memo.resolve()), args.audit, seed, replay=not args.fresh)
+            memo.begin(cache)
         stats: Counter = Counter()
         for name, built in corpus.write(args.out, args.jobs, cache, stats).items():
             print(f"{name}: {built.records} records, {built.checked} {CHECKED[built.kind]}")

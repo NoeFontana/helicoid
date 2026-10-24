@@ -119,7 +119,9 @@ helicoid/
 ### 4.1 Layout and invocation
 
 `conformance/generate/` is a `uv` project: `pyproject.toml`, `uv.lock` pinning the interpreter and
-`mpmath` (no numpy). `just corpus` runs `uv run --frozen python -m gen all`; `just corpus-check`
+`mpmath` (no numpy). `just corpus` runs `uv run --frozen python -m gen all`, replaying from the
+git-ignored memo every task whose code, imports, spec and interpreter are unchanged, 2% of them run
+again; `just corpus fresh` runs every task. `just corpus-check`
 runs it into a temporary directory and compares every file byte for byte with `conformance/corpus/`,
 then runs the generator's tests (`just corpus-test`, a test class per core). `just corpus-verify`
 checks in seconds that the manifest names this generator and every file's hash; CI skips the
