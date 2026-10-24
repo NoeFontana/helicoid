@@ -1,14 +1,15 @@
 """Corpus assembly: one JSONL file per function id, records in canonical stratum order."""
 
+import dataclasses
 import json
-
 import os
+from collections import Counter
 from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 
 from mpmath import mp, mpf
 
-from . import fmt, manifest, series, sim3coeff, switchref
+from . import fmt, manifest, memo, series, sim3coeff, switchref
 from .fmt import Mat
 from .manifest import Built
 from .precision import RECHECK_DIGITS, RECHECK_DPS, is_binary32, setup
@@ -126,30 +127,76 @@ def build(spec: FunctionSpec, only: set[str] | None = None) -> tuple[bytes, int,
     )
 
 
-def _registered(name: str, stratum: str) -> tuple[list[dict], int]:
-    """A worker's task: names only, since a spec holds lambdas and does not pickle."""
+def _registered(name: str, stratum: str, cache: memo.Memo | None = None) -> tuple[list, str]:
+    """A worker's task: names only, since a spec holds lambdas and does not pickle. Its value is
+    `[records, rechecked]`, and how it was had (`memo.run`)."""
+    setup()
     spec = FUNCTIONS[name]
-    return _build_stratum(spec, next(s for s in spec.strata if s.name == stratum))
+    s = next(s for s in spec.strata if s.name == stratum)
+    named = (dataclasses.replace(spec, strata=()), s)
+    return memo.run(cache, (name, stratum), named, lambda: list(_build_stratum(spec, s)))
 
 
-def build_all(jobs: int | None = None) -> dict[str, tuple[bytes, int, int]]:
-    """Every registered id. One task per (id, stratum), largest first, joined in catalogue order:
-    the bytes are those of a serial run whatever `jobs` (default: every core)."""
-    tasks = [(name, s.name, s.count) for name, spec in FUNCTIONS.items() for s in spec.strata]
+# The files `write` builds beside the registry's: (builder, kind). Each is one task.
+SPECIAL = {
+    "coeff_series.jsonl": (series.build, "series"),
+    "coeff_switch_ref.jsonl": (switchref.build, "switch-ref"),
+    "sim3_series.jsonl": (sim3coeff.build_series, "series"),
+    "sim3_ref.jsonl": (sim3coeff.build_ref, "switch-ref"),
+}
+# Above every stratum's count, so the pool starts them first: each is one long task.
+SPECIAL_WEIGHT = 10**9
+
+
+def _special(file: str, cache: memo.Memo | None = None) -> tuple[list, str]:
+    """A worker's task: one of `SPECIAL`, as `[text, records, checked]`."""
+    setup()
+    builder, _ = SPECIAL[file]
+
+    def compute() -> list:
+        data, n, checked = builder()
+        return [data.decode(), n, checked]
+
+    return memo.run(cache, ("@file", file), builder, compute)
+
+
+def build_all(
+    jobs: int | None = None,
+    cache: memo.Memo | None = None,
+    specials: bool = False,
+    stats: Counter | None = None,
+) -> dict[str, tuple[bytes, int, int]]:
+    """Every registered id, and with `specials` every file of `SPECIAL`, keyed by file name then.
+    One task per (id, stratum) or file, largest first, joined in catalogue order: the bytes are
+    those of a serial run whatever `jobs` (default: every core) and whatever `cache` replays.
+    `stats` counts the tasks by how they were had."""
+    tasks = [("id", name, s.name, s.count) for name, spec in FUNCTIONS.items() for s in spec.strata]
+    if specials:
+        tasks += [("file", file, "", SPECIAL_WEIGHT) for file in SPECIAL]
+
+    def call(kind: str, name: str, stratum: str):
+        return (_registered, name, stratum, cache) if kind == "id" else (_special, name, cache)
+
     jobs = jobs or os.cpu_count() or 1
     if jobs == 1:
-        results = [_registered(name, stratum) for name, stratum, _ in tasks]
+        results = [f(*args) for f, *args in (call(k, n, s) for k, n, s, _ in tasks)]
     else:
         with ProcessPoolExecutor(jobs) as pool:
             futures = {
-                i: pool.submit(_registered, name, stratum)
-                for i, (name, stratum, count) in sorted(enumerate(tasks), key=lambda t: -t[1][2])
+                i: pool.submit(*call(k, n, s))
+                for i, (k, n, s, _) in sorted(enumerate(tasks), key=lambda t: -t[1][3])
             }
             results = [futures[i].result() for i in range(len(tasks))]
+    if stats is not None:
+        stats.update(how for _, how in results)
     parts: dict[str, list] = {name: [] for name in FUNCTIONS}
-    for (name, _, _), result in zip(tasks, results, strict=True):
-        parts[name].append(result)
-    return {name: _assemble(p) for name, p in parts.items()}
+    out: dict[str, tuple[bytes, int, int]] = {}
+    for (kind, name, _, _), (value, _) in zip(tasks, results, strict=True):
+        if kind == "id":
+            parts[name].append(tuple(value))
+        else:
+            out[name] = (value[0].encode(), value[1], value[2])
+    return {**{name: _assemble(p) for name, p in parts.items()}, **out}
 
 
 class PrefixError(Exception):
@@ -201,20 +248,23 @@ def write_deep(out_dir: Path, committed: Path, jobs: int | None = None) -> dict[
     return files
 
 
-def write(out_dir: Path, jobs: int | None = None) -> dict[str, Built]:
+def write(
+    out_dir: Path,
+    jobs: int | None = None,
+    cache: memo.Memo | None = None,
+    stats: Counter | None = None,
+) -> dict[str, Built]:
     """Write every file and the manifest; a `*.jsonl` no function id owns any more is removed.
     Refused under HELICOID_CORPUS_DEEP=1, whose sample counts would rewrite the committed corpus at
-    the deep tier's size (docs/decisions/0088)."""
+    the deep tier's size (docs/decisions/0088). `cache` and `stats` are `build_all`'s."""
     if DEEP:
         raise SystemExit(
             "gen all writes the committed corpus: unset HELICOID_CORPUS_DEEP, or run `gen deep`"
         )
     out_dir.mkdir(parents=True, exist_ok=True)
-    files = {f"{name}.jsonl": Built(*built) for name, built in build_all(jobs).items()}
-    files["coeff_series.jsonl"] = Built(*series.build(), kind="series")
-    files["coeff_switch_ref.jsonl"] = Built(*switchref.build(), kind="switch-ref")
-    files["sim3_series.jsonl"] = Built(*sim3coeff.build_series(), kind="series")
-    files["sim3_ref.jsonl"] = Built(*sim3coeff.build_ref(), kind="switch-ref")
+    built = build_all(jobs, cache, specials=True, stats=stats)
+    files = {f"{name}.jsonl": Built(*built[name]) for name in FUNCTIONS}
+    files.update({file: Built(*built[file], kind=kind) for file, (_, kind) in SPECIAL.items()})
     for stale in out_dir.glob("*.jsonl"):
         if stale.name not in files:
             stale.unlink()

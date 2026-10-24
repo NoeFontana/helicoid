@@ -79,7 +79,10 @@ helicoid/
    generation fails.
 4. **Byte-identical regeneration.** Pinned Python and mpmath (`uv.lock`), a seeded splitmix64
    implemented in the generator (not `random`, whose algorithm is a CPython detail), sorted keys,
-   fixed float formatting. `just corpus-check` regenerates into a temporary directory and `cmp`s.
+   fixed float formatting. `just corpus-check` regenerates into a temporary directory and `cmp`s;
+   a task whose code, imports, spec and interpreter are unchanged replays from a memo, a sample of
+   replays runs again, and `main` and a nightly job run every task
+   ([`0108`](./decisions/0108-the-corpus-check-proves-each-thing-once.md)).
 5. **Per-stratum max and p99, never a mean.** Units of $u$ (`NUMERICS.md` §2.1, §11).
 
 ## 3. Toolchain, lints and CI
@@ -117,7 +120,11 @@ helicoid/
 
 `conformance/generate/` is a `uv` project: `pyproject.toml`, `uv.lock` pinning the interpreter and
 `mpmath` (no numpy). `just corpus` runs `uv run --frozen python -m gen all`; `just corpus-check`
-runs it into a temporary directory and compares every file byte for byte with `conformance/corpus/`.
+runs it into a temporary directory and compares every file byte for byte with `conformance/corpus/`,
+then runs the generator's tests (`just corpus-test`, a test class per core). `just corpus-verify`
+checks in seconds that the manifest names this generator and every file's hash; CI skips the
+regeneration on a pull request whose generator, interpreter and manifest a full check already
+passed (`0108`).
 
 ### 4.2 Record schema
 

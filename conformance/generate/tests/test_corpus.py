@@ -302,7 +302,12 @@ class GenerationTest(unittest.TestCase):
 
     def test_write_removes_files_no_function_id_owns(self):
         tiny = {"coeff_k": dataclasses.replace(FUNCTIONS["coeff_k"], strata=(SUBSET_STRATUM,))}
-        with tempfile.TemporaryDirectory() as d, mock.patch.object(corpus, "FUNCTIONS", tiny):
+        # The files beside the registry's are written the same way and cost half a minute.
+        with (
+            tempfile.TemporaryDirectory() as d,
+            mock.patch.object(corpus, "FUNCTIONS", tiny),
+            mock.patch.dict(corpus.SPECIAL, clear=True),
+        ):
             out = Path(d)
             (out / "renamed_away.jsonl").write_text("stale\n")
             (out / "notes.txt").write_text("not ours\n")

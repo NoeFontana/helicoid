@@ -218,8 +218,9 @@ jobs:
       - run: just oracle-nalgebra
       - run: just envelope --check
 
-  # The committed corpus must regenerate byte-identically from the pinned generator.
-  # About 17 CPU-minutes of generation plus the generator's tests; the timeout stops a runaway.
+  # The committed corpus must regenerate byte-identically from the pinned generator (`0108`). A pull
+  # request skips the regeneration where a full check passed for the same generator, interpreter
+  # and manifest, and otherwise replays unchanged tasks from the memo `main` last filled.
   corpus-check:
     name: corpus-check
     runs-on: ubuntu-latest
@@ -230,7 +231,71 @@ jobs:
       - uses: taiki-e/install-action@v2
         with:
           tool: just
-      - run: just corpus-check
+      - run: just corpus-verify
+      - id: key
+        run: echo "key=$(just corpus-key)" >> "$GITHUB_OUTPUT"
+      # A full check already passed for this generator, interpreter and manifest: nothing to prove.
+      - id: verified
+        if: github.event_name == 'pull_request'
+        uses: actions/cache/restore@v6
+        with:
+          path: .corpus-verified
+          key: corpus-verified-${{ steps.key.outputs.key }}
+          lookup-only: true
+      - if: steps.verified.outputs.cache-hit != 'true' && github.event_name == 'pull_request'
+        uses: actions/cache/restore@v6
+        with:
+          path: conformance/generate/.memo
+          key: corpus-memo-${{ runner.os }}-${{ github.run_id }}
+          restore-keys: corpus-memo-${{ runner.os }}-
+      # `main` runs every task, the ground truth whose memo pull requests replay.
+      - if: steps.verified.outputs.cache-hit != 'true'
+        run: just corpus-regen ${{ github.event_name == 'pull_request' && 'memo' || 'fresh' }}
+      - if: steps.verified.outputs.cache-hit != 'true'
+        run: echo "${{ steps.key.outputs.key }}" > .corpus-verified
+      - if: steps.verified.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: .corpus-verified
+          key: corpus-verified-${{ steps.key.outputs.key }}
+      - if: steps.verified.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: conformance/generate/.memo
+          key: corpus-memo-${{ runner.os }}-${{ github.run_id }}
+
+  # The generator's unit tests, skipped on a pull request where they already passed for the same
+  # generator, tests, fit and corpus (`0108`).
+  corpus-test:
+    name: corpus-test
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.3.0
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: just
+      - id: key
+        run: >-
+          echo "key=$(just corpus-key)-${{ hashFiles('conformance/generate/tests/**/*.py',
+          'conformance/generate/fit/**/*.py') }}" >> "$GITHUB_OUTPUT"
+      - id: passed
+        if: github.event_name == 'pull_request'
+        uses: actions/cache/restore@v6
+        with:
+          path: .corpus-tested
+          key: corpus-tested-${{ steps.key.outputs.key }}
+          lookup-only: true
+      - if: steps.passed.outputs.cache-hit != 'true'
+        run: just corpus-test
+      - if: steps.passed.outputs.cache-hit != 'true'
+        run: echo "${{ steps.key.outputs.key }}" > .corpus-tested
+      - if: steps.passed.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: .corpus-tested
+          key: corpus-tested-${{ steps.key.outputs.key }}
 
   # `math::atan2`'s generated polynomials and tables (`0105`) must regenerate
   # byte-identically from the pinned generator.
