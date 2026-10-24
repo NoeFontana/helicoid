@@ -35,16 +35,20 @@ def _within(what: str, err, scale) -> None:
         raise CrossCheckError(f"{what}: {mp.nstr(err, 10)} vs {mp.nstr(scale, 10)}")
 
 
-def against_diff(what: str, f: Callable, x, want) -> None:
-    """`want` is f'(x) to 60 digits by `mp.diff` at h = 10^-70 |x|."""
+def against_diff(what: str, f: Callable, x, want, scale=None, direction: int = 0) -> None:
+    """`want` is f'(x) to 60 digits by `mp.diff` at h = 10^-70 |x|. Where `x` or `want` is zero,
+    the caller's `scale`, the size of x and 1/x, stands in for both: h = 10^-70 scale, and the
+    digits are of 1/scale. `direction` is `mp.diff`'s: 1 differences forward only, for a +0 on a
+    cut."""
     x = mpf(x)
-    h = mpf(10) ** -DIFF_STEP * abs(x)
+    h = mpf(10) ** -DIFF_STEP * (abs(x) or scale)
+    size = abs(want) or 1 / scale
     with mp.workdps(30):
-        ratio = abs(f(x)) / (h * abs(want))
+        ratio = abs(f(x)) / (h * size)
         lost = max(0, int(mp.ceil(mp.log10(ratio)))) if ratio > 0 else 0
     with mp.workdps(max(DPS, lost + DIFF_DIGITS + 30)):
-        got = mp.diff(f, x, h=h)
-    if not abs(got - want) <= mpf(10) ** -DIFF_DIGITS * abs(want):
+        got = mp.diff(f, x, h=h, direction=direction)
+    if not abs(got - want) <= mpf(10) ** -DIFF_DIGITS * size:
         raise CrossCheckError(f"{what}: {mp.nstr(want, 40)} vs mp.diff {mp.nstr(got, 40)}")
 
 
@@ -109,13 +113,19 @@ def real_atan2(inputs: dict, out: dict) -> None:
     y, x, v = mpf(inputs["y"]), mpf(inputs["x"]), out["value"]
     dy, dx = out["d_y"], out["d_x"]
     with mp.workdps(2 * DPS):
-        t = mp.atan(y / x)
-        want = t if x > 0 else t + (mp.pi if y >= 0 else -mp.pi)
+        if x == 0:  # y != 0: the origin is never drawn
+            want = mp.pi / 2 * mp.sign(y)
+        else:
+            t = mp.atan(y / x)
+            want = t if x > 0 else t + (mp.pi if y >= 0 else -mp.pi)
         _within("real_atan2: atan by quadrant", v - want, want)
         _within("real_atan2: y d_y + x d_x", y * dy + x * dx, abs(y * dy) + abs(x * dx))
         _within("real_atan2: x d_y - y d_x - 1", x * dy - y * dx - 1, 1)
-    against_diff("real_atan2: d_y", lambda t: mp.atan2(t, x), y, dy)
-    against_diff("real_atan2: d_x", lambda t: mp.atan2(y, t), x, dx)
+    # On an axis (0105, draft) one argument and the derivative along the other are zero; y = +0
+    # with x < 0 is on the cut, where `Dual` differentiates from above, as the +0 says.
+    r = max(abs(x), abs(y))
+    against_diff("real_atan2: d_y", lambda t: mp.atan2(t, x), y, dy, r, int(y == 0))
+    against_diff("real_atan2: d_x", lambda t: mp.atan2(y, t), x, dx, r)
 
 
 def real_div(inputs: dict, out: dict) -> None:

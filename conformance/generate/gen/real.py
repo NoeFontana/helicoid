@@ -6,6 +6,7 @@ textbook, not a closed form of docs/NUMERICS.md. `check_real` holds it against `
 """
 
 import math
+import struct
 from collections.abc import Callable
 
 from mpmath import mp, mpf
@@ -201,12 +202,152 @@ def _ratio(exp: int):
     return make
 
 
+# 0105 (draft): where a portable kernel's formulas meet, and the ends of the range. A record is
+# (n, d), 0 <= n <= d, placed by `_place`: the quadrant cycles along the records, and in every
+# other run of four |y| > |x| (the swap). `Dual::atan2`'s derivative is promised only where
+# x^2 + y^2 is normal (docs/NUMERICS.md section 12), d in [2^-511, 2^511) ([2^-63, 2^63)), and
+# every field of a record is scored: nothing beyond is drawn, so not the binary64 kernel's upper
+# window edge 2^990, nor a d at 1e+-300, at FLT_MAX or subnormal.
+#
+# yx:centre-mid   binary64 only: n/d = (2j + 1)/16 + k ulp(n), j = 0..7 in turn every 8 records,
+#                 k uniform in [-3, 3], d with its low 4 bits clear so that d (2j + 1)/16 is exact:
+#                 the midpoints between the binary64 kernel's centres j/8, hit exactly at k = 0
+# yx:fold         n = d/2 + k ulp(n), k uniform in [-4, 4]: the binary32 kernel's fold (one of the
+#                 binary64 kernel's centres)
+# yx:diagonal     n = d - k ulp(d), k uniform in [0, 4]: k pi/4, and the swap's tie at k = 0
+# yx:axis         (y, x) = (+0, d), (+0, -d), (+-d, +0), (+-d, -0); never y = -0, which mpmath
+#                 cannot tell from +0 (atan2(-0, -1) = -pi)
+# yx:window-lo    binary64 only: d = 2^-460 + k ulp, k uniform in [-4, 4], n/d uniform in
+#                 [1/16, 1]: the lower edge of the binary64 kernel's window
+# yx:domain-low   d log-uniform in [2^-511, 2^-460) ([2^-63, 2^-50)), n/d uniform in [1/16, 1]:
+#                 the binary64 kernel's rescale, as far down as the derivative is promised
+# yx:domain-high  d log-uniform in [2^460, 2^511) ([2^50, 2^63)), n/d as above: the top of it
+# yx:subnormal    n log-uniform in [1e-310, 1e-309) ([1e-40, 1e-39)), d in yx:domain-low's range
+#
+# d is `_radius`'s in the first four. Each stratum draws at its precision on its own stream, but
+# yx:axis@f32, which rounds yx:axis's.
+
+ATAN2_D = {False: (-511, -460, 460, 511), True: (-63, -50, 50, 63)}  # log2 of d's bounds
+WINDOW_LO = -460
+
+
+def _step(v: float, k: int, f32: bool) -> float:
+    """`v > 0` moved `k` numbers of the precision, up for `k > 0`."""
+    fmt, ints = ("<f", "<I") if f32 else ("<d", "<Q")
+    bits = struct.unpack(ints, struct.pack(fmt, v))[0] + k
+    return struct.unpack(fmt, struct.pack(ints, bits))[0]
+
+
+def _place(i: int, n: float, d: float) -> dict:
+    """Record `i` of `(n, d)`: in the quadrant `QUADRANTS[i % 4]`, with |y| > |x| for odd `i // 4`."""
+    sx, sy = QUADRANTS[i % 4]
+    y, x = (d, n) if (i // 4) % 2 else (n, d)
+    return {"y": sy * y, "x": sx * x}
+
+
+def _k(rng: SplitMix64, lo: int, hi: int) -> int:
+    """Uniform in [lo, hi]."""
+    return lo + rng.next_u64() % (hi - lo + 1)
+
+
+def _near(draw: Draw, n: int, at: Callable[[int, float], float], k: tuple[int, int]) -> list[dict]:
+    """d = `_radius`, and n `k` numbers of the precision from `at(i, d)`."""
+    rr, rk = draw.stream("radius"), draw.stream("k")
+    out = []
+    for i in range(n):
+        d = draw.round(_radius(rr))
+        out.append(_place(i, _step(at(i, d), _k(rk, *k), draw.f32), d))
+    return out
+
+
+def _clear4(d: float) -> float:
+    """`d` with the low 4 bits of its significand clear, so that `d (2j + 1)/16` is exact."""
+    bits = struct.unpack("<Q", struct.pack("<d", d))[0]
+    return struct.unpack("<d", struct.pack("<Q", bits >> 4 << 4))[0]
+
+
+def _centre_mid(draw: Draw, n: int) -> list[dict]:
+    rr, rk = draw.stream("radius"), draw.stream("k")
+    out = []
+    for i in range(n):
+        d = _clear4(draw.round(_radius(rr)))
+        mid = d * (2 * ((i // 8) % 8) + 1) / 16  # exact
+        out.append(_place(i, _step(mid, _k(rk, -3, 3), False), d))
+    return out
+
+
+def _fold(draw: Draw, n: int) -> list[dict]:
+    return _near(draw, n, lambda i, d: d / 2, (-4, 4))
+
+
+def _diagonal(draw: Draw, n: int) -> list[dict]:
+    return _near(draw, n, lambda i, d: d, (-4, 0))
+
+
+def _axis(draw: Draw, n: int) -> list[dict]:
+    rr = draw.stream("radius")
+    out = []
+    for i in range(n):
+        d, s = draw.round(_radius(rr)), _sign(i // 4)
+        y, x = ((0.0, d), (0.0, -d), (s * d, 0.0), (s * d, -0.0))[i % 4]
+        out.append({"y": y, "x": x})
+    return out
+
+
+def _n_of(draw: Draw, rng: SplitMix64, d: float) -> float:
+    """n = t d, t uniform in [1/16, 1], rounded once."""
+    return draw.round(d * (1 + 15 * mpf(rng.uniform())) / 16)
+
+
+def _window_lo(draw: Draw, n: int) -> list[dict]:
+    rk, rt = draw.stream("k"), draw.stream("ratio")
+    out = []
+    for i in range(n):
+        d = _step(2.0**WINDOW_LO, _k(rk, -4, 4), False)
+        out.append(_place(i, _n_of(draw, rt, d), d))
+    return out
+
+
+def _d_at(draw: Draw, rng: SplitMix64, high: bool) -> float:
+    lo, hi = ATAN2_D[draw.f32][2:] if high else ATAN2_D[draw.f32][:2]
+    return log_uniform_at(rng, mpf(2) ** lo, mpf(2) ** hi, draw.f32)
+
+
+def _domain(high: bool):
+    def make(draw: Draw, n: int) -> list[dict]:
+        rd, rt = draw.stream("d"), draw.stream("ratio")
+        out = []
+        for i in range(n):
+            d = _d_at(draw, rd, high)
+            out.append(_place(i, _n_of(draw, rt, d), d))
+        return out
+
+    return make
+
+
+def _subnormal_n(draw: Draw, n: int) -> list[dict]:
+    rn, rd = draw.stream("n"), draw.stream("d")
+    lo, hi = (mpf(b) for b in SUBNORMAL[draw.f32])
+    return [
+        _place(i, log_uniform_at(rn, lo, hi, draw.f32), _d_at(draw, rd, False)) for i in range(n)
+    ]
+
+
 def _atan2_strata():
     def catalogue(f32: bool) -> list:
         return [
             ("yx:generic", _generic_yx, True),
             *((f"yx:ratio-1e-{k}", _ratio(-k), False) for k in RATIO_K[f32]),
             *((f"yx:ratio-1e+{k}", _ratio(k), False) for k in RATIO_K[f32]),
+            # 0105's, after the earlier ones of their precision (0056 decision 2)
+            *([] if f32 else [("yx:centre-mid", _centre_mid, False)]),
+            ("yx:fold", _fold, False),
+            ("yx:diagonal", _diagonal, False),
+            ("yx:axis", _axis, True),
+            *([] if f32 else [("yx:window-lo", _window_lo, False)]),
+            ("yx:domain-low", _domain(False), False),
+            ("yx:domain-high", _domain(True), False),
+            ("yx:subnormal", _subnormal_n, False),
         ]
 
     return drawn_strata(
