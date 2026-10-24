@@ -8,6 +8,14 @@ defined by the status tables in `docs/`; they win over this file.
 
 ## [Unreleased]
 
+### Instrument
+
+Not shipped in the crates.
+- **`real_atan2` strata where `math::atan2`'s formulas meet** (`0105`): the centre midpoints, the
+  binary32 fold, the diagonal, the axes, the window's low edge and both ends of the derivative's
+  domain, 896 records. `math::atan2`'s value reads at most 0.939 `u` on them at `f64` (`libm`
+  1.579) and 0.981 at `f32` (1.679).
+
 ## [0.0.8] - 2026-10-24
 
 The portable `atan2` release. `Real::atan2` is now `helicoid`'s own kernel at both precisions, public as `helicoid_linalg::math::{atan2, atan2f}`: within 0.504 ulp at `f64` and correctly rounded at `f32` on every draw read, where `libm` reads 1.40 and 1.47, with the same bits on every target whatever `libm` a consumer resolves. `SO3::log` rounds each component once on its exact arm, and with the new `atan2` its maximum falls from 2.317 to 1.405 `u`; a composed `Log` stays inlinable. `eig3_values` returns `eig3`'s eigenvalues without the frame in up to half the time. **No API break**; every `atan2` and `Log` caller's bits move.
@@ -45,14 +53,6 @@ The portable `atan2` release. `Real::atan2` is now `helicoid`'s own kernel at bo
   eigenvalue. The two share one sort network, and `eig3`, `eig3_values` and `svd3` read one
   scale-back factor that is `NaN` for a non-finite input, one product per value where a product
   and a select were; every latency is within noise of its time before. No existing output moves.
-
-### Instrument
-
-Not shipped in the crates.
-- **`real_atan2` strata where `math::atan2`'s formulas meet** (`0105`): the centre midpoints, the
-  binary32 fold, the diagonal, the axes, the window's low edge and both ends of the derivative's
-  domain, 896 records. `math::atan2`'s value reads at most 0.939 `u` on them at `f64` (`libm`
-  1.579) and 0.981 at `f32` (1.679).
 
 ### Removed
 
