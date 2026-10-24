@@ -7,7 +7,7 @@
 //! nearest of the [`CENTRES`]` + 1` centres `c = j/C`: `atan(t) = atan(c) + atan(v)`,
 //! `v = (n − c·d)/(d + c·n)`, `|v| ≤ 1/(2C)`. `c` has at most `log₂ C + 1` significant bits, so
 //! `c·d` and `c·n` are each two exact products once the low bits of `d` and `n` are split off;
-//! `n − c·d` is then exact (Sterbenz, then a representable difference) and `d + c·n` is kept as a
+//! `n − c·d` is then exact (Sterbenz, then a representable difference) and `d + c·n` is an exact
 //! pair. The quotient's residual comes from Dekker's halves without a fused multiply-add (D16).
 //! The tail `v·s·P(s)` is at most `v²/3 ≤ 2⁻⁹·⁶` of the answer, so it needs no compensation.
 //!
@@ -16,21 +16,35 @@
 //! polynomial good to `2⁻⁴⁰·⁶`, then one rounding to binary32.
 //!
 //! `P`, the centres' `atan` and the split of `π/4` are `conformance/fits/atan2.json`, written by
-//! `just atan-fit`; nothing here is a typed coefficient.
-
-use std::sync::OnceLock;
+//! `just atan-fit` and read here at compile time, shape included: a fit the kernels cannot take is
+//! a build error. Nothing here is a typed coefficient.
 
 use helicoid_linalg::{Precision, Real};
-use serde::Deserialize;
-
-/// The binary64 kernel's centres, a power of two, and `P`'s terms at each precision: the shape the
-/// code below is written for, checked against the committed fit.
-pub(crate) const CENTRES: usize = 8;
-pub(crate) const TERMS64: usize = 5;
-pub(crate) const TERMS32: usize = 8;
 
 /// The committed fit, as the generator wrote it.
-const FIT: &str = include_str!("../../../../conformance/fits/atan2.json");
+const FIT: &[u8] = include_bytes!("../../../../conformance/fits/atan2.json");
+
+/// Where each kernel's object begins in [`FIT`]; the generator writes `f64` first.
+const F64_AT: usize = after(b"\"f64\": {", 0, FIT.len());
+const F32_AT: usize = after(b"\"f32\": {", F64_AT, FIT.len());
+
+/// The binary64 kernel's centres, a power of two; `P`'s terms at each precision. The polynomials
+/// below are written out for the committed terms, which the assertion holds them to.
+pub(crate) const CENTRES: usize = count(after(b"\"centres\": ", F64_AT, F32_AT));
+pub(crate) const TERMS64: usize = length(after(b"\"coeffs\": [", F64_AT, F32_AT));
+pub(crate) const TERMS32: usize = length(after(b"\"coeffs\": [", F32_AT, FIT.len()));
+const _: () = {
+    assert!(
+        CENTRES.is_power_of_two(),
+        "atan2.json: the centres must be a power of two"
+    );
+    assert!(
+        TERMS64 == 5 && TERMS32 == 8,
+        "atan2.json: the kernels evaluate P with 5 terms at f64 and 8 at f32"
+    );
+    after(b"\"evaluated_at\": \"f64\"", F32_AT, FIT.len());
+    after(b"\"fold\": \"1/2\"", F32_AT, FIT.len());
+};
 
 /// The binary64 kernel's polynomial, the centres' `atan` as `hi + lo`, and `π/4 = hi + lo`.
 #[derive(Debug)]
@@ -54,75 +68,109 @@ pub(crate) struct Fits {
     pub(crate) f32: Fit32,
 }
 
-#[derive(Deserialize)]
-struct FitFile {
-    f64: Json64,
-    f32: Json32,
+/// The fit, a constant: the hot path loads no state and checks nothing.
+pub(crate) const FITS: Fits = Fits {
+    f64: Fit64 {
+        coeffs: array(after(b"\"coeffs\": [", F64_AT, F32_AT)),
+        atan_hi: array(after(b"\"atan_hi\": [", F64_AT, F32_AT)),
+        atan_lo: array(after(b"\"atan_lo\": [", F64_AT, F32_AT)),
+        pi4_hi: hex(after(b"\"pi4_hi\": ", F64_AT, F32_AT)).0,
+        pi4_lo: hex(after(b"\"pi4_lo\": ", F64_AT, F32_AT)).0,
+    },
+    f32: Fit32 {
+        coeffs: array(after(b"\"coeffs\": [", F32_AT, FIT.len())),
+    },
+};
+
+/// The index just past the first `key` in `FIT[from..to]`; no such key fails the build.
+const fn after(key: &[u8], from: usize, to: usize) -> usize {
+    let mut i = from;
+    while i + key.len() <= to && !at(key, i) {
+        i += 1;
+    }
+    assert!(
+        i + key.len() <= to,
+        "atan2.json: a key the kernels read is missing"
+    );
+    i + key.len()
 }
 
-#[derive(Deserialize)]
-struct Json64 {
-    centres: usize,
-    coeffs: Vec<String>,
-    atan_hi: Vec<String>,
-    atan_lo: Vec<String>,
-    pi4_hi: String,
-    pi4_lo: String,
+/// Whether `FIT[i..]` begins with `key`.
+const fn at(key: &[u8], i: usize) -> bool {
+    let mut k = 0;
+    while k < key.len() && FIT[i + k] == key[k] {
+        k += 1;
+    }
+    k == key.len()
 }
 
-#[derive(Deserialize)]
-struct Json32 {
-    evaluated_at: String,
-    fold: String,
-    coeffs: Vec<String>,
+/// The index of the next byte at or after `i` that is not white space or a comma.
+const fn skip(mut i: usize) -> usize {
+    while i < FIT.len() && matches!(FIT[i], b' ' | b'\n' | b',') {
+        i += 1;
+    }
+    i
 }
 
-fn bits(hex: &str) -> Result<f64, String> {
-    let digits = hex.strip_prefix("0x").ok_or(format!("{hex}: no 0x"))?;
-    u64::from_str_radix(digits, 16)
-        .map(f64::from_bits)
-        .map_err(|e| format!("{hex}: {e}"))
+/// The decimal integer at `i`.
+const fn count(i: usize) -> usize {
+    let (mut i, mut n) = (skip(i), 0);
+    while i < FIT.len() && FIT[i].is_ascii_digit() {
+        n = 10 * n + (FIT[i] - b'0') as usize;
+        i += 1;
+    }
+    n
 }
 
-/// `values` as exactly `K` binary64s; another length is a different kernel.
-fn array<const K: usize>(what: &str, values: &[String]) -> Result<[f64; K], String> {
-    let parsed = values
-        .iter()
-        .map(|v| bits(v))
-        .collect::<Result<Vec<_>, _>>()?;
-    parsed
-        .try_into()
-        .map_err(|v: Vec<f64>| format!("{what}: {} values, the kernel takes {K}", v.len()))
+/// The binary64 whose bits the string `"0x` + 16 hex digits + `"` at `i` spells, and the index
+/// past it.
+const fn hex(i: usize) -> (f64, usize) {
+    let i = skip(i);
+    assert!(
+        i + 20 <= FIT.len() && FIT[i] == b'"' && FIT[i + 1] == b'0' && FIT[i + 2] == b'x',
+        "atan2.json: a value is not \"0x...\""
+    );
+    let mut bits = 0u64;
+    let mut k = i + 3;
+    while k < i + 19 {
+        let digit = match FIT[k] {
+            b'0'..=b'9' => FIT[k] - b'0',
+            b'a'..=b'f' => FIT[k] - b'a' + 10,
+            _ => 16,
+        };
+        assert!(digit < 16, "atan2.json: a value is not 16 hex digits");
+        bits = (bits << 4) | digit as u64;
+        k += 1;
+    }
+    assert!(FIT[k] == b'"', "atan2.json: a value is not 16 hex digits");
+    (f64::from_bits(bits), k + 1)
 }
 
-/// The fit, parsed once.
-pub(crate) fn fits() -> Result<&'static Fits, &'static str> {
-    static FITS: OnceLock<Result<Fits, String>> = OnceLock::new();
-    FITS.get_or_init(|| {
-        let file: FitFile = serde_json::from_str(FIT).map_err(|e| format!("atan2.json: {e}"))?;
-        let (a, b) = (file.f64, file.f32);
-        if a.centres != CENTRES || b.evaluated_at != "f64" || b.fold != "1/2" {
-            return Err(format!(
-                "a fit for {} centres, binary32 at {} folded at {}; the kernels are written for \
-                 {CENTRES}, f64 and 1/2",
-                a.centres, b.evaluated_at, b.fold
-            ));
-        }
-        Ok(Fits {
-            f64: Fit64 {
-                coeffs: array("f64 coeffs", &a.coeffs)?,
-                atan_hi: array("atan_hi", &a.atan_hi)?,
-                atan_lo: array("atan_lo", &a.atan_lo)?,
-                pi4_hi: bits(&a.pi4_hi)?,
-                pi4_lo: bits(&a.pi4_lo)?,
-            },
-            f32: Fit32 {
-                coeffs: array("f32 coeffs", &b.coeffs)?,
-            },
-        })
-    })
-    .as_ref()
-    .map_err(String::as_str)
+/// The number of values in the array whose first value is at `i`.
+const fn length(mut i: usize) -> usize {
+    let mut n = 0;
+    while FIT[skip(i)] != b']' {
+        i = hex(i).1;
+        n += 1;
+    }
+    n
+}
+
+/// The `K` values of the array whose first value is at `i`; another length fails the build.
+const fn array<const K: usize>(mut i: usize) -> [f64; K] {
+    let mut out = [0.0; K];
+    let mut k = 0;
+    while k < K {
+        let (v, next) = hex(i);
+        out[k] = v;
+        i = next;
+        k += 1;
+    }
+    assert!(
+        FIT[skip(i)] == b']',
+        "atan2.json: an array is longer than the kernel's"
+    );
+    out
 }
 
 /// `2^e`, for `e` a normal exponent.
@@ -162,24 +210,17 @@ fn rescale(n: f64, d: f64) -> (f64, f64) {
     }
 }
 
-/// `(c, num, den, den_lo)` for `0 ≤ n ≤ d` in [`WINDOW`]: `c = j/C` the centre nearest `n/d`,
-/// `num = n − c·d` exactly, `den + den_lo = d + c·n` to `2⁻¹⁰⁶`.
-pub(crate) fn centre(n: f64, d: f64) -> (f64, f64, f64, f64) {
+/// `(j, num, den, den_lo)` for `0 ≤ n ≤ d` in [`WINDOW`]: `c = j/C` the centre nearest `n/d`,
+/// `num = n − c·d` exactly, `den + den_lo = d + c·n` exactly.
+pub(crate) fn centre(n: f64, d: f64) -> (usize, f64, f64, f64) {
     let w = 1.0 / CENTRES as f64;
-    // `c` sums the centres passed; the midpoints round, which moves `|v|`'s bound by an ulp.
-    let mut parts = [0.0; CENTRES];
-    for (i, part) in parts.iter_mut().enumerate() {
+    // `j` counts the midpoints passed; they round, which moves `|v|`'s bound by an ulp.
+    let mut j = 0;
+    for i in 0..CENTRES {
         let mid = (2 * i + 1) as f64 * (0.5 * w);
-        *part = if d * mid < n { w } else { 0.0 };
+        j += usize::from(d * mid < n);
     }
-    let mut len = CENTRES;
-    while len > 1 {
-        len /= 2;
-        for i in 0..len {
-            parts[i] = parts[2 * i] + parts[2 * i + 1];
-        }
-    }
-    let c = parts[0];
+    let c = j as f64 * w;
     // `c` has at most `log₂ C + 1` significant bits: clearing that many low bits of `d` and `n`
     // leaves halves whose products by `c` are exact.
     let keep = !(2 * CENTRES as u64 - 1);
@@ -192,7 +233,7 @@ pub(crate) fn centre(n: f64, d: f64) -> (f64, f64, f64, f64) {
     let num = (n - c * dh) - c * (d - dh);
     let (den, e1) = fast_two_sum(d, c * nh);
     let (den, e2) = fast_two_sum(den, c * (n - nh));
-    (c, num, den, e1 + e2)
+    (j, num, den, e1 + e2)
 }
 
 /// `atan2(y, x)` by the binary64 kernel.
@@ -206,7 +247,7 @@ pub(crate) fn atan2_f64(y: f64, x: f64, fit: &Fit64) -> f64 {
     } else {
         rescale(n, d)
     };
-    let (c, num, den, den_lo) = centre(n, d);
+    let (j, num, den, den_lo) = centre(n, d);
     let v = num / den;
 
     // The quadrant: `q·π/4 ± (atan(c) + atan(v))`, `−` where exactly one of `x < 0`, `|y| > |x|`.
@@ -219,7 +260,6 @@ pub(crate) fn atan2_f64(y: f64, x: f64, fit: &Fit64) -> f64 {
     } else {
         0.0
     };
-    let j = ((c * CENTRES as f64) as usize).min(CENTRES);
     // `q·π/4_hi` is exact; `|q·π/4| ≥ atan(c)` and `|q·π/4 ± atan(c)| ≥ |v|` unless zero.
     let (h0, l0) = fast_two_sum(q * fit.pi4_hi, sign * fit.atan_hi[j]);
     let us = sign * v;
@@ -302,12 +342,12 @@ pub(crate) fn atan2_f32(y: f32, x: f32, fit: &Fit32, pi4: (f64, f64)) -> f32 {
 #[derive(Clone, Copy, Debug, PartialEq, PartialOrd)]
 pub(crate) struct Portable<T>(pub(crate) T);
 
-fn kernel_f64(y: f64, x: f64, fits: &Fits) -> f64 {
-    atan2_f64(y, x, &fits.f64)
+fn kernel_f64(y: f64, x: f64) -> f64 {
+    atan2_f64(y, x, &FITS.f64)
 }
 
-fn kernel_f32(y: f32, x: f32, fits: &Fits) -> f32 {
-    atan2_f32(y, x, &fits.f32, (fits.f64.pi4_hi, fits.f64.pi4_lo))
+fn kernel_f32(y: f32, x: f32) -> f32 {
+    atan2_f32(y, x, &FITS.f32, (FITS.f64.pi4_hi, FITS.f64.pi4_lo))
 }
 
 macro_rules! portable {
@@ -398,12 +438,9 @@ macro_rules! portable {
             fn exp_m1(self) -> Self {
                 Portable(Real::exp_m1(self.0))
             }
-            /// The candidate. An unparsed fit answers NaN; the twin answers nothing first.
+            /// The candidate.
             fn atan2(self, x: Self) -> Self {
-                Portable(match fits() {
-                    Ok(fits) => $kernel(self.0, x.0, fits),
-                    Err(_) => <$t>::NAN,
-                })
+                Portable($kernel(self.0, x.0))
             }
             fn abs(self) -> Self {
                 Portable(Real::abs(self.0))

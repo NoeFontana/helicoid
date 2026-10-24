@@ -28,7 +28,7 @@ use helicoid_linalg::{Real, Vector};
 #[path = "../src/shipped/portable_atan2/kernel.rs"]
 mod kernel;
 
-use kernel::{atan2_f32, atan2_f64, fits, Portable};
+use kernel::{atan2_f32, atan2_f64, Portable, FITS};
 
 const BATCH: usize = 256;
 
@@ -101,10 +101,7 @@ fn group<'a>(c: &'a mut Criterion, name: &str) -> BenchmarkGroup<'a, WallTime> {
 }
 
 fn atan2(c: &mut Criterion) {
-    let Ok(fits) = fits() else {
-        return;
-    };
-    let (f64_fit, f32_fit) = (&fits.f64, &fits.f32);
+    let (f64_fit, f32_fit) = (&FITS.f64, &FITS.f32);
     let pi4 = (f64_fit.pi4_hi, f64_fit.pi4_lo);
     let mut g = group(c, "atan2/f64");
     for regime in ["mixed", "octant", "axis"] {
