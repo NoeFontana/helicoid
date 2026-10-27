@@ -108,7 +108,8 @@ helicoid/
   `@generated` file matches its generator; the `NUMERICS.md` §14 twin table against
   `helicoid::reference` and proptest names (Phase 3 onward); **the normal-dependency closure of
   each library crate equals the allowed set** of [`0007`](./decisions/0007-the-budget-a-foundation-can-afford.md);
-  no crate other than `xtask` enables `__sweep`.
+  no crate other than `xtask` enables `__sweep`; the committed corpus within its budget (§4.4,
+  [`0110`](./decisions/0110-the-corpus-budget-is-80-mib-and-checked.md)).
 - Root files: `CONTRIBUTING.md`, `LICENSE-MIT`, `LICENSE-APACHE`, `deny.toml` (licenses; bans on
   `nalgebra`, `faer`, `num-traits`, `bytemuck`, `serde` for library crates).
 
@@ -289,7 +290,9 @@ Series are summed until the term's norm is below $10^{-110}$ relative. Phase 2's
   singular neighbourhoods, each with its `@f32` counterpart after every binary64 stratum, drawn
   from its own stream wherever binary32's range differs.
 
-Corpus v1 stays under 64 MiB uncompressed ([`0071`](./decisions/0071-the-corpus-budget-is-64-mib.md)); a family that would exceed it reduces its
+Corpus v1 stays under 80 MiB uncompressed, every tracked file under `conformance/corpus/`, and
+`cargo xtask lint` checks it ([`0071`](./decisions/0071-the-corpus-budget-is-64-mib.md),
+[`0110`](./decisions/0110-the-corpus-budget-is-80-mib-and-checked.md)); a family that would exceed it reduces its
 sample count by an edit to this list, never silently.
 
 ## 5. The conformance harness

@@ -24,6 +24,8 @@ Not shipped in the crates.
 - **`determinism (compare)` is a required check** (`0109`): the comparison of the x86_64,
   aarch64 and `wasm32-wasip1` digest tables now blocks a merge, and it runs and fails when a digest
   leg did not succeed, where a skipped job would have reported success.
+- **The corpus budget is 80 MiB and `cargo xtask lint` checks it** (`0110`, amending `0071`):
+  the committed corpus had reached 67.8 MiB, past `0071`'s 64, with nothing failing.
 
 ## [0.0.8] - 2026-10-24
 
