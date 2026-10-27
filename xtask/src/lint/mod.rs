@@ -3,6 +3,7 @@
 //! the disk, so every check tests on fixtures.
 
 mod acos;
+mod budget;
 mod citations;
 mod closure;
 mod comments;
@@ -67,6 +68,7 @@ type Check = fn(&[File]) -> Vec<Violation>;
 /// Independent checks; add a line here and nothing else.
 const CHECKS: &[Check] = &[
     acos::check,
+    budget::check,
     citations::check,
     citations::check_symbols,
     drafts::check,
@@ -201,10 +203,16 @@ mod tests {
                  record = \"0046\"\nreason = \"r\"\n",
             ),
         ];
+        // One byte over the corpus budget (`0110`).
+        files.push(File::new(
+            "conformance/corpus/x.jsonl",
+            &"x".repeat(budget::BUDGET + 1),
+        ));
         files.extend(generated::stubs());
         let out: Vec<String> = check_all(&files).iter().map(ToString::to_string).collect();
         for tag in [
             "[acos]",
+            "[budget]",
             "[citations]",
             "[drafts]",
             "[exceptions]",
@@ -217,7 +225,7 @@ mod tests {
                 "{tag}: {out:?}"
             );
         }
-        assert_eq!(out.len(), 6, "{out:?}");
+        assert_eq!(out.len(), 7, "{out:?}");
     }
 
     /// One violation of each manifest check, so one dropped from `MANIFEST_CHECKS` fails here.

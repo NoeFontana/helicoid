@@ -101,7 +101,7 @@ generator is Python (`uv`), the container oracles are C++; everything else is Ru
 | `just check-fast` | quick clippy and check of library crates |
 | `just clean-stale` | prune stale test binaries in `target/` while preserving cached dependencies |
 | `just build` / `test` | build; nextest (`dev` and `ndebug` profiles, `PROPTEST_CASES=256`) + doctests |
-| `just lint` | fmt, clippy `-D warnings`, `cargo xtask lint` (line citations, draft citations, generated-file headers, dependency closure, `__sweep`, untracked files, `libm::` only in D16's kernel, no fused multiply-add; twin table owed), `cargo deny` |
+| `just lint` | fmt, clippy `-D warnings`, `cargo xtask lint` (line citations, draft citations, generated-file headers, dependency closure, `__sweep`, untracked files, `libm::` only in D16's kernel, no fused multiply-add, corpus under its 80 MiB; twin table owed), `cargo deny` |
 | `just doc` | rustdoc, warnings denied |
 | `just msrv` | build at `rust-version` |
 | `just no-std` | build for `thumbv7em-none-eabihf` (no `std`, no `alloc`) |

@@ -4,6 +4,10 @@
 **Owner:** @NoeFontana
 **Implementation:** #139
 
+> **Amended by [`0110`](./0110-the-corpus-budget-is-80-mib-and-checked.md), 2026-10-27.** The cap is
+> 80 MiB, and `cargo xtask lint` enforces it: the corpus had reached 67.8 MiB, past this record's 64,
+> with nothing failing.
+
 ## Context
 
 `PHASE1.md` §4.4 holds corpus v1 under 50 MB uncompressed, and a family that would exceed it
