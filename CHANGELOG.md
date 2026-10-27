@@ -21,6 +21,9 @@ Not shipped in the crates.
   a memo keyed on the code each ran, 2% of them run again. `main` and a nightly job run every task.
   The generator's tests run a test class per core in their own job. Locally `just corpus-check`
   takes about a minute with the memo warm, against 17.
+- **`determinism (compare)` is a required check** (`0109`): the comparison of the x86_64,
+  aarch64 and `wasm32-wasip1` digest tables now blocks a merge, and it runs and fails when a digest
+  leg did not succeed, where a skipped job would have reported success.
 
 ## [0.0.8] - 2026-10-24
 
