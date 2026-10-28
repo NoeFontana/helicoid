@@ -30,7 +30,7 @@ optional `mint`.
 ## 1. Crate layout
 
 `real.rs` (`Mask`, `Real`, `Blend`, `Precision`), `float.rs` (`f64`/`f32` impls), `dual.rs`,
-`vector.rs`, `matrix.rs`, `point.rs`, `skew.rs` (`hat`, `vee`), `strided.rs`, `chol.rs`, `eig3.rs`,
+`vector.rs`, `matrix.rs`, `point.rs`, `skew.rs` (`hat`, `vee`), `strided.rs`, `chol.rs`, `eig3.rs`, `eig_sym.rs`,
 `svd3.rs`, `cubic.rs`, `mint.rs` (feature-gated).
 
 ## 2. The scalar model
@@ -214,7 +214,7 @@ the first access that reaches past the slice. Strides are non-negative `usize`. 
 their Jacobian through these (faer `MatMut` and Ceres row-major buffers both map onto
 `with_strides`).
 
-## 6. `eig3`, `svd3`, `solve_cubic`
+## 6. `eig3`, `eig_sym`, `svd3`, `solve_cubic`
 
 **NORMATIVE.**
 
@@ -229,6 +229,13 @@ their Jacobian through these (faer `MatMut` and Ceres row-major buffers both map
 - `eig3_values(a: &Mat3<S>) -> Vec3<S>`: `eig3(a).0` bit for bit at every `S`, without
   accumulating the frame; `eig3`'s domain, and its §14 twin is that composition
   ([`0104`](./decisions/0104-the-eigenvalues-come-without-the-frame.md)).
+- `eig_sym<S, const N: usize>(a: &Matrix<S, N, N>) -> (Vector<S, N>, Matrix<S, N, N>)`, $4 \le N
+  \le 16$ at compile time: `eig3`'s contract at $N$. Cyclic-by-row Jacobi on `eig3`'s rotation with a
+  relative threshold $\lvert a_{pq}\rvert > u\sqrt{\lvert a_{pp}a_{qq}\rvert}$, at most
+  $\mathrm{CAP}_N$ sweeps, then a polish sweep (`NUMERICS.md` §20,
+  [`0111`](./decisions/0111-eig-sym-is-eig3-s-jacobi-at-general-n.md)). Bars against `mp.eigsy`:
+  `eig3`'s, and on a positive definite input `NUMERICS.md` §11's relative reading. Corpus ids
+  `eig_sym_n{4,9,16}`; strata in `PHASE1.md` §4.4.
 - `svd3(a: &Mat3<S>) -> (Mat3<S>, Vec3<S>, Mat3<S>)`: $(U, \sigma, V)$ with $A = U\,\mathrm{diag}(\sigma)V^\top$
   in the signed convention: $U, V \in \mathrm{SO}(3)$, $\sigma_1 \ge \sigma_2 \ge \lvert\sigma_3\rvert$,
   $\operatorname{sign}\sigma_3 = \operatorname{sign}\det A$, so $UV^\top$ is the nearest rotation where
