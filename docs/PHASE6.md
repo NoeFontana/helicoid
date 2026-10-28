@@ -12,7 +12,7 @@ Sections marked **NORMATIVE** are requirements.
 |---|---|
 | `AmbientChart`; quaternion and SE(3) ambient Jacobians (§1) | Not started |
 | `mint` for `Quat` (§2) | Not started |
-| `just determinism` required in CI (§3) | Partial: `cargo xtask determinism` digests the shipped subject over the whole corpus (114 id × precision digests at `0.0.3`); CI digests x86_64, aarch64 and `wasm32-wasip1` and compares them. Wired, not yet a required check. |
+| `just determinism` required in CI (§3) | Partial: `cargo xtask determinism` digests the shipped subject over the whole corpus (114 id × precision digests at `0.0.3`); CI digests x86_64, aarch64 and `wasm32-wasip1` and compares them; `determinism (compare)` is a required check, and fails when a digest leg did not succeed ([`0109`](./decisions/0109-determinism-is-required-before-phase-6.md)). Green on every target at 1.0 (§6) is still owed. |
 | Calibration library depends on `helicoid` (§4) | Not started |
 | 1.0 criteria (§6) | Not met |
 

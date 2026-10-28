@@ -13,7 +13,7 @@ defects and the oracle runners.
 
 | Area | Status |
 |---|---|
-| Workspace, lints, `justfile`, CI matrix (§3) | Partial: workspace, lints, `justfile` and CI for `build`/`test`/`lint`/`audit`/`msrv`/`no-std`/`wasm`/`doc`/`corpus-check`/`conformance --self-test`/`thresholds-check`/`envelope`. The oracles run locally (`just oracles`), not in CI: their containers and a source-built GTSAM do not fit hosted runners. Determinism wired (`PHASE6.md` §3), not required. |
+| Workspace, lints, `justfile`, CI matrix (§3) | Partial: workspace, lints, `justfile` and CI for `build`/`test`/`lint`/`audit`/`msrv`/`no-std`/`wasm`/`doc`/`corpus-check`/`conformance --self-test`/`thresholds-check`/`envelope`. The oracles run locally (`just oracles`), not in CI: their containers and a source-built GTSAM do not fit hosted runners. Determinism wired (`PHASE6.md` §3) and `determinism (compare)` required ([`0109`](./decisions/0109-determinism-is-required-before-phase-6.md)). |
 | Reference generator and committed corpus v1 (§4) | Partial: generator skeleton and committed corpus v1 with 150-digit mpmath reference generation across scalar and group strata. SE(2) coefficients pending. |
 | Conformance harness and result schema (§5) | Partial: `cargo xtask conformance` runner, result CSV generation, and seeded defect checks; `cargo xtask compare` (`0038`, `0078`). Backward error (`Log` near π) and `@f32` strata for most vector ids pending; `so3_from_matrix` is scored forward at both precisions ([`0085`](./decisions/0085-from-matrix-is-measured-on-exact-rotations.md)). |
 | Threshold sweep and generated-file format (§6) | Partial: two-stage threshold sweep over full domain generating `coeffs` and series tables (`0039`, `0047`). |
@@ -101,8 +101,8 @@ helicoid/
   crate import.
 - CI jobs are `just` recipes 1:1: `build`/`test` (x86_64-linux, aarch64-linux), `no-std`
   (`thumbv7em-none-eabihf`), `wasm` (`wasm32-wasip1` under wasmtime), `msrv`, `lint`, `doc`,
-  `corpus-check`, `conformance --self-test`, `envelope` (Phase 3 onward), `determinism` (wired
-  now, required from Phase 6), `bench-check` (opt-in label). The oracle runners are `just oracles`, run locally: hosted runners
+  `corpus-check`, `conformance --self-test`, `envelope` (Phase 3 onward), `determinism` (required,
+  [`0109`](./decisions/0109-determinism-is-required-before-phase-6.md)), `bench-check` (opt-in label). The oracle runners are `just oracles`, run locally: hosted runners
   fit neither their containers (a source-built GTSAM) nor `envelope`'s noise bars.
 - `cargo xtask lint` checks: no new `path.rs:NNN` citation in docs or comments; every
   `@generated` file matches its generator; the `NUMERICS.md` §14 twin table against

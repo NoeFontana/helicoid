@@ -103,8 +103,9 @@ jobs:
           tool: just
       - run: just wasm
 
-  # D16 (`docs/PHASE6.md` §3): one digest table per target, then one comparison. Wired, not yet
-  # required: `PHASE1.md` §3 makes it required from Phase 6.
+  # D16 (`docs/PHASE6.md` §3): one digest table per target, then one comparison. The comparison
+  # is a required check (`0109`); it stands for the legs, so it runs and fails when one did not
+  # succeed, where a skipped job would report success.
   determinism:
     name: determinism (${{ matrix.target }})
     strategy:
@@ -135,8 +136,11 @@ jobs:
   determinism-compare:
     name: determinism (compare)
     needs: determinism
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     steps:
+      - name: every digest leg succeeded
+        run: test "${{ needs.determinism.result }}" = success
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
