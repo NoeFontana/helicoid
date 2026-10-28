@@ -3,7 +3,9 @@
 //! [`FACTOR`] over the clean program's, which must itself be finite. A metric that cannot see a
 //! dropped root, a rotated eigenvector, singular pair or rotation, a dropped sign, a flipped mask,
 //! half a Newton step or a doubled derivative is not measuring what `NUMERICS.md` §11 says it does.
-//! The `svd3` pair is `0101` decision 8's, the `nearest_rotation` one `0102`'s.
+//! The `svd3` pair is `0101` decision 8's, the `nearest_rotation` one `0102`'s, the `eig_sym` pair
+//! `0111`'s: the gap weight at `N = 16`, and an error of `u |λ|` on a graded matrix's smallest
+//! eigenvalue, which only the relative reading sees.
 
 use std::fmt::Write;
 use std::path::Path;
@@ -27,6 +29,12 @@ pub(super) enum Defect {
     DropsARoot,
     /// `eig3`: the first two columns of `V` rotated by `1e-9` in their plane (the gap weight).
     RotatesAnEigenvector,
+    /// `eig_sym_n16`: the same, at `N = 16`.
+    RotatesAnEigenvectorAtN,
+    /// `eig_sym_n9`: `u ‖λ‖₂` added to the smallest eigenvalue, one `u` to the absolute reading and
+    /// `1e16 / κ` to the relative one on `graded-1e-16` (`NUMERICS.md` §11, `0111`): what an
+    /// absolute rotation threshold costs.
+    LosesTheSmallEigenvalue,
     /// `svd3`: the first two columns of `U` and of `V` rotated by `1e-9` in their plane (the gap
     /// weight and the backward error).
     RotatesASingularPair,
@@ -45,9 +53,11 @@ pub(super) enum Defect {
 }
 
 impl Defect {
-    pub(super) const ALL: [Defect; 8] = [
+    pub(super) const ALL: [Defect; 10] = [
         Defect::DropsARoot,
         Defect::RotatesAnEigenvector,
+        Defect::RotatesAnEigenvectorAtN,
+        Defect::LosesTheSmallEigenvalue,
         Defect::RotatesASingularPair,
         Defect::DropsTheSign,
         Defect::TurnsTheRotation,
@@ -61,6 +71,8 @@ impl Defect {
         match self {
             Defect::DropsARoot => ("solve_cubic", "cubic:distinct"),
             Defect::RotatesAnEigenvector => ("eig3", "eig:random"),
+            Defect::RotatesAnEigenvectorAtN => ("eig_sym_n16", "eig:random"),
+            Defect::LosesTheSmallEigenvalue => ("eig_sym_n9", "eig:graded-1e-16"),
             Defect::RotatesASingularPair => ("svd3", "svd:random"),
             Defect::DropsTheSign => ("svd3", "svd:ordering"),
             Defect::TurnsTheRotation => ("nearest_rotation", "polar:near-1e-8"),
@@ -74,6 +86,8 @@ impl Defect {
         match self {
             Defect::DropsARoot => "drops-a-root",
             Defect::RotatesAnEigenvector => "rotates-an-eigenvector",
+            Defect::RotatesAnEigenvectorAtN => "rotates-an-eigenvector-at-n",
+            Defect::LosesTheSmallEigenvalue => "loses-the-small-eigenvalue",
             Defect::RotatesASingularPair => "rotates-a-singular-pair",
             Defect::DropsTheSign => "drops-the-sign",
             Defect::TurnsTheRotation => "turns-the-rotation",
@@ -85,12 +99,16 @@ impl Defect {
 
     fn plant(self, record: &Record, mut out: Output) -> Output {
         let get = |out: &mut Output, k: &str| out.get_mut(k).map(std::mem::take);
+        // Columns 0 and 1 of an `n x n` matrix, `n` from its length.
         let rotate = |out: &mut Output, k: &str| {
-            if let Some(mut v) = get(out, k).filter(|v| v.len() == 9) {
-                let (s, c) = 1e-9f64.sin_cos();
-                for r in 0..3 {
-                    let (a, b) = (v[r], v[3 + r]);
-                    (v[r], v[3 + r]) = (c * a + s * b, c * b - s * a);
+            let side = |v: &Vec<f64>| (2..=16).find(|n| n * n == v.len());
+            if let Some(mut v) = get(out, k) {
+                if let Some(n) = side(&v) {
+                    let (s, c) = 1e-9f64.sin_cos();
+                    for r in 0..n {
+                        let (a, b) = (v[r], v[n + r]);
+                        (v[r], v[n + r]) = (c * a + s * b, c * b - s * a);
+                    }
                 }
                 out.insert(k.into(), v);
             }
@@ -103,7 +121,15 @@ impl Defect {
                     }
                 }
             }
-            Defect::RotatesAnEigenvector => rotate(&mut out, "V"),
+            Defect::RotatesAnEigenvector | Defect::RotatesAnEigenvectorAtN => rotate(&mut out, "V"),
+            Defect::LosesTheSmallEigenvalue => {
+                if let Some(l) = out.get_mut("lambda") {
+                    let norm = l.iter().map(|x| x * x).sum::<f64>().sqrt();
+                    if let Some(first) = l.first_mut() {
+                        *first += norm * f64::EPSILON / 2.0;
+                    }
+                }
+            }
             Defect::RotatesASingularPair => {
                 rotate(&mut out, "U");
                 rotate(&mut out, "V");

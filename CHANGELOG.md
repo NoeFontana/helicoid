@@ -33,6 +33,16 @@ Not shipped in the crates.
   cannot see: nalgebra and Eigen read up to `5e6 u` on `graded-1e-16` under it. Both answer the
   ids as oracles.
 
+### Added
+
+- **`helicoid_linalg::eig_sym::<S, N>`** (`0111`): the eigendecomposition of a symmetric `N x N`
+  matrix, `4 <= N <= 16`, with `eig3`'s contract. `eig3`'s Jacobi with a relative threshold, so a
+  positive definite input's eigenvalues are accurate relative to each one, a measured sweep cap per
+  `N` and a polish sweep for `Dual`. On every committed stratum of `eig_sym_n{4,9,16}` it reads at
+  or below nalgebra's `SymmetricEigen` and Eigen's `SelfAdjointEigenSolver` (at most 7.8 `u`), at
+  1.2–2.6× nalgebra's latency (0.72, 6.5 and 29 µs at `N = 4, 9, 16`). `eig3`'s bits are
+  unchanged.
+
 ## [0.0.8] - 2026-10-24
 
 The portable `atan2` release. `Real::atan2` is now `helicoid`'s own kernel at both precisions, public as `helicoid_linalg::math::{atan2, atan2f}`: within 0.504 ulp at `f64` and correctly rounded at `f32` on every draw read, where `libm` reads 1.40 and 1.47, with the same bits on every target whatever `libm` a consumer resolves. `SO3::log` rounds each component once on its exact arm, and with the new `atan2` its maximum falls from 2.317 to 1.405 `u`; a composed `Log` stays inlinable. `eig3_values` returns `eig3`'s eigenvalues without the frame in up to half the time. **No API break**; every `atan2` and `Log` caller's bits move.

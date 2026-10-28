@@ -844,24 +844,24 @@ fn the_safe_argument_keeps_the_frame_on_a_tiny_block() {
 }
 
 /// A double-double: `hi + lo`, `|lo| <= u |hi|`, from the error-free transformations (Dekker's
-/// split for the product; no fused multiply-add, D16).
+/// split for the product; no fused multiply-add, D16). `eig_sym_tests`' reference is built on it.
 #[derive(Clone, Copy)]
-struct Dd(f64, f64);
+pub(crate) struct Dd(pub(crate) f64, pub(crate) f64);
 
 impl Dd {
-    fn of(x: f64) -> Self {
+    pub(crate) fn of(x: f64) -> Self {
         Self(x, 0.0)
     }
-    fn fast(a: f64, b: f64) -> Self {
+    pub(crate) fn fast(a: f64, b: f64) -> Self {
         let s = a + b;
         Self(s, b - (s - a))
     }
-    fn sum(a: f64, b: f64) -> Self {
+    pub(crate) fn sum(a: f64, b: f64) -> Self {
         let s = a + b;
         let bb = s - a;
         Self(s, (a - (s - bb)) + (b - bb))
     }
-    fn prod(a: f64, b: f64) -> Self {
+    pub(crate) fn prod(a: f64, b: f64) -> Self {
         let split = |x: f64| {
             let c = 134_217_729.0 * x;
             let hi = c - (c - x);
@@ -870,29 +870,29 @@ impl Dd {
         let (p, (ah, al), (bh, bl)) = (a * b, split(a), split(b));
         Self(p, ((ah * bh - p) + ah * bl + al * bh) + al * bl)
     }
-    fn add(self, o: Self) -> Self {
+    pub(crate) fn add(self, o: Self) -> Self {
         let (s, t) = (Self::sum(self.0, o.0), Self::sum(self.1, o.1));
         let s = Self::fast(s.0, s.1 + t.0);
         Self::fast(s.0, s.1 + t.1)
     }
-    fn neg(self) -> Self {
+    pub(crate) fn neg(self) -> Self {
         Self(-self.0, -self.1)
     }
-    fn sub(self, o: Self) -> Self {
+    pub(crate) fn sub(self, o: Self) -> Self {
         self.add(o.neg())
     }
-    fn mul(self, o: Self) -> Self {
+    pub(crate) fn mul(self, o: Self) -> Self {
         let p = Self::prod(self.0, o.0);
         Self::fast(p.0, p.1 + (self.0 * o.1 + self.1 * o.0))
     }
-    fn div(self, o: Self) -> Self {
+    pub(crate) fn div(self, o: Self) -> Self {
         let q1 = self.0 / o.0;
         let r = self.sub(o.mul(Self::of(q1)));
         let q2 = r.0 / o.0;
         let r = r.sub(o.mul(Self::of(q2)));
         Self::fast(q1, q2).add(Self::of(r.0 / o.0))
     }
-    fn sqrt(self) -> Self {
+    pub(crate) fn sqrt(self) -> Self {
         if self.0 <= 0.0 {
             return Self::of(0.0);
         }

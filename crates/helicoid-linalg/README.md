@@ -38,7 +38,7 @@ to.
 ## What ships today
 
 `Real` and `Mask`; `Dual<S, D>` forward-mode duals; `Vector<S, N>`, `Point<S, N>`, `Matrix<S, R, C>`
-and the `Vec3`/`Mat3` aliases; strided views; `chol`, `solve_cubic`, `eig3`, `svd3`, `nearest_rotation`; optional [`mint`]
+and the `Vec3`/`Mat3` aliases; strided views; `chol`, `solve_cubic`, `eig3`, `eig_sym`, `svd3`, `nearest_rotation`; optional [`mint`]
 interop behind the `mint` feature.
 
 Each spec's §0.0 table in
