@@ -193,6 +193,7 @@ side of `docs/maths/coefficients.md` CO.12.
 | `se2_jr_inv`, `se2_jl_inv` | $\tau$ | `mp.inverse` of the above |
 | `solve_cubic` | $(a, b, c, d)$ | the three roots of the stored coefficients as `re`, `im`, ordered by $(\mathrm{Re}, \mathrm{Im})$: planted where the coefficients are exact, else `mp.polyroots` with `extraprec=300` ([`0056`](./decisions/0056-the-routines-d7-does-not-reach.md)) |
 | `eig3` | $A$, symmetric | `mp.eigsy`: `lambda` ascending, `V` its eigenvectors as columns |
+| `eig_sym_n{4,9,16}` | $A$, symmetric | `eig3`'s, at $n$; and `kappa`, $\kappa_2(D^{-1}AD^{-1})$ with $D = \mathrm{diag}(\sqrt{a_{ii}})$ where $A$ is positive definite (an exact $LDL^\top$), else 0, the scale of `NUMERICS.md` §11's relative reading ([`0111`](./decisions/0111-eig-sym-is-eig3-s-jacobi-at-general-n.md)) |
 | `svd3` | $A$ | `mp.svd_r` in the signed convention: $U, V \in \mathrm{SO}(3)$, `sigma` with $\sigma_1 \ge \sigma_2 \ge \lvert\sigma_3\rvert$, $\operatorname{sign}\sigma_3 = \operatorname{sign}\det A$; zero singular values exact by the rank in rationals ([`0101`](./decisions/0101-svd3-is-one-sided-jacobi-on-eig3-s-rotation.md)) |
 | `nearest_rotation` | $M$ | $U\,\mathrm{diag}(1, 1, d)V^\top$ from `mp.svd_r`, $d$ the exact sign of $\det M$ ([`0102`](./decisions/0102-the-nearest-rotation-takes-newton-where-it-is-well-posed.md)) |
 | `chol_n{3,6}` | $A$, symmetric | `valid` decided exactly by an $LDL^\top$ in rationals; `L` = `mp.cholesky`, zeros where `valid` is 0 |
@@ -289,6 +290,15 @@ Series are summed until the term's norm is below $10^{-110}$ relative. Phase 2's
   planted roots, spectra and conditioning, the drift band of `NUMERICS.md` §3.6, and `Dual`'s
   singular neighbourhoods, each with its `@f32` counterpart after every binary64 stratum, drawn
   from its own stream wherever binary32's range differs.
+- `eig_sym_n{4,9,16}`'s ([`0111`](./decisions/0111-eig-sym-is-eig3-s-jacobi-at-general-n.md)):
+  `eig:random`; `eig:gap-1e-k/{bottom,top}`, k = 1, 4, 8, 12 (1, 3, 5); `eig:cluster-{2,3}`, an
+  exact m-fold eigenvalue; `eig:rank-def-{1,3}`, $BB^\top$ with integer $B$, exactly singular at
+  both precisions; `eig:graded-1e-k`, $D\hat AD$ with a unit-diagonal $\hat A$ and a diagonal
+  spanning $10^{-k}$, k = 4, 8, 16 (4, 8); `eig:unit-diag-cond-1e-k`, a correlation matrix of
+  condition number $10^k$ (Davies and Higham), k = 3, 6, 9, 12 (2, 4); `eig:diagonal`, with two
+  exact ties; `eig:identity-multiple`; `eig:scale-{up,down}`, `eig3`'s. **32, 16 and 4 records per
+  stratum** at $n$ = 4, 9, 16, 64 in the deep tier: the code is one at every $n$, so the small $n$
+  carry the count within `0110`'s allotment of 8.2 MB.
 
 Corpus v1 stays under 80 MiB uncompressed, every tracked file under `conformance/corpus/`, and
 `cargo xtask lint` checks it ([`0071`](./decisions/0071-the-corpus-budget-is-64-mib.md),

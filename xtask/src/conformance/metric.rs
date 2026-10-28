@@ -70,6 +70,9 @@ pub(crate) enum Rule {
     /// `eig3` (`0056` decision 3): `lambda` by forward error, `V` column by column, sign-aligned and
     /// weighted by the reference gap, [`eigen`].
     Eigen,
+    /// `eig_sym_n*` (`0111`): [`Rule::Eigen`] and, where the reference's `kappa` says the matrix is
+    /// positive definite, the relative reading of `NUMERICS.md` §11, [`relative`].
+    EigenRelative,
     /// `svd3` (`0101` decision 8): `sigma` by forward error, the vector pairs gap-weighted
     /// with one sign per column, the backward error, both factors' orthogonality, and `1/u` for an
     /// ordering or a determinant out of the contract, [`svd`].
@@ -106,7 +109,8 @@ impl Rule {
     ) -> Result<Score, String> {
         match self {
             Rule::Forward(fields) => score(fields, rec, out, precision),
-            Rule::Eigen => eigen(rec, out, precision),
+            Rule::Eigen => eigen(rec, out, precision, false),
+            Rule::EigenRelative => eigen(rec, out, precision, true),
             Rule::Svd => svd(rec, out, precision),
             Rule::Polar => polar(rec, out, precision),
             Rule::Roots => roots(rec, out, precision),
@@ -123,6 +127,7 @@ impl Rule {
         let mut fields = match self {
             Rule::Forward(fields) => fields.iter().map(|f| f.field).collect(),
             Rule::Eigen => vec!["lambda", "V"],
+            Rule::EigenRelative => vec!["lambda", "V", "kappa"],
             Rule::Svd => vec!["U", "sigma", "V"],
             Rule::Polar => vec!["R"],
             Rule::Roots => vec!["re", "im"],
@@ -353,6 +358,7 @@ const TABLE: &[(&str, Rule)] = &[
     ("se2_jl_inv", Forward(JAC)),
     ("solve_cubic", Rule::Roots),
     ("eig3", Rule::Eigen),
+    ("eig_sym", Rule::EigenRelative),
     ("svd3", Rule::Svd),
     ("nearest_rotation", Rule::Polar),
     (
@@ -396,6 +402,7 @@ pub(crate) fn rule(fn_id: &str) -> Option<&'static Rule> {
     let family = match fn_id.rsplit_once("_n") {
         Some((f, n)) if f.starts_with("sen3_") && matches!(n, "1" | "2" | "3") => f,
         Some((f, n)) if matches!(f, "chol" | "chol_solve") && matches!(n, "3" | "6") => f,
+        Some((f, n)) if f == "eig_sym" && matches!(n, "4" | "9" | "16") => f,
         _ => fn_id,
     };
     TABLE.iter().find(|(f, _)| *f == family).map(|(_, r)| r)
@@ -660,13 +667,26 @@ fn finite_or_nonfinite(worst: f64) -> Score {
 
 /// `NUMERICS.md` §11's eigenvector error (`0056` decision 3), with `lambda`'s forward error beside
 /// it: column `i` of `V` scores `min(‖v̂ᵢ − vᵢ‖, ‖v̂ᵢ + vᵢ‖) · gapᵢ / (‖λ‖₂ u)`, `gapᵢ` the
-/// reference's `min_{j≠i} |λᵢ − λⱼ|`, so a repeated eigenvalue's column weighs 0.
-fn eigen(rec: &Record, out: &Output, precision: Precision) -> Result<Score, String> {
+/// reference's `min_{j≠i} |λᵢ − λⱼ|`, so a repeated eigenvalue's column weighs 0. `n` is the
+/// reference's: 3 for `eig3`, the id's for `eig_sym_n*`. With `relative_reading` (`eig_sym`,
+/// `0111`), the
+/// reference's `kappa` is read and [`relative`]'s reading counts too.
+fn eigen(
+    rec: &Record,
+    out: &Output,
+    precision: Precision,
+    relative_reading: bool,
+) -> Result<Score, String> {
     let bits = unit_bits(precision);
-    let (lambda, v) = (reference(rec, "lambda", 3)?, reference(rec, "V", 9)?);
+    let n = rec
+        .reference
+        .get("lambda")
+        .map(|y| y.data.len())
+        .ok_or("the reference has no `lambda`")?;
+    let (lambda, v) = (reference(rec, "lambda", n)?, reference(rec, "V", n * n)?);
     let (Some(lh), Some(vh)) = (
-        values(out, "lambda", 3, precision)?,
-        values(out, "V", 9, precision)?,
+        values(out, "lambda", n, precision)?,
+        values(out, "V", n * n, precision)?,
     ) else {
         return Ok(Score::NonFinite);
     };
@@ -676,27 +696,90 @@ fn eigen(rec: &Record, out: &Output, precision: Precision) -> Result<Score, Stri
         exp: min_exp(precision),
     }];
     let mut worst = forward_u(lambda, lh, &tiny, false, bits);
+    let kappa = if relative_reading {
+        reference(rec, "kappa", 1)?
+    } else {
+        &[]
+    };
+    let lh: Vec<Dyadic> = lh.iter().map(|&x| Dyadic::of(x)).collect();
     let vh: Vec<Dyadic> = vh.iter().map(|&x| Dyadic::of(x)).collect();
-    let ex = Exact::of(lambda.iter().chain(v), &vh);
+    let ex = Exact::of(lambda.iter().chain(v).chain(kappa), lh.iter().chain(&vh));
     let l: Vec<BigInt> = lambda.iter().map(|d| ex.decimal(d)).collect();
     let norm: BigUint = l.iter().map(square).sum();
-    for i in 0..3 {
-        let gap = (0..3)
+    // `dᵢ²`, each column's aligned distance, over `S²`.
+    let d: Vec<BigUint> = (0..n)
+        .map(|i| {
+            let (mut minus, mut plus) = (BigUint::default(), BigUint::default());
+            for r in 0..n {
+                let (h, y) = (ex.dyadic(&vh[n * i + r]), ex.decimal(&v[n * i + r]));
+                minus += square(&(&h - &y));
+                plus += square(&(&h + &y));
+            }
+            minus.min(plus)
+        })
+        .collect();
+    for (i, di) in d.iter().enumerate() {
+        let gap = (0..n)
             .filter(|&j| j != i)
             .map(|j| square(&(&l[i] - &l[j])))
             .min()
             .unwrap_or_default();
-        let (mut minus, mut plus) = (BigUint::default(), BigUint::default());
-        for r in 0..3 {
-            let (h, y) = (ex.dyadic(&vh[3 * i + r]), ex.decimal(&v[3 * i + r]));
-            minus += square(&(&h - &y));
-            plus += square(&(&h + &y));
-        }
         // (d S)² (gap S)² / ((‖λ‖ S)² S²): every factor scaled by the one `S`.
-        let num = minus.min(plus) * gap;
+        let num = di * gap;
         worst = worst.max(ratio_u(&num, &(&norm * ex.square()), bits));
     }
+    if let [k] = kappa {
+        let lh: Vec<BigInt> = lh.iter().map(|x| ex.dyadic(x)).collect();
+        worst = worst.max(relative(&ex, &ex.decimal(k), &l, &lh, &d, bits));
+    }
     Ok(finite_or_nonfinite(worst))
+}
+
+/// `NUMERICS.md` §11's relative reading of a positive definite `A` (`0111`): over the columns, the
+/// larger of `|λ̂ᵢ − λᵢ| / (κ λᵢ u)` and `dᵢ · min(relgapᵢ, 1) / (κ u)`, `relgapᵢ = min_{j≠i}
+/// |λᵢ − λⱼ| / sqrt(λᵢ λⱼ)`, `κ` the reference's condition number of the equilibrated `A`
+/// (Demmel and Veselić's scale). It applies where `κ > 0` (the generator writes 0 off the
+/// positive definite cone) and `κ u ≤ 2^-10`, inside the bound's hypothesis; elsewhere it is 0.
+/// `kappa`, `l`, `lh` are times `S`, `d` times `S²`, as in [`eigen`].
+fn relative(
+    ex: &Exact,
+    kappa: &BigInt,
+    l: &[BigInt],
+    lh: &[BigInt],
+    d: &[BigUint],
+    bits: usize,
+) -> f64 {
+    let k2 = square(kappa);
+    let s2 = ex.square();
+    // `κ² S² ≤ 2^(2(bits − 10)) S²`.
+    if kappa.sign() != Sign::Plus || k2 > (&s2 << (2 * (bits - 10))) {
+        return 0.0;
+    }
+    let mut worst = 0.0_f64;
+    for i in 0..l.len() {
+        let li2 = square(&l[i]);
+        if l[i].sign() != Sign::Plus {
+            return 0.0;
+        }
+        // (λ̂ − λ)² S² / (κ² λ²) with every factor times `S`: `S²` back in the numerator.
+        let ev = ratio_u(&(square(&(&lh[i] - &l[i])) * &s2), &(&k2 * &li2), bits);
+        // `relgapᵢ²` as the smallest of `(λᵢ − λⱼ)² / (λᵢ λⱼ)`, compared by cross products, capped
+        // at 1.
+        let (mut num, mut den) = (BigUint::from(1u32), BigUint::from(1u32));
+        for j in (0..l.len()).filter(|&j| j != i) {
+            let (a, b) = (
+                square(&(&l[i] - &l[j])),
+                (&l[i] * &l[j]).magnitude().clone(),
+            );
+            if &a * &den < &num * &b {
+                (num, den) = (a, b);
+            }
+        }
+        // d² relgap² / κ²: `d` and `κ²` are both times `S²`, which cancels.
+        let vec = ratio_u(&(&d[i] * &num), &(&den * &k2), bits);
+        worst = worst.max(ev).max(vec);
+    }
+    worst
 }
 
 /// `0101` decision 8's metric, the largest of:
@@ -1664,6 +1747,7 @@ mod tests {
             let own_test = matches!(
                 r,
                 Rule::Eigen
+                    | Rule::EigenRelative
                     | Rule::Svd
                     | Rule::Polar
                     | Rule::Roots
@@ -1811,6 +1895,67 @@ mod tests {
             return Err("non-finite".into());
         };
         assert_eq!(f, 0.0);
+        Ok(())
+    }
+
+    /// `Rule::Eigen` at `n = 4`, positive definite: `λ = (2^-40, 2^-20, 1, 2)`, `V = I`, with the
+    /// reference's `kappa` `k`.
+    fn eig4(k: &str, lh: [f64; 4], v: [f64; 16]) -> Result<Score, String> {
+        let lambda = [
+            "9.094947017729282379150390625e-13",
+            "9.5367431640625e-7",
+            "1e0",
+            "2e0",
+        ];
+        let eye: Vec<&str> = (0..16)
+            .map(|i| if i % 5 == 0 { "1e0" } else { "0e0" })
+            .collect();
+        rule_score(
+            &Rule::EigenRelative,
+            &[("lambda", &lambda), ("V", &eye), ("kappa", &[k])],
+            &[("lambda", &lh), ("V", &v)],
+        )
+    }
+
+    /// The relative reading (`0111`): an error of `2u` on the smallest of a graded spectrum is
+    /// under `1 u` to the absolute reading and `2^40 / κ` to the relative one; `κ = 0` (not positive
+    /// definite) or `κ u` past `2^-10` turns the reading off; a vector's reading is capped at a
+    /// relative gap of 1.
+    #[test]
+    fn the_relative_reading_sees_what_the_absolute_one_cannot() -> Result<(), String> {
+        let eye: [f64; 16] = core::array::from_fn(|i| f64::from(u8::from(i % 5 == 0)));
+        let exact = [2f64.powi(-40), 2f64.powi(-20), 1.0, 2.0];
+        assert_eq!(eig4("2e0", exact, eye)?, Score::Finite(0.0));
+        let mut off = exact;
+        off[0] += 2.0 * U;
+        let Score::Finite(f) = eig4("2e0", off, eye)? else {
+            return Err("non-finite".into());
+        };
+        near(f, 2f64.powi(40));
+        let Score::Finite(g) = eig4("0e0", off, eye)? else {
+            return Err("non-finite".into());
+        };
+        assert!(g < 1.0, "{g}");
+        let Score::Finite(g) = eig4("1e14", off, eye)? else {
+            return Err("non-finite".into());
+        };
+        assert!(g < 1.0, "{g}");
+        // Column 3 tilted by `e` into axis 2: relgap₃ = 1/sqrt(2) caps nothing, so the reading is
+        // `e / (sqrt(2) κ u)`; the absolute one is `e · 1 / (|λ| u)`, the smaller.
+        let e = 2f64.powi(-40);
+        let mut tilted = eye;
+        tilted[14] = e;
+        let Score::Finite(f) = eig4("1e0", exact, tilted)? else {
+            return Err("non-finite".into());
+        };
+        near(f, e / (2f64.sqrt() * U));
+        // Column 0 tilted: relgap₀ = 1e3 is capped at 1, so `e / (κ u)`.
+        let mut tilted = eye;
+        tilted[1] = e;
+        let Score::Finite(f) = eig4("1e0", exact, tilted)? else {
+            return Err("non-finite".into());
+        };
+        near(f, e / U);
         Ok(())
     }
 
@@ -2156,6 +2301,8 @@ mod tests {
     fn the_new_rules_read_the_fields_they_name() {
         let fields = |id| rule(id).map(Rule::reference_fields);
         assert_eq!(fields("eig3"), Some(vec!["V", "lambda"]));
+        assert_eq!(fields("eig_sym_n16"), Some(vec!["V", "kappa", "lambda"]));
+        assert!(rule("eig_sym_n5").is_none());
         assert_eq!(fields("svd3"), Some(vec!["U", "V", "sigma"]));
         assert_eq!(fields("nearest_rotation"), Some(vec!["R"]));
         assert_eq!(fields("solve_cubic"), Some(vec!["im", "re"]));

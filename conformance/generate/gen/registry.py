@@ -19,6 +19,7 @@ from . import (
     coeff,
     cubic,
     eig,
+    eig_sym,
     gaussian,
     geodesic,
     inv_act,
@@ -209,6 +210,13 @@ FUNCTIONS: dict[str, FunctionSpec] = {
             "solve_cubic", cubic.STRATA, drawn_inputs, cubic.solve_cubic, check_linalg.solve_cubic
         ),
         FunctionSpec("eig3", eig.STRATA, drawn_inputs, eig.eig3, check_linalg.eig3),
+        # docs/decisions/0111.
+        *(
+            FunctionSpec(
+                f"eig_sym_n{n}", eig_sym.strata(n), drawn_inputs, eig_sym.eig_sym, check_linalg.eig_sym
+            )
+            for n in eig_sym.NS
+        ),
         # docs/decisions/0101 decision 8.
         FunctionSpec("svd3", svd.STRATA, drawn_inputs, svd.svd3, check_linalg.svd3),
         # docs/decisions/0102 decision 8.

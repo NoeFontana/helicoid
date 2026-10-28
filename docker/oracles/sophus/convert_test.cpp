@@ -228,12 +228,15 @@ void sim3_exp() {
 
 // Column `i` of `got` against `want`'s, up to its sign: an eigenvector's sign is the solver's.
 void near_columns(const oracle::Vec& got, const oracle::Vec& want, const std::string& what, double tol) {
-  bool ok = got.size() == 9 && want.size() == 9;
-  for (std::size_t c = 0; ok && c < 3; ++c) {
+  // An n × n matrix's columns, n from the size: 3 for `eig3` and `svd3`, 4 for `eig_sym`.
+  std::size_t n = 0;
+  while (n * n < want.size()) ++n;
+  bool ok = got.size() == want.size() && n * n == want.size();
+  for (std::size_t c = 0; ok && c < n; ++c) {
     bool same = true, flipped = true;
-    for (std::size_t r = 0; r < 3; ++r) {
-      same = same && std::fabs(got[3 * c + r] - want[3 * c + r]) <= tol;
-      flipped = flipped && std::fabs(got[3 * c + r] + want[3 * c + r]) <= tol;
+    for (std::size_t r = 0; r < n; ++r) {
+      same = same && std::fabs(got[n * c + r] - want[n * c + r]) <= tol;
+      flipped = flipped && std::fabs(got[n * c + r] + want[n * c + r]) <= tol;
     }
     ok = same || flipped;
   }
@@ -258,6 +261,18 @@ void eig3() {
   near(f.lambda, {1, 3, 5}, "eig3 f32: λ ascending", kTolF);
   near_columns(f.v, v, "eig3 f32: V's columns, column-major", kTolF);
   check(binary32(f.lambda) && binary32(f.v), "eig3 f32: binary32");
+}
+
+void eig_sym() {
+  // `eig3`'s converters at N = 4 (docs/decisions/0111): A = diag(4, 1, 3, 2) gives λ = (1, 2, 3, 4)
+  // ascending and V the permutation e₁, e₃, e₂, e₀ up to signs.
+  const oracle::Vec a{4, 0, 0, 0, 0, 1, 0, 0, 0, 0, 3, 0, 0, 0, 0, 2};
+  using Solver = Eigen::SelfAdjointEigenSolver<Eigen::Matrix4d>;
+  const oracle::HelicoidEig3 e =
+      oracle::eigen_to_helicoid_eig<double, 4>(Solver(oracle::helicoid_to_eigen_matrix<double, 4>(a)));
+  near(e.lambda, {1, 2, 3, 4}, "eig_sym: λ ascending");
+  const oracle::Vec v{0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 1, 0, 0, 0};
+  near_columns(e.v, v, "eig_sym: V's columns, column-major", kTol);
 }
 
 // `U diag(σ) Vᵀ` from `svd3`'s column-major arrays, against `a` (column-major), and `U, V ∈ SO(3)`
@@ -371,6 +386,7 @@ int main() {
   sim3_adjoint();
   sim3_exp();
   eig3();
+  eig_sym();
   svd3();
   nearest_rotation();
   hex_floats();

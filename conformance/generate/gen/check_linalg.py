@@ -6,6 +6,9 @@ the route that computed the record, at twice the working precision, to 100 digit
   is conjugate, the order is (re, im); a zero discriminant's roots (planted double and triple) are
   roots exactly, in rationals.
 - `eig3`: |A V - V Lambda| <= 1e-100 |A| and |V^T V - I| <= 1e-100, Frobenius; lambda ascending.
+- `eig_sym_n*` (0111): `eig3`'s at n; `kappa` is 0 exactly where the stored A is not positive
+  definite (an exact LDL^T), else at least 1 and within 1e-100 of lambda_max / lambda_min of the
+  equilibrated A, recomputed by `mp.eig` (a route independent of `eigsy`).
 - `svd3` (0101): |A V - U Sigma| <= 1e-100 |A|, |U^T U - I| and |V^T V - I| <= 1e-100, Frobenius;
   det U and det V within 1e-100 of 1; sigma1 >= sigma2 >= |sigma3|; sign sigma3 = sign det A, the
   determinant of the stored A in rationals.
@@ -26,7 +29,7 @@ from mpmath import mp, mpf
 from . import so3
 from .chol import equilibrator
 from .cubic import discriminant, fraction, horner, is_root
-from .dense import det3, exact, frobenius, from_mat, unit_vector
+from .dense import det3, exact, frobenius, from_mat, ldlt_pivots, unit_vector
 from .precision import DPS
 from .rng import SEED, stream, unit_quaternion_s3
 
@@ -82,6 +85,24 @@ def eig3(inputs: dict, out: dict) -> None:
         A, V = from_mat(inputs["A"]), from_mat(out["V"])
         _within("eig3: A V - V Lambda", frobenius(A * V - V * mp.diag(lam)), frobenius(A))
         _within("eig3: V^T V - I", frobenius(V.T * V - mp.eye(3)), 1)
+
+
+def eig_sym(inputs: dict, out: dict) -> None:
+    lam, n = out["lambda"], inputs["A"].shape[0]
+    if lam != sorted(lam):
+        raise CrossCheckError(f"eig_sym_n{n}: eigenvalues not ascending: {lam}")
+    with mp.workdps(2 * DPS):
+        A, V = from_mat(inputs["A"]), from_mat(out["V"])
+        _within(f"eig_sym_n{n}: A V - V Lambda", frobenius(A * V - V * mp.diag(lam)), frobenius(A))
+        _within(f"eig_sym_n{n}: V^T V - I", frobenius(V.T * V - mp.eye(n)), 1)
+        (k,) = out["kappa"]
+        if ldlt_pivots(exact(inputs["A"])) is None:
+            if k != 0:
+                raise CrossCheckError(f"eig_sym_n{n}: kappa {k} for an A that is not positive definite")
+            return
+        D = equilibrator(A)
+        E = [mp.re(x) for x in mp.eig(D * A * D, left=False, right=False)]
+        _within(f"eig_sym_n{n}: kappa", abs(k - max(E) / min(E)), k)
 
 
 def _sign(x) -> int:

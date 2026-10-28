@@ -8,7 +8,8 @@
 // An answer line is `{"id":N,"out":{"<field>":["<hex float>",…]}}`, fields flat in the reference's
 // order (matrices column-major). In binary64 every record is answered with `Sophus::*<double>`;
 // with `--precision f32` the `@f32` records alone, with `Sophus::*<float>` (docs/decisions/0077).
-// `eig3` is the image's Eigen, `SelfAdjointEigenSolver<Matrix3<T>>` (docs/decisions/0083); `svd3`
+// `eig3` is the image's Eigen, `SelfAdjointEigenSolver<Matrix3<T>>` (docs/decisions/0083), and
+// `eig_sym_n{4,9,16}` the same at N (docs/decisions/0111); `svd3`
 // its `JacobiSVD<Matrix3<T>>` (docs/decisions/0101); `nearest_rotation` `SO3<T>::fitToSO3`
 // (docs/decisions/0102).
 // A record Sophus refuses (a failed `SOPHUS_ENSURE`, or Eigen's solver not converging) is answered
@@ -111,6 +112,15 @@ struct At {
     return helicoid_to_sophus_sim3<T>(take(in, "q", 4), take(in, "x", 3), scalar(in, "sigma"));
   }
 
+  // Eigen's `SelfAdjointEigenSolver` at N, `eig3`'s answer at `eig_sym_n*`'s width.
+  template <int N>
+  static Fields eig_sym(const Fields& in) {
+    const Eigen::SelfAdjointEigenSolver<Eigen::Matrix<T, N, N>> es(
+        helicoid_to_eigen_matrix<T, N>(take(in, "A", static_cast<std::size_t>(N * N))));
+    const HelicoidEig3 e = eigen_to_helicoid_eig<T, N>(es);
+    return {{"V", e.v}, {"lambda", e.lambda}};
+  }
+
   static Fields evaluate(const std::string& id, const Fields& in) {
     using J = Jacobian;
     if (id == "so2_exp") return {{"z", sophus_to_helicoid_so2<T>(SO2::exp(number(in, "theta")))}};
@@ -170,6 +180,10 @@ struct At {
       const HelicoidEig3 e = eigen_to_helicoid_eig3<T>(es);
       return {{"V", e.v}, {"lambda", e.lambda}};
     }
+    // `eig3`'s solver at N (docs/decisions/0111).
+    if (id == "eig_sym_n4") return eig_sym<4>(in);
+    if (id == "eig_sym_n9") return eig_sym<9>(in);
+    if (id == "eig_sym_n16") return eig_sym<16>(in);
     // The image's Eigen too, signed by the runner (docs/decisions/0101).
     if (id == "svd3") {
       const Eigen::JacobiSVD<Eigen::Matrix<T, 3, 3>> svd(helicoid_to_eigen_matrix3<T>(take(in, "A", 9)),
@@ -219,6 +233,9 @@ const std::vector<Id>& table() {
       {"sim3_ad", {{"Ad", 49}}, true},
       {"sim3_act", {{"Xp", 3}}, true},
       {"eig3", {{"V", 9}, {"lambda", 3}}, true},
+      {"eig_sym_n4", {{"V", 16}, {"lambda", 4}}, true},
+      {"eig_sym_n9", {{"V", 81}, {"lambda", 9}}, true},
+      {"eig_sym_n16", {{"V", 256}, {"lambda", 16}}, true},
       {"svd3", {{"U", 9}, {"sigma", 3}, {"V", 9}}, true},
       {"nearest_rotation", {{"R", 9}}, true},
   };
