@@ -18,7 +18,7 @@ computes from definitions (`PHASE1.md` §4.3), so a wrong line in this file fail
 
 | Section | Status |
 |---|---|
-| §1–§12, §14, §15, §17 | **Ready** (§9 Sim(3) by [`0070`](./decisions/0070-sim3-a-structured-jacobian-and-a-series-on-delta.md)) |
+| §1–§12, §14, §15, §17, §20 | **Ready** (§9 Sim(3) by [`0070`](./decisions/0070-sim3-a-structured-jacobian-and-a-series-on-delta.md)) |
 
 ## 1. Conventions
 
@@ -513,6 +513,16 @@ $X(t) = X_0\,\mathrm{Exp}(t\,d)$ with $d = X_1 \ominus_R X_0$ and $\Delta = X_0^
   $\mathrm{gap}_i = \min_{j \ne i}\lvert\lambda_i - \lambda_j\rvert$: the Davis–Kahan scale
   $u\|A\|/\mathrm{gap}$, so a column at its conditioning reads $O(1)$ and a repeated eigenvalue's
   column, which is not unique, weighs 0 ([`0056`](./decisions/0056-the-routines-d7-does-not-reach.md)).
+  The same at $n$ (`eig_sym_n*`).
+- **Relative reading** (`eig_sym_n*`, [`0111`](./decisions/0111-eig-sym-is-eig3-s-jacobi-at-general-n.md)):
+  where the reference's $\kappa = \kappa_2(D^{-1}AD^{-1})$, $D = \mathrm{diag}(\sqrt{a_{ii}})$, is
+  positive (the stored $A$ positive definite, decided exactly) and $\kappa u \le 2^{-10}$, the
+  larger of the above and
+  $\max_k \max\bigl(\lvert\hat\lambda_k - \lambda_k\rvert/(\kappa\lambda_k u),\ \min(\lVert\hat v_k - v_k\rVert, \lVert\hat v_k + v_k\rVert)\min(\mathrm{relgap}_k, 1)/(\kappa u)\bigr)$,
+  $\mathrm{relgap}_k = \min_{j \ne k}\lvert\lambda_k - \lambda_j\rvert/\sqrt{\lambda_k\lambda_j}$:
+  Demmel and Veselić's scale, which a graded matrix's small eigenvalues need and the absolute
+  reading cannot see. A relative gap above 1 would claim an angle below the $u$ a unit vector's
+  components are rounded to, so it is capped there.
 - **Singular value decompositions** (`svd3`): the largest of $\sigma$'s forward error in
   $u\lVert\sigma\rVert_2$; each singular pair with one sign for both vectors,
   $\max_i\min_{s=\pm1}\max(\lVert\hat u_i - s\,u_i\rVert, \lVert\hat v_i - s\,v_i\rVert)\,\mathrm{gap}_i/(\lVert\sigma\rVert_2\,u)$,
@@ -579,6 +589,7 @@ $X(t) = X_0\,\mathrm{Exp}(t\,d)$ with $d = X_1 \ominus_R X_0$ and $\Delta = X_0^
 | `renormalize` | none; a normalization only for $\lvert\|q\|^2 - 1\rvert \le 2^{-26.29}$ (`f64`), $2^{-11.79}$ (`f32`) (§3.6) | defined everywhere; $0$ at $\|q\|^2 = 3$, $q$ reversed beyond |
 | `solve_cubic` | every input; the mask is the report: a non-finite coefficient, $a = 0$, or $1/a$, $b/a$, $c/a$ or $d/a$ overflowing gives no valid slot (§16) | — |
 | `eig3` | every input, lower triangle read; every finite matrix (§17's exact power-of-two scaling); a subnormal largest entry keeps only its own digits | a non-finite entry: `NaN` eigenvalues, never a plausible number, and the identity frame; an eigenvalue beyond the largest finite number is infinite ([`0081`](./decisions/0081-eig3-is-four-jacobi-sweeps.md)) |
+| `eig_sym` | every input, lower triangle read, $4 \le N \le 16$ at compile time; every finite matrix (§20's exact power-of-two scaling) | as `eig3` ([`0111`](./decisions/0111-eig-sym-is-eig3-s-jacobi-at-general-n.md)) |
 | `svd3` | every input; every finite matrix (§18's exact power-of-two scaling) | a non-finite entry: `NaN` singular values and $U = V = I$; a singular value beyond the largest finite number is infinite ([`0101`](./decisions/0101-svd3-is-one-sided-jacobi-on-eig3-s-rotation.md)) |
 | `nearest_rotation` | every input | a non-finite entry: a matrix of `NaN`; the zero matrix: $I$ ([`0102`](./decisions/0102-the-nearest-rotation-takes-newton-where-it-is-well-posed.md)) |
 | `so3::gamma1`, `gamma2`, `gamma_apply_jacobians` | every finite $\varphi$ with $\theta^2$ finite: $\Gamma_m$ is entire (GG.2), no singular $\theta$; the overflow of $\theta^2$ is `Exp`'s (CO.15(c)) ([`0064`](./decisions/0064-the-integrated-exponentials-reuse-the-swept-switches.md)) | — |
@@ -898,3 +909,31 @@ is not unique.
   then the polish.
 - **`svd3`.** $R = UV^\top$ from §18, then the polish.
 - **Polish.** One Newton step, and a second where the first had $\lVert\Delta\rVert_F^2 > u$.
+
+## 20. The symmetric N×N eigendecomposition
+
+`eig_sym`'s formulas, $4 \le N \le 16$ ([`0111`](./decisions/0111-eig-sym-is-eig3-s-jacobi-at-general-n.md)).
+Only the lower triangle $a_{ij}$, $i \ge j$, is read; the working matrix holds both triangles.
+
+- **Non-finite input and scaling** as §17, over the lower triangle, with §17's windows and steps.
+  The eigenvalues are multiplied by $1/f$ at the end.
+- **Order of rotations.** Sweeps over the pairs $(p, q)$, $p < q$, in lexicographic order (cyclic
+  by rows), $V = I$ at the start.
+- **Threshold.** With $r_i = \sqrt{\lvert a_{ii}\rvert}$, recomputed for $p$ and $q$ after each
+  rotation, $u = 2^{-53}$, $2^{-24}$, and `tiny` the smallest normal number: the pair rotates where
+  $\lvert a_{pq}\rvert > \max(u\,r_p r_q, \mathrm{tiny})$. Otherwise it is kept:
+  $(c, s, \delta) = (1, 0, 0)$, and every entry stays as it is.
+- **Rotation.** §17's, with $d = a_{qq} - a_{pp}$ and $w_2 = (2a_{pq})^2$:
+  - $a_{pp} \leftarrow a_{pp} - \delta$, $a_{qq} \leftarrow a_{qq} + \delta$, $a_{pq} = a_{qp} \leftarrow 0$;
+  - for every $k$, $(a_{kp}, a_{kq}) \leftarrow (c\,a_{kp} - s\,a_{kq},\ s\,a_{kp} + c\,a_{kq})$, the
+    same in rows $p$, $q$;
+  - $(v_p, v_q) \leftarrow (c\,v_p - s\,v_q,\ s\,v_p + c\,v_q)$.
+- **Exit.** After a sweep in which every pair was kept, or after $\mathrm{CAP}_N$ sweeps:
+  $8, 10, 11, 11, 12, 12, 12, 12, 13, 14, 14, 14, 15$ for $N = 4, \dots, 16$.
+- **Polish.** One more sweep, every pair rotated whatever its size: §17's polish at $N$. An exactly
+  zero entry rotates by the identity.
+- **Order and sign.** The diagonal and the columns are sorted ascending by the odd–even transposition
+  network: $N$ passes of the exchanges $(i, i+1)$ for $i$ even, then odd, alternately, each an
+  exchange where the second is strictly less. The network is stable. Each exchange negates a
+  sign, applied to the first column after the sort, so $\det V = +1$.
+- **Normalisation** as §17, each column.

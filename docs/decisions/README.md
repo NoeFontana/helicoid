@@ -124,6 +124,7 @@ grep -m1 -H '^\*\*Status:' docs/decisions/0*.md
 | [`0108`](./0108-the-corpus-check-proves-each-thing-once.md) | `corpus-check` proves each thing once: `gen verify` in seconds, CI skips a regeneration whose generator, interpreter and manifest a full check passed, a memo replays unchanged (id, stratum) tasks keyed on the code they ran, its import closure and the spec, 2% audited; `main` and a nightly job run every task; the generator's tests run a class per core. |
 | [`0109`](./0109-determinism-is-required-before-phase-6.md) | `determinism (compare)` is a required check now, not from Phase 6: locus-calib:0007's bit-identical results rest on D16; the comparison runs when a leg failed and fails on it, since a skipped job reports success. |
 | [`0110`](./0110-the-corpus-budget-is-80-mib-and-checked.md) | amends `0071`: the corpus had reached 67.8 MiB past its 64 with nothing failing (`0103` crossed it); the cap is 80 MiB, every tracked file under `conformance/corpus/`, and `cargo xtask lint` fails a pull request over it; `eig_sym` is allotted 8.2 MB. |
+| [`0111`](./0111-eig-sym-is-eig3-s-jacobi-at-general-n.md) | `eig_sym<S, N>`, 4 ≤ N ≤ 16, for locus-calib's D4: `eig3`'s Jacobi at N with a relative threshold (Demmel–Veselić), a measured sweep cap per N, a polish sweep and a stable sort; ids `eig_sym_n{4,9,16}` with `kappa` and §11's relative reading; at or below nalgebra and Eigen on every committed stratum, which lose `graded-1e-16` by up to 5e6 u; 1.2–2.6× nalgebra's latency. |
 
 ## Lifecycle
 
