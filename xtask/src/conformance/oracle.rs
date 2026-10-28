@@ -124,6 +124,9 @@ const RUNNERS: &[Runner] = &[
         // Generic over `RealField`, and every id it answers has `@f32` strata.
         answers_f32: &[
             "eig3",
+            "eig_sym_n4",
+            "eig_sym_n9",
+            "eig_sym_n16",
             "svd3",
             "nearest_rotation",
             "chol_n3",
@@ -136,6 +139,9 @@ const RUNNERS: &[Runner] = &[
         ],
         answers: &[
             "eig3",
+            "eig_sym_n4",
+            "eig_sym_n9",
+            "eig_sym_n16",
             "svd3",
             "nearest_rotation",
             "chol_n3",
@@ -163,6 +169,9 @@ const RUNNERS: &[Runner] = &[
             "sim3_ad",
             "sim3_act",
             "eig3",
+            "eig_sym_n4",
+            "eig_sym_n9",
+            "eig_sym_n16",
             "svd3",
             "nearest_rotation",
         ],
@@ -193,8 +202,11 @@ const RUNNERS: &[Runner] = &[
             "sim3_log",
             "sim3_ad",
             "sim3_act",
-            // The image's Eigen, not Sophus (`0083`; `0101`).
+            // The image's Eigen, not Sophus (`0083`; `0101`; `0111`).
             "eig3",
+            "eig_sym_n4",
+            "eig_sym_n9",
+            "eig_sym_n16",
             "svd3",
             // Sophus's `fitToSO3` (`0102`).
             "nearest_rotation",

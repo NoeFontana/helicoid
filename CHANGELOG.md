@@ -26,6 +26,12 @@ Not shipped in the crates.
   leg did not succeed, where a skipped job would have reported success.
 - **The corpus budget is 80 MiB and `cargo xtask lint` checks it** (`0110`, amending `0071`):
   the committed corpus had reached 67.8 MiB, past `0071`'s 64, with nothing failing.
+- **`eig_sym_n{4,9,16}`** (`0111`): 24 binary64 and 19 binary32 strata per id, among them
+  graded and unit-diagonal positive definite matrices, exact null spaces and exact clusters; 32,
+  16 and 4 records per stratum (8.2 MB), 64 in the deep tier. The reference carries `kappa`, and
+  `NUMERICS.md` §11 gains a relative reading on positive definite records, which an absolute one
+  cannot see: nalgebra and Eigen read up to `5e6 u` on `graded-1e-16` under it. Both answer the
+  ids as oracles.
 
 ## [0.0.8] - 2026-10-24
 

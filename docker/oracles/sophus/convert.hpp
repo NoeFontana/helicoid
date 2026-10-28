@@ -177,36 +177,51 @@ HelicoidSim3 sophus_to_helicoid_sim3(const Sophus::Sim3<T>& s) {
 
 // --- eig3: Eigen's symmetric solver (docs/decisions/0083) -----------------------------------------
 
-// A corpus `A` (3 × 3, column-major) as Eigen's `Matrix3<T>`, column-major too;
-// `SelfAdjointEigenSolver` reads its lower triangle, `JacobiSVD` all of it.
+// A corpus `A` (N × N, column-major) as Eigen's `Matrix<T, N, N>`, column-major too;
+// `SelfAdjointEigenSolver` reads its lower triangle, `JacobiSVD` all of it. N = 3 for `eig3` and
+// `svd3`, 4, 9, 16 for `eig_sym_n*` (docs/decisions/0111).
+template <class T, int N>
+Eigen::Matrix<T, N, N> helicoid_to_eigen_matrix(const Vec& a) {
+  if (a.size() != static_cast<std::size_t>(N * N)) {
+    throw std::invalid_argument("an N × N matrix has N² values");
+  }
+  Eigen::Matrix<T, N, N> m;
+  for (int k = 0; k < N * N; ++k) m.data()[k] = narrow<T>(a[static_cast<std::size_t>(k)]);
+  return m;
+}
+
 template <class T>
 Eigen::Matrix<T, 3, 3> helicoid_to_eigen_matrix3(const Vec& a) {
-  if (a.size() != 9) throw std::invalid_argument("a 3 × 3 matrix has 9 values");
-  Eigen::Matrix<T, 3, 3> m;
-  for (int k = 0; k < 9; ++k) m.data()[k] = narrow<T>(a[static_cast<std::size_t>(k)]);
-  return m;
+  return helicoid_to_eigen_matrix<T, 3>(a);
 }
 
 struct HelicoidEig3 {
   Vec lambda, v;
 };
 
-// A finished `SelfAdjointEigenSolver` as `eig3`'s outputs: `lambda` ascending (Eigen sorts them;
-// the stable sort states the contract, as nalgebra's runner does), `V` the matching columns,
-// column-major, each column's sign Eigen's. No convergence (`info()`) is a refusal, so `nan`.
-template <class T>
-HelicoidEig3 eigen_to_helicoid_eig3(const Eigen::SelfAdjointEigenSolver<Eigen::Matrix<T, 3, 3>>& es) {
+// A finished `SelfAdjointEigenSolver` as `eig3`'s (or `eig_sym_n*`'s) outputs: `lambda` ascending
+// (Eigen sorts them; the stable sort states the contract, as nalgebra's runner does), `V` the
+// matching columns, column-major, each column's sign Eigen's. No convergence (`info()`) is a
+// refusal, so `nan`.
+template <class T, int N>
+HelicoidEig3 eigen_to_helicoid_eig(const Eigen::SelfAdjointEigenSolver<Eigen::Matrix<T, N, N>>& es) {
   if (es.info() != Eigen::Success) throw Refused("SelfAdjointEigenSolver: no convergence");
   const auto& values = es.eigenvalues();
   const auto& vectors = es.eigenvectors();
-  std::array<int, 3> order{0, 1, 2};
+  std::array<int, N> order{};
+  for (int i = 0; i < N; ++i) order[static_cast<std::size_t>(i)] = i;
   std::stable_sort(order.begin(), order.end(), [&](int i, int j) { return values(i) < values(j); });
   HelicoidEig3 out;
   for (const int i : order) {
     out.lambda.push_back(static_cast<double>(values(i)));
-    for (int r = 0; r < 3; ++r) out.v.push_back(static_cast<double>(vectors(r, i)));
+    for (int r = 0; r < N; ++r) out.v.push_back(static_cast<double>(vectors(r, i)));
   }
   return out;
+}
+
+template <class T>
+HelicoidEig3 eigen_to_helicoid_eig3(const Eigen::SelfAdjointEigenSolver<Eigen::Matrix<T, 3, 3>>& es) {
+  return eigen_to_helicoid_eig<T, 3>(es);
 }
 
 // --- svd3: Eigen's one-sided Jacobi SVD (docs/decisions/0101) ------------------------------------

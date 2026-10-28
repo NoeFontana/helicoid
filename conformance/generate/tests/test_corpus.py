@@ -15,10 +15,10 @@ from gen.strata import QUAT_STRATA, SCALAR_THETA_STRATA, Stratum
 
 precision.setup()
 COMMITTED = manifest.ROOT.parent / "corpus"
-# 0056, 0061, 0065, 0067 (S2's two ids), 0101, 0102, 0103
+# 0056, 0061, 0065, 0067 (S2's two ids), 0101, 0102, 0103, 0111
 ASKED_FOR_F32 = (
     "solve_cubic", "eig3", "chol_", "quat_", "real_", "mat2_", "gaussian_", "s2_", "sim3_", "svd3",
-    "nearest_rotation", "se3_inv_act",
+    "nearest_rotation", "se3_inv_act", "eig_sym_",
 )
 SUBSET_STRATUM = next(s for s in SCALAR_THETA_STRATA if s.name == "theta:exact0")
 
@@ -240,8 +240,8 @@ class BuildTest(unittest.TestCase):
         and follows the binary64 order; the others (`x:1e37@f32`) are the binary32 range's own."""
         names = [n for n in FUNCTIONS if n.startswith(ASKED_FOR_F32)]
         # and 0061's `mat2_inverse_adj`, 0065's two, 0067's two, 0068's two, 0070's eight, 0087's,
-        # 0101's, 0102's, 0103's
-        self.assertEqual(len(names), 13 + 1 + 2 + 2 + 2 + 8 + 1 + 1 + 1 + 1)
+        # 0101's, 0102's, 0103's, 0111's three
+        self.assertEqual(len(names), 13 + 1 + 2 + 2 + 2 + 8 + 1 + 1 + 1 + 1 + 3)
         for name in names:
             strata = FUNCTIONS[name].strata
             flags = [s.f32 for s in strata]

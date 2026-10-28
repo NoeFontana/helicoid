@@ -277,13 +277,15 @@ tangent's order, `"shape":[3,3]`.
 
 `solve_cubic`, `eig3`, `chol_n{3,6}`, `chol_solve_n{3,6}`, `quat_renormalize` and `real_*`: the
 record's decision 1 fixes their fields and references, decision 2 their strata; `svd3`'s are
-`0101` decision 8's and `nearest_rotation`'s `0102` decision 8's. Every one has
+`0101` decision 8's, `nearest_rotation`'s `0102` decision 8's and `eig_sym_n{4,9,16}`'s `0111`
+decision 4's. Every one has
 `@f32` strata, after all its binary64 ones, in the same order.
 
 | Id | In | Out | Reference |
 |---|---|---|---|
 | `solve_cubic` | `a`, `b`, `c`, `d` | `re[3]`, `im[3]`, by (re, im) | the roots of the stored cubic (below) |
 | `eig3` | `A` (3×3) | `lambda[3]` ascending, `V` (columns) | `mp.eigsy`; each column's largest component (the first of equals) positive |
+| `eig_sym_n*` | `A` (n×n) | `lambda[n]`, `V`, `kappa[1]` | `eig3`'s at n; `kappa` κ₂ of the equilibrated A where A is exactly positive definite, else 0 (below) |
 | `svd3` | `A` (3×3) | `U`, `sigma[3]`, `V` | `mp.svd_r`, sorted; U, V ∈ SO(3), σ₁ ≥ σ₂ ≥ \|σ₃\|, sign σ₃ = sign det A (below) |
 | `nearest_rotation` | `M` (3×3) | `R` (3×3) | U diag(1, 1, d) Vᵀ from `mp.svd_r`, d = sign det M in rationals (below) |
 | `chol_n*` | `A` (n×n) | `valid[1]`, `L` | `valid` by an exact LDLᵀ; `mp.cholesky(A, tol=0)`, or zeros |
@@ -299,6 +301,7 @@ record's decision 1 fixes their fields and references, decision 2 their strata; 
 |---|---|
 | `solve_cubic` | `cubic:distinct`, `double`, `triple`, `one-real`, `near-double-1e-{2,4,6,8}`, `one-real-p-small`, `coeff-scale-up`, `coeff-scale-down`, `one-real-small-root` (`0031`: x³ + x + q, |q| log-uniform in [1e-12, 1e-2], [1e-6, 1e-1] at f32); the same at f32. 64 each, 1536 |
 | `eig3` | `eig:random`, `eig:gap-1e-k/bottom` k = 0…12 (0…6), then `/top`, `eig:triple`, `rank1`, `scale-up`, `scale-down`. 64, gaps 32; 1920 |
+| `eig_sym_n*` | `eig:random`, `gap-1e-k/bottom` then `/top` k ∈ {1, 4, 8, 12} ({1, 3, 5}), `cluster-{2,3}`, `rank-def-{1,3}`, `graded-1e-k` k ∈ {4, 8, 16} ({4, 8}), `unit-diag-cond-1e-k` k ∈ {3, 6, 9, 12} ({2, 4}), `diagonal`, `identity-multiple`, `scale-up`, `scale-down`. 32, 16, 4 each at n = 4, 9, 16; 1376, 688, 172 |
 | `svd3` | `svd:random` (32), `svd:gap-1e-k/bottom` then `/top`, k ∈ {1, 2, 4, 6, 8, 10, 12} ({1, 2, 4, 6}), `graded-1e-k` k ∈ {2, 4, 8, 12} ({2, 4, 6}), `col-graded` (32), `rank2`, `rank1`, `zero` (4), `rotation`, `near-rotation-1e-k` then `near-reflection-1e-k`, k ∈ {4, 8, 12} ({2, 4, 6}), `essential`, `ordering` (32), `scale-up`, `scale-down` (10^±70, 10^±12). 16 unless stated; 580 + 468 |
 | `nearest_rotation` | `polar:near-1e-k` k ∈ {2, 4, 8, 12, 16} ({2, 4, 6}), `exact` (24), `scaled`, `random` (32), `reflection`, `cond-1e-k` k ∈ {4, 8, 12, 16} ({2, 4, 6, 8}), `rank2`, `non-unique`, `scale-up`, `scale-down` (10^±70, 10^±12). 16 unless stated; 296 + 264 |
 | `chol_n*` | `chol:spd`, `cond-1e-{4,8,12}` (`{2,4,6}`), `diag-scale`, `indefinite`. 32 each, 384 |
@@ -331,6 +334,13 @@ record's decision 1 fixes their fields and references, decision 2 their strata; 
 - **`eig3`.** `eig:gap` sets the pair's gap to exactly 10⁻ᵏ ‖λ‖₂ (a quadratic in the gap), the third
   eigenvalue h ∈ [¼, 1] beyond; `top` negates. `eig:triple` is c I itself (Q c I Qᵀ rounds to
   1e-121 off the diagonal). An exactly singular A has its zero eigenvalues set to 0.
+- **`eig_sym_n*`.** A planted A is Q diag(λ) Qᵀ, Q n Householder reflections (`chol`'s), rounded
+  once. `rank-def-r` is BBᵀ with an integer n × (n − r) B, exact at both precisions, its rank
+  checked in rationals. `graded-1e-k` is D Â D, Â an equilibrated planted SPD, D geometric to
+  10^(−k/2). `unit-diag-cond-1e-k` is a correlation matrix with the planted spectrum (Bendel and
+  Mickey's rotations, Davies and Higham 2000). Zero eigenvalues are exact by the rank in rationals,
+  and an exact null space of dimension ≥ 2 takes its rational RREF basis, orthonormalized, so the
+  reference is one basis at every precision.
 - **`svd3`.** A planted A is U diag(σ) Vᵀ, U and V Haar, rounded once. `svd:gap` sets the pair's
   gap to exactly 10⁻ᵏ ‖σ‖₂ (a quadratic in the gap), the pair's centre c ∈ [½, 1], the third
   c + g/2 + h beyond (h ∈ [¼, 1]) or a fraction ∈ [¼, ¾] of the pair below (`top`): every value
@@ -370,8 +380,9 @@ record's decision 1 fixes their fields and references, decision 2 their strata; 
   output of these ids is finite and normal at its precision.
 - **Cross-checks**, at 240 digits to 1e-100: `solve_cubic` each root's residual and Vieta's relations
   against the size of their terms, the count of real roots against the discriminant, a
-  conjugate pair, multiple roots exact in rationals; `eig3` ‖AV − VΛ‖ ≤ 1e-100 ‖A‖ and
-  ‖VᵀV − I‖ ≤ 1e-100; `svd3` ‖AV − UΣ‖ ≤ 1e-100 ‖A‖, ‖UᵀU − I‖, ‖VᵀV − I‖ and |det − 1| ≤ 1e-100,
+  conjugate pair, multiple roots exact in rationals; `eig3` and `eig_sym_n*` ‖AV − VΛ‖ ≤ 1e-100 ‖A‖
+  and ‖VᵀV − I‖ ≤ 1e-100, and `eig_sym`'s `kappa` 0 exactly off the positive definite cone, else
+  `mp.eig`'s ratio to 1e-100; `svd3` ‖AV − UΣ‖ ≤ 1e-100 ‖A‖, ‖UᵀU − I‖, ‖VᵀV − I‖ and |det − 1| ≤ 1e-100,
   the ordering, and the sign of σ₃ against det A in rationals; `nearest_rotation` ‖RᵀR − I‖ and
   |det R − 1| ≤ 1e-100 and no nearer rotation among 50, 25 Haar and R turned by 10⁻ᵏ, k = 1…25; `chol` `valid` against `mp.eigsy` of the equilibrated A (a congruence keeps
   the signs), L lower with a positive diagonal and ‖LLᵀ − A‖ ≤ 1e-100 ‖A‖; `chol_solve`

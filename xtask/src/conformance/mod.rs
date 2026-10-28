@@ -636,7 +636,7 @@ mod tests {
         let (with, left_out) = split(&[registered(Perfect::exact())])?;
         // Exactly the ids with an `@f32` stratum: the coefficient ids (`0016`), the routines'
         // (`0056`, `0061`), `so3_gamma2` (`0064`), the Gaussians' (`0065`), S²'s (`0067`), Sim(3)'s
-        // (`0070`) and `so3_from_matrix` (`0085`).
+        // (`0070`), `so3_from_matrix` (`0085`) and `eig_sym`'s (`0111`).
         let entries = corpus::manifest(&dir)?;
         let mut with_f32 = Vec::new();
         for e in &entries {
@@ -652,6 +652,7 @@ mod tests {
             [
                 "solve_cubic",
                 "eig3",
+                "eig_sym_",
                 "svd3",
                 "nearest_rotation",
                 "chol",

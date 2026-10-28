@@ -75,6 +75,8 @@ pub(super) fn required() -> Vec<String> {
         ]
         .map(String::from),
     );
+    // `0111`'s, `eig_sym` at the widths its strata sample, with their corpus files.
+    ids.extend([4, 9, 16].map(|n| format!("eig_sym_n{n}")));
     // `0087`'s, with its corpus file in the same step.
     ids.push("real_round_from_f64".to_string());
     // `0061`'s, with its corpus file in the same step.
