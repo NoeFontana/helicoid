@@ -7,7 +7,8 @@
 //! Cholesky factorization [`chol`] with [`solve_lower`]/[`solve_upper`]/[`chol_solve`] (§4), the
 //! strided views [`Strided`]/[`StridedMut`] over caller memory (§5), and (§6) the real roots of a
 //! cubic, [`solve_cubic`], the eigendecomposition of a symmetric 3x3 matrix, [`eig3`] (its
-//! eigenvalues alone, [`eig3_values`]), and the singular value decomposition of a 3x3 matrix,
+//! eigenvalues alone, [`eig3_values`]), and of a symmetric `N x N` one, `4 <= N <= 16`,
+//! [`eig_sym`], and the singular value decomposition of a 3x3 matrix,
 //! [`svd3`], with the nearest rotation, [`nearest_rotation`].
 //!
 //! The optional feature `mint` (off by default) adds `From`/`Into` between [`Vector`]/[`Point`]/
@@ -37,6 +38,7 @@ mod chol;
 mod cubic;
 mod dual;
 mod eig3;
+mod eig_sym;
 mod float;
 pub mod math;
 mod matrix;
@@ -54,6 +56,7 @@ pub use chol::{chol, chol_solve, solve_lower, solve_upper};
 pub use cubic::solve_cubic;
 pub use dual::Dual;
 pub use eig3::{eig3, eig3_values};
+pub use eig_sym::eig_sym;
 pub use matrix::{Mat2, Mat3, Matrix};
 pub use point::{Point, Point2, Point3};
 pub use polar::nearest_rotation;
@@ -83,6 +86,8 @@ mod cubic_tests;
 mod dual_tests;
 #[cfg(test)]
 mod eig3_tests;
+#[cfg(test)]
+mod eig_sym_tests;
 #[cfg(test)]
 mod linalg_tests;
 #[cfg(test)]

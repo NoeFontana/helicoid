@@ -2,7 +2,8 @@
 //! `eig3` (Jacobi with an exit, `0084`) with its values alone, `eig3_values` (`0104`), at `f64` and
 //! `f32` (`0053` *Further work* 2), and
 //! `chol` at the three clauses of `0021`'s bar (`0080`): positive definite and failing input at
-//! `f64` and `f32`, and `Dual`.
+//! `f64` and `f32`, and `Dual`; `eig_sym` (`0111`) at `N = 4, 9, 16` on a random spectrum, a
+//! graded positive definite matrix and a triple eigenvalue, at `f64` and `f32`.
 //!
 //! **A third binary**, for the reason `benches/groups.rs` gives: `bench-gate --against <binary>`
 //! takes one bench binary, so a change to a solver pays for these rows alone.
@@ -33,8 +34,8 @@ use core::time::Duration;
 use criterion::measurement::WallTime;
 use criterion::{criterion_group, criterion_main, BenchmarkGroup, Criterion};
 use helicoid_linalg::{
-    chol, eig3, eig3_values, nearest_rotation, solve_cubic, svd3, Dual, Mat3, Matrix, Real, Vec3,
-    Vector,
+    chol, eig3, eig3_values, eig_sym, nearest_rotation, solve_cubic, svd3, Dual, Mat3, Matrix,
+    Real, Vec3, Vector,
 };
 
 /// Four scalars, not `[S; 4]`: an array by value reaches the callee through the stack, and a wide
@@ -64,6 +65,11 @@ fn svd3_of<S: Real>(a: &Mat3<S>) -> (Mat3<S>, Vec3<S>, Mat3<S>) {
 #[inline(never)]
 fn nearest_rotation_of<S: Real>(a: &Mat3<S>) -> Mat3<S> {
     nearest_rotation(a)
+}
+
+#[inline(never)]
+fn eig_sym_of<S: Real, const N: usize>(a: &Matrix<S, N, N>) -> (Vector<S, N>, Matrix<S, N, N>) {
+    eig_sym(a)
 }
 
 /// The whole factor and the mask come back, and criterion's `black_box` keeps every entry live:
@@ -226,6 +232,60 @@ fn chol_row<S: Fixture, const N: usize>(g: &mut BenchmarkGroup<'_, WallTime>) {
     }
 }
 
+/// `eig_sym`'s fixtures at `N`, `Q diag(l) Q^T` with `Q` two Householder reflections from a fixed
+/// LCG: `random` (`l` uniform in `[-1, 1]`), `graded` (`D Q diag(l) Q^T D`, `l` in `[1/2, 3/2]`,
+/// `D` geometric from 1 to `1e-4`, so the diagonal spans `1e-8` and `f32` keeps it normal), and
+/// `cluster-3` (three equal eigenvalues).
+fn sym_n<S: Fixture, const N: usize>(kind: &str) -> Matrix<S, N, N> {
+    let mut state = 0x6569_6753_7973_6d00_u64;
+    let mut next = || {
+        state = state
+            .wrapping_mul(6_364_136_223_846_793_005)
+            .wrapping_add(1_442_695_040_888_963_407);
+        (state >> 11) as f64 / (1u64 << 53) as f64 * 2.0 - 1.0
+    };
+    let mut q: [[f64; N]; N] =
+        core::array::from_fn(|i| core::array::from_fn(|j| if i == j { 1.0 } else { 0.0 }));
+    for _ in 0..2 {
+        let v: [f64; N] = core::array::from_fn(|_| next());
+        let n2 = v.iter().map(|x| x * x).sum::<f64>();
+        let qv: [f64; N] = core::array::from_fn(|i| (0..N).map(|k| q[i][k] * v[k]).sum());
+        for i in 0..N {
+            for j in 0..N {
+                q[i][j] -= 2.0 * qv[i] * v[j] / n2;
+            }
+        }
+    }
+    let mut l: [f64; N] = core::array::from_fn(|_| next());
+    let mut d = [1.0; N];
+    match kind {
+        "graded" => {
+            l = l.map(|x| 1.0 + 0.5 * x);
+            d = core::array::from_fn(|i| 10f64.powf(-4.0 * i as f64 / (N - 1) as f64));
+        }
+        "cluster-3" => {
+            let c = l[0];
+            l[1] = c;
+            l[2] = c;
+        }
+        _ => {}
+    }
+    let a =
+        |i: usize, j: usize| d[i] * (0..N).map(|k| q[i][k] * l[k] * q[j][k]).sum::<f64>() * d[j];
+    Matrix::from_cols(core::array::from_fn(|j| {
+        Vector(core::array::from_fn(|i| S::of(a(i.max(j), i.min(j)))))
+    }))
+}
+
+fn eig_sym_row<S: Fixture, const N: usize>(g: &mut BenchmarkGroup<'_, WallTime>) {
+    for kind in ["random", "graded", "cluster-3"] {
+        let a = sym_n::<S, N>(kind);
+        g.bench_function(format!("eig_sym/{N}/{kind}"), |b| {
+            b.iter(|| eig_sym_of(black_box(&a)));
+        });
+    }
+}
+
 const SPECTRA: &[(&str, [f64; 3])] = &[
     ("random", [-0.7, 0.2, 0.9]),
     ("gap-1e-8", [-0.7, 0.4, 0.4 + 1e-8]),
@@ -274,6 +334,9 @@ fn rows<S: Fixture>(g: &mut BenchmarkGroup<'_, WallTime>) {
     chol_row::<S, 8>(g);
     chol_row::<S, 9>(g);
     chol_row::<S, 12>(g);
+    eig_sym_row::<S, 4>(g);
+    eig_sym_row::<S, 9>(g);
+    eig_sym_row::<S, 16>(g);
     // The three fixtures in turn, as `solve_cubic/mixed-six-calls`: a data-dependent exit is
     // predicted perfectly by the rows above and not here.
     let mixed: Vec<Mat3<S>> = SPECTRA.iter().map(|&(_, l)| sym::<S>(l)).collect();

@@ -16,12 +16,12 @@ const ROTATIONS: usize = 12;
 /// The window `[lo, hi)` of the largest `|entry|` inside which the matrix is not scaled, and the
 /// two-sided power-of-two steps that bring any other finite matrix into it (`0081` decision 3).
 /// Inside it `d^2 + 4 a_pq^2` cannot overflow and every square that matters is normal.
-const WINDOW_F64: Window = Window {
+pub(crate) const WINDOW_F64: Window = Window {
     lo: pow2(-128),
     hi: pow2(128),
     steps: &[pow2(512), pow2(256), pow2(128), pow2(64)],
 };
-const WINDOW_F32: Window = Window {
+pub(crate) const WINDOW_F32: Window = Window {
     lo: pow2(-32),
     hi: pow2(32),
     steps: &[pow2(64), pow2(32), pow2(16), pow2(8)],
@@ -102,7 +102,7 @@ impl Window {
 /// subnormal to `svd3`'s window ([`Window::reaches`]).
 #[cold]
 #[inline(never)]
-fn ladder<S: Real>(steps: &[f64], m: S) -> (S, S) {
+pub(crate) fn ladder<S: Real>(steps: &[f64], m: S) -> (S, S) {
     let one = S::one();
     let Some((&k, steps)) = steps.split_first() else {
         return (one, one);
@@ -145,9 +145,9 @@ pub(crate) fn into_window<S: Real, const N: usize>(
 }
 
 /// One Newton step on `1 / |v|`, `v (3 - |v|^2) / 2`: the normalisation, with no root and no
-/// division, of a column within a few `u` of unit length (`0084`).
+/// division, of a column within a few `u` of unit length (`0084`); `eig_sym`'s at every `N`.
 #[inline(always)]
-pub(crate) fn unit<S: Real>(v: Vec3<S>) -> Vec3<S> {
+pub(crate) fn unit<S: Real, const N: usize>(v: Vector<S, N>) -> Vector<S, N> {
     v.scale(S::lit(1.5) - S::lit(0.5) * v.norm_sq())
 }
 

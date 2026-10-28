@@ -23,8 +23,8 @@ use helicoid::{
     SEn3Jac, SEn3Tangent, Screw, Sim3, Sim3Tangent, Tangent, Twist, WorldTranslation, S2, SE3, SO3,
 };
 use helicoid_linalg::{
-    chol, chol_solve, eig3, nearest_rotation, solve_cubic, svd3, Dual, Mat3, Matrix, Precision,
-    Real, StridedMut, Vec3, Vector,
+    chol, chol_solve, eig3, eig_sym, nearest_rotation, solve_cubic, svd3, Dual, Mat3, Matrix,
+    Precision, Real, StridedMut, Vec3, Vector,
 };
 
 use crate::conformance::corpus::{exact_f32, Record};
@@ -494,6 +494,9 @@ where
 enum Linalg {
     SolveCubic,
     Eig3,
+    EigSym4,
+    EigSym9,
+    EigSym16,
     Svd3,
     NearestRotation,
     Chol3,
@@ -514,9 +517,12 @@ enum Linalg {
 }
 
 impl Linalg {
-    const ALL: [(&'static str, Linalg); 19] = [
+    const ALL: [(&'static str, Linalg); 22] = [
         ("solve_cubic", Linalg::SolveCubic),
         ("eig3", Linalg::Eig3),
+        ("eig_sym_n4", Linalg::EigSym4),
+        ("eig_sym_n9", Linalg::EigSym9),
+        ("eig_sym_n16", Linalg::EigSym16),
         ("svd3", Linalg::Svd3),
         ("nearest_rotation", Linalg::NearestRotation),
         ("chol_n3", Linalg::Chol3),
@@ -568,6 +574,9 @@ impl Linalg {
                     ("V".to_string(), cols_out(&v)),
                 ])
             }
+            Linalg::EigSym4 => eig_sym_answer::<S, 4>(record),
+            Linalg::EigSym9 => eig_sym_answer::<S, 9>(record),
+            Linalg::EigSym16 => eig_sym_answer::<S, 16>(record),
             Linalg::Svd3 => {
                 let Some(a) = matrix::<S, 3>(record, "A") else {
                     return Output::new();
@@ -703,6 +712,20 @@ fn matrix<S: Real, const N: usize>(record: &Record, key: &str) -> Option<Matrix<
 /// A square matrix column-major, as the corpus holds one.
 fn cols_out<S: Real + Into<f64>, const N: usize>(m: &Matrix<S, N, N>) -> Vec<f64> {
     (0..N).flat_map(|c| m.col(c).0).map(Into::into).collect()
+}
+
+fn eig_sym_answer<S: Real<Mask = bool> + Into<f64>, const N: usize>(record: &Record) -> Output {
+    let Some(a) = matrix::<S, N>(record, "A") else {
+        return Output::new();
+    };
+    let (lambda, v) = eig_sym(&a);
+    Output::from([
+        (
+            "lambda".to_string(),
+            lambda.0.iter().map(|&x| x.into()).collect(),
+        ),
+        ("V".to_string(), cols_out(&v)),
+    ])
 }
 
 fn chol_answer<S: Real<Mask = bool> + Into<f64>, const N: usize>(record: &Record) -> Output {
