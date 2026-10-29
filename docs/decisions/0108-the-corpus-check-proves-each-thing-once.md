@@ -2,7 +2,7 @@
 
 **Status:** ready
 **Owner:** @NoeFontana
-**Implementation:** this record's PR: `gen verify`, `gen key`, `gen/memo.py`, `tests/parallel.py`, the `corpus-check` and `corpus-test` CI jobs, `corpus-nightly.yml`.
+**Implementation:** #208: `gen verify`, `gen key`, `gen/memo.py`, `tests/parallel.py`, the `corpus-check` and `corpus-test` CI jobs, `corpus-nightly.yml`.
 
 ## Context
 

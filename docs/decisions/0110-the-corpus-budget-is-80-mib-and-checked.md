@@ -2,7 +2,7 @@
 
 **Status:** ready
 **Owner:** @NoeFontana
-**Implementation:** the PR that lands this record
+**Implementation:** #211
 
 > Amends [`0071`](./0071-the-corpus-budget-is-64-mib.md): the cap is 80 MiB, and `cargo xtask lint`
 > enforces it.
