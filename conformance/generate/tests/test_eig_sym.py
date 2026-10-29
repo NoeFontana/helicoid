@@ -31,8 +31,8 @@ class StrataTest(unittest.TestCase):
 
     def test_the_catalogue_is_the_records(self):
         names = [s.name for s in eig_sym.strata(4)]
-        self.assertEqual(len([s for s in names if not s.endswith("@f32")]), 24)
-        self.assertEqual(len([s for s in names if s.endswith("@f32")]), 19)
+        self.assertEqual(len([s for s in names if not s.endswith("@f32")]), 25)
+        self.assertEqual(len([s for s in names if s.endswith("@f32")]), 20)
 
     def test_the_rank_deficient_strata_are_exactly_singular(self):
         for n, r in ((4, 1), (9, 3), (16, 3)):
@@ -72,6 +72,17 @@ class ReferenceTest(unittest.TestCase):
                 col = V.data[9 * j : 9 * j + 9]
                 top = max(range(9), key=lambda r: (abs(col[r]), -r))
                 self.assertGreater(col[top], 0, name)
+
+    def test_a_steep_reference_keeps_its_smallest_eigenvalue(self):
+        # `eigsy` is accurate to the working precision of |A|: at DPS alone a 1e-200 eigenvalue
+        # would be noise, which the span's digits added to the precision remove.
+        (record,) = records(4, "eig:graded-1e-200", 1)
+        with mp.workdps(DPS):
+            low = eig_sym.eig_sym(record)["lambda"]
+        with mp.workdps(DPS + 30):
+            high = eig_sym.eig_sym(record)["lambda"]
+        self.assertLess(low[0], mpf(10) ** -190)
+        self.assertTrue(all(abs(a - b) < mpf(10) ** -100 * abs(b) for a, b in zip(low, high)))
 
     def test_kappa_is_zero_off_the_positive_definite_cone(self):
         (record,) = records(4, "eig:rank-def-1", 1)

@@ -294,11 +294,12 @@ Series are summed until the term's norm is below $10^{-110}$ relative. Phase 2's
   `eig:random`; `eig:gap-1e-k/{bottom,top}`, k = 1, 4, 8, 12 (1, 3, 5); `eig:cluster-{2,3}`, an
   exact m-fold eigenvalue; `eig:rank-def-{1,3}`, $BB^\top$ with integer $B$, exactly singular at
   both precisions; `eig:graded-1e-k`, $D\hat AD$ with a unit-diagonal $\hat A$ and a diagonal
-  spanning $10^{-k}$, k = 4, 8, 16 (4, 8); `eig:unit-diag-cond-1e-k`, a correlation matrix of
+  spanning $10^{-k}$, k = 4, 8, 16, 200 (4, 8, 30), the steepest below
+  $\sqrt{\mathrm{tiny}}$, where `NUMERICS.md` §20 scales a pair; `eig:unit-diag-cond-1e-k`, a correlation matrix of
   condition number $10^k$ (Davies and Higham), k = 3, 6, 9, 12 (2, 4); `eig:diagonal`, with two
   exact ties; `eig:identity-multiple`; `eig:scale-{up,down}`, `eig3`'s. **32, 16 and 4 records per
   stratum** at $n$ = 4, 9, 16, 64 in the deep tier: the code is one at every $n$, so the small $n$
-  carry the count within `0110`'s allotment of 8.2 MB.
+  carry the count: 8.6 MB, 0.4 MB past `0110`'s estimate of 8.2 (`0111` decision 4).
 
 Corpus v1 stays under 80 MiB uncompressed, every tracked file under `conformance/corpus/`, and
 `cargo xtask lint` checks it ([`0071`](./decisions/0071-the-corpus-budget-is-64-mib.md),
