@@ -564,19 +564,10 @@ impl Linalg {
                     ("valid".to_string(), ok.map(bit).to_vec()),
                 ])
             }
-            Linalg::Eig3 => {
-                let Some(a) = matrix::<S, 3>(record, "A") else {
-                    return Output::new();
-                };
-                let (lambda, v) = eig3(&a);
-                Output::from([
-                    ("lambda".to_string(), flat(&lambda.0)),
-                    ("V".to_string(), cols_out(&v)),
-                ])
-            }
-            Linalg::EigSym4 => eig_sym_answer::<S, 4>(record),
-            Linalg::EigSym9 => eig_sym_answer::<S, 9>(record),
-            Linalg::EigSym16 => eig_sym_answer::<S, 16>(record),
+            Linalg::Eig3 => eigen_answer(record, eig3::<S>),
+            Linalg::EigSym4 => eigen_answer(record, eig_sym::<S, 4>),
+            Linalg::EigSym9 => eigen_answer(record, eig_sym::<S, 9>),
+            Linalg::EigSym16 => eigen_answer(record, eig_sym::<S, 16>),
             Linalg::Svd3 => {
                 let Some(a) = matrix::<S, 3>(record, "A") else {
                     return Output::new();
@@ -714,11 +705,15 @@ fn cols_out<S: Real + Into<f64>, const N: usize>(m: &Matrix<S, N, N>) -> Vec<f64
     (0..N).flat_map(|c| m.col(c).0).map(Into::into).collect()
 }
 
-fn eig_sym_answer<S: Real<Mask = bool> + Into<f64>, const N: usize>(record: &Record) -> Output {
+/// A symmetric eigendecomposition: `eig3` or `eig_sym`.
+type Eigen<S, const N: usize> = fn(&Matrix<S, N, N>) -> (Vector<S, N>, Matrix<S, N, N>);
+
+/// `{lambda, V}` of the symmetric `A`: `eig3`'s record and `eig_sym`'s, one shape.
+fn eigen_answer<S: Real + Into<f64>, const N: usize>(record: &Record, eig: Eigen<S, N>) -> Output {
     let Some(a) = matrix::<S, N>(record, "A") else {
         return Output::new();
     };
-    let (lambda, v) = eig_sym(&a);
+    let (lambda, v) = eig(&a);
     Output::from([
         (
             "lambda".to_string(),

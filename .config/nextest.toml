@@ -15,6 +15,12 @@ filter = 'package(xtask) and (test(thresholds::) or test(conformance::selftest))
 slow-timeout = { period = "120s", terminate-after = 3 }
 test-group = 'heavy'
 
+[[profile.default.overrides]]
+# The ignored measurements a decision record cites run for minutes on purpose; only
+# `--run-ignored` reaches them.
+filter = 'package(helicoid-linalg) and test(/::(measure|hill_climb)_/)'
+slow-timeout = { period = "600s", terminate-after = 12 }
+
 # Ultra-fast profile for interactive developer iteration
 [profile.quick]
 slow-timeout = { period = "30s", terminate-after = 2 }

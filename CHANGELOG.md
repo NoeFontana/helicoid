@@ -26,21 +26,24 @@ Not shipped in the crates.
   leg did not succeed, where a skipped job would have reported success.
 - **The corpus budget is 80 MiB and `cargo xtask lint` checks it** (`0110`, amending `0071`):
   the committed corpus had reached 67.8 MiB, past `0071`'s 64, with nothing failing.
-- **`eig_sym_n{4,9,16}`** (`0111`): 24 binary64 and 19 binary32 strata per id, among them
-  graded and unit-diagonal positive definite matrices, exact null spaces and exact clusters; 32,
-  16 and 4 records per stratum (8.2 MB), 64 in the deep tier. The reference carries `kappa`, and
-  `NUMERICS.md` §11 gains a relative reading on positive definite records, which an absolute one
-  cannot see: nalgebra and Eigen read up to `5e6 u` on `graded-1e-16` under it. Both answer the
-  ids as oracles.
+- **`eig_sym_n{4,9,16}`** (`0111`): 25 binary64 and 20 binary32 strata per id, among them
+  graded positive definite matrices down to a diagonal spanning `1e-200` (`1e-30` at `f32`),
+  unit-diagonal ones, exact null spaces and exact clusters; 32, 16 and 4 records per stratum
+  (8.6 MB), 64 in the deep tier. The reference adds the digits the diagonal spans to its
+  precision and carries `kappa`, and `NUMERICS.md` §11 gains a relative reading on positive
+  definite records, which an absolute one cannot see: nalgebra and Eigen read up to `9e19 u` on
+  `graded-1e-200` under it. Both answer the ids as oracles.
 
 ### Added
 
 - **`helicoid_linalg::eig_sym::<S, N>`** (`0111`): the eigendecomposition of a symmetric `N x N`
   matrix, `4 <= N <= 16`, with `eig3`'s contract. `eig3`'s Jacobi with a relative threshold, so a
   positive definite input's eigenvalues are accurate relative to each one, a measured sweep cap per
-  `N` and a polish sweep for `Dual`. On every committed stratum of `eig_sym_n{4,9,16}` it reads at
-  or below nalgebra's `SymmetricEigen` and Eigen's `SelfAdjointEigenSolver` (at most 7.8 `u`), at
-  1.2–2.6× nalgebra's latency (0.72, 6.5 and 29 µs at `N = 4, 9, 16`). `eig3`'s bits are
+  `N` and a polish sweep for `Dual`; a pair below the square root of the smallest normal is
+  scaled by an exact power of two first, so the relative accuracy holds down to a diagonal
+  spanning `1e-200`. On every committed stratum of `eig_sym_n{4,9,16}` it reads at or below
+  nalgebra's `SymmetricEigen` and Eigen's `SelfAdjointEigenSolver` (at most 7.8 `u`), at 1.2–2.5×
+  nalgebra's latency (0.69, 6.2 and 28 µs at `N = 4, 9, 16`). `eig3`'s bits and latency are
   unchanged.
 
 ## [0.0.8] - 2026-10-24
