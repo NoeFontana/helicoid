@@ -45,26 +45,32 @@ stable as a relative one. A planted absolute threshold would pass every stratum.
 2. **The algorithm** is `NUMERICS.md` §20:
    - `eig3`'s window, ladder and safe arm.
    - Cyclic-by-row sweeps over `p < q`, each rotation `eig3`'s `angle`.
-   - A rotation where `|a_pq| > max(u r_p r_q, tiny)`, `r_i = sqrt(|a_ii|)` cached, else the exact
-     identity.
+   - A rotation where `|a_pq| > max(u r_p r_q, tiny)`, `r_i = sqrt(|a_ii|)` cached. Elsewhere the
+     pair is kept: its entries are selected as they were, not rotated by `(1, 0)`.
+   - A small pair, `|2 a_pq| < sqrt(tiny)`, is not `angle`'s alone. Where `|d|` is below
+     `sqrt(tiny)` too, `d` and `a_pq` are scaled by `2^512` (`2^64` at `f32`) before `angle` and
+     `ta` scaled back. Where `w^2` still underflows, `ta = t a_pq`.
    - The exit: after a sweep that rotates nothing (`Mask::decide`), or at `CAP[N]`.
    - One polish sweep that rotates every pair (`0084` decision 4 at `N`).
    - A stable odd-even transposition sort whose exchanges are counted into column 0's sign.
    - `eig3`'s Newton normalisation of each column.
-   - `eig3`'s `angle`, `ladder`, `WINDOW_F64`/`WINDOW_F32` and `unit` are shared, `unit` generic
-     over `N`; `eig3`'s bits do not move.
-3. **The cap**, by `N`: `CAP = [8, 10, 11, 11, 12, 12, 12, 12, 13, 14, 14, 14, 15]` for
+   - `eig3`'s `angle`, `WINDOW_F64`/`WINDOW_F32` and `unit` are shared, `unit` generic over `N`,
+     and so is the scaling rule, `window_scale`, which `into_window` now calls; `eig3`'s bits do
+     not move.
+3. **The cap**, by `N`: `CAP = [8, 10, 11, 11, 12, 12, 12, 13, 13, 14, 14, 14, 15]` for
    `N = 4..=16`. Each entry is one more than the most sweeps any matrix of the convergence study
    (*Measured*) needed to leave at that `N`, the sweep that rotates nothing counted. The cap is one
    table for both precisions: `f32` never needed more than `f64`.
-4. **The corpus**: ids `eig_sym_n{4,9,16}` (`PHASE1.md` §4.3, §4.4), within `0110`'s allotment of
-   8.2 MB.
-   - 24 binary64 strata and 19 `@f32` twins: `random`, `gap-1e-k/{bottom,top}`,
+4. **The corpus**: ids `eig_sym_n{4,9,16}` (`PHASE1.md` §4.3, §4.4), 8.6 MB. That is 0.4 MB past
+   `0110`'s estimate of 8.2 MB, the two steep `graded` strata, taken from the 4.4 MiB it leaves.
+   - 25 binary64 strata and 20 `@f32` twins: `random`, `gap-1e-k/{bottom,top}`,
      `cluster-{2,3}`, `rank-def-{1,3}`, `graded-1e-k`, `unit-diag-cond-1e-k`, `diagonal`,
      `identity-multiple`, `scale-{up,down}`.
    - 32, 16 and 4 records per stratum at `N = 4, 9, 16`, and 64 in the deep tier.
-   - The reference is `mp.eigsy` at 120 digits, plus `kappa = κ_2(D^-1 A D^-1)` where the stored
-     `A` is exactly positive definite, else 0.
+   - `graded-1e-k` reaches `k = 200` (`30` at `f32`), below `sqrt(tiny)`, where a pair is small.
+   - The reference is `mp.eigsy` at 120 digits plus the digits the diagonal spans, so a graded
+     `A`'s smallest eigenvalue is as accurate as its largest; plus `kappa = κ_2(D^-1 A D^-1)` where
+     the stored `A` is exactly positive definite, else 0.
    - An exact null space of two or more dimensions takes the rational RREF basis, orthonormalised,
      so the reference is one basis at every precision.
 5. **The metric** is `Rule::EigenRelative` (`NUMERICS.md` §11's new relative reading). It applies
@@ -85,8 +91,9 @@ stable as a relative one. A planted absolute threshold would pass every stratum.
 8. **Tests and rows.**
    - `eig_sym_tests`: exact diagonal and identity cases, power-of-two scaling bit for bit,
      non-finite input, the upper triangle ignored, permutation, the `Dual` value path and lanes,
-     first-order perturbation theory with the polish, and
-     `an_absolute_threshold_loses_the_graded_eigenvalues`.
+     first-order perturbation theory with the polish,
+     `an_absolute_threshold_loses_the_graded_eigenvalues`,
+     `a_block_below_the_safe_arm_keeps_its_digits` and `a_held_lane_keeps_the_sign_of_zero`.
    - `measure_eig_sym` and `hill_climb_eig_sym`, both ignored.
    - `committed_linalg` rows, and bench rows `eig_sym/{4,9,16}/{random,graded,cluster-3}` at `f64`
      and `f32`.
@@ -94,7 +101,7 @@ stable as a relative one. A planted absolute threshold would pass every stratum.
 ## Rationale
 
 - **Tridiagonal QR** (Eigen's or nalgebra's, ported) is faster: nalgebra reads 0.60 / 3.40 /
-  11.4 µs at `N = 4 / 9 / 16` against 0.72 / 6.5 / 29 here (*Measured*). It loses `0084`'s
+  11.4 µs at `N = 4 / 9 / 16` against 0.69 / 6.2 / 28 here (*Measured*). It loses `0084`'s
   accuracy at `N = 3`. On the graded strata it reads up to `5e6 u` against at most 5.4 here: the
   property that answers D4's unequilibrated callers. A call made once per solve buys accuracy
   with latency, as `0081` did.
@@ -108,7 +115,23 @@ stable as a relative one. A planted absolute threshold would pass every stratum.
   `2^-91` squares to `2^-182`. The test would then never mask, and only the cap would end the loop.
   The cached roots cost two square roots per applied rotation, not per test.
 - **The floor `tiny`** keeps two exactly zero diagonals (`rank-def`) from rotating on an entry far
-  below anything scored. It sits where `angle` already takes its safe arm.
+  below anything scored. It also bounds a rotating `a_pq` below, which is what lets one exact
+  scaling bring every small pair's `w^2` into the normal range.
+- **A small pair.** `angle`'s safe arm sets in at `d^2 + w^2 < tiny`, about `2^-511 |A|` at
+  `f64` and `2^-63` at `f32`, far above the floor. There it leaves the pair unrotated. Where only
+  `w^2` underflows, its `ta` is lost, and `ta` can be as large as the small diagonal. Either is
+  harmless under `eig3`'s absolute exit and fatal to the relative one. Before the fix,
+  `graded-1e-30` at `f32` read `1.9e6 u` relative and a `2^-70` block `5.6e6`.
+  - The scaling is exact, and `angle` is invariant under it.
+  - It sits behind a branch on `|2 a_pq|`, out of line. A scalar pays only the comparison, and
+    the latency was measured unchanged.
+  - `ta = t a_pq` everywhere would change every rotation's bits from `eig3`'s, against `0084`'s
+    reason for reading `ta` from `w^2`.
+- **A kept pair is selected, not rotated by `(1, 0)`.** `1 x - 0 y` is `+0` where `x = -0` and
+  `y < 0`, so a lane held beside a rotating one would part from its scalar run in the sign of a
+  zero, which a later rotation's sign can carry.
+- **The mirror in a second pass.** One pass that also stores the strided row measured 5–7%
+  slower at `N = 9, 16`: it keeps LLVM from vectorising the column.
 - **A cap per `N`**: the worst case grows from 7 sweeps at `N = 4` to 14 at 16. One constant would
   be 15 everywhere. The cap only bounds lanes and a pathological input; a scalar leaves at
   convergence.
@@ -132,7 +155,8 @@ stable as a relative one. A planted absolute threshold would pass every stratum.
   `eig_sym`. `PHASE2.md` §6 and its §0.0 row, and `PHASE1.md` §4.3 and §4.4, list it.
 - The three ids enter the determinism digests and `committed_linalg`'s no-regress rows.
 - `eig3`'s committed rows and digests are unchanged by the shared helpers. That is the bar for the
-  refactor.
+  refactor. `eig3`, `svd3` and `nearest_rotation` latency is unchanged: `window_scale` takes the
+  arm that scales the entries as a closure, which only that arm runs.
 - D16: `+ - * /`, `sqrt` and `abs` only, the exit a comparison of values every target computes to
   the bit, and no fused multiply-add. LLVM may vectorise the column updates, which reassociates
   nothing.
@@ -166,43 +190,49 @@ None.
 
 ## Measured
 
-**Convergence and accuracy** (`measure_eig_sym`; `2e4` matrices of each of 18 families at every
+**Convergence and accuracy** (`measure_eig_sym`; `2e4` matrices of each of 20 families at every
 `N`, the first 300 scored against the double-double relative Jacobi reference; `--release`, seed
-1). The worst over the families. `rel` is read where `κ u <= 1e-3`:
+1). The worst over the families. `rel` is read where `κ u <= 2^-10`:
 
 | N | sweeps f64 / f32 | abs f64 / f32 | rel f64 / f32 | frame f64 / f32 |
 |---|---|---|---|---|
-| 4 | 7 / 6 | 4.71 / 3.98 | 1.80 / 1.54 | 7.50 / 5.36 |
-| 5 | 9 / 8 | 5.54 / 4.86 | 2.30 / 2.09 | 8.50 / 6.81 |
-| 6 | 10 / 9 | 5.45 / 5.55 | 3.28 / 1.84 | 10.20 / 8.27 |
-| 7 | 10 / 9 | 6.74 / 6.02 | 3.13 / 1.79 | 10.88 / 10.13 |
-| 8 | 11 / 9 | 6.00 / 5.67 | 4.25 / 1.62 | 12.00 / 12.33 |
-| 9 | 11 / 10 | 7.87 / 6.40 | 4.20 / 2.82 | 14.25 / 11.78 |
-| 10 | 11 / 10 | 7.89 / 7.28 | 2.50 / 1.67 | 13.00 / 14.44 |
-| 11 | 11 / 11 | 7.47 / 7.48 | 2.78 / 2.26 | 14.25 / 12.54 |
-| 12 | 12 / 11 | 9.84 / 7.31 | 3.03 / 1.81 | 14.00 / 12.69 |
-| 13 | 13 / 11 | 8.93 / 8.03 | 2.57 / 2.30 | 18.42 / 13.57 |
-| 14 | 13 / 12 | 12.30 / 8.14 | 2.74 / 2.15 | 17.00 / 14.63 |
-| 15 | 13 / 12 | 9.68 / 7.95 | 3.30 / 2.49 | 20.66 / 14.41 |
-| 16 | 14 / 13 | 9.58 / 8.96 | 3.23 / 2.56 | 20.00 / 17.30 |
+| 4 | 7 / 6 | 4.71 / 3.99 | 1.80 / 1.54 | 7.50 / 5.36 |
+| 5 | 9 / 8 | 5.29 / 4.86 | 2.08 / 2.09 | 8.50 / 6.81 |
+| 6 | 10 / 9 | 5.25 / 5.67 | 3.28 / 1.84 | 10.20 / 8.27 |
+| 7 | 10 / 9 | 6.74 / 5.47 | 3.13 / 1.93 | 10.88 / 9.54 |
+| 8 | 11 / 9 | 6.00 / 5.67 | 4.25 / 1.61 | 12.00 / 12.33 |
+| 9 | 11 / 10 | 7.86 / 6.40 | 4.20 / 2.81 | 12.19 / 11.42 |
+| 10 | 11 / 10 | 7.89 / 6.99 | 2.50 / 1.67 | 16.12 / 14.44 |
+| 11 | 12 / 10 | 9.52 / 7.48 | 2.78 / 2.26 | 14.53 / 13.00 |
+| 12 | 12 / 11 | 9.11 / 6.49 | 3.03 / 1.92 | 14.00 / 12.69 |
+| 13 | 13 / 11 | 10.35 / 8.03 | 3.24 / 2.30 | 18.42 / 13.57 |
+| 14 | 13 / 12 | 9.68 / 7.71 | 2.74 / 2.15 | 17.00 / 14.63 |
+| 15 | 13 / 12 | 9.68 / 7.95 | 3.29 / 2.49 | 20.66 / 14.41 |
+| 16 | 14 / 12 | 12.63 / 8.96 | 3.15 / 2.56 | 19.50 / 17.30 |
 
 - The slowest families are `rank-def-3` and `unit-diag-1e-12`, a near-singular coupling the
   relative threshold resolves to `u r_p r_q`.
 - The hill climb (`hill_climb_eig_sym`, 150 restarts of 300 shrinking perturbations from each
   family) finds at most 7, 10 and 13 sweeps at `N = 4, 9, 16`, none above the random study.
-- `eig_sym_tests`' recorded bounds are twice these worsts: `abs <= 25`, `rel <= 9`,
+- With the cap lifted, no matrix needs more sweeps than the table's.
+- The families with small pairs, `graded-1e-30` at `f32` and `graded-1e-200` at `f64`, read at
+  most 2.21 `rel`. Before the small-pair rotation they read `2.6e6` and `1.2e15`. Every other
+  row is the same to the printed digit, except `diag-tie+1e-17`'s `f32` frame, within 0.5 `u`:
+  its polish now rotates small pairs.
+- `eig_sym_tests`' recorded bounds are twice these worsts: `abs <= 25.3`, `rel <= 9`,
   `frame <= 42`.
 
 **Corpus, committed tier** (`cargo xtask conformance`, the largest `max_u` over each id's strata):
 
 | id | helicoid f64 / f32 | nalgebra 0.35 f64 / f32 | Eigen 3.4 f64 / f32 |
 |---|---|---|---|
-| `eig_sym_n4` | 3.66 / 3.01 | 1.77e6 / 1.16e3 | 1.17e6 / 655 |
-| `eig_sym_n9` | 5.35 / 5.70 | 1.01e3 / 5.16e6 | 4.35e6 / 2.10e3 |
-| `eig_sym_n16` | 7.83 / 5.66 | 326 / 5.75e6 | 5.25e6 / 1.00e3 |
+| `eig_sym_n4` | 3.66 / 3.01 | 2.48e19 / 1.50e19 | 2.48e19 / 1.86e10 |
+| `eig_sym_n9` | 5.35 / 5.70 | 5.10e15 / 3.32e7 | 9.26e19 / 1.23e10 |
+| `eig_sym_n16` | 7.83 / 5.66 | 9.57e16 / `NaN` | 4.11e17 / 8.22e7 |
 
-- The oracles' maxima are on `graded-1e-k`.
-- On every one of the 129 (id, stratum, precision) cells, `helicoid`'s maximum is at or below the
+- The oracles' maxima are on `graded-1e-200` and `graded-1e-30@f32`, where `helicoid` reads at
+  most 1.30 and 1.50. nalgebra returns `NaN` on all four `eig_sym_n16/graded-1e-30@f32` records.
+- On every one of the 135 (id, stratum, precision) cells, `helicoid`'s maximum is at or below the
   best oracle's (median ratio 0.37). The ties are `diagonal` and `identity-multiple`, which every
   program solves exactly.
 - **`just envelope --deep`**, every oracle rerun on both tiers: no `eig_sym` stratum is a
@@ -214,6 +244,10 @@ None.
 
 | N | `random` | `graded` | `cluster-3` | nalgebra `random` / `graded` |
 |---|---|---|---|---|
-| 4 | 0.72 µs | 0.46 | 0.40 | 0.60 / 0.46 |
-| 9 | 6.5 | 4.1 | 7.1 | 3.40 / 2.57 |
-| 16 | 29.5 | 18.5 | 29.4 | 11.4 / 8.9 |
+| 4 | 0.69 µs | 0.45 | 0.39 | 0.60 / 0.46 |
+| 9 | 6.2 | 3.9 | 6.8 | 3.40 / 2.57 |
+| 16 | 28.0 | 17.6 | 28.2 | 11.4 / 8.9 |
+
+- The small-pair branch, the selected kept pair and `r` left out of the polish cost nothing on
+  the scalar path. Against the first implementation, paired, one binary per variant, pinned:
+  2–9% faster at `f32` and about 4% at `f64`, at every `N`.
