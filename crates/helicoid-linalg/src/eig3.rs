@@ -28,6 +28,15 @@ pub(crate) const WINDOW_F32: Window = Window {
 };
 const _: () = assert!(WINDOW_F64.reaches(Precision::F64) && WINDOW_F32.reaches(Precision::F32));
 
+/// The window of the precision: [`WINDOW_F64`] or [`WINDOW_F32`].
+#[inline(always)]
+pub(crate) fn window<S: Real>() -> &'static Window {
+    match S::PRECISION {
+        Precision::F64 => &WINDOW_F64,
+        Precision::F32 => &WINDOW_F32,
+    }
+}
+
 /// A scaling window `[lo, hi)` of the largest `|entry|` and the steps of its [`ladder`].
 pub(crate) struct Window {
     pub(crate) lo: f64,
@@ -115,33 +124,50 @@ pub(crate) fn ladder<S: Real>(steps: &[f64], m: S) -> (S, S) {
     (first, rest)
 }
 
-/// The entries, all zero where one is not finite (the safe argument), scaled by an exact power of
-/// two into the window `w`: `(entries, finite, m, back)`, `m` their largest `|entry|` and `back`
-/// the power of two that undoes the scaling, `NaN` where an entry is not finite, so one product
-/// per value both scales back and reports. The largest entry stays normal, so it scales exactly;
-/// an entry that falls below the smallest normal rounds, at most twice by less than `2^-1074` of
-/// `2^k`, far below `u |A|`.
+/// The one scaling rule of [`into_window`] and `eig_sym`: `inside` where the largest `|entry|` `m`
+/// is in the window `w` or zero, else `scale` of the exact powers of two `f`, `g` that bring it
+/// there, which only that arm runs; and `back = (1 / f) (1 / g)`, which undoes them, `NaN` where
+/// an entry is not `finite`, so one product per value both scales back and reports.
+#[inline(always)]
+pub(crate) fn window_scale<S: Real, T: Blend<S>>(
+    m: S,
+    finite: S::Mask,
+    w: &Window,
+    inside: T,
+    scale: impl FnOnce(S, S) -> T,
+) -> (T, S) {
+    let (zero, one) = (S::zero(), S::one());
+    let within = S::lit(w.lo).le(m).and(m.lt(S::lit(w.hi))).or(m.le(zero));
+    let (t, back) = S::branch(
+        within,
+        move || (inside, one),
+        move || {
+            let (f, g) = ladder(w.steps, m);
+            (scale(f, g), (one / f) * (one / g))
+        },
+    );
+    (t, S::select(finite, back, S::zero() / S::zero()))
+}
+
+/// The entries, all zero where one is not finite (the safe argument), scaled by [`window_scale`]:
+/// `(entries, finite, m, back)`, `m` their largest `|entry|`. The largest entry stays normal, so
+/// it scales exactly; an entry that falls below the smallest normal rounds, at most twice by less
+/// than `2^-1074` of `2^k`, far below `u |A|`.
 #[inline(always)]
 pub(crate) fn into_window<S: Real, const N: usize>(
     e: [S; N],
     w: &Window,
 ) -> ([S; N], S::Mask, S, S) {
-    let (zero, one) = (S::zero(), S::one());
+    let zero = S::zero();
     let finite = e[1..]
         .iter()
         .fold(is_finite(e[0]), |ok, &x| ok.and(is_finite(x)));
     let e = e.map(|x| S::select(finite, x, zero));
     let m = largest(&e);
-    let inside = S::lit(w.lo).le(m).and(m.lt(S::lit(w.hi))).or(m.le(zero));
-    let (e, m, back) = S::branch(
-        inside,
-        move || (e, m, one),
-        move || {
-            let (f, g) = ladder(w.steps, m);
-            (e.map(|x| x * f * g), m * f * g, (one / f) * (one / g))
-        },
-    );
-    (e, finite, m, S::select(finite, back, S::zero() / S::zero()))
+    let ((e, m), back) = window_scale(m, finite, w, (e, m), move |f, g| {
+        (e.map(|x| x * f * g), m * f * g)
+    });
+    (e, finite, m, back)
 }
 
 /// One Newton step on `1 / |v|`, `v (3 - |v|^2) / 2`: the normalisation, with no root and no
@@ -283,11 +309,7 @@ fn jacobi<S: Real, const FRAME: bool>(a: &Mat3<S>) -> (Pairs<S>, S) {
         a.get(2, 1),
     ];
     // A non-finite entry iterates on the zero matrix and reports through the eigenvalues.
-    let window = match S::PRECISION {
-        Precision::F64 => &WINDOW_F64,
-        Precision::F32 => &WINDOW_F32,
-    };
-    let ([d0, d1, d2, o01, o02, o12], _, m, back) = into_window(e, window);
+    let ([d0, d1, d2, o01, o02, o12], _, m, back) = into_window(e, window::<S>());
 
     let two = S::lit(2.0);
     let ident = [

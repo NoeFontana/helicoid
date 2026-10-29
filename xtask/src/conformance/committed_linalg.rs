@@ -106,6 +106,7 @@ const F64: &[(&str, &str, f64)] = &[
     ("eig_sym_n16", "eig:graded-1e-4", 4.401580092192111),
     ("eig_sym_n16", "eig:graded-1e-8", 5.110571626275017),
     ("eig_sym_n16", "eig:graded-1e-16", 2.1711069702774064),
+    ("eig_sym_n16", "eig:graded-1e-200", 0.9497941183614436),
     ("eig_sym_n16", "eig:unit-diag-cond-1e-3", 7.825746858137468),
     ("eig_sym_n16", "eig:unit-diag-cond-1e-6", 4.026307494485157),
     ("eig_sym_n16", "eig:unit-diag-cond-1e-9", 7.461147599294675),
@@ -138,6 +139,7 @@ const F64: &[(&str, &str, f64)] = &[
     ("eig_sym_n4", "eig:graded-1e-4", 3.605322765394035),
     ("eig_sym_n4", "eig:graded-1e-8", 2.5090034015794056),
     ("eig_sym_n4", "eig:graded-1e-16", 1.847203906585628),
+    ("eig_sym_n4", "eig:graded-1e-200", 1.3019483692534264),
     ("eig_sym_n4", "eig:unit-diag-cond-1e-3", 3.0580753870404993),
     ("eig_sym_n4", "eig:unit-diag-cond-1e-6", 2.978282926622791),
     ("eig_sym_n4", "eig:unit-diag-cond-1e-9", 3.3456376175191105),
@@ -162,6 +164,7 @@ const F64: &[(&str, &str, f64)] = &[
     ("eig_sym_n9", "eig:graded-1e-4", 5.296507676229183),
     ("eig_sym_n9", "eig:graded-1e-8", 5.345702180437511),
     ("eig_sym_n9", "eig:graded-1e-16", 3.542682382070536),
+    ("eig_sym_n9", "eig:graded-1e-200", 0.7048591149287357),
     ("eig_sym_n9", "eig:unit-diag-cond-1e-3", 5.056447039164816),
     ("eig_sym_n9", "eig:unit-diag-cond-1e-6", 4.651934012303338),
     ("eig_sym_n9", "eig:unit-diag-cond-1e-9", 4.8324760719881),
@@ -348,6 +351,7 @@ const F32: &[(&str, &str, f64)] = &[
     ("eig_sym_n16", "eig:rank-def-3@f32", 4.115549573323308),
     ("eig_sym_n16", "eig:graded-1e-4@f32", 3.6334525865099785),
     ("eig_sym_n16", "eig:graded-1e-8@f32", 2.354003339956909),
+    ("eig_sym_n16", "eig:graded-1e-30@f32", 1.5012511867646503),
     (
         "eig_sym_n16",
         "eig:unit-diag-cond-1e-2@f32",
@@ -375,6 +379,7 @@ const F32: &[(&str, &str, f64)] = &[
     ("eig_sym_n4", "eig:rank-def-3@f32", 1.2993213698840607),
     ("eig_sym_n4", "eig:graded-1e-4@f32", 2.3830739124707545),
     ("eig_sym_n4", "eig:graded-1e-8@f32", 1.8037253843203713),
+    ("eig_sym_n4", "eig:graded-1e-30@f32", 1.0639363033115552),
     (
         "eig_sym_n4",
         "eig:unit-diag-cond-1e-2@f32",
@@ -402,6 +407,7 @@ const F32: &[(&str, &str, f64)] = &[
     ("eig_sym_n9", "eig:rank-def-3@f32", 5.701123778557543),
     ("eig_sym_n9", "eig:graded-1e-4@f32", 3.8704266400280316),
     ("eig_sym_n9", "eig:graded-1e-8@f32", 1.7643361217180125),
+    ("eig_sym_n9", "eig:graded-1e-30@f32", 0.9011717816402796),
     (
         "eig_sym_n9",
         "eig:unit-diag-cond-1e-2@f32",

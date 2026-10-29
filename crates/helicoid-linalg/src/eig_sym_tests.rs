@@ -13,10 +13,11 @@
 //! - the frame, `max(|V^T V - I|, |det V - 1|)` in `u`.
 //!
 //! **The recorded bounds** are twice the worst `measure_eig_sym` reads over its families, at every
-//! `N` in `4..=16` and both precisions (`0111` *Measured*; `2e4` matrices of each of 18 families,
-//! 300 of them scored): `abs` 12.30 `u` (`N = 14`, `f64`), `rel` 4.25 (`N = 8`, `graded-1e-8`),
+//! `N` in `4..=16` and both precisions (`0111` *Measured*; `2e4` matrices of each of 20 families,
+//! 300 of them scored): `abs` 12.63 `u` (`N = 16`, `f64`), `rel` 4.25 (`N = 8`, `graded-1e-8`),
 //! the frame 20.66 (`N = 15`), so `abs <= ABS`, `rel <= REL`, the frame `<= FRAME`. The relative
-//! reading is taken where `kappa u <= 1e-3`, inside Demmel and Veselić's hypothesis.
+//! reading is taken where `kappa u <= 2^-10`, the corpus's (`0111` decision 5), inside Demmel and
+//! Veselić's hypothesis.
 
 // Index loops read as the formulas do, as in `svd3_tests`.
 #![allow(clippy::needless_range_loop)]
@@ -25,12 +26,12 @@ use crate::eig3_tests::Dd;
 use crate::eig_sym::jacobi;
 use crate::linalg_tests::{unit, Lane};
 use crate::tests::L2;
-use crate::{eig_sym, Dual, Matrix, Real, Vector};
+use crate::{eig_sym, Dual, Matrix, Precision, Real, Vector};
 use core::array;
 use std::vec::Vec;
 
 /// The recorded bounds of the header.
-const ABS: f64 = 25.0;
+const ABS: f64 = 25.3;
 const REL: f64 = 9.0;
 const FRAME: f64 = 42.0;
 
@@ -85,9 +86,10 @@ fn planted<const N: usize>(q: &M<N>, l: &[f64; N]) -> M<N> {
     a
 }
 
-/// `a` scaled to a unit diagonal, `D^-1 a D^-1`.
+/// `a` scaled to a unit diagonal, `D^-1 a D^-1`, one root at a time: `a_ii a_jj` underflows on
+/// `graded-1e-200`.
 fn equilibrated<const N: usize>(a: &M<N>) -> M<N> {
-    array::from_fn(|i| array::from_fn(|j| a[i][j] / (a[i][i] * a[j][j]).sqrt()))
+    array::from_fn(|i| array::from_fn(|j| a[i][j] / a[i][i].sqrt() / a[j][j].sqrt()))
 }
 
 /// The eigenpairs, `lam` ascending and `vec[k]` a unit eigenvector of `lam[k]`.
@@ -356,6 +358,8 @@ fn families<const N: usize>() -> Vec<Family<N>> {
         ("rank-def-3", false, |r| rank_def(r, 3)),
         ("graded-1e-8", true, |r| graded(r, 8.0)),
         ("graded-1e-16", true, |r| graded(r, 16.0)),
+        ("graded-1e-30", true, |r| graded(r, 30.0)),
+        ("graded-1e-200", true, |r| graded(r, 200.0)),
         ("unit-diag-1e-6", true, |r| unit_diag(r, 6.0)),
         ("unit-diag-1e-12", true, |r| unit_diag(r, 12.0)),
         ("diag+1e-10", false, |r| {
@@ -394,11 +398,15 @@ fn score<S: Lane, const N: usize>(a: &M<N>, pd: bool) -> [f64; 3] {
     let a = round::<S, N>(a);
     let out = run::<S, N>(&a);
     let (t, u) = (reference(&a), unit::<S>());
-    // Demmel and Veselić's bound needs `kappa u` well below 1: at `f32` a `kappa` of `1e12` is no
-    // longer positive definite at the stored precision.
-    // Nor is a `kappa` of `1e12` rounded to `f32`, whose smallest eigenvalue may be negative.
+    // Rounded to `S`, a family may leave the hypothesis: `unit-diag-1e-12` is no longer positive
+    // definite at `f32`, and `graded-1e-200` keeps no normal diagonal there.
+    let normal = match S::PRECISION {
+        Precision::F64 => f64::MIN_POSITIVE,
+        Precision::F32 => f64::from(f32::MIN_POSITIVE),
+    };
+    let pd = pd && (0..N).all(|i| a[i][i] >= normal);
     let k = if pd { kappa(&a) } else { f64::INFINITY };
-    let rel = if 0.0 < k && k * u <= 1e-3 {
+    let rel = if 0.0 < k && k * u <= 2f64.powi(-10) {
         rel_metric(&t, k, &out, u)
     } else {
         0.0
@@ -443,7 +451,7 @@ fn bounded<const N: usize>(n: usize) {
         for (name, [s, a, r, f]) in rows {
             let what = std::format!("N = {N} {prec} {name}");
             assert!(
-                s < crate::eig_sym::cap(N) as f64,
+                s < crate::eig_sym::CAP[N - 4] as f64,
                 "{what}: {s} sweeps hit the cap"
             );
             assert!(
@@ -675,6 +683,22 @@ fn dual_value_is_plain_value() {
     at::<11>();
 }
 
+/// `x` and `y` as the two lanes of one call agree with each run as a scalar, bit for bit.
+fn lanes_agree<const N: usize>(x: &M<N>, y: &M<N>) {
+    let m: Matrix<L2, N, N> = Matrix::from_rows(array::from_fn(|r| {
+        Vector(array::from_fn(|c| L2([x[r][c], y[r][c]])))
+    }));
+    let (l, v) = eig_sym(&m);
+    for (lane, a) in [(0, x), (1, y)] {
+        let (wl, wv) = run::<f64, N>(a);
+        assert!((0..N).all(|k| same(l.0[k].0[lane], wl[k])), "{a:?}");
+        assert!(
+            (0..N).all(|k| (0..N).all(|r| same(v.get(r, k).0[lane], wv[k][r]))),
+            "{a:?}"
+        );
+    }
+}
+
 /// A lane mask runs every rotation with its lanes held: two lanes agree with the scalars, a
 /// degenerate lane beside a regular one included.
 #[test]
@@ -683,22 +707,31 @@ fn two_lanes_agree_with_scalars() {
         let rows = pool::<N>();
         let n = rows.len();
         for (i, j) in (0..n).flat_map(|i| [(i, (i * 7 + 3) % n), (i, i), (i, n - 1 - i)]) {
-            let x: Matrix<L2, N, N> = Matrix::from_rows(array::from_fn(|r| {
-                Vector(array::from_fn(|c| L2([rows[i][r][c], rows[j][r][c]])))
-            }));
-            let (l, v) = eig_sym(&x);
-            for (lane, a) in [(0, &rows[i]), (1, &rows[j])] {
-                let (wl, wv) = run::<f64, N>(a);
-                assert!((0..N).all(|k| same(l.0[k].0[lane], wl[k])), "{a:?}");
-                assert!(
-                    (0..N).all(|k| (0..N).all(|r| same(v.get(r, k).0[lane], wv[k][r]))),
-                    "{a:?}"
-                );
-            }
+            lanes_agree(&rows[i], &rows[j]);
         }
     }
     at::<4>();
     at::<9>();
+}
+
+/// A held lane keeps the sign of a zero: rotated by `(1, 0)`, the `-0` beside a negative entry
+/// would become `+0` and part from the scalar run.
+#[test]
+fn a_held_lane_keeps_the_sign_of_zero() {
+    let x = [
+        [1.0, 0.0, -0.5, 0.0],
+        [0.0, 0.0, 0.0, 1.0],
+        [-0.5, 0.0, 0.5, 0.0],
+        [0.0, 1.0, 0.0, -0.0],
+    ];
+    let y = [
+        [0.0, -0.0, -0.0, -0.0],
+        [-0.0, -0.0, -1.0, 0.0],
+        [-0.0, -1.0, -0.0, -0.0],
+        [-0.0, 0.0, -0.0, -1.0],
+    ];
+    lanes_agree(&x, &y);
+    lanes_agree(&y, &x);
 }
 
 /// `d l_k = v_k^T E v_k` and `d v_k = sum_{j != k} v_j (v_j^T E v_k) / (l_k - l_j)` (first-order
@@ -795,4 +828,22 @@ fn hill_climb_eig_sym() {
     at::<4>(restarts);
     at::<9>(restarts);
     at::<16>(restarts);
+}
+
+/// A positive definite block far below `|A|`, where `angle` unscaled takes its safe arm: `2^-70`
+/// at `f32`, `2^-600` at `f64`, keeps its digits.
+#[test]
+fn a_block_below_the_safe_arm_keeps_its_digits() {
+    fn at<S: Lane>(e: f64) {
+        let mut a: M<4> = [[0.0; 4]; 4];
+        (a[0][0], a[1][1]) = (1.0, 1.0);
+        (a[2][2], a[3][3]) = (e, e);
+        (a[3][2], a[2][3]) = (0.5 * e, 0.5 * e);
+        let a = round::<S, 4>(&a);
+        let u = unit::<S>();
+        let w = rel_metric(&reference(&a), kappa(&a), &run::<S, 4>(&a), u);
+        assert!(w <= REL, "{e}: {w}");
+    }
+    at::<f32>(2f64.powi(-70));
+    at::<f64>(2f64.powi(-600));
 }
