@@ -25,7 +25,9 @@ NS = (4, 9, 16)
 # every n, so the small n carry the counts and n = 16 its size.
 COUNT = {4: deep(32), 9: deep(16), 16: deep(4)}
 GAP_K = {False: (1, 4, 8, 12), True: (1, 3, 5)}
-GRADED_K = {False: (4, 8, 16), True: (4, 8)}
+# The steepest reach below sqrt(tiny), where `eig_sym` scales a pair before `angle` (0111): a
+# diagonal spanning 10^-200 at binary64, 10^-30 at binary32.
+GRADED_K = {False: (4, 8, 16, 200), True: (4, 8, 30)}
 UNIT_DIAG_K = {False: (3, 6, 9, 12), True: (2, 4)}
 SCALE = {False: 70, True: 8}  # `eig3`'s
 RANK_DEF = (1, 3)
@@ -289,14 +291,30 @@ def _orthonormal(vectors: list[list[Fraction]]) -> list:
     return out
 
 
+def _span(m: Mat) -> int:
+    """The decimal digits between the largest and smallest nonzero |a_ii|: `eigsy` is accurate to
+    the working precision of |A|, and a positive definite A's smallest eigenvalue is at least its
+    smallest diagonal entry over the equilibrated condition number, which the working precision
+    already covers."""
+    d = [abs(mpf(m.data[i * (m.shape[0] + 1)])) for i in range(m.shape[0])]
+    d = [x for x in d if x != 0]
+    return int(mp.ceil(mp.log10(max(d) / min(d)))) if d else 0
+
+
 def eig_sym(inputs: dict) -> dict:
-    """`mp.eigsy` of the stored A. Where A is exactly singular (decided in rationals; only when the
+    """`mp.eigsy` of the stored A, at the working precision plus the digits its diagonal spans, so
+    a graded A's smallest eigenvalues are as accurate as its largest. Where A is exactly singular (decided in rationals; only when the
     smallest |eigenvalue| is below 10^-(DPS/2) of the largest, so a regular A pays no rational
     elimination), the eigenvalues nearest 0 are set to 0: `eigsy` leaves 1e-121 there, which no
     30-digit value agrees with. A null space of two or more dimensions has no unique basis, and
     `eigsy` picks another at every precision, so its columns are `nullspace`'s, orthonormalized,
     in the zero eigenvalues' order."""
     m = inputs["A"]
+    with mp.workdps(mp.dps + _span(m)):
+        return _eig_sym(m)
+
+
+def _eig_sym(m: Mat) -> dict:
     n = m.shape[0]
     E, Q = mp.eigsy(from_mat(m))
     order = sorted(range(n), key=lambda i: E[i])
