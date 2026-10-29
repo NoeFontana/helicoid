@@ -921,15 +921,26 @@ Only the lower triangle $a_{ij}$, $i \ge j$, is read; the working matrix holds b
   by rows), $V = I$ at the start.
 - **Threshold.** With $r_i = \sqrt{\lvert a_{ii}\rvert}$, recomputed for $p$ and $q$ after each
   rotation, $u = 2^{-53}$, $2^{-24}$, and `tiny` the smallest normal number: the pair rotates where
-  $\lvert a_{pq}\rvert > \max(u\,r_p r_q, \mathrm{tiny})$. Otherwise it is kept:
-  $(c, s, \delta) = (1, 0, 0)$, and every entry stays as it is.
-- **Rotation.** §17's, with $d = a_{qq} - a_{pp}$ and $w_2 = (2a_{pq})^2$:
+  $\lvert a_{pq}\rvert > \max(u\,r_p r_q, \mathrm{tiny})$. Otherwise it is kept: every entry
+  stays as it is, selected, not rotated by $(c, s) = (1, 0)$, which turns a $-0$ beside a negative
+  entry into $+0$.
+- **Rotation.** §17's, with $d = a_{qq} - a_{pp}$ and $w_2 = (2a_{pq})^2$, except for a small pair
+  (below):
   - $a_{pp} \leftarrow a_{pp} - \delta$, $a_{qq} \leftarrow a_{qq} + \delta$, $a_{pq} = a_{qp} \leftarrow 0$;
   - for every $k$, $(a_{kp}, a_{kq}) \leftarrow (c\,a_{kp} - s\,a_{kq},\ s\,a_{kp} + c\,a_{kq})$, the
     same in rows $p$, $q$;
   - $(v_p, v_q) \leftarrow (c\,v_p - s\,v_q,\ s\,v_p + c\,v_q)$.
+- **A small pair**, $\lvert 2a_{pq}\rvert < \sqrt{\mathrm{tiny}}$ ($2^{-511}$, $2^{-63}$): $w_2$
+  underflows and §17's $\delta$, read from it, is lost; where $\lvert d\rvert$ is below
+  $\sqrt{\mathrm{tiny}}$ too, §17 takes its safe arm and leaves the pair unrotated. Either loses an
+  eigenvalue the relative threshold keeps. So:
+  - where $\lvert d\rvert < \sqrt{\mathrm{tiny}}$, $d$ and $a_{pq}$ are multiplied by $2^{512}$,
+    $2^{64}$ before §17's formulas and $\delta$ by the inverse after them. The scaling is exact and
+    the angle invariant under it. A rotating pair has $\lvert a_{pq}\rvert > \mathrm{tiny}$, so the
+    scaled $w_2$ is normal and the safe arm is not taken;
+  - where $w_2$ is then still below `tiny`, $\delta = t\,a_{pq}$, which squares nothing.
 - **Exit.** After a sweep in which every pair was kept, or after $\mathrm{CAP}_N$ sweeps:
-  $8, 10, 11, 11, 12, 12, 12, 12, 13, 14, 14, 14, 15$ for $N = 4, \dots, 16$.
+  $8, 10, 11, 11, 12, 12, 12, 13, 13, 14, 14, 14, 15$ for $N = 4, \dots, 16$.
 - **Polish.** One more sweep, every pair rotated whatever its size: §17's polish at $N$. An exactly
   zero entry rotates by the identity.
 - **Order and sign.** The diagonal and the columns are sorted ascending by the odd–even transposition
