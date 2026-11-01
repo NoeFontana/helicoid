@@ -8,6 +8,19 @@ defined by the status tables in `docs/`; they win over this file.
 
 ## [Unreleased]
 
+### Instrument
+
+Not shipped in the crates.
+- **`bench-gate` reads criterion's samples where criterion writes them**: `$CRITERION_HOME`, else
+  `$CARGO_TARGET_DIR/criterion`, else cargo's target directory, where it read
+  `<root>/target/criterion` and found no samples under a moved target directory. A relative
+  variable is refused, since the bench binary and cargo would resolve it from different
+  directories. Found in locus-sensors, which copied the gate (its 315c2c2).
+- **The bench tests write to per-process scratch directories** removed on drop, where they shared
+  fixed `/tmp/helicoid-bench-*` paths, so concurrent test runs in two worktrees deleted each
+  other's fixtures; so does the `untracked` lint's git test (`/tmp/helicoid-lint-untracked`).
+  Nothing breaks.
+
 ## [0.0.9] - 2026-10-29
 
 The general symmetric eigensolver release. `helicoid_linalg::eig_sym::<S, N>` is `eig3`'s Jacobi at `4 <= N <= 16` with a relative threshold: a positive definite input's eigenvalues are accurate relative to each one, down to a diagonal spanning `1e-200`, and on every committed stratum it reads at or below nalgebra's `SymmetricEigen` and Eigen's `SelfAdjointEigenSolver` (at most 7.8 `u`), at 1.2–2.5× nalgebra's latency. The corpus gains `eig_sym_n{4,9,16}` and the `real_atan2` strata where `math::atan2`'s formulas meet; `corpus-check` proves each thing once, `determinism (compare)` is a required check, and the corpus budget is 80 MiB. **No API break**, and every existing output keeps its bits.

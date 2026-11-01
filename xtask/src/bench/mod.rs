@@ -266,7 +266,11 @@ fn parse_args(args: &[String]) -> Result<Options, String> {
 pub(crate) fn run(args: &[String]) -> Result<(), String> {
     let o = parse_args(args)?;
     let root = crate::conformance::root()?;
-    let criterion = root.join("target").join("criterion");
+    let criterion = criterion_dir(
+        std::env::var_os("CRITERION_HOME"),
+        std::env::var_os("CARGO_TARGET_DIR"),
+        || cargo_target_dir(&root),
+    )?;
     // Before `list` and `build_bench`: a replay runs no benchmark, so it must not need one built.
     if let Some(dir) = &o.replay {
         let mode = format!("--replay {}", dir.display());
@@ -842,6 +846,51 @@ fn clear_slots(criterion: &Path) -> Result<(), String> {
 }
 
 /// The benchmark ids, from the harness itself: `--list` prints `<id>: benchmark`.
+/// Where criterion writes its samples, in criterion's own order: `$CRITERION_HOME`, else
+/// `$CARGO_TARGET_DIR/criterion`, else cargo's target directory's `criterion`. A relative variable
+/// is refused: the bench binary resolves it from its package's directory, cargo from the
+/// workspace's, so the two would not agree.
+fn criterion_dir(
+    home: Option<std::ffi::OsString>,
+    target: Option<std::ffi::OsString>,
+    cargo_target: impl FnOnce() -> Result<PathBuf, String>,
+) -> Result<PathBuf, String> {
+    let absolute = |name: &str, v: std::ffi::OsString| {
+        let p = PathBuf::from(v);
+        match p.is_absolute() {
+            true => Ok(p),
+            false => Err(format!(
+                "${name} is relative ({}): set it to an absolute path",
+                p.display()
+            )),
+        }
+    };
+    match (home, target) {
+        (Some(h), _) => absolute("CRITERION_HOME", h),
+        (None, Some(t)) => Ok(absolute("CARGO_TARGET_DIR", t)?.join("criterion")),
+        (None, None) => Ok(cargo_target()?.join("criterion")),
+    }
+}
+
+/// `target_directory` of `cargo metadata`, as criterion reads it.
+fn cargo_target_dir(root: &Path) -> Result<PathBuf, String> {
+    #[derive(serde::Deserialize)]
+    struct Metadata {
+        target_directory: PathBuf,
+    }
+    let out = Command::new(std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into()))
+        .current_dir(root)
+        .args(["metadata", "--format-version", "1", "--no-deps"])
+        .output()
+        .map_err(|e| format!("cargo metadata: {e}"))?;
+    if !out.status.success() {
+        return Err(format!("cargo metadata: {}", out.status));
+    }
+    serde_json::from_slice::<Metadata>(&out.stdout)
+        .map(|m| m.target_directory)
+        .map_err(|e| format!("cargo metadata: {e}"))
+}
+
 fn list(root: &Path, bench: &str) -> Result<Vec<String>, String> {
     let out = Command::new("cargo")
         .current_dir(root)
@@ -1234,6 +1283,7 @@ fn read_first(file: &str, key: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::conformance::testkit::Scratch;
 
     fn args(a: &[&str]) -> Vec<String> {
         a.iter().map(ToString::to_string).collect()
@@ -1357,12 +1407,39 @@ mod tests {
         assert_eq!(row("a", 0.0, 0.0, 0.0).delta().to_bits(), 0.0_f64.to_bits());
     }
 
+    /// criterion's own order: `$CRITERION_HOME`, then `$CARGO_TARGET_DIR/criterion`, then cargo's
+    /// target directory; a relative variable is refused rather than resolved from the wrong
+    /// directory.
+    #[test]
+    fn the_samples_are_read_where_criterion_writes_them() {
+        let cargo = || Ok(PathBuf::from("/ws/target"));
+        let unused = || Err("cargo metadata must not run".to_string());
+        let at = |p: &str| Some(std::ffi::OsString::from(p));
+        assert_eq!(
+            criterion_dir(at("/h"), at("/t"), unused),
+            Ok(PathBuf::from("/h"))
+        );
+        assert_eq!(
+            criterion_dir(None, at("/t"), unused),
+            Ok(PathBuf::from("/t/criterion"))
+        );
+        assert_eq!(
+            criterion_dir(None, None, cargo),
+            Ok(PathBuf::from("/ws/target/criterion"))
+        );
+        for (home, target) in [(at("h"), None), (None, at("t"))] {
+            let e = criterion_dir(home, target, cargo).err().unwrap_or_default();
+            assert!(e.contains("absolute"), "{e}");
+        }
+        assert!(criterion_dir(None, None, unused).is_err());
+    }
+
     /// A HOST.md round trip: the floor the gate reads is the one `--bless` wrote, and a second
     /// bless appends rather than replacing, so the floor is the maximum over both runs.
     #[test]
     fn the_floor_round_trips_through_host_md() -> Result<(), String> {
-        let dir = std::env::temp_dir().join("helicoid-bench-host");
-        let _ = std::fs::remove_dir_all(&dir);
+        let scratch = Scratch::new("bench-host");
+        let dir = scratch.0.clone();
         let path = dir.join("HOST.md");
         let loud = Report {
             rows: vec![
@@ -1498,8 +1575,8 @@ mod tests {
     /// validation are on the replay path and not merely trusted.
     #[test]
     fn a_recording_round_trips_and_replays_to_the_same_verdict() -> Result<(), String> {
-        let dir = std::env::temp_dir().join("helicoid-bench-recording");
-        let _ = std::fs::remove_dir_all(&dir);
+        let scratch = Scratch::new("bench-recording");
+        let dir = scratch.0.clone();
         let windows = run_of(&[1.0, 1.0, 1.0]);
         for (r, w) in windows.iter().enumerate() {
             let slots = [&w.first, &w.candidate, &w.second];
@@ -1526,8 +1603,8 @@ mod tests {
         assert_eq!(replayed[0].name, "coeffs_f64/exp_coeffs_generic-1");
         assert!(!replayed[0].fails(), "identical code must not fail");
         // An empty directory is an error that says how to make a recording.
-        let empty = std::env::temp_dir().join("helicoid-bench-recording-empty");
-        let _ = std::fs::remove_dir_all(&empty);
+        let empty_scratch = Scratch::new("bench-recording-empty");
+        let empty = empty_scratch.0.clone();
         std::fs::create_dir_all(&empty).map_err(|e| e.to_string())?;
         let e = read_recording(&empty).err().unwrap_or_default();
         assert!(e.contains("--record"), "{e}");

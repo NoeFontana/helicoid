@@ -89,8 +89,8 @@ mod tests {
     /// `load` reads the real `git`: a planted file is reported, and an ignored one is not.
     #[test]
     fn git_reports_the_planted_file_and_not_the_ignored_one() -> Result<(), String> {
-        let root = std::env::temp_dir().join("helicoid-lint-untracked");
-        let _ = std::fs::remove_dir_all(&root);
+        let scratch = crate::conformance::testkit::Scratch::new("lint-untracked");
+        let root = scratch.0.clone();
         std::fs::create_dir_all(root.join("docs")).map_err(|e| e.to_string())?;
         let git = |args: &[&str]| -> Result<(), String> {
             let ok = Command::new("git")
