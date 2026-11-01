@@ -152,12 +152,13 @@ pub(super) fn read_committed(dir: &Path) -> Result<BTreeMap<String, Samples>, St
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::conformance::testkit::Scratch;
     use std::fs;
 
-    fn scratch(name: &str) -> Result<PathBuf, String> {
-        let dir = std::env::temp_dir().join(format!("helicoid-bench-{name}"));
-        let _ = fs::remove_dir_all(&dir);
-        fs::create_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+    /// A fresh directory of this process's, removed when the guard drops.
+    fn scratch(name: &str) -> Result<Scratch, String> {
+        let dir = Scratch::new(&format!("bench-{name}"));
+        fs::create_dir_all(&dir.0).map_err(|e| format!("{}: {e}", dir.0.display()))?;
         Ok(dir)
     }
 
@@ -178,7 +179,8 @@ mod tests {
 
     #[test]
     fn a_run_is_read_as_per_iteration_times() -> Result<(), String> {
-        let root = scratch("read")?;
+        let guard_read = scratch("read")?;
+        let root = guard_read.0.clone();
         write(&root, "g", "b", "new", &[10.0, 20.0], &[100.0, 220.0])?;
         let all = read_all(&root, "new")?;
         assert_eq!(all.len(), 1);
@@ -192,7 +194,8 @@ mod tests {
     /// A slot that does not exist is not an empty run: the benches were not executed.
     #[test]
     fn a_missing_slot_is_an_error_not_an_empty_map() -> Result<(), String> {
-        let root = scratch("missing")?;
+        let guard_missing = scratch("missing")?;
+        let root = guard_missing.0.clone();
         write(&root, "g", "b", "new", &[1.0], &[1.0])?;
         assert!(read_all(&root, "base").is_err());
         Ok(())
@@ -201,10 +204,12 @@ mod tests {
     /// Nonsense in a sample file is an error, never a timing: a zero iteration count would divide.
     #[test]
     fn a_malformed_sample_is_an_error() -> Result<(), String> {
-        let root = scratch("bad")?;
+        let guard_bad = scratch("bad")?;
+        let root = guard_bad.0.clone();
         write(&root, "g", "b", "new", &[0.0], &[1.0])?;
         assert!(read_all(&root, "new").is_err());
-        let root = scratch("bad2")?;
+        let guard_bad2 = scratch("bad2")?;
+        let root = guard_bad2.0.clone();
         write(&root, "g", "b", "new", &[1.0, 2.0], &[1.0])?;
         assert!(read_all(&root, "new").is_err());
         Ok(())
@@ -213,7 +218,8 @@ mod tests {
     /// A blessed baseline round-trips, and the keys survive the `/`-to-`__` filename escape.
     #[test]
     fn a_blessed_baseline_round_trips() -> Result<(), String> {
-        let root = scratch("bless")?;
+        let guard_bless = scratch("bless")?;
+        let root = guard_bless.0.clone();
         let mut all = BTreeMap::new();
         all.insert(
             "coeffs_f64/exp_near".to_string(),
@@ -245,7 +251,8 @@ mod tests {
     /// No baseline is an error that says how to make one, never an empty comparison.
     #[test]
     fn a_missing_baseline_is_an_error() -> Result<(), String> {
-        let root = scratch("nobase")?;
+        let guard_nobase = scratch("nobase")?;
+        let root = guard_nobase.0.clone();
         let e = read_committed(&root.join("absent"))
             .err()
             .unwrap_or_default();
@@ -258,7 +265,8 @@ mod tests {
     /// Every group and bench is found, and the key joins the two directory names.
     #[test]
     fn every_group_and_bench_is_keyed_by_its_two_directories() -> Result<(), String> {
-        let root = scratch("keys")?;
+        let guard_keys = scratch("keys")?;
+        let root = guard_keys.0.clone();
         for (g, b) in [
             ("coeffs_f64", "exp_near"),
             ("coeffs_f64", "jr_near"),
