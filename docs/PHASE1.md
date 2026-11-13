@@ -530,6 +530,12 @@ any is not detected** by its named mechanism.
 | `NUMERICS.md` §8's ratio as first worded, $r(s^2, w)$ for $\tfrac12 r(s^2, w)$ (`0063` decision 3) | every `s2_local` stratum where $1024\times$ the clean max is below $1/u$ reads more than that ([`0067`](./decisions/0067-the-sphere-takes-plane-coordinates-and-both-precisions.md)) |
 | Sim(3)'s scale ignored in $\mathsf V$, $\mathrm{Exp}$'s translation as SE(3)'s $J_l(\varphi)\rho$ ([`0070`](./decisions/0070-sim3-a-structured-jacobian-and-a-series-on-delta.md)) | every `sim3_exp` stratum whose smallest $\lvert\sigma\rvert$ puts $\lvert\sigma\rvert/4$ above $1024\times$ the clean max reads more than that, at `f64` and `f32` (`xtask/src/conformance/selftest_sim3.rs`) |
 | $J_r$'s scale column with its sign flipped ([`0070`](./decisions/0070-sim3-a-structured-jacobian-and-a-series-on-delta.md)) | every `sim3_jr` stratum where $1024\times$ the clean max is below $1/u$ reads more than that |
+| The spline's $\lambda_j$ from the non-cumulative basis $b_j$ ([`0116`](./decisions/0116-the-spline-is-measured-before-it-ships.md) decision 5) | every `so3_spline_value` and `rn_spline_value` stratum but `inc:tiny@f32` reads more than $1024\times$ the clean max (at least 1), the clean max the seeded spline's (`xtask/src/seeded/spline.rs`) on the same stratum (`xtask/src/conformance/selftest_spline.rs`) |
+| $-J_r^{-1}(d_j)$ for $-J_l^{-1}(d_j)$ in $\partial d_j/\partial\delta_{j-1}$ (`0116`) | every `so3_spline_value_jac` stratum but `inc:tiny@f32` reads more than $1024\times$ the clean max |
+| the `ad` term of the $\dot\omega$ recursion with its sign flipped (`0116`) | every `so3_spline_acc` stratum but `inc:tiny` and `inc:mixed` (and their twins) reads more than $1024\times$ the clean max |
+| $\mathrm{Ad}_{A_j}$ for $\mathrm{Ad}_{A_j^{-1}}$ (`0116`) | every `so3_spline_vel` stratum but `inc:tiny` and `inc:mixed` reads more than $1024\times$ the clean max |
+| $\ddot\lambda$ without its $h^{-2}$ (`0116`) | `h:1e-3` and `h:1e3` of `so3_spline_acc` and `rn_spline_acc`, and their twins, read more than $1024\times$ the clean max; every other stratum, all at $h = 1$, reads the clean max to the bit |
+| a Gram matrix without its $h^{1-2r}$ (`0116`) | `rn_spline_gram` misses its 0-ulp bar at $h \ne 1$ and meets it at $h = 1$, at both precisions; the clean Gram meets it everywhere |
 
 ## 11. Definition of done
 
