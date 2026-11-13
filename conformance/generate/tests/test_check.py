@@ -72,6 +72,7 @@ class RegistryTest(unittest.TestCase):
             prefixes += ("solve_cubic", "eig3", "chol_", "quat_", "real_", "mat2_")  # 0056, 0061
             prefixes += ("gaussian_", "s2_", "sim3_", "svd3")  # 0065, 0063, 0070, 0101
             prefixes += ("nearest_rotation", "eig_sym_")  # 0102, 0111
+            prefixes += ("rn_spline_",)  # 0116
             self.assertTrue(name.startswith(prefixes), name)  # the others: their own tests
             self.assertIsNotNone(spec.check, name)
             if not name.startswith("coeff_"):
