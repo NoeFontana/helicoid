@@ -161,13 +161,27 @@ const fn gram<const K: usize>(r: usize) -> ([[i64; K]; K], i64) {
     (g, den / common)
 }
 
-const fn below_exact<const K: usize>(t: &[[i64; K]; K], scale: i64) -> bool {
+/// `k!/(k - r)! · c_{j,k}` at index `k`, 0 below `k = r`: row `j` differentiated `r` times in `u`.
+const fn differentiated<const K: usize>(c: &[[i64; K]; K], r: usize) -> [[i64; K]; K] {
+    let mut d = [[0; K]; K];
+    let mut j = 0;
+    while j < K {
+        let mut k = r;
+        while k < K {
+            d[j][k] = falling(k, r) * c[j][k];
+            k += 1;
+        }
+        j += 1;
+    }
+    d
+}
+
+const fn below_exact<const K: usize>(t: &[[i64; K]; K]) -> bool {
     let mut j = 0;
     while j < K {
         let mut k = 0;
         while k < K {
-            // `scale` bounds the derivative rows' `k (k - 1)` factor.
-            if (t[j][k] * scale).abs() >= EXACT {
+            if t[j][k].abs() >= EXACT {
                 return false;
             }
             k += 1;
@@ -183,6 +197,13 @@ pub(crate) struct Tables<const K: usize>;
 impl<const K: usize> Tables<K> {
     /// `ñ_{j,k}`, row `j`, power `k`.
     pub(crate) const CUMULATIVE: [[i64; K]; K] = cumulative::<K>();
+    /// `ñ` differentiated `r = 0, 1, 2` times: the integers `S::lit` takes, so `EXACT` checks the
+    /// very numbers Horner reads rather than a bound on them.
+    pub(crate) const ROWS: [[[i64; K]; K]; 3] = [
+        Self::CUMULATIVE,
+        differentiated(&Self::CUMULATIVE, 1),
+        differentiated(&Self::CUMULATIVE, 2),
+    ];
     /// `(K - 1)!`, the basis denominator.
     pub(crate) const FACTORIAL: i64 = factorial(K - 1);
     /// `G^(1)` and `G^(2)` at `h = 1`: numerators and their common denominator.
@@ -200,16 +221,15 @@ impl<const K: usize> Tables<K> {
     /// Evaluated wherever a table is read, so an order whose numbers stop being exact at binary32
     /// fails to build rather than rounding twice (`0115` decision 4).
     pub(crate) const EXACT: () = {
-        let k1 = (K - 1) as i64;
-        // `k (k - 1) <= (K - 1)^2` bounds the second-derivative row's factor.
-        assert!(below_exact(
-            &Self::CUMULATIVE,
-            if k1 > 1 { k1 * k1 } else { 1 }
-        ));
+        let mut r = 0;
+        while r < 3 {
+            assert!(below_exact(&Self::ROWS[r]));
+            r += 1;
+        }
         assert!(Self::FACTORIAL < EXACT);
         let mut r = 0;
         while r < 2 {
-            assert!(below_exact(&Self::GRAM[r].0, 1) && Self::GRAM[r].1 < EXACT);
+            assert!(below_exact(&Self::GRAM[r].0) && Self::GRAM[r].1 < EXACT);
             r += 1;
         }
     };

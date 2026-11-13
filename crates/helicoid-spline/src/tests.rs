@@ -170,6 +170,24 @@ fn weights_above_d_are_zero() {
     assert_eq!(w.lambda[0].to_bits(), 1.0_f64.to_bits());
 }
 
+/// `inv_h`'s domain is a `debug_assert!` (D11): `+∞` passes a bare `0 < inv_h`.
+#[cfg(debug_assertions)]
+mod out_of_domain {
+    use super::*;
+
+    #[test]
+    #[should_panic(expected = "finite and positive")]
+    fn weights_at_an_infinite_inv_h() {
+        let _ = Weights::<f64, 4, 1>::at(0.5, f64::INFINITY);
+    }
+
+    #[test]
+    #[should_panic(expected = "finite and positive")]
+    fn gram_at_an_infinite_inv_h() {
+        let _ = derivative_gram::<f64, 4, 1>(f64::INFINITY);
+    }
+}
+
 fn gram_laws<const K: usize, const R: usize>()
 where
     Order<K>: ValidOrder,
@@ -268,8 +286,8 @@ where
     let seg = Segment::new(&ctrl);
     let fast = seg.kinematics(&w);
     let slow = spline_kinematics(&ctrl, &w);
+    // `slow.value` is `spline_value`: one comparison covers both twins.
     let ev = group_err(&fast.value, &spline_value(&ctrl, &w));
-    let ek = group_err(&fast.value, &slow.value);
     let evel = tangent_err(&fast.vel, &slow.vel) / inv_h.max(1.0);
     let eacc = tangent_err(&fast.acc, &slow.acc) / (inv_h * inv_h).max(1.0);
     let bits = |g: &G| {
@@ -285,7 +303,7 @@ where
     );
     // The twin associates the product and the sums differently: bounded, not bitwise.
     assert!(
-        ev <= 1e3 && ek <= 1e3 && evel <= 1e4 && eacc <= 1e5,
+        ev <= 1e3 && evel <= 1e4 && eacc <= 1e5,
         "K={K} u={u} inv_h={inv_h}: value {ev} vel {evel} acc {eacc}"
     );
 }
@@ -329,17 +347,9 @@ where
     let t = taus(raw, G::Tangent::DOF, K, 0.7);
     let ctrl = dual_window::<G, K>(&t);
     let seg = Segment::<D1, G, K>::new(&ctrl);
-    let at = |d: usize| {
-        let w2 = Weights::<D1, K, 2>::at(D1::variable(u, 0), D1::constant(inv_h));
-        let w1 = Weights::<D1, K, 1>::at(D1::variable(u, 0), D1::constant(inv_h));
-        if d == 1 {
-            seg.kinematics(&w1)
-        } else {
-            seg.kinematics(&w2)
-        }
-    };
-    let k1: Kinematics<D1, G> = at(1);
-    let k2: Kinematics<D1, G> = at(2);
+    let (uv, ih) = (D1::variable(u, 0), D1::constant(inv_h));
+    let k1: Kinematics<D1, G> = seg.kinematics(&Weights::<D1, K, 1>::at(uv, ih));
+    let k2: Kinematics<D1, G> = seg.kinematics(&Weights::<D1, K, 2>::at(uv, ih));
     // `ω = h⁻¹ d/du Log(X(u₀)⁻¹ X(u))` at `u₀`, where the logarithm's argument is the identity.
     let x0 = {
         let w = Weights::<D1, K, 0>::at(D1::constant(u), D1::constant(inv_h));
