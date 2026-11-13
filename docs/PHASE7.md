@@ -12,14 +12,14 @@
 | Gate: groups, knots, order, derivatives, precision, problem size, latency budget | Met (`0113` decision 1) |
 | Gate: §3.2, baseline parity | Met (`0113` decision 2: no parity spline) |
 | Gate: the core owes nothing new | Met, but one primitive: `Jac::add`, `Jac::scale` ([`0112`](./decisions/0112-a-jacobian-sums-by-name.md)) |
-| `Jac::add`, `Jac::scale` on every impl (`0112`) | Not started |
-| Corpus ids, references, seeded defects ([`0116`](./decisions/0116-the-spline-is-measured-before-it-ships.md)) | Not started |
-| Crate, `Order`, `Weights`, tables, `derivative_gram`, twins ([`0114`](./decisions/0114-a-spline-evaluates-the-window-it-is-handed.md) step 1, [`0115`](./decisions/0115-the-spline-tables-are-exact-integers.md)) | Not started |
-| `Segment`: value and kinematics (`0114` step 2) | Not started |
-| `JacSegment`: control Jacobians, both sides (`0114` step 3) | Not started |
-| Shipped subject answers the spline ids (`0114` step 4) | Not started |
-| basalt-headers oracle (`0116` step 3) | Not started |
-| Bench rows and baseline (`0116` step 4) | Not started |
+| `Jac::add`, `Jac::scale` on every impl (`0112`) | Done (#227) |
+| Corpus ids, references, seeded defects ([`0116`](./decisions/0116-the-spline-is-measured-before-it-ships.md)) | Done (#230): 16 ids, 1.75 MiB; all six defects detected as decision 5 states, at both precisions |
+| Crate, `Order`, `Weights`, tables, `derivative_gram`, twins ([`0114`](./decisions/0114-a-spline-evaluates-the-window-it-is-handed.md) step 1, [`0115`](./decisions/0115-the-spline-tables-are-exact-integers.md)) | Done (#226) |
+| `Segment`: value and kinematics (`0114` step 2) | Done (#226) |
+| `JacSegment`: control Jacobians, both sides (`0114` step 3) | Done (#228) |
+| Shipped subject answers the spline ids (`0114` step 4) | Done (#231): every id at both precisions; at most 9.69 `u` (binary64) and 8.50 `u` (binary32) on the committed tier |
+| basalt-headers oracle (`0116` step 3) | In progress |
+| Bench rows and baseline (`0116` step 4) | Partial: the rows (#229); the first baseline waits for this host's A/A floor on a quiet run |
 
 ## 1. What the core already owes
 

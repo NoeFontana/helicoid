@@ -118,6 +118,22 @@ constructors normalize.
 the API ([`0004`](./decisions/0004-switch-points-are-generated-not-typed.md)); `just lint` fails if
 any crate other than `xtask` enables it.
 
+### 3.1 `helicoid-spline` — continuous time (Phase 7)
+
+Uniform cumulative B-splines on any `LieGroup` ([`PHASE7.md`](./PHASE7.md), `NUMERICS.md` §21,
+[`0114`](./decisions/0114-a-spline-evaluates-the-window-it-is-handed.md)). The caller owns the
+knots, the time and the storage: it hands over a window of `K` controls, `u` and `h⁻¹`, so nothing
+here compares a float or owns a time type.
+
+| Item | Kind | Notes |
+|---|---|---|
+| `Order<K>`, `ValidOrder` | struct, sealed trait | `K = 2..=6`. Every table is exact integers computed by `const fn` ([`0115`](./decisions/0115-the-spline-tables-are-exact-integers.md)). |
+| `Weights<S, K, D>` | struct | `at(u, inv_h)`; `pub lambda`, `dot`, `ddot`, zero above `D ≤ 2`. |
+| `Segment<S, G, K>`, `Kinematics<S, G>` | structs | `Segment::new(&[G; K])` forms the increments once; `value`, `kinematics -> Kinematics { value, vel, acc }`, right-trivialized. |
+| `JacSegment<S, G, K>`, `ControlJacobians<S, G, K>` | structs | `new`, `segment`, `kinematics_jacobians::<Sd, D>`: `[G::Jac; K]` per output, `O(K)` by backward accumulation; `Left` derived from `Right` by `Ad` (R1). |
+| `derivative_gram::<S, K, R>(inv_h)` | fn | `G^(R)`, `R ∈ {1, 2}`, each entry one rounding of an exact rational times `h^{1−2R}`. |
+| `reference::{spline_value, spline_kinematics, spline_jacobians}` | fns | The `NUMERICS.md` §14 twins. |
+
 ## 4. Interop
 
 - **`mint`** (optional, both crates): `Vector`, `Matrix`, `Point`; `Quat ↔ mint::Quaternion`

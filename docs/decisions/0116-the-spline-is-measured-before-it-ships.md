@@ -2,7 +2,7 @@
 
 **Status:** ready
 **Owner:** @NoeFontana
-**Implementation:** —
+**Implementation:** #229, #230
 
 ## Context
 
