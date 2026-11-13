@@ -7,7 +7,7 @@
 ## Context
 
 `helicoid` sits under crates with strict budgets: `tf_tree` D14 (`tf_tree_core` = `libm` +
-`bytemuck` + `blake3`; `tf_tree_math` = `libm` + `bytemuck`), omnisac's leaf invariants (`no_std`,
+`bytemuck` + `blake3`; `tf_tree_math` = `libm` + `bytemuck`), the source solver's leaf invariants (`no_std`,
 faer-free, `forbid(unsafe_code)`), fuse-geometry on wasm32. `tf_tree` 0016 is the measured warning:
 `pulp` would have taken `tf_tree_math` from 2 dependencies to 11 for ~12% on one batch path, and
 `-C target-cpu=x86-64-v3` made that path slower.

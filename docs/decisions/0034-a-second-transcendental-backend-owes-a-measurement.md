@@ -109,7 +109,7 @@ Reversibility decides the order. A private chokepoint is a two-way door — swap
 regenerate the baseline. A public knob is one-way: once a consumer builds on a `system` backend, it
 is supported forever, and D16 is load-bearing in four places that each become a test matrix — the
 envelope's no-regress bar, fuse-geometry's native/wasm rebuild proof, tf_tree's `at_many ≡ at` and
-cross-process arena, and omnisac's `RunRecord` gates.
+cross-process arena, and the source solver's run-record gates.
 
 The measurement decides whether to start at all, and the only profile in the stack does not show
 `libm` at the top. That is why (iii) precedes (iv) and why both sit behind a trigger.
@@ -124,10 +124,10 @@ every group method fails `API.md` §6's checklist and has no consumer.
   the owner has set. `API.md` §5 then owes the sentence: bits may change in a minor release, never in
   a patch, and the envelope never regresses. A consumer whose store or replay cannot absorb that
   pins an exact `helicoid` version; fuse-geometry is the likeliest to, and that is fuse's decision.
-- **A requirement on omnisac's migration PR, not on this record.** The Phase 2 "pure move,
-  `RunRecord`s bit-identical" gate holds only if omnisac's `eig3`/`svd3`/`solve_cubic` already call
-  `libm`. omnisac is private and not readable from here, so that PR must check it and, if they call
-  `std`, split into two — switch omnisac to `libm` in place (`RunRecord`s change once, explained),
+- **A requirement on the source solver's migration PR, not on this record.** The Phase 2 "pure move,
+  run records bit-identical" gate holds only if the source solver's `eig3`/`svd3`/`solve_cubic` already call
+  `libm`. The source is private and not readable from here, so that PR must check it and, if they call
+  `std`, split into two — switch the source solver to `libm` in place (run records change once, explained),
   then move (bit-identical). One gate takes one variable.
 - The containment lint makes `float.rs` the only place a transcendental may enter. A new
   transcendental is a `Real` method plus one line there, which is the shape `0022` already assumes.
@@ -175,8 +175,8 @@ Answered by the owner, and kept here because the reasoning is load-bearing:
 - *Is a bit change a minor-version event or a pin?* **A version bump**, with a pin available to a
   consumer that needs one. Folded into the Decision as item 4; it is what makes step 5(iii)
   available.
-- *Does omnisac call `libm` or `std`?* **Unknown and not readable from here** — omnisac is private.
-  It therefore constrains omnisac's own migration PR, recorded under Consequences, and does not block
+- *Does the source solver call `libm` or `std`?* **Unknown and not readable from here** — the source is private.
+  It therefore constrains the source solver's own migration PR, recorded under Consequences, and does not block
   this record.
 - *Should cross-target digests come forward from Phase 6?* **No, later.** They stay in `PHASE6.md`.
 - The sensor-fusion consumer is C++, so bits never cross that boundary; its contract is the envelope via the

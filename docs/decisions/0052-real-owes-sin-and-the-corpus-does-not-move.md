@@ -128,7 +128,7 @@ is the strongest statement available here: this change has no numerics, only cos
 
 6. **`0022`'s `cos` and `acos` are still owed and are not taken here.** `eig3` and `cubic` each
    still discard a sine, at `0022`'s measured 4.4 ns. Its step 1 also deletes `cubic.rs`'s private
-   `acos` and makes `bits_are_omnisacs` a statement about every arm, which is a larger change with
+   `acos` and makes `bits_are_golden` a statement about every arm, which is a larger change with
    its own verification; mixing it into this one would couple a trait addition to a bit-identity
    claim against another project.
 
@@ -178,7 +178,7 @@ None.
 ## Further work
 
 1. **`0022` step 1**: `Real::{acos, cos}`, `cubic.rs`'s private `acos` deleted, `eig3`'s and
-   `cubic`'s discarded sines removed, `bits_are_omnisacs` extended to the trigonometric arm. Decided
+   `cubic`'s discarded sines removed, `bits_are_golden` extended to the trigonometric arm. Decided
    there, measured there, unimplemented.
 2. **`sin_cos` has no bit-identity guard of its own.** `sin_tests` pins `sin` against `sin_cos`, so a
    `libm` change that moved *both* consistently would pass. What would catch that is a pinned digest

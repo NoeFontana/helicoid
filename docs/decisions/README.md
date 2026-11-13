@@ -37,14 +37,14 @@ grep -m1 -H '^\*\*Status:' docs/decisions/0*.md
 | [`0020`](./0020-dual-sqrt-at-zero-keeps-its-derivative.md) | `Dual::sqrt` at 0 retains `d / (2 sqrt v)` to report singularity. |
 | [`0021`](./0021-the-cholesky-finite-guard-stays.md) | `chol` per-entry finite guard retained after benchmarking variants. |
 | [`0022`](./0022-real-owes-acos-and-cos.md) | `Real` gains `acos` and `cos` via `libm` for improved performance and accuracy in `solve_cubic` and `eig3`. |
-| [`0023`](./0023-eig3-departs-from-omnisac-and-its-limits.md) | `eig3` departures from baseline (orthonormal frame construction, non-finite handling); nothing decided. |
+| [`0023`](./0023-eig3-departs-from-its-source-and-its-limits.md) | `eig3` departures from baseline (orthonormal frame construction, non-finite handling); nothing decided. |
 | [`0025`](./0025-a-structured-jacobian-and-a-sealed-side.md) | structured Jacobian traits: Rⁿ Jacobian structure, sealed `Side`, and threaded `dot_acc`. |
 | [`0026`](./0026-write-dense-pays-for-zeros-not-for-checks.md) | `Jac::write_dense` zeroing costs vs bounds checks; decision left to PRs. |
 | [`0027`](./0027-a-normalizing-constructor-normalizes.md) | `*_normalized` divides by norm; `renormalize` retains Newton step for drift repair. |
 | [`0028`](./0028-two-ready-specs-disagree-on-the-blocks-of-sen3jac.md) | `SEn3Jac` internal block representation made `pub(crate)`. |
 | [`0029`](./0029-a-product-needs-a-way-to-be-built-from-its-factors.md) | `Product::from_parts`/`parts` constructor added alongside factor types. |
 | [`0030`](./0030-a-consumer-comparison-is-a-trigger-0021-does-not-list.md) | **superseded by `0080`.** Cholesky against external subjects. `0080` answered its questions 2 and 5, and moved 3 and 4 to its *Further work*. |
-| [`0031`](./0031-what-the-cubic-port-inherits-from-omnisac.md) | **ready.** `solve_cubic` pairs its cube roots (and takes a quotient where `p > 0`), homogenises the monic cubic by powers of two, and drops the leading-coefficient floor; `1/a` stays (L5 measured against). Dominates nalgebra on every binary64 stratum. |
+| [`0031`](./0031-what-the-cubic-port-inherits.md) | **ready.** `solve_cubic` pairs its cube roots (and takes a quotient where `p > 0`), homogenises the monic cubic by powers of two, and drops the leading-coefficient floor; `1/a` stays (L5 measured against). Dominates nalgebra on every binary64 stratum. |
 | [`0032`](./0032-domination-charges-helicoid-for-d16.md) | attribution of `so3_log` domination failures to `libm::atan2` vs host glibc; nothing decided. |
 | [`0033`](./0033-a-latency-floor-is-measured-beside-the-comparison.md) | measuring benchmark latency floors beside comparison rather than stored; nothing decided. |
 | [`0034`](./0034-a-second-transcendental-backend-owes-a-measurement.md) | **ready.** D16 is a property: bit-identical across targets for a given resolved `libm`, through one private kernel (lint-enforced), its three prohibitions literal. A bit change is a minor release from 1.0. A second backend needs a consumer benchmark that clears tf_tree `0016`'s bar end to end. |

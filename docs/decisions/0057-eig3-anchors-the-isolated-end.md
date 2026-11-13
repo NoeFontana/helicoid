@@ -11,13 +11,13 @@
 > renamed for what it now asserts (a tie's eigenvalue and residuals within `32 u |A|`); the
 > Decision describes the code until `0081`.
 
-`eig3`'s eigenvector frame was anchored on the largest eigenvalue, as omnisac's is.
+`eig3`'s eigenvector frame was anchored on the largest eigenvalue, as the source solver's is.
 - `v2` is the longest cross product of the rows of `A − l2 I`;
 - `v1` is that of `A − l1 I`, projected orthogonal to `v2`;
 - `v0 = v1 × v2`.
 
 Where the top pair is a tie, `v2` is rounding noise, and every column built from it is wrong. That
-includes the isolated `l0`'s column, whose own gap is wide. [`0023`](./0023-eig3-departs-from-omnisac-and-its-limits.md)
+includes the isolated `l0`'s column, whose own gap is wide. [`0023`](./0023-eig3-departs-from-its-source-and-its-limits.md)
 (draft) records this as a limit and asks, in its open question 2, "anchor by mask, or build the
 hybrid?".
 

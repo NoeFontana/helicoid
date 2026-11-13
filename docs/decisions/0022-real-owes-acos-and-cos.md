@@ -14,8 +14,8 @@
 >   rows that move, scored against `mpmath`, two roots get closer to the truth and one gets further,
 >   0.522 `u` to 7.478; `eig3`'s worst `value / bound` over its fixture moves 0.150 to 0.206. "More
 >   accurate, by a little, everywhere measured" is true of the function and false of both routines.
-> - **Reason 3 is withdrawn.** "Back toward omnisac" is not verifiable in this repository: omnisac
->   is not a dependency, nothing committed records its per-row output, and `bits_are_omnisacs`
+> - **Reason 3 is withdrawn.** "Back toward the source solver" is not verifiable in this repository: the source solver
+>   is not a dependency, nothing committed records its per-row output, and `bits_are_golden`
 >   *passed* before the change, so the port already reproduced all 36 stored triples.
 >
 > Reason 1 is confirmed: 2.63x against this record's stated 2.61x for `acos`, and `libm::cos` at
@@ -26,13 +26,13 @@
 
 > **Retitled and rescoped.** This record was *"`solve_cubic`'s `acos` and the limits it inherits"*
 > and carried two open questions. The first is answered here, against the measurements its first
-> draft did not have. The second — which of the four numerical limits the port inherits from omnisac
+> draft did not have. The second — which of the four numerical limits the port inherits from the source solver
 > get a fix — is a different subject with a larger plan and is now
-> [`0031`](./0031-what-the-cubic-port-inherits-from-omnisac.md).
+> [`0031`](./0031-what-the-cubic-port-inherits.md).
 
 ## Context
 
-`0017` step 2 ports omnisac's `solve_cubic` "as is". omnisac's three-real-root arm calls
+`0017` step 2 ports the source solver's `solve_cubic` "as is". The source solver's three-real-root arm calls
 `f64::acos`, `f64::cos` and `core::f64::consts::PI`. `Real` has `sqrt`, `cbrt`, `sin_cos`, `atan2`,
 `abs` and `copysign` only, and no constant but `lit`, so the port spelled all three in terms of what
 it had:
@@ -95,10 +95,10 @@ Three reasons, and they do not conflict:
 2. **It is more accurate**, by a little, everywhere measured — including the near-±1 region the
    factored form was chosen for.
 3. **It restores bit-identity with the reference implementation.** The trigonometric arm is the one
-   place this port is *not* bit-equal to omnisac: the `GOLDEN` header records up to 5 `u` of the
+   place this port is *not* bit-equal to the source solver: the `GOLDEN` header records up to 5 `u` of the
    largest root over the 4e4 rows the golden rows are drawn from and 11 `u` over 5e6 random
-   polynomials. Routing `acos` and `cos` to the same `libm` functions omnisac calls removes that
-   deviation, and `bits_are_omnisacs` becomes a statement about every arm. For a workspace whose
+   polynomials. Routing `acos` and `cos` to the same `libm` functions the source solver calls removes that
+   deviation, and `bits_are_golden` becomes a statement about every arm. For a workspace whose
    verification strategy *is* the reference twin (D6), buying that back for one trait method is
    cheap.
 
@@ -147,7 +147,7 @@ that overhead twice.
   in the review stack, so if it merges first this is a follow-up against it; the work is the same
   either way, it is only cheaper to pay once.
 - `GOLDEN`'s header loses the 5 `u` / 11 `u` deviation note. The trigonometric arm's values move by
-  up to 11 `u` **back toward** omnisac, so the golden rows for three-real-root polynomials must be
+  up to 11 `u` **back toward** the source solver, so the golden rows for three-real-root polynomials must be
   regenerated from the new code and the mpmath strata re-measured; a polynomial sitting between the
   old and new values could in principle change root count, which `PHASE2.md` §9's second clause
   already covers.

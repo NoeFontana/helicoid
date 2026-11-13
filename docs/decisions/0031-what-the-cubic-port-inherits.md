@@ -1,4 +1,4 @@
-# 0031: What the cubic port inherits from omnisac
+# 0031: What the cubic port inherits
 
 **Status:** ready
 **Owner:** @NoeFontana
@@ -7,9 +7,9 @@ Carried over from [`0022`](./0022-real-owes-acos-and-cos.md)'s open question 2.
 
 ## Context
 
-`PHASE2.md` §6 is **NORMATIVE** that `solve_cubic` is "omnisac's algorithm as is". Testing the port
+`PHASE2.md` §6 is **NORMATIVE** that `solve_cubic` is "the source solver's algorithm as is". Testing the port
 against planted roots found four places where the algorithm is not backward stable or answers the
-wrong question. All four are omnisac's too; all four are already stated in the rustdoc `# Domain`
+wrong question. All four are the source solver's too; all four are already stated in the rustdoc `# Domain`
 and pinned by tests (`a_repeated_root_can_be_dropped`, `underflow_is_pinned_at_both_precisions`,
 `thresholds_sit_at_their_table_values`), so none is a surprise and none is a regression. The
 question this record exists to answer is **which of them we stop inheriting**, and in what order.
@@ -141,15 +141,15 @@ is not the lopsided call L1 is.
 
 ## Consequences
 
-- Every item but L1 moves `solve_cubic`'s **mask**, so `bits_are_omnisacs`, the mpmath strata, the
+- Every item but L1 moves `solve_cubic`'s **mask**, so `bits_are_golden`, the mpmath strata, the
   planted-root model and the three pinning tests all change. `PHASE2.md` §9's second clause already
   licenses that ("a polynomial between the old and the new tolerance can change its root count").
-- `PHASE2.md` §6's "omnisac's algorithm as is" needs amending for any of them, and §6's `# Domain`
+- `PHASE2.md` §6's "the source solver's algorithm as is" needs amending for any of them, and §6's `# Domain`
   paragraph and the rustdoc shrink as each lands. `NUMERICS.md` gains the paired Cardano form for
   L1 and the scaling for L2.
-- The port stays checkable only if the reference moves with it: once the arms differ from omnisac
-  deliberately, `GOLDEN` stops being "omnisac's bits" for those arms and must be regenerated from
-  this implementation, with mpmath as the accuracy oracle rather than omnisac. That is a change of
+- The port stays checkable only if the reference moves with it: once the arms differ from the source solver
+  deliberately, `GOLDEN` stops being "the source solver's bits" for those arms and must be regenerated from
+  this implementation, with mpmath as the accuracy oracle rather than the source solver. That is a change of
   kind, and it is the real cost of this record — it should be paid once, for all the items that
   land, not four times.
 - `0022` is independent: it changes which `libm` functions the trigonometric arm calls, not any

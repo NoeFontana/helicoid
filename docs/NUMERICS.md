@@ -772,7 +772,7 @@ bound is that of the composition (Thm 10.4, §15.4).
 
 ## 16. The real roots of a cubic
 
-`solve_cubic`'s formulas ([`0031`](./decisions/0031-what-the-cubic-port-inherits-from-omnisac.md)); its
+`solve_cubic`'s formulas ([`0031`](./decisions/0031-what-the-cubic-port-inherits.md)); its
 arms and tolerances are the rustdoc's table.
 
 - **Monic form.** $a$, $b$, $c$, $d$ are first scaled by one power of two when $\lvert a\rvert$ lies

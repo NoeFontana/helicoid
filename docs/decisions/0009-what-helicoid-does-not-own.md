@@ -18,7 +18,7 @@ solver, or a consumer's state or storage layout. By that test, `helicoid` does *
 | Not owned | Owner |
 |---|---|
 | Camera, IMU, LiDAR models (projection, distortion, noise, intrinsics) | `locus-camera`, `locus-imu`, `locus-lidar` |
-| Solvers: dense LM (omnisac's LM core), batch sparse NLLS, Schur, robust losses, covariance recovery | omnisac (tiny dense LM); the separate solver crate (batch sparse) |
+| Solvers: dense LM, batch sparse NLLS, Schur, robust losses, covariance recovery | a private solver (tiny dense LM); the separate solver crate (batch sparse) |
 | IMU preintegration, marginalization, FEJ, sliding windows | a sensor-fusion consumer (Γ₁/Γ₂ are `helicoid`'s primitives) |
 | Storage formats, `Pod` records, arenas, serialization | each consumer (D2) |
 | `tf2`-compatibility behaviour (`LerpSlerp`'s fallback, `tf2` quirks) | `tf_tree` |
