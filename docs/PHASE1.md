@@ -203,6 +203,12 @@ side of `docs/maths/coefficients.md` CO.12.
 | `gaussian_mahalanobis_se3`, `gaussian_mahalanobis_se23` | $(\mu, x, \text{side}, \Sigma)$ | `valid` as `chol`'s, exactly; $d^2 = \delta^\top\Sigma^{-1}\delta$ by `mp.lu_solve`, $\delta = x \ominus_{\text{side}} \mu$ by the geometric $\mathrm{Log}$ ([`0065`](./decisions/0065-a-gaussian-names-its-side-and-is-stored-symmetric.md)) |
 | `real_sqrt`, `real_cbrt`, `real_acos`, `real_sin_cos`, `real_atan2`, `real_div`, `real_exp`, `real_expm1` | $x$; $(y, x)$; $(n, d)$ | the value and its calculus derivative(s), what `Dual` carries; `mp.diff` at a relative step is the cross-check. `real_exp` and `real_expm1` ([`0068`](./decisions/0068-real-owes-exp-and-exp-m1.md)) also hold $ve^{-x} = 1$, $d = v$ and $d - v = 1$, over strata reaching the overflow onset, the subnormal outputs of `exp` and the saturation of `expm1` |
 | `real_round_from_f64` | $x$, binary64 in every stratum | $x$ rounded to nearest-even at the stratum's precision: $x$ itself, or `to_f32(x)` in an `@f32` stratum; `d` is 0, a `Dual` constant ([`0087`](./decisions/0087-real-rounds-a-runtime-f64.md)) |
+| `so3_spline_{value,vel,acc}` | $(q_0 \dots q_{K-1}, u, h^{-1})$, `q` the $4K$ stacked, $K \in \{4, 5, 6\}$ | ([`0116`](./decisions/0116-the-spline-is-measured-before-it-ships.md)) $X = \hat q_0\prod_{j\ge1}\mathrm{Exp}(\lambda_j d_j)$ with $\lambda_j = \sum_{s\ge j}b_s$, $b_s$ the B-spline basis by Cox–de Boor's recursion in exact rationals (`NUMERICS.md` §21's integers are the cross-check), $d_j$ the **geometric** $\mathrm{Log}(\hat q_{j-1}^*\hat q_j)$ (`so3_log`'s route, never `mp.logm`), $\mathrm{Exp}$ mpmath's cosine and sine of the half angle; `omega` $= \omega h = 2\,\mathrm{vec}(q^*\,dq/du)$ and `alpha` $= \dot\omega h^2 = 2\,\mathrm{vec}(q^*\,d^2q/du^2)$, the derivatives by `mp.diff` in $u$, so no output reads $h$. A factor whose weight vanishes at $u$ to the output's order is left out, so a control no output reaches reads an exact 0. Cross-checks: §21's recursions at the working precision, with the quaternion series and `atan2`'s `Log`, and continuity across a knot to order $\min(K-2, 2)$ |
+| `so3_spline_value_jac`, `so3_spline_vel_jac`, `so3_spline_acc_jac` | as `so3_spline_*` | `jac`, $3 \times 3K$: $[J_0 \cdots J_{K-1}]$, column $3m + k$ the `mp.diff` in $\epsilon$ of the output at $X_m\mathrm{Exp}(\epsilon e_k)$, the value right-trivialized ($2\,\mathrm{vec}(X^*X(\epsilon))$), the derivatives scaled as `so3_spline_*`'s. Cross-check: §21's forward and backward passes, $J_r^{-1}$ and $J_l^{-1}$ by `mp.inverse` of the series |
+| `rn_spline_{value,vel,acc}` | $(p_0 \dots p_{K-1}, u, h^{-1})$, `p` the $3K$ stacked, $K \in \{2, \dots, 6\}$ | $p_0 + \sum_j\lambda_j(p_j - p_{j-1})$ and its $u$-derivatives `v` $= \dot ph$, `a` $= \ddot ph^2$, exactly in rationals and rounded once. Cross-checks: $\sum_s b_s p_s$ on §21's integers, exactly; continuity across a knot |
+| `rn_spline_value_jac`, `rn_spline_vel_jac`, `rn_spline_acc_jac` | as `rn_spline_*` | `k`, the scalar of each control's $k I$: $b_m$, $\dot b_m h$, $\ddot b_m h^2$, Cox–de Boor's. Cross-checks: $\lambda_m - \lambda_{m+1}$ on §21's integers, and the exact difference of the value at $p_m = e_1$ and $p_m = 0$ |
+| `se3_spline_{value,vel,acc}` | $(q, x, u, h^{-1})$, `x` the $3K$ stacked | as `so3_spline_*` with `sen3_exp_n1` and `se3_geodesic`'s $\mathrm{Log}$: `q`, `x`; `twist` $= [\omega; R^\top\dot x]h$, the body twist rotation-first, and its derivative $[\dot\omega; R^\top\ddot x - \omega\times R^\top\dot x]h^2$ |
+| `rn_spline_gram` | $(K, r, h^{-1})$ | `g`, $K \times K$: $h^{1-2r}\int_0^1 b_s^{(r)}b_t^{(r)}\,du$ in exact rationals, rounded once. Cross-checks: §21's sum over $n_{s,p}n_{t,q}$, exactly; symmetric rows summing to 0; the 30-digit reference rounding as the exact value at both precisions. Scored by its distance in ulps from that rounding, a 0-ulp bar ([`0115`](./decisions/0115-the-spline-tables-are-exact-integers.md)) |
 
 A `coeff_k`…`coeff_e`, `coeff_cos_half` or `coeff_r` record's outputs are `value` and `d_branch`:
 the derivative with respect to the branch variable of `NUMERICS.md` §4 (θ² for `cos_half`), by
@@ -300,6 +306,30 @@ Series are summed until the term's norm is below $10^{-110}$ relative. Phase 2's
   exact ties; `eig:identity-multiple`; `eig:scale-{up,down}`, `eig3`'s. **32, 16 and 4 records per
   stratum** at $n$ = 4, 9, 16, 64 in the deep tier: the code is one at every $n$, so the small $n$
   carry the count: 8.6 MB, 0.4 MB past `0110`'s estimate of 8.2 (`0111` decision 4).
+
+- The spline ids' ([`0116`](./decisions/0116-the-spline-is-measured-before-it-ships.md)
+  decision 2), one axis at a time off one default cell, `inc:generic`: every increment
+  $\lVert d_j\rVert$ (the rotation angle for SE(3)) log-uniform in $[10^{-3}, 1)$, $u$ uniform on
+  $[0, 1)$, $h = 1$. `inc:tiny` (log-uniform in $[10^{-10}, 10^{-8})$, the series arms),
+  `inc:large` ($[2.5, \pi - 10^{-3})$), `inc:near-pi` ($\pi - 10^{-6}(1 - 2^{-10}v)$, `pi-1e-6`'s
+  band below $\pi$) and `inc:mixed` (one tiny and one large increment on slots that move with the
+  record, the rest generic; at $K = 2$ tiny then large) move the increments; `u:0`, `u:half` and
+  `u:1-ulp` ($1 - 2^{-53}$, and $1 - 2^{-24}$ in the `@f32` twin, drawn there) move $u$; `h:1e-3`
+  and `h:1e3` move $h^{-1}$ to $10^3$ and $10^{-3}$ rounded. `rn_spline_*` take `inc:generic`,
+  `inc:large`, `inc:mixed` and the $u$ and $h$ strata. **6 records per stratum** ($K$ cycling
+  through the id's orders), 64 in the deep tier, then the `@f32` twin of every stratum on the
+  same streams. The controls are **formed, never drawn**: outward from an anchor (Haar on $S^3$,
+  a unit translation or point), $X_j = X_{j-1}\mathrm{Exp}(d_j)$ forward and
+  $X_{j-1} = X_j\mathrm{Exp}(-d_j)$ backward, each rounded before the next, so a record holds the
+  increments its stratum names up to its roundings. The anchor is the left end of the tiny
+  increment where there is one, and in an `@f32` twin with a tiny increment it is one of
+  $\pm1, \pm i, \pm j, \pm k$ (the origin for a point or a translation): a Haar-random binary32
+  neighbour of $X\mathrm{Exp}(d)$ would move $d$ by about $u = 6\times10^{-8}$, more than the
+  $10^{-8}$ the stratum names, where a product with one of those permutes and signs the
+  components of $\mathrm{Exp}(d)$, which round alone. `inc:near-pi@f32`'s rounded increments are
+  $\pi - 9.8\times10^{-7}$ to $\pi - 1.03\times10^{-6}$. `rn_spline_gram`'s strata are
+  `h:2^-10`, `h:1` and `h:2^10`, each one record per $(K, r)$, $r \in \{1, 2\}$, $r \le K - 1$,
+  and their `@f32` twins: exact at both precisions.
 
 Corpus v1 stays under 80 MiB uncompressed, every tracked file under `conformance/corpus/`, and
 `cargo xtask lint` checks it ([`0071`](./decisions/0071-the-corpus-budget-is-64-mib.md),
@@ -500,6 +530,12 @@ any is not detected** by its named mechanism.
 | `NUMERICS.md` §8's ratio as first worded, $r(s^2, w)$ for $\tfrac12 r(s^2, w)$ (`0063` decision 3) | every `s2_local` stratum where $1024\times$ the clean max is below $1/u$ reads more than that ([`0067`](./decisions/0067-the-sphere-takes-plane-coordinates-and-both-precisions.md)) |
 | Sim(3)'s scale ignored in $\mathsf V$, $\mathrm{Exp}$'s translation as SE(3)'s $J_l(\varphi)\rho$ ([`0070`](./decisions/0070-sim3-a-structured-jacobian-and-a-series-on-delta.md)) | every `sim3_exp` stratum whose smallest $\lvert\sigma\rvert$ puts $\lvert\sigma\rvert/4$ above $1024\times$ the clean max reads more than that, at `f64` and `f32` (`xtask/src/conformance/selftest_sim3.rs`) |
 | $J_r$'s scale column with its sign flipped ([`0070`](./decisions/0070-sim3-a-structured-jacobian-and-a-series-on-delta.md)) | every `sim3_jr` stratum where $1024\times$ the clean max is below $1/u$ reads more than that |
+| The spline's $\lambda_j$ from the non-cumulative basis $b_j$ ([`0116`](./decisions/0116-the-spline-is-measured-before-it-ships.md) decision 5) | every `so3_spline_value` and `rn_spline_value` stratum but `inc:tiny@f32` reads more than $1024\times$ the clean max (at least 1), the clean max the seeded spline's (`xtask/src/seeded/spline.rs`) on the same stratum (`xtask/src/conformance/selftest_spline.rs`) |
+| $-J_r^{-1}(d_j)$ for $-J_l^{-1}(d_j)$ in $\partial d_j/\partial\delta_{j-1}$ (`0116`) | every `so3_spline_value_jac` stratum but `inc:tiny@f32` reads more than $1024\times$ the clean max |
+| the `ad` term of the $\dot\omega$ recursion with its sign flipped (`0116`) | every `so3_spline_acc` stratum but `inc:tiny` and `inc:mixed` (and their twins) reads more than $1024\times$ the clean max |
+| $\mathrm{Ad}_{A_j}$ for $\mathrm{Ad}_{A_j^{-1}}$ (`0116`) | every `so3_spline_vel` stratum but `inc:tiny` and `inc:mixed` reads more than $1024\times$ the clean max |
+| $\ddot\lambda$ without its $h^{-2}$ (`0116`) | `h:1e-3` and `h:1e3` of `so3_spline_acc` and `rn_spline_acc`, and their twins, read more than $1024\times$ the clean max; every other stratum, all at $h = 1$, reads the clean max to the bit |
+| a Gram matrix without its $h^{1-2r}$ (`0116`) | `rn_spline_gram` misses its 0-ulp bar at $h \ne 1$ and meets it at $h = 1$, at both precisions; the clean Gram meets it everywhere |
 
 ## 11. Definition of done
 

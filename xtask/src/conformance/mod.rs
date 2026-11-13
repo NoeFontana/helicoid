@@ -48,6 +48,7 @@ mod selftest_s2;
 mod selftest_se3;
 mod selftest_sim3;
 mod selftest_so3;
+mod selftest_spline;
 pub(crate) mod subject;
 
 #[cfg(test)]
@@ -636,7 +637,7 @@ mod tests {
         let (with, left_out) = split(&[registered(Perfect::exact())])?;
         // Exactly the ids with an `@f32` stratum: the coefficient ids (`0016`), the routines'
         // (`0056`, `0061`), `so3_gamma2` (`0064`), the Gaussians' (`0065`), S²'s (`0067`), Sim(3)'s
-        // (`0070`), `so3_from_matrix` (`0085`) and `eig_sym`'s (`0111`).
+        // (`0070`), `so3_from_matrix` (`0085`), `eig_sym`'s (`0111`) and the spline's (`0116`).
         let entries = corpus::manifest(&dir)?;
         let mut with_f32 = Vec::new();
         for e in &entries {
@@ -665,6 +666,9 @@ mod tests {
                 "s2_",
                 "sim3_",
                 "se3_inv_act",
+                "so3_spline_",
+                "rn_spline_",
+                "se3_spline_",
             ]
             .iter()
             .any(|p| id.starts_with(p))

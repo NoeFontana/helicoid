@@ -276,6 +276,7 @@ dependencies = [
 name = "helicoid-spline"
 version = "0.0.9"
 dependencies = [
+ "criterion",
  "helicoid",
  "helicoid-linalg",
  "proptest",

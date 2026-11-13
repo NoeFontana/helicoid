@@ -91,6 +91,13 @@ pub(super) fn required() -> Vec<String> {
     ids.extend(
         ["exp", "log", "jr", "jl", "jr_inv", "jl_inv", "ad", "act"].map(|f| format!("sim3_{f}")),
     );
+    // `0116`'s, the spline's, with their corpus files in the same step: one id per output.
+    for order in ["value", "vel", "acc"] {
+        ids.extend(["so3", "rn"].map(|g| format!("{g}_spline_{order}")));
+        ids.extend(["so3", "rn"].map(|g| format!("{g}_spline_{order}_jac")));
+        ids.push(format!("se3_spline_{order}"));
+    }
+    ids.push("rn_spline_gram".to_string());
     ids
 }
 

@@ -15,10 +15,10 @@ from gen.strata import QUAT_STRATA, SCALAR_THETA_STRATA, Stratum
 
 precision.setup()
 COMMITTED = manifest.ROOT.parent / "corpus"
-# 0056, 0061, 0065, 0067 (S2's two ids), 0101, 0102, 0103, 0111
+# 0056, 0061, 0065, 0067 (S2's two ids), 0101, 0102, 0103, 0111, 0116
 ASKED_FOR_F32 = (
     "solve_cubic", "eig3", "chol_", "quat_", "real_", "mat2_", "gaussian_", "s2_", "sim3_", "svd3",
-    "nearest_rotation", "se3_inv_act", "eig_sym_",
+    "nearest_rotation", "se3_inv_act", "eig_sym_", "so3_spline_", "rn_spline_", "se3_spline_",
 )
 SUBSET_STRATUM = next(s for s in SCALAR_THETA_STRATA if s.name == "theta:exact0")
 
@@ -240,8 +240,8 @@ class BuildTest(unittest.TestCase):
         and follows the binary64 order; the others (`x:1e37@f32`) are the binary32 range's own."""
         names = [n for n in FUNCTIONS if n.startswith(ASKED_FOR_F32)]
         # and 0061's `mat2_inverse_adj`, 0065's two, 0067's two, 0068's two, 0070's eight, 0087's,
-        # 0101's, 0102's, 0103's, 0111's three
-        self.assertEqual(len(names), 13 + 1 + 2 + 2 + 2 + 8 + 1 + 1 + 1 + 1 + 3)
+        # 0101's, 0102's, 0103's, 0111's three, 0116's sixteen
+        self.assertEqual(len(names), 13 + 1 + 2 + 2 + 2 + 8 + 1 + 1 + 1 + 1 + 3 + 16)
         for name in names:
             strata = FUNCTIONS[name].strata
             flags = [s.f32 for s in strata]
@@ -271,6 +271,7 @@ SUBSET |= {"matrix:exact", "matrix:exact@f32"}  # 0085
 SUBSET |= {"svd:rank1@f32"}  # 0101: two matrices in one part
 SUBSET |= {"polar:exact@f32"}  # 0102: exact zeros in the reference
 SUBSET |= {"tx:1e6", "tp:1e2@f32"}  # 0103: three matrices in one part
+SUBSET |= {"h:2^10", "h:1@f32"}  # 0116: `rn_spline_gram` alone holds them
 
 
 def subset_registry() -> dict:

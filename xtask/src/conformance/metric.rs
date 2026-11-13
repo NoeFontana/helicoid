@@ -37,7 +37,7 @@ use helicoid_linalg::Precision;
 use num_bigint::{BigInt, BigUint, Sign};
 
 use super::corpus::{exact_f32, Record, Tensor};
-use super::number::{ratio_to_f64, sqrt_ratio, Decimal, Dyadic};
+use super::number::{ratio_to_f32, ratio_to_f64, sqrt_ratio, Decimal, Dyadic};
 use super::subject::Output;
 
 /// The scale `‖y‖` is floored at.
@@ -97,6 +97,9 @@ pub(crate) enum Rule {
     /// A unit quaternion read as its rotation (`0085`): [`Rule::Direction`] in ℝ⁴ with `q` and `−q`
     /// one point, [`direction`].
     Axis(&'static str),
+    /// An output whose correct answer is its reference rounded once (`rn_spline_gram`, `0115`): the
+    /// largest distance in ulps from that rounding, so the bar is 0, [`rounded`].
+    Rounded(&'static str),
 }
 
 impl Rule {
@@ -118,6 +121,7 @@ impl Rule {
             Rule::Adjugate => adjugate(rec, out, precision),
             Rule::Direction(field) => direction(field, 3, false, rec, out, precision),
             Rule::Axis(field) => direction(field, 4, true, rec, out, precision),
+            Rule::Rounded(field) => rounded(field, rec, out, precision),
         }
     }
 
@@ -132,7 +136,7 @@ impl Rule {
             Rule::Polar => vec!["R"],
             Rule::Roots => vec!["re", "im"],
             Rule::Adjugate => ADJUGATE.iter().map(|f| f.field).collect(),
-            Rule::Direction(field) | Rule::Axis(field) => vec![*field],
+            Rule::Direction(field) | Rule::Axis(field) | Rule::Rounded(field) => vec![*field],
             Rule::Masked { mask, fields } => {
                 let mut v: Vec<&str> = fields.iter().map(|f| f.field).collect();
                 v.push(mask);
@@ -292,6 +296,24 @@ const REAL_DIV: &[FieldRule] = &[
     field("d_n", Floor::Tiny, SignRule::Fixed),
     field("d_d", Floor::Tiny, SignRule::Fixed),
 ];
+/// `0116` decision 1: a spline's value is scored as its group's (`so3_exp`'s quaternion, a
+/// translation on a floor of 1, the controls being at unit scale), and every derivative and
+/// Jacobian, each scaled by `h` or `h²` to unit scale, on a floor of 1.
+const SO3_SPLINE_VALUE: &[FieldRule] = &[field("q", Floor::Unit, SignRule::Align)];
+const SO3_SPLINE_VEL: &[FieldRule] = &[field("omega", Floor::Unit, SignRule::Fixed)];
+const SO3_SPLINE_ACC: &[FieldRule] = &[field("alpha", Floor::Unit, SignRule::Fixed)];
+const SO3_SPLINE_JAC: &[FieldRule] = &[field("jac", Floor::Unit, SignRule::Fixed)];
+const RN_SPLINE_VALUE: &[FieldRule] = &[field("p", Floor::Unit, SignRule::Fixed)];
+const RN_SPLINE_VEL: &[FieldRule] = &[field("v", Floor::Unit, SignRule::Fixed)];
+const RN_SPLINE_ACC: &[FieldRule] = &[field("a", Floor::Unit, SignRule::Fixed)];
+/// The scalar `k` of each control's `RnJac = k I`, one vector over the controls.
+const RN_SPLINE_JAC: &[FieldRule] = &[field("k", Floor::Unit, SignRule::Fixed)];
+const SE3_SPLINE_VALUE: &[FieldRule] = &[
+    field("q", Floor::Unit, SignRule::Align),
+    field("x", Floor::Unit, SignRule::Fixed),
+];
+/// The body twist `[ω; v]` and its derivative, one rotation-first vector, as a tangent is.
+const SE3_SPLINE_TWIST: &[FieldRule] = &[field("twist", Floor::Unit, SignRule::Fixed)];
 
 use Rule::Forward;
 
@@ -395,6 +417,23 @@ const TABLE: &[(&str, Rule)] = &[
     ("real_atan2", Forward(REAL_ATAN2)),
     ("real_div", Forward(REAL_DIV)),
     ("real_round_from_f64", Forward(REAL_UNARY)),
+    // `0116` decision 1.
+    ("so3_spline_value", Forward(SO3_SPLINE_VALUE)),
+    ("so3_spline_vel", Forward(SO3_SPLINE_VEL)),
+    ("so3_spline_acc", Forward(SO3_SPLINE_ACC)),
+    ("so3_spline_value_jac", Forward(SO3_SPLINE_JAC)),
+    ("so3_spline_vel_jac", Forward(SO3_SPLINE_JAC)),
+    ("so3_spline_acc_jac", Forward(SO3_SPLINE_JAC)),
+    ("rn_spline_value", Forward(RN_SPLINE_VALUE)),
+    ("rn_spline_vel", Forward(RN_SPLINE_VEL)),
+    ("rn_spline_acc", Forward(RN_SPLINE_ACC)),
+    ("rn_spline_value_jac", Forward(RN_SPLINE_JAC)),
+    ("rn_spline_vel_jac", Forward(RN_SPLINE_JAC)),
+    ("rn_spline_acc_jac", Forward(RN_SPLINE_JAC)),
+    ("se3_spline_value", Forward(SE3_SPLINE_VALUE)),
+    ("se3_spline_vel", Forward(SE3_SPLINE_TWIST)),
+    ("se3_spline_acc", Forward(SE3_SPLINE_TWIST)),
+    ("rn_spline_gram", Rule::Rounded("g")),
 ];
 
 /// The rule of function id `fn_id`, if the table has one.
@@ -655,6 +694,67 @@ fn mask(values: &[f64], field: &str) -> Result<Vec<bool>, String> {
             _ => Err(format!("`{field}` holds {v}, not a mask")),
         })
         .collect()
+}
+
+/// `field` against its reference rounded once to nearest at the precision: the largest distance in
+/// ulps, `0` exactly when every value is that rounding. The 30-digit reference rounds as the exact
+/// value does wherever the exact value is no nearer a midpoint than `10⁻³⁰` relative, which a
+/// ratio of small integers is not (`gen/check_spline.py` checks every Gram entry).
+fn rounded(field: &str, rec: &Record, out: &Output, precision: Precision) -> Result<Score, String> {
+    let y = rec
+        .reference
+        .get(field)
+        .ok_or_else(|| format!("the reference has no `{field}`"))?;
+    let Some(yh) = values(out, field, y.data.len(), precision)? else {
+        return Ok(Score::NonFinite);
+    };
+    let mut worst = 0u64;
+    for (d, &x) in y.data.iter().zip(yh) {
+        let ten = BigUint::from(10u32).pow(d.exp10.unsigned_abs());
+        let (num, den) = match d.exp10 >= 0 {
+            true => (BigUint::from(d.mant) * &ten, BigUint::from(1u32)),
+            false => (BigUint::from(d.mant), ten),
+        };
+        let steps = match precision {
+            Precision::F64 => {
+                let want = ratio_to_f64(&num, &den);
+                ulps_f64(x, if d.neg { -want } else { want })
+            }
+            Precision::F32 => {
+                let want = ratio_to_f32(&num, &den);
+                let got = exact_f32(x).ok_or("not binary32")?;
+                ulps_f32(got, if d.neg { -want } else { want })
+            }
+        };
+        worst = worst.max(steps);
+    }
+    Ok(Score::Finite(worst as f64))
+}
+
+/// The number of binary64 values from `a` to `b`, `+0` and `−0` one value.
+fn ulps_f64(a: f64, b: f64) -> u64 {
+    let key = |x: f64| {
+        let bits = x.to_bits() as i128;
+        if x.is_sign_negative() {
+            -(bits & 0x7fff_ffff_ffff_ffff)
+        } else {
+            bits
+        }
+    };
+    key(a).abs_diff(key(b)) as u64
+}
+
+/// [`ulps_f64`] for binary32.
+fn ulps_f32(a: f32, b: f32) -> u64 {
+    let key = |x: f32| {
+        let bits = i64::from(x.to_bits());
+        if x.is_sign_negative() {
+            -(bits & 0x7fff_ffff)
+        } else {
+            bits
+        }
+    };
+    key(a).abs_diff(key(b))
 }
 
 fn finite_or_nonfinite(worst: f64) -> Score {
@@ -1712,6 +1812,32 @@ mod tests {
         for f in ["value", "d_n", "d_d"] {
             add(&["real_div"], f, Want::Tiny, false);
         }
+        for order in ["value", "vel", "acc"] {
+            let (so3, rn) = (
+                format!("so3_spline_{order}_jac"),
+                format!("rn_spline_{order}_jac"),
+            );
+            add(&[so3.as_str()], "jac", Want::Unit, false);
+            add(&[rn.as_str()], "k", Want::Unit, false);
+        }
+        add(
+            &["so3_spline_value", "se3_spline_value"],
+            "q",
+            Want::Unit,
+            true,
+        );
+        add(&["se3_spline_value"], "x", Want::Unit, false);
+        add(&["so3_spline_vel"], "omega", Want::Unit, false);
+        add(&["so3_spline_acc"], "alpha", Want::Unit, false);
+        add(
+            &["se3_spline_vel", "se3_spline_acc"],
+            "twist",
+            Want::Unit,
+            false,
+        );
+        add(&["rn_spline_value"], "p", Want::Unit, false);
+        add(&["rn_spline_vel"], "v", Want::Unit, false);
+        add(&["rn_spline_acc"], "a", Want::Unit, false);
         rows
     }
 
@@ -1755,6 +1881,7 @@ mod tests {
                     | Rule::Adjugate
                     | Rule::Direction(_)
                     | Rule::Axis(_)
+                    | Rule::Rounded(_)
             );
             assert!(own_test || wanted.iter().any(listed), "{family}");
         }
@@ -2310,7 +2437,36 @@ mod tests {
         assert_eq!(fields("chol_solve_n3"), Some(vec!["x"]));
         assert_eq!(fields("mat2_inverse_adj"), Some(vec!["det", "inv"]));
         assert_eq!(fields("so3_from_matrix"), Some(vec!["q"]));
+        assert_eq!(fields("rn_spline_gram"), Some(vec!["g"]));
         assert!(rule("chol_n4").is_none());
+    }
+
+    /// `0116`: the Gram matrix scores its distance in ulps from the reference rounded once, `0`
+    /// for that rounding, at either precision.
+    #[test]
+    fn a_rounded_output_scores_its_distance_in_ulps_from_the_rounding() -> Result<(), String> {
+        let rec = record(&[], &[("g", &["5e-2", "-1e0", "0e0"])])?;
+        let at = |g: [f64; 3], precision| {
+            let out = Output::from([("g".to_string(), g.to_vec())]);
+            finite(Rule::Rounded("g").score(&rec, &out, precision)?)
+        };
+        let twentieth = 0.05f64;
+        assert_eq!(at([twentieth, -1.0, 0.0], Precision::F64)?, 0.0);
+        assert_eq!(at([twentieth, -1.0, -0.0], Precision::F64)?, 0.0);
+        let up = f64::from_bits(twentieth.to_bits() + 1);
+        assert_eq!(at([up, -1.0, 0.0], Precision::F64)?, 1.0);
+        // Below -1 by one ulp, then across zero: the count runs through the sign.
+        let below = f64::from_bits((-1.0f64).to_bits() + 1);
+        assert_eq!(at([twentieth, below, 0.0], Precision::F64)?, 1.0);
+        let tiny = f64::from_bits(1);
+        assert_eq!(at([twentieth, -1.0, -tiny], Precision::F64)?, 1.0);
+        let f = f64::from(0.05f32);
+        assert_eq!(at([f, -1.0, 0.0], Precision::F32)?, 0.0);
+        let f_up = f64::from(f32::from_bits(0.05f32.to_bits() + 3));
+        assert_eq!(at([f_up, -1.0, 0.0], Precision::F32)?, 3.0);
+        // The binary64 0.05 is not the binary32 one: at f32 it is not an output at all.
+        assert!(at([twentieth, -1.0, 0.0], Precision::F32).is_err());
+        Ok(())
     }
 
     /// `0061` decision 3: a singular reference expects a non-finite inverse and scores `det`

@@ -28,4 +28,10 @@ helicoid-linalg.workspace = true
 bench = false
 
 [dev-dependencies]
+criterion.workspace = true
 proptest.workspace = true
+
+# `harness = false`: criterion supplies its own `main` (`0116` decision 6).
+[[bench]]
+name = "spline"
+harness = false
