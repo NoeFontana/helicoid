@@ -30,7 +30,7 @@ use helicoid_linalg::{Blend, Mask, Mat3, Matrix, Real, StridedMut, Vector};
 /// `transpose`: [`apply_transpose`](Jac::apply_transpose) and [`sandwich`](Jac::sandwich) are the
 /// two operations that need it. A dense matrix is produced only by
 /// [`write_dense`](Jac::write_dense) and `sandwich` (`docs/API.md` R5). There is no `PartialEq`,
-/// `Add` or `Sub`.
+/// and no `Add` or `Sub` operator: a sum is [`Jac::add`] (`0112`).
 #[derive(Clone, Copy, Debug)]
 pub struct SEn3Jac<S, const N: usize> {
     /// `A`, the diagonal block, repeated `N + 1` times on the dense diagonal.
@@ -174,6 +174,24 @@ impl<S: Real, const N: usize> Jac<S, SEn3Tangent<S, N>> for SEn3Jac<S, N> {
         Self {
             diag: -self.diag,
             col: self.col.map(|b| -b),
+        }
+    }
+
+    /// `diag` and each `col[i]` entry by entry; the twin is `reference::sen3jac_add`.
+    #[inline]
+    fn add(&self, o: &Self) -> Self {
+        Self {
+            diag: self.diag + o.diag,
+            col: array::from_fn(|i| self.col[i] + o.col[i]),
+        }
+    }
+
+    /// `diag` and each `col[i]` entry by entry; the twin is `reference::sen3jac_scale`.
+    #[inline]
+    fn scale(&self, k: S) -> Self {
+        Self {
+            diag: self.diag.scale(k),
+            col: self.col.map(|b| b.scale(k)),
         }
     }
 

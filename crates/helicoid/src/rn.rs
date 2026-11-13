@@ -47,7 +47,8 @@ pub struct RnTangent<S, const N: usize> {
     pub rho: Vector<S, N>,
 }
 
-/// A Jacobian of [`Rn`]: the matrix `k I`, closed under `mul`, `inverse` and `neg` and holding
+/// A Jacobian of [`Rn`]: the matrix `k I`, closed under `mul`, `inverse`, `neg`, `add` and `scale`
+/// and holding
 /// exactly the values Rⁿ needs: `I` (`Ad`, `J_r`, `J_l` and their inverses), `-I` (the second row
 /// of `⊖` and `X⁻¹`) and `0` (`ad`).
 #[derive(Clone, Copy, Debug)]
@@ -196,6 +197,14 @@ impl<S: Real, const N: usize> Jac<S, RnTangent<S, N>> for RnJac<S, N> {
     #[inline]
     fn neg(&self) -> Self {
         Self::scalar(-self.k)
+    }
+    #[inline]
+    fn add(&self, o: &Self) -> Self {
+        Self::scalar(self.k + o.k)
+    }
+    #[inline]
+    fn scale(&self, k: S) -> Self {
+        Self::scalar(self.k * k)
     }
     #[inline]
     fn apply(&self, t: &RnTangent<S, N>) -> RnTangent<S, N> {

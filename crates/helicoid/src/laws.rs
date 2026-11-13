@@ -8,6 +8,7 @@
 //! measured run. Group elements are compared through `Log(a ⊖_R b)`: a group has no equality (R4),
 //! so `Log` is trusted wherever a group's tests do not check it first.
 
+use crate::dualmat_tests::Lanes;
 use crate::{Chart, Jac, Left, LieGroup, Right, Side, Tangent};
 use core::array;
 use helicoid_linalg::{Dual, Matrix, Precision, Real};
@@ -511,6 +512,62 @@ pub(crate) fn sandwich_matches_dense<S: Real, G: LieGroup<S>, const D: usize>(
     });
     let got: [[f64; D]; D] = array::from_fn(|i| array::from_fn(|k| got.get(i, k).value_f64()));
     e::<S>(got.as_flattened(), want.as_flattened())
+}
+
+/// The entries `+0` in every lane of both `a` and `b`, read as the structural zeros of a `Jac`
+/// whose stored entries are drawn nonzero.
+pub(crate) fn structural<S: Lanes, const D: usize>(
+    a: &[[S; D]; D],
+    b: &[[S; D]; D],
+) -> [[bool; D]; D] {
+    let zero = |x: S| x.lanes().iter().all(|l| l.to_bits() == 0);
+    array::from_fn(|i| array::from_fn(|k| zero(a[i][k]) && zero(b[i][k])))
+}
+
+/// `got` against `want` entry by entry, every lane as bits, except at a `zeros` entry, where `got`
+/// must be `+0` in every lane: `write_dense` writes a structural zero `+0`, while the dense
+/// `+0 · k` is `-0` for a negative `k` and NaN for a non-finite one (`0112` decision 2).
+pub(crate) fn entrywise<S: Lanes, const D: usize>(
+    got: &[[S; D]; D],
+    want: &[[S; D]; D],
+    zeros: &[[bool; D]; D],
+) -> bool {
+    let bits = |x: S| x.lanes().map(f64::to_bits);
+    (0..D).all(|i| {
+        (0..D).all(|k| {
+            let g = bits(got[i][k]);
+            g == bits(want[i][k]) || (zeros[i][k] && g == [0; 4])
+        })
+    })
+}
+
+/// `Jac::add` and `Jac::scale` against the entrywise dense sum and `x k` of `write_dense`'s
+/// images (`0112` decision 2): the sum bit for bit everywhere, since `+0 + +0` is `+0`, and the
+/// scale bit for bit on every stored entry, a structural zero compared as a zero ([`entrywise`]).
+///
+/// # Domain
+///
+/// Every stored entry of `a` and `b` is nonzero, so [`structural`] finds the structural zeros.
+pub(crate) fn jac_add_and_scale_match_dense<S, T, J, const D: usize>(a: &J, b: &J, k: S) -> bool
+where
+    S: Lanes,
+    T: Tangent<S>,
+    J: Jac<S, T>,
+{
+    let (da, db) = (dense::<S, T, J, D>(a), dense::<S, T, J, D>(b));
+    let zeros = structural(&da, &db);
+    let sum = array::from_fn(|i| array::from_fn(|r| da[i][r] + db[i][r]));
+    let scaled = array::from_fn(|i| array::from_fn(|r| da[i][r] * k));
+    entrywise(&dense::<S, T, J, D>(&a.add(b)), &sum, &[[false; D]; D])
+        && entrywise(&dense::<S, T, J, D>(&a.scale(k)), &scaled, &zeros)
+}
+
+/// A scale factor: uniform on `[-2, 2)`, or one of the values whose `+0 · k` is not `+0`.
+pub(crate) fn factor() -> impl Strategy<Value = f64> {
+    prop_oneof![
+        3 => -2.0_f64..2.0,
+        1 => proptest::sample::select(std::vec![-0.0, -1.0, f64::INFINITY, f64::NEG_INFINITY, f64::NAN]),
+    ]
 }
 
 /// Every row of `NUMERICS.md` §2.3 against `Dual<S, D>` differentiation of the operation it is the

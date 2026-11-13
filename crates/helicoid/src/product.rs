@@ -79,12 +79,13 @@ impl<A, B> Product<A, B> {
 
 /// A Jacobian of a [`Product`]: the block-diagonal matrix `diag(J_A, J_B)`.
 ///
-/// It is closed under [`mul`](Jac::mul), [`inverse`](Jac::inverse) and [`neg`](Jac::neg) because
-/// each factor's is, and a dense matrix leaves it only through [`write_dense`](Jac::write_dense)
-/// and [`sandwich`](Jac::sandwich) (`docs/API.md` R5). The parameters are the factors' Jacobian
-/// types, `Product<A, B>::Jac = ProductJac<A::Jac, B::Jac>`. The blocks are a representation
-/// choice and stay private, as `RnJac`'s `k` does (`0025`). There is no `PartialEq`, `Add` or
-/// `Sub`.
+/// It is closed under [`mul`](Jac::mul), [`inverse`](Jac::inverse), [`neg`](Jac::neg),
+/// [`add`](Jac::add) and [`scale`](Jac::scale) because each factor's is, and a dense matrix leaves
+/// it only through [`write_dense`](Jac::write_dense) and [`sandwich`](Jac::sandwich)
+/// (`docs/API.md` R5). The parameters are the factors' Jacobian types,
+/// `Product<A, B>::Jac = ProductJac<A::Jac, B::Jac>`. The blocks are a representation choice and
+/// stay private, as `RnJac`'s `k` does (`0025`). There is no `PartialEq`, and no `Add` or `Sub`
+/// operator: a sum is [`Jac::add`] (`0112`).
 #[derive(Clone, Copy, Debug)]
 pub struct ProductJac<JA, JB>(pub(crate) JA, pub(crate) JB);
 
@@ -218,6 +219,14 @@ where
     #[inline]
     fn neg(&self) -> Self {
         Self(self.0.neg(), self.1.neg())
+    }
+    #[inline]
+    fn add(&self, o: &Self) -> Self {
+        Self(self.0.add(&o.0), self.1.add(&o.1))
+    }
+    #[inline]
+    fn scale(&self, k: S) -> Self {
+        Self(self.0.scale(k), self.1.scale(k))
     }
     #[inline]
     fn apply(&self, t: &(TA, TB)) -> (TA, TB) {
