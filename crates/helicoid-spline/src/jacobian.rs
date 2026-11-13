@@ -97,11 +97,13 @@ where
             if D >= 1 {
                 vel_before[j] = vel;
                 acc_before[j] = acc;
-                vel = r[j].apply(&vel).add(&d[j].scale(w.dot[j]));
+                // Peeled at `j = 1` exactly as `Segment::kinematics`, so the two agree to the bit.
+                let carried = |x: &G::Tangent| if j > 1 { r[j].apply(x) } else { *x };
+                vel = carried(&vel).add(&d[j].scale(w.dot[j]));
                 vel_at[j] = vel;
                 if D >= 2 {
                     let coriolis = G::ad(&vel).apply(&d[j]).scale(w.dot[j]);
-                    acc = r[j].apply(&acc).add(&d[j].scale(w.ddot[j])).add(&coriolis);
+                    acc = carried(&acc).add(&d[j].scale(w.ddot[j])).add(&coriolis);
                 }
             }
         }
