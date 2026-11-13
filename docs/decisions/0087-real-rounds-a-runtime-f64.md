@@ -6,7 +6,7 @@
 
 ## Context
 
-locus-sensors turns a runtime `f64` into its scalar `S: Real`: anchor-relative seconds, formed
+A sensor-model consumer turns a runtime `f64` into its scalar `S: Real`: anchor-relative seconds, formed
 exactly from integer nanoseconds. `Real`'s one constructor from `f64` is `lit`, whose contract is
 **exactly representable constants**: the `f32` impl `debug_assert!`s it, and a release build
 rounds silently. A runtime value at `f32` or `Dual<f32, N>` therefore has no supported path, so
@@ -114,7 +114,7 @@ the generator's hash.
   still compiles. A type that already has an inherent or other-trait method of the same name may
   see an ambiguity, which is the Rust API guidelines' "possibly breaking" minor change.
 - `lit` keeps its contract and its check.
-- locus-sensors can convert at every precision and drop its `F64`-only `# Domain` note.
+- That consumer can convert at every precision and drop its `F64`-only `# Domain` note.
 - `real_round_from_f64` is required by coverage. Its rows are pinned in `committed_linalg`.
 - The generator and the harness carry one named exception to `0016` item 1.
 

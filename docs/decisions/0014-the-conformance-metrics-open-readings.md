@@ -239,7 +239,7 @@ None until the open questions are resolved.
     convention of `0002`, so its conversions change a layout, not an order, and it has no
     permutation and no permutation test; a bump fails its tests.
     Is 0.15.0 the oracle, is 0.14.0 a second runner (the permutation §7 has in mind), or does the
-    version `locus_fusion` builds against decide? Say which `0002`'s "Sophus is translation-first"
+    version the sensor-fusion consumer builds against decide? Say which `0002`'s "Sophus is translation-first"
     means, C++ Sophus and sophus-rs 0.14 or all of them.
 34. **Right Jacobians of an oracle that has only the left one** (§7: "any exposed Jacobians").
     sophus-rs exposes `J_l` and its inverse; the runner answers `so3_jr`, `so3_jr_inv`,

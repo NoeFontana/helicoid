@@ -14,7 +14,7 @@ The stack already holds two tangent orders and two quaternion layouts:
   Python's `Layout::QuatTwist`, and the `w`-first pose records of the `FORMAT_VERSION = 3` arena.
 - **locus-tag** `Pose::retract`: nalgebra, delta `[v, ω]` (`delta[0..3]` translation), and a
   decoupled retraction `(R·Exp(ω), R·v + t)`.
-- **locus_fusion**: Sophus, `[υ; ω]`, Eigen `xyzw` storage.
+- **A sensor-fusion consumer**: Sophus, `[υ; ω]`, Eigen `xyzw` storage.
 - The literature this project cites (Barfoot, Solà, Sophus, manif) is translation-first; GTSAM and
   OpenVINS are rotation-first.
 

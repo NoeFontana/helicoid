@@ -15,7 +15,7 @@ Not shipped in the crates.
   `$CARGO_TARGET_DIR/criterion`, else cargo's target directory, where it read
   `<root>/target/criterion` and found no samples under a moved target directory. A relative
   variable is refused, since the bench binary and cargo would resolve it from different
-  directories. Found in locus-sensors, which copied the gate (its 315c2c2).
+  directories. Found in a consumer that copied the gate.
 - **The bench tests write to per-process scratch directories** removed on drop, where they shared
   fixed `/tmp/helicoid-bench-*` paths, so concurrent test runs in two worktrees deleted each
   other's fixtures; so does the `untracked` lint's git test (`/tmp/helicoid-lint-untracked`).
