@@ -85,6 +85,12 @@ impl<S: Real> Jac<S, RnTangent<S, 3>> for HJac<S> {
     fn neg(&self) -> Self {
         Self(-self.0)
     }
+    fn add(&self, o: &Self) -> Self {
+        Self(self.0 + o.0)
+    }
+    fn scale(&self, k: S) -> Self {
+        Self(self.0.scale(k))
+    }
     fn apply(&self, t: &RnTangent<S, 3>) -> RnTangent<S, 3> {
         RnTangent {
             rho: self.0 * t.rho,

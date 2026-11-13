@@ -73,6 +73,8 @@ pub trait Jac<S: Real, T: Tangent<S>>: Copy + Blend<S> {
     fn mul(&self, o: &Self) -> Self;
     fn inverse(&self) -> Self;            // exact algebraic inverse (0005)
     fn neg(&self) -> Self;
+    fn add(&self, o: &Self) -> Self;      // entry by entry, no side check (0112)
+    fn scale(&self, k: S) -> Self;        // entry by entry (0112)
     fn apply(&self, t: &T) -> T;
     fn apply_transpose(&self, t: &T) -> T;
     fn write_dense(&self, out: &mut StridedMut<'_, S>);

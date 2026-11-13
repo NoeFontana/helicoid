@@ -569,6 +569,15 @@ impl<S: Real> Jac<S, SO3Tangent<S>> for Mat3<S> {
         -*self
     }
     #[inline]
+    fn add(&self, o: &Self) -> Self {
+        *self + *o
+    }
+    // `Matrix::scale` by path: `self.scale` on `&Self` resolves to this method.
+    #[inline]
+    fn scale(&self, k: S) -> Self {
+        Matrix::scale(*self, k)
+    }
+    #[inline]
     fn apply(&self, t: &SO3Tangent<S>) -> SO3Tangent<S> {
         SO3Tangent { phi: *self * t.phi }
     }
