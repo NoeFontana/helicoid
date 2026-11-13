@@ -1369,7 +1369,7 @@ mod tests {
                 Score::Finite(u) => Some(u),
                 _ => None,
             };
-            let slot = out.entry(rec.stratum.clone()).or_insert(Some(0.0));
+            let slot = out.entry(rec.stratum).or_insert(Some(0.0));
             *slot = slot.zip(score).map(|(a, b)| a.max(b));
         }
         Ok(out)

@@ -907,9 +907,9 @@ mod group {
                 true => x64.act_jacobians::<Right>(Point(p)),
                 false => x64.act_jacobians::<Left>(Point(p)),
             };
-            for r in 0..3 {
-                for c in 0..6 {
-                    let (lane, want) = (got.0[r].d[c], j.get(r, c));
+            for (r, row) in got.0.iter().enumerate() {
+                for (c, &lane) in row.d.iter().enumerate() {
+                    let want = j.get(r, c);
                     assert!(
                         (lane - want).abs() <= 1e-13,
                         "{right} ({r}, {c}): {lane} vs {want}"
@@ -946,9 +946,9 @@ mod group {
                 true => x64.inv_act_jacobians::<Right>(Point(p)),
                 false => x64.inv_act_jacobians::<Left>(Point(p)),
             };
-            for r in 0..3 {
-                for c in 0..6 {
-                    let (lane, want) = (got.0[r].d[c], j.get(r, c));
+            for (r, row) in got.0.iter().enumerate() {
+                for (c, &lane) in row.d.iter().enumerate() {
+                    let want = j.get(r, c);
                     assert!(
                         (lane - want).abs() <= 1e-13,
                         "{right} ({r}, {c}): {lane} vs {want}"
@@ -958,8 +958,8 @@ mod group {
             // `∂(X⁻¹ p)/∂p = Rᵀ` on both sides, by differentiating in `p` instead.
             let x3 = SE3::<D3>::exp(&SEn3Tangent::read_dense(&base.map(D3::constant)));
             let moved = x3.inv_act(Point(array::from_fn(|i| D3::variable(p[i], i))));
-            for r in 0..3 {
-                let lanes: [f64; 3] = array::from_fn(|c| moved.0[r].d[c]);
+            for (r, row) in moved.0.iter().enumerate() {
+                let lanes: [f64; 3] = array::from_fn(|c| row.d[c]);
                 close(&lanes, &dp.row(r).0, 1e-15);
             }
         }
