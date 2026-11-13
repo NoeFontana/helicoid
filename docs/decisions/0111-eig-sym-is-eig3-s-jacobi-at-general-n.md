@@ -6,7 +6,7 @@
 
 ## Context
 
-locus-calib's M5 D4 is a degeneracy diagnostic. It diagonalises the equilibrated `N_g x N_g` Schur
+A calibration consumer's degeneracy diagnostic needs it. It diagonalises the equilibrated `N_g x N_g` Schur
 matrix of the global calibration parameters and flags `λ_min < 1e-5` or `κ > 1e5`; it reports the
 eigenvectors of a flagged cluster as the parameters that are poorly determined together.
 `helicoid-linalg` has one symmetric eigensolver, `eig3`, at `N = 3`. Nothing else in the workspace

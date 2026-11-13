@@ -15,7 +15,7 @@ resolved `libm`. `PHASE6.md` §3 makes `just determinism` its check. CI already 
 `PHASE1.md` §3 makes both required "from Phase 6", and neither is a required check today. A change
 that moves one target's bits can therefore merge on a red `determinism (compare)`.
 
-locus-calib:0007 requires `result.json` to be bit-identical on x86_64 and aarch64. `helicoid`'s share
+A calibration consumer requires `result.json` to be bit-identical on x86_64 and aarch64. `helicoid`'s share
 of that promise is D16, and this job is the only evidence for it. The first consumer that depends on
 D16 for its own contract has arrived before Phase 6.
 
@@ -50,7 +50,7 @@ skipped, and requiring the comparison alone would pass.
 
 - **Requiring the legs too.** Five required names for one property. A renamed matrix entry
   silently stops being required. The comparison, made unskippable, already fails on any leg.
-- **Waiting for Phase 6.** Phase 6 is gated on work locus-calib does not need (`PHASE6.md` §1, §2).
+- **Waiting for Phase 6.** Phase 6 is gated on work that consumer does not need (`PHASE6.md` §1, §2).
   Meanwhile every merge to `main` could break the one property that consumer's contract names.
 - **Amending `0007`.** `0007` is the dependency budget. D16 is the decision this check enforces,
   and `PHASE1.md` §3 is the text that schedules it. A short record keeps the reason findable.

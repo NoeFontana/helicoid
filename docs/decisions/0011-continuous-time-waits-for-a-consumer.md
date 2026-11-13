@@ -6,12 +6,12 @@
 
 ## Context
 
-Three consumers may want Lie-group splines: locus-calib (camera–IMU calibration), locus_fusion
+Three consumers may want Lie-group splines: camera–IMU calibration, locus_fusion
 (continuous-time or rolling-shutter estimation), and `tf_tree` Phase 6 (cumulative B-spline
 interpolation, kept by `tf_tree` 0009 §4). None has stated its problem size, knot spacing, order,
 derivative orders or precision. The design choices that matter — uniform vs non-uniform knots,
 SE(3) vs split, Kalibr parity — depend on exactly those answers. Kalibr's rotation is a Euclidean
-spline on a rotation-vector parameterization, so a locus-calib comparison against Kalibr confounds
+spline on a rotation-vector parameterization, so a calibration comparison against Kalibr confounds
 the parameterization with everything else unless the protocol accounts for it.
 
 ## Decision

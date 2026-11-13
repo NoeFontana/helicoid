@@ -29,7 +29,7 @@ recipe or check reads.
 `0103`'s 3.74 MiB crossed the cap, and nothing failed. `PHASE1.md` §4.4's rule, "a family that would
 exceed it reduces its sample count by an edit to this list, never silently", was broken silently.
 
-The next family is `eig_sym`, the symmetric eigensolver at 4 ≤ N ≤ 16 that locus-calib's D4 consumes:
+The next family is `eig_sym`, the symmetric eigensolver at 4 ≤ N ≤ 16 that a calibration consumer's diagnostic consumes:
 three ids,
 N ∈ {4, 9, 16}, at both precisions. At about 22 bytes per input entry and 38 per output (the hex and
 30-digit formats), a record is about 22N² + 38(N² + N + 1) + 100 bytes: 1.25 KB at N = 4, 5.3 KB at

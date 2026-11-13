@@ -10,7 +10,7 @@
 \det UV^\top)\,V^\top$), then this", and `SO3::from_matrix`'s rustdoc tells a caller to project
 with its own SVD until `svd3` exists. `0015` PH.2 and `maths/so3.md` SO.13(c) name the routine
 `nearest_rotation` $= UV^\top$, with `svd3`'s signed convention. Consumers: Kabsch and Wahba
-alignment (locus-calib's M3 metric), a drifted rotation matrix, a homography's or an essential
+alignment (a calibration consumer's metric), a drifted rotation matrix, a homography's or an essential
 matrix's rotation.
 
 **`svd3` alone is the wrong program near SO(3)**, which is where most inputs are:
