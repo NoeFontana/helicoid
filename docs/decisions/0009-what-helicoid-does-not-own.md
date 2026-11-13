@@ -22,7 +22,7 @@ solver, or a consumer's state or storage layout. By that test, `helicoid` does *
 | IMU preintegration, marginalization, FEJ, sliding windows | locus_fusion (Γ₁/Γ₂ are `helicoid`'s primitives) |
 | Storage formats, `Pod` records, arenas, serialization | each consumer (D2) |
 | `tf2`-compatibility behaviour (`LerpSlerp`'s fallback, `tf2` quirks) | `tf_tree` |
-| Hand-eye, AX = XB, calibration pipelines | locus-calib |
+| Hand-eye, AX = XB, calibration pipelines | a calibration consumer |
 | Point-cloud deskew | `tf_tree` cut it (its D8); `locus-lidar` if ever |
 | RNG, sampling from `Gaussian` | consumers |
 

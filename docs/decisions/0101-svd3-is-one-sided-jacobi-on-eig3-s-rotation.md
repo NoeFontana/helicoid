@@ -10,7 +10,7 @@
 fixed Jacobi sweep count, signed so $\det U = \det V = +1$". It is the last routine of §6 without
 code, and its id is the last row of `coverage::OWED` for Phase 2
 ([`0056`](./0056-the-routines-d7-does-not-reach.md) *Further work* 1). Two consumers wait on it:
-`NUMERICS.md` §3.4's projection onto SO(3), and locus-calib's M3 metric, whose Wahba alignment
+`NUMERICS.md` §3.4's projection onto SO(3), and a calibration consumer's metric, whose Wahba alignment
 takes the nearest rotation of a 3×3 cross-covariance ([`0102`](./0102-the-nearest-rotation-takes-newton-where-it-is-well-posed.md)).
 
 Three facts shape the decision:

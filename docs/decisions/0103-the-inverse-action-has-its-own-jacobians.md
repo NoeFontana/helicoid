@@ -8,7 +8,7 @@
 
 $x = X^{-1}p$ maps a point from a parent frame into a body frame. It is the first step of every
 reprojection residual and of every projection covariance with pose terms. Its consumers include
-locus-sensors' `projection_covariance` (`PHASE-C1` §3.2), locus-calib's backend and the VIO.
+locus-sensors' `projection_covariance` (`PHASE-C1` §3.2), a calibration backend and the VIO.
 
 helicoid 0.0.6 ships the forward action and pieces of the inverse, but not the inverse action
 itself:
@@ -143,7 +143,7 @@ digits, matches decision 2's Jacobians to $9\times10^{-41}$.
 - **Not left to consumers.** Composition costs up to $u\lVert t\rVert/\lVert x\rVert$ on the value
   and the right side, and $u\lVert t\rVert/\lVert p\rVert$ on the left (*Context*). A hand
   derivation in each consumer is what D1 exists to prevent: three copies of $[\,[x]_\times, -I\,]$
-  (locus-sensors, locus-calib, the VIO) with three sign conventions to get wrong.
+  (locus-sensors, a calibration backend, the VIO) with three sign conventions to get wrong.
 - **Not a second spelling (`API.md` R3).** The inverse action has no operator, and the composition
   is not the same rounding: it is this pair's §14 twin, as `b.inverse() * a` is `inv_mul`'s.
 - **SO(3) too** (the owner, 2026-10-21). Its value is the composition to the bit, so the pair wins
