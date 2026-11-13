@@ -14,6 +14,7 @@ noise bars and long debug sweeps stay local `just` recipes, never CI jobs.
 | `just oracle-sophus` | Sophus C++ container (`docker/oracles/sophus`, needs docker): builds the pinned image, runs its rows offline (`0072`); `eig3` and `svd3` are the image's Eigen (`0083`, `0101`), `nearest_rotation` Sophus's `fitToSO3` (`0102`) |
 | `just oracle-gtsam` | GTSAM C++ (`docker/oracles/gtsam`), built in the image under the runner's flags (`0074`) |
 | `just oracle-manif` | manif container: SO(2), SE(2), SO(3), SE(3), SE₂(3), screw and world charts (`0075`) |
+| `just oracle-basalt` | basalt-headers container: the spline ids, binary64; Jacobians and Gram on integer-nanosecond records only (`0116`) |
 | `just oracles` | every `oracle-*` above, in order; local only |
 | `just corpus-deep` / `corpus-deep-check` / `conformance-deep` | `0088`'s 64-record deep tier, git-ignored, manifest committed; feeds `just envelope --deep` |
 | `just envelope` | merge results, apply the domination and no-regress bars, then coverage; each domination failure says whether it is the program's, D16's or neither (`0037`, draft). `--check` also fails on a baseline or `docs/evidence/ENVELOPE.md` that `--bless` would change; `--bless` (for `helicoid`) writes both, and nothing while a bar or coverage fails. Never `--bless` unasked |
