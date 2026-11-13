@@ -15,9 +15,29 @@ defined by the status tables in `docs/`; they win over this file.
   them and stays structured; an external `Jac` impl must add both. `NUMERICS.md` §14 gains the
   dense twins `reference::{sen3jac, sim3jac}_{add, scale}`. Every existing output keeps its bits.
 
+### Added
+
+- **`helicoid-spline`**, Phase 7's crate ([`0113`](docs/decisions/0113-phase-7-opens-for-a-calibration-consumer.md),
+  [`0114`](docs/decisions/0114-a-spline-evaluates-the-window-it-is-handed.md),
+  [`0115`](docs/decisions/0115-the-spline-tables-are-exact-integers.md)): uniform cumulative
+  B-splines of order `K = 2..=6` on any `LieGroup`, under `helicoid`'s budget. `Segment` evaluates
+  the value, body velocity and body acceleration by Sommer et al.'s recursion; `JacSegment` their
+  Jacobians on every control, either side, in `O(K)`; `derivative_gram` the energy matrices. Every
+  table is exact integers at compile time. On the 16 new corpus ids it reads at most 9.69 `u`
+  (binary64) and 8.50 `u` (binary32), and bit-identical across x86_64 and `wasm32-wasip1`.
+
 ### Instrument
 
 Not shipped in the crates.
+- **The spline's corpus ids, references and seeded defects** ([`0116`](docs/decisions/0116-the-spline-is-measured-before-it-ships.md)):
+  `{so3, rn, se3}_spline_*` and `rn_spline_gram`, 1.75 MiB of the 80 MiB budget, with mpmath
+  references and an independent `NUMERICS.md` §21 evaluator (`seeded:spline`) that all six planted
+  defects are measured against. The shipped subject answers every id; `bench --bench spline` adds
+  the criterion rows.
+- **`just oracle-basalt`**: basalt-headers (Sommer and Usenko's implementation of the same
+  recursions) as a pinned container oracle for the spline ids, binary64 only. On the committed tier
+  `helicoid` reads 3.9–4.2 `u` on `so3_spline_value_jac` against its 249–274 `u`, and 0 `u` on the
+  Gram matrix against 752 `u`.
 - **`bench-gate` reads criterion's samples where criterion writes them**: `$CRITERION_HOME`, else
   `$CARGO_TARGET_DIR/criterion`, else cargo's target directory, where it read
   `<root>/target/criterion` and found no samples under a moved target directory. A relative

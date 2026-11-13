@@ -2,7 +2,7 @@
 
 **Status:** ready
 **Owner:** @NoeFontana
-**Implementation:** —
+**Implementation:** #229, #230, #233
 
 ## Context
 
@@ -93,6 +93,23 @@ budget. SE_N(3) already runs at 6 records per committed stratum.
    4. whether it accepts `u` directly or only integer nanoseconds. If only nanoseconds, it answers
       only records whose `(u, h)` map to integer nanoseconds exactly, so that time quantization is
       not scored as its error.
+
+   **The spike**, at basalt-headers `b7f915b` on Sophus `d0b7315` (`docker/oracles/basalt`).
+   Every id compiles only at `double`: `CeresSplineHelper`'s weights are `double`, and
+   `So3Spline`'s Jacobians call `SO3d`. So binary32 is held to its reference.
+
+   | Ids | 1. Orders | 2. Jacobians | 3. SE(3) | 4. Time | Answered |
+   |---|---|---|---|---|---|
+   | `so3_spline_{value,vel,acc}` | any `K` (`CeresSplineHelper<K>::evaluate_lie<SO3>`) | — | — | `u`, `h⁻¹` | every record |
+   | `so3_spline_*_jac` | `So3Spline<K>`, `K ≥ 3` | value, `ω`, `ω̇`; left on both sides, made right as `R_Xᵀ J R_m` and `J R_m` | — | integer ns | `u:0`, `u:half` |
+   | `rn_spline_{value,vel,acc}` | any `K` (`evaluate<double, 3, D>`) | — | — | `u`, `h⁻¹` | every record |
+   | `rn_spline_*_jac` | `RdSpline<3, K>`, but `K = 2` has no acceleration (it reads past `pow_inv_dt_`) | `d_val_d_knot`, the `k` of `k I` | — | integer ns | `u:0`, `u:half`, except `K = 2` of `_acc_jac` |
+   | `se3_spline_{value,vel,acc}` | any `K` | — | `Se3Spline` is split; `evaluate_lie<SE3>` is cumulative on SE(3), and it answers | `u`, `h⁻¹` | every record |
+   | `rn_spline_gram` | `RdSpline<1, K>` | `evaluateIntegralSquared<r>`'s gradient at each unit knot, halved | — | integer ns | `h:1`, `h:2^10` |
+
+   The image build checks the sides against central differences of the helper's own outputs.
+   It also checks the Gram matrix against `NUMERICS.md` §21's check values. Other records are
+   answered `nan` (`0072` decision 5).
 
    Kalibr's splines use another parameterization and are not an oracle (`0113`).
 

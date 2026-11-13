@@ -170,10 +170,18 @@ oracle-manif:
     cargo xtask conformance --oracle manif
     cargo xtask conformance --oracle manif --precision f32
 
-# Every oracle runner (`docs/PHASE1.md` §3, §7): the two crates' checks and rows, then the three
+# The basalt-headers oracle (`docs/decisions/0116` decision 4): as `oracle-sophus`, for
+# docker/oracles/basalt, pinned by base digest, Ubuntu snapshot, Sophus and basalt-headers commits;
+# its build runs the conversions' tests and checks the Jacobians' side by central differences. It
+# answers the spline ids in binary64, the Jacobians and the Gram matrix on the integer-nanosecond
+# records alone. Rows in conformance/results/basalt.csv.
+oracle-basalt:
+    cargo xtask conformance --oracle basalt
+
+# Every oracle runner (`docs/PHASE1.md` §3, §7): the two crates' checks and rows, then the four
 # containers', each image built from its pins. Local only: it needs docker, and the first GTSAM
 # build takes minutes.
-oracles: oracle-sophus-rs oracle-nalgebra oracle-sophus oracle-gtsam oracle-manif
+oracles: oracle-sophus-rs oracle-nalgebra oracle-sophus oracle-gtsam oracle-manif oracle-basalt
 
 # The deep tier (`docs/decisions/0088`): every stratum whose sample count is below 64 and whose draw
 # extends without moving its first samples, raised to 64, into the git-ignored
@@ -209,6 +217,7 @@ conformance-deep:
     cargo xtask conformance --oracle gtsam --deep
     cargo xtask conformance --oracle manif --deep
     cargo xtask conformance --oracle manif --deep --precision f32
+    cargo xtask conformance --oracle basalt --deep
 
 # The one-variable twins (`0037`, draft): a candidate's program at a scalar whose transcendentals
 # are the host's `std` instead of the `libm` crate, into conformance/results/*-host-std.csv. Both
@@ -236,7 +245,7 @@ compare *args:
 # records is unresolvable, and `--deep` judges it on `just conformance-deep`'s rows
 # (`docs/decisions/0088`). It first reruns the in-process subjects at both precisions, so the candidate's rows are
 # current (`docs/decisions/0077`: an oracle's `f32` rows pair with the candidate's `@f32` ones); the
-# oracles' rows are what `oracle-sophus-rs`, `oracle-nalgebra`, `oracle-sophus`, `oracle-gtsam`, `oracle-manif` last wrote. `--check` also fails on
+# oracles' rows are what `oracle-sophus-rs`, `oracle-nalgebra`, `oracle-sophus`, `oracle-gtsam`, `oracle-manif`, `oracle-basalt` last wrote. `--check` also fails on
 # a baseline or docs/evidence/ENVELOPE.md (its oracle columns aside) that `--bless` would write
 # differently (an improved max is blessed in its own PR); `--bless` writes both, and nothing while
 # domination, coverage or a dropped stratum fails (`--dry-run`: says what it would write). While the

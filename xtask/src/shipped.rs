@@ -35,6 +35,9 @@ mod composed_inv_act;
 mod homogeneous_r;
 mod libm_atan2;
 mod r_times_u;
+pub(crate) mod spline;
+
+use spline::SplineId;
 
 pub(crate) use composed_inv_act::registered as composed_inv_act_twin;
 pub(crate) use homogeneous_r::registered as homogeneous_r_twin;
@@ -831,6 +834,7 @@ impl Subject for Helicoid {
             || Linalg::of_fn(fn_id).is_some()
             || GaussianId::of_fn(fn_id).is_some()
             || InvActId::of_fn(fn_id).is_some()
+            || SplineId::of_fn(fn_id).is_some()
     }
 
     fn eval(&self, fn_id: &str, record: &Record, precision: Precision) -> Output {
@@ -871,6 +875,12 @@ where
         };
     }
     if let Some(id) = GaussianId::of_fn(fn_id) {
+        return match precision {
+            Precision::F64 => id.answer::<D>(record),
+            Precision::F32 => id.answer::<F>(record),
+        };
+    }
+    if let Some(id) = SplineId::of_fn(fn_id) {
         return match precision {
             Precision::F64 => id.answer::<D>(record),
             Precision::F32 => id.answer::<F>(record),

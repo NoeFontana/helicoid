@@ -17,7 +17,7 @@ defects and the oracle runners.
 | Reference generator and committed corpus v1 (§4) | Partial: generator skeleton and committed corpus v1 with 150-digit mpmath reference generation across scalar and group strata. SE(2) coefficients pending. |
 | Conformance harness and result schema (§5) | Partial: `cargo xtask conformance` runner, result CSV generation, and seeded defect checks; `cargo xtask compare` (`0038`, `0078`). Backward error (`Log` near π) and `@f32` strata for most vector ids pending; `so3_from_matrix` is scored forward at both precisions ([`0085`](./decisions/0085-from-matrix-is-measured-on-exact-rotations.md)). |
 | Threshold sweep and generated-file format (§6) | Partial: two-stage threshold sweep over full domain generating `coeffs` and series tables (`0039`, `0047`). |
-| Oracle runners: sophus-rs, nalgebra (excluded crates); Sophus, manif, GTSAM (containers) (§7) | Partial: runners implemented for `sophus_rs` and `nalgebra` (`0056`) over file protocol; `tf_tree_math`'s removed, a consumer and not an oracle ([`0107`](./decisions/0107-the-consumer-is-not-an-oracle.md)); the Sophus (`0072`), GTSAM (`0074`) and manif (`0075`) containers done; nalgebra and Sophus answer `@f32` strata in binary32 (`0077`); the Sophus image answers `eig3` with its Eigen ([`0083`](./decisions/0083-eig3-is-also-judged-against-eigen.md)). |
+| Oracle runners: sophus-rs, nalgebra (excluded crates); Sophus, manif, GTSAM, basalt-headers (containers) (§7) | Partial: runners implemented for `sophus_rs` and `nalgebra` (`0056`) over file protocol; `tf_tree_math`'s removed, a consumer and not an oracle ([`0107`](./decisions/0107-the-consumer-is-not-an-oracle.md)); the Sophus (`0072`), GTSAM (`0074`), manif (`0075`) and basalt-headers (`0116`, the spline ids) containers done; nalgebra and Sophus answer `@f32` strata in binary32 (`0077`); the Sophus image answers `eig3` with its Eigen ([`0083`](./decisions/0083-eig3-is-also-judged-against-eigen.md)). |
 | Envelope and bars (§8) | Partial: domination and no-regression gating over baseline and oracles (`0006`). Baseline blessing awaiting Phase 3 candidate rows. |
 | Bench harness and gate (§9) | Partial: criterion benchmarks and replicate-outermost gate (`0033` draft). Bench-check CI job pending. |
 | Seeded-defect validation (§10) | Partial: `just conformance --self-test` runs defect injection for coefficient, SO(3), and SE(3) defects. |
@@ -55,7 +55,7 @@ helicoid/
 │   ├── sweeps/             # committed sweep CSVs (Phase 3 onward)
 │   ├── baseline/           # committed per-stratum maxima: the no-regress bar
 │   └── results/            # gitignored
-├── docker/oracles/{sophus,manif,gtsam}/   # Dockerfile + runner, file protocol (§7)
+├── docker/oracles/{sophus,manif,gtsam,basalt}/   # Dockerfile + runner, file protocol (§7)
 ├── baseline/               # bench baselines + HOST.md (§9)
 └── docs/                   # this book; docs/evidence/ENVELOPE.md is generated (§8)
 ```
@@ -473,7 +473,8 @@ sample count by an edit to this list, never silently.
   `eig3` by the image's Eigen `SelfAdjointEigenSolver`,
   [`0083`](./decisions/0083-eig3-is-also-judged-against-eigen.md)),
   `manif` (header-only, small C++ runner), `gtsam` (`Rot3`/`Pose3` `Expmap`/`Logmap` and their
-  derivatives).
+  derivatives), `basalt` (basalt-headers' splines,
+  [`0116`](./decisions/0116-the-spline-is-measured-before-it-ships.md) decision 4).
 - **Independence.** An oracle is independent of `helicoid`: a consumer migrating onto it is not
   one ([`0107`](./decisions/0107-the-consumer-is-not-an-oracle.md)).
 - **Pinning.** Every runner pins its oracle; the envelope records oracle versions.

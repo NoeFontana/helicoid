@@ -650,6 +650,7 @@ dependencies = [
  "criterion",
  "helicoid",
  "helicoid-linalg",
+ "helicoid-spline",
  "libm",
  "num-bigint",
  "serde",
