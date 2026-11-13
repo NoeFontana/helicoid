@@ -82,3 +82,84 @@ where
         acc,
     }
 }
+
+/// The control Jacobians by **forward** accumulation, one pass per control, `O(K²)`: the chain
+/// rule pushed through the recursion from `X_0` up, where the kernel pulls it back from the output
+/// (`docs/maths/splines.md` BS.6). Same side conversion as the kernel.
+pub fn spline_jacobians<
+    S: Real,
+    G: LieGroup<S>,
+    Sd: helicoid::Side,
+    const K: usize,
+    const D: usize,
+>(
+    window: &[G; K],
+    w: &Weights<S, K, D>,
+) -> crate::ControlJacobians<S, G, K>
+where
+    Order<K>: ValidOrder,
+{
+    let (d, a) = factors(window, w);
+    let id = G::Jac::identity();
+    let zero = id.scale(S::zero());
+    let mut out = crate::ControlJacobians {
+        value: [zero; K],
+        vel: [zero; K],
+        acc: [zero; K],
+    };
+    for m in 0..K {
+        // `∂d_j/∂δ_m`: `J_r⁻¹(d_m)` at `j = m`, `−J_l⁻¹(d_{m+1})` at `j = m + 1`, else 0.
+        let dd = |j: usize| {
+            if j == m {
+                G::jr_inv(&d[j])
+            } else if j == m + 1 {
+                G::jl_inv(&d[j]).neg()
+            } else {
+                zero
+            }
+        };
+        let mut gx = if m == 0 { id } else { zero };
+        let (mut gv, mut ga) = (zero, zero);
+        let (mut vel, mut acc) = (G::Tangent::zero(), G::Tangent::zero());
+        for j in 1..K {
+            let r = a[j].inverse().adjoint();
+            let jj = G::jr(&d[j].scale(w.lambda[j]));
+            let ddj = dd(j);
+            let vel_next = r.apply(&vel).add(&d[j].scale(w.dot[j]));
+            let pw = G::ad(&r.apply(&vel))
+                .mul(&jj)
+                .scale(w.lambda[j])
+                .add(&id.scale(w.dot[j]));
+            let pa = G::ad(&r.apply(&acc))
+                .mul(&jj)
+                .scale(w.lambda[j])
+                .add(&id.scale(w.ddot[j]))
+                .add(&G::ad(&vel_next).scale(w.dot[j]))
+                .add(&G::ad(&d[j]).mul(&pw).scale(-w.dot[j]));
+            let ga_next = r
+                .mul(&ga)
+                .add(&G::ad(&d[j]).mul(&r).mul(&gv).scale(-w.dot[j]))
+                .add(&pa.mul(&ddj));
+            gv = r.mul(&gv).add(&pw.mul(&ddj));
+            ga = ga_next;
+            gx = r.mul(&gx).add(&jj.mul(&ddj).scale(w.lambda[j]));
+            let coriolis = G::ad(&vel_next).apply(&d[j]).scale(w.dot[j]);
+            acc = r.apply(&acc).add(&d[j].scale(w.ddot[j])).add(&coriolis);
+            vel = vel_next;
+        }
+        out.value[m] = gx;
+        out.vel[m] = if D >= 1 { gv } else { zero };
+        out.acc[m] = if D >= 2 { ga } else { zero };
+    }
+    if !Sd::IS_RIGHT {
+        let ad_x: G::Jac = spline_value(window, w).adjoint();
+        for (m, xm) in window.iter().enumerate() {
+            let ad_inv = xm.inverse().adjoint();
+            out.value[m] = ad_x.mul(&out.value[m]).mul(&ad_inv);
+            let (v, a): (G::Jac, G::Jac) = (out.vel[m], out.acc[m]);
+            out.vel[m] = v.mul(&ad_inv);
+            out.acc[m] = a.mul(&ad_inv);
+        }
+    }
+    out
+}
