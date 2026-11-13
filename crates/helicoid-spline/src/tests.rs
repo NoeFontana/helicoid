@@ -460,3 +460,157 @@ proptest! {
         }
     }
 }
+
+// ---- control Jacobians ---------------------------------------------------------------------------
+
+use crate::reference::spline_jacobians;
+use crate::{ControlJacobians, JacSegment};
+use helicoid::{Jac, Left, Right, Side};
+use helicoid_linalg::StridedMut;
+
+fn dense_jac<T: Tangent<f64>, J: Jac<f64, T>>(j: &J) -> Vec<f64> {
+    let n = T::DOF;
+    let mut buf = std::vec![0.0; n * n];
+    j.write_dense(&mut StridedMut::col_major(&mut buf, n, n));
+    buf
+}
+
+/// Frobenius `‖a − b‖ / max(‖b‖, 1)` in `f64::EPSILON`.
+fn jac_err(a: &[f64], b: &[f64]) -> f64 {
+    let diff: f64 = a
+        .iter()
+        .zip(b)
+        .map(|(x, y)| (x - y) * (x - y))
+        .sum::<f64>()
+        .sqrt();
+    let scale: f64 = b.iter().map(|y| y * y).sum::<f64>().sqrt();
+    diff / scale.max(1.0) / f64::EPSILON
+}
+
+fn jac_twins<G: LieGroup<f64>, Sd: Side, const K: usize>(raw: &[f64], u: f64, inv_h: f64, step: f64)
+where
+    Order<K>: ValidOrder,
+{
+    let w = Weights::<f64, K, 2>::at(u, inv_h);
+    let ctrl = window::<f64, G, K>(&taus(raw, G::Tangent::DOF, K, step));
+    let seg = JacSegment::new(&ctrl);
+    let (kin, fast) = seg.kinematics_jacobians::<Sd, 2>(&w);
+    let slow: ControlJacobians<f64, G, K> = spline_jacobians::<f64, G, Sd, K, 2>(&ctrl, &w);
+    let plain = seg.segment().kinematics(&w);
+    let bits = |t: &G::Tangent| dense(t).into_iter().map(f64::to_bits).collect::<Vec<_>>();
+    assert_eq!(
+        bits(&kin.vel),
+        bits(&plain.vel),
+        "kinematics_jacobians repeats kinematics"
+    );
+    assert_eq!(bits(&kin.acc), bits(&plain.acc));
+    for m in 0..K {
+        let ev = jac_err(&dense_jac(&fast.value[m]), &dense_jac(&slow.value[m]));
+        let ew = jac_err(&dense_jac(&fast.vel[m]), &dense_jac(&slow.vel[m])) / inv_h.max(1.0);
+        let ea =
+            jac_err(&dense_jac(&fast.acc[m]), &dense_jac(&slow.acc[m])) / (inv_h * inv_h).max(1.0);
+        assert!(
+            ev <= 1e3 && ew <= 1e4 && ea <= 1e5,
+            "K={K} m={m} right={}: value {ev} vel {ew} acc {ea}",
+            Sd::IS_RIGHT
+        );
+    }
+}
+
+proptest! {
+    #[test]
+    fn spline_jacobians_matches_reference(
+        raw in prop::collection::vec(-1.0_f64..1.0, 36),
+        u in -0.25_f64..1.25,
+        inv_h in prop::sample::select(std::vec![1e-3_f64, 1.0, 1e3]),
+        step in prop::sample::select(std::vec![1e-9_f64, 1e-3, 0.5, 1.5]),
+    ) {
+        jac_twins::<SO3<f64>, Right, 4>(&raw, u, inv_h, step);
+        jac_twins::<SO3<f64>, Left, 6>(&raw, u, inv_h, step);
+        jac_twins::<SE3<f64>, Right, 5>(&raw, u, inv_h, step);
+        jac_twins::<SE3<f64>, Left, 4>(&raw, u, inv_h, step);
+        jac_twins::<R3<f64>, Right, 3>(&raw, u, inv_h, step);
+        jac_twins::<Split<f64>, Right, 6>(&raw, u, inv_h, step);
+    }
+}
+
+/// `Dual` along `X_m Exp(ε)` (right) or `Exp(ε) X_m` (left), `N` = the group's DOF lanes.
+fn jacobians_by_dual<G, GD, Sd: Side, const K: usize, const N: usize>(
+    raw: &[f64],
+    u: f64,
+    inv_h: f64,
+) where
+    G: LieGroup<f64>,
+    GD: LieGroup<Dual<f64, N>>,
+    Order<K>: ValidOrder,
+{
+    type DN<const N: usize> = Dual<f64, N>;
+    let t = taus(raw, N, K, 0.7);
+    let ctrl = window::<f64, G, K>(&t);
+    let (kin, jac) =
+        JacSegment::new(&ctrl).kinematics_jacobians::<Sd, 2>(&Weights::<f64, K, 2>::at(u, inv_h));
+    let lifted: Vec<Vec<DN<N>>> = t
+        .iter()
+        .map(|v| v.iter().map(|&x| DN::<N>::constant(x)).collect())
+        .collect();
+    let base = window::<DN<N>, GD, K>(&lifted);
+    let eps = GD::Tangent::read_dense(&core::array::from_fn::<DN<N>, N, _>(|i| {
+        DN::<N>::variable(0.0, i)
+    }));
+    let x0 = {
+        let v: Vec<DN<N>> = dense(&kin.value.log())
+            .into_iter()
+            .map(DN::<N>::constant)
+            .collect();
+        GD::exp(&GD::Tangent::read_dense(&v))
+    };
+    let wd = Weights::<DN<N>, K, 2>::at(DN::<N>::constant(u), DN::<N>::constant(inv_h));
+    for m in 0..K {
+        let mut moved = base;
+        moved[m] = if Sd::IS_RIGHT {
+            base[m] * GD::exp(&eps)
+        } else {
+            GD::exp(&eps) * base[m]
+        };
+        let k = Segment::new(&moved).kinematics(&wd);
+        let local = if Sd::IS_RIGHT {
+            (x0.inverse() * k.value).log()
+        } else {
+            (k.value * x0.inverse()).log()
+        };
+        // Column `c` of a Jacobian is lane `c` of each output component; dense is column-major.
+        let cols = |t: &GD::Tangent| {
+            let rows = dense(t);
+            let mut out = std::vec![0.0; N * N];
+            for (r, x) in rows.iter().enumerate() {
+                for c in 0..N {
+                    out[c * N + r] = x.d[c];
+                }
+            }
+            out
+        };
+        let ev = jac_err(&dense_jac(&jac.value[m]), &cols(&local));
+        let ew = jac_err(&dense_jac(&jac.vel[m]), &cols(&k.vel)) / inv_h.max(1.0);
+        let ea = jac_err(&dense_jac(&jac.acc[m]), &cols(&k.acc)) / (inv_h * inv_h).max(1.0);
+        assert!(
+            ev <= 1e4 && ew <= 1e4 && ea <= 1e5,
+            "m={m} right={}: {ev} {ew} {ea}",
+            Sd::IS_RIGHT
+        );
+    }
+}
+
+proptest! {
+    #[test]
+    fn jacobians_match_dual(
+        raw in prop::collection::vec(-1.0_f64..1.0, 36),
+        u in 0.0_f64..1.0,
+        inv_h in prop::sample::select(std::vec![0.5_f64, 1.0, 4.0]),
+    ) {
+        jacobians_by_dual::<SO3<f64>, SO3<Dual<f64, 3>>, Right, 4, 3>(&raw, u, inv_h);
+        jacobians_by_dual::<SO3<f64>, SO3<Dual<f64, 3>>, Left, 6, 3>(&raw, u, inv_h);
+        jacobians_by_dual::<SE3<f64>, SE3<Dual<f64, 6>>, Right, 5, 6>(&raw, u, inv_h);
+        jacobians_by_dual::<SE3<f64>, SE3<Dual<f64, 6>>, Left, 4, 6>(&raw, u, inv_h);
+        jacobians_by_dual::<R3<f64>, Rn<Dual<f64, 3>, 3>, Right, 5, 3>(&raw, u, inv_h);
+    }
+}
