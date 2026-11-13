@@ -15,6 +15,7 @@ from . import (
     check_real,
     check_se2,
     check_sen3,
+    check_spline,
     chol,
     coeff,
     cubic,
@@ -33,6 +34,7 @@ from . import (
     sim3,
     so2,
     so3,
+    spline,
     svd,
 )
 from .strata import (
@@ -297,6 +299,51 @@ FUNCTIONS: dict[str, FunctionSpec] = {
             "real_atan2", real.ATAN2_STRATA, drawn_inputs, real.atan2, check_real.real_atan2
         ),
         FunctionSpec("real_div", real.DIV_STRATA, drawn_inputs, real.div, check_real.real_div),
+        # docs/decisions/0116: the uniform cumulative B-spline, one id per output (decision 1).
+        *(
+            spec
+            for order, name in enumerate(("value", "vel", "acc"))
+            for spec in (
+                FunctionSpec(
+                    f"so3_spline_{name}",
+                    spline.SO3_STRATA,
+                    drawn_inputs,
+                    spline.so3_output(order),
+                    check_spline.group_output("so3", order),
+                ),
+                FunctionSpec(
+                    f"so3_spline_{name}_jac",
+                    spline.SO3_STRATA,
+                    drawn_inputs,
+                    spline.so3_jacobian(order),
+                    check_spline.so3_jacobian(order),
+                ),
+                FunctionSpec(
+                    f"rn_spline_{name}",
+                    spline.RN_STRATA,
+                    drawn_inputs,
+                    spline.rn_output(order),
+                    check_spline.rn_output(order),
+                ),
+                FunctionSpec(
+                    f"rn_spline_{name}_jac",
+                    spline.RN_STRATA,
+                    drawn_inputs,
+                    spline.rn_jacobian(order),
+                    check_spline.rn_jacobian(order),
+                ),
+                FunctionSpec(
+                    f"se3_spline_{name}",
+                    spline.SE3_STRATA,
+                    drawn_inputs,
+                    spline.se3_output(order),
+                    check_spline.group_output("se3", order),
+                ),
+            )
+        ),
+        FunctionSpec(
+            "rn_spline_gram", spline.GRAM_STRATA, drawn_inputs, spline.gram, check_spline.gram
+        ),
         # 0087: `Real::round_from_f64`, the value at the stratum's precision.
         FunctionSpec(
             "real_round_from_f64",

@@ -190,7 +190,8 @@ enum Shape {
 
 /// The inputs that are quaternions, whose negative is the same rotation (`0091`, draft). The
 /// generator writes each quaternion of a `Log` id and then its negative (`gen/so3.py`,
-/// `gen/sen3.py`); `quaternion_inputs_are_four_vectors` holds this list to the corpus.
+/// `gen/sen3.py`); `quaternion_inputs_are_four_vectors` holds this list to the corpus. A spline's
+/// `q` stacks one quaternion per control (`0116`), each its own sign.
 pub(crate) const QUATERNION_INPUTS: [&str; 3] = ["q", "q0", "q1"];
 
 /// Each record's draw (`0091`, draft): the smallest id among the records of its stratum whose
@@ -198,20 +199,26 @@ pub(crate) const QUATERNION_INPUTS: [&str; 3] = ["q", "q0", "q1"];
 /// from an error, so the grouping cannot lean on the answer a test asks of it. Two records that are
 /// one draw are one rotation, or one input written twice, and a program answers both alike.
 pub(crate) fn draws(records: &[Record]) -> BTreeMap<u64, u64> {
-    // A record's stratum and its inputs by name as bit patterns, the quaternions sign-folded.
+    // A record's stratum and its inputs by name as bit patterns, each quaternion sign-folded.
     type Draw<'a> = (&'a str, Vec<(&'a str, Vec<u64>)>);
+    let fold = |q: &[f64]| -> Vec<u64> {
+        let neg = q.iter().find(|x| **x != 0.0).is_some_and(|x| *x < 0.0);
+        q.iter()
+            .map(|&x| if neg { -x } else { x }.to_bits())
+            .collect()
+    };
     let mut first: BTreeMap<Draw, u64> = BTreeMap::new();
     let mut out = BTreeMap::new();
     for r in records {
         let key: Vec<(&str, Vec<u64>)> = r
             .inputs
             .iter()
-            .map(|(name, t)| {
-                let neg = QUATERNION_INPUTS.contains(&name.as_str())
-                    && t.data.iter().find(|x| **x != 0.0).is_some_and(|x| *x < 0.0);
-                let bits = t.data.iter().map(|&x| if neg { -x } else { x }.to_bits());
-                (name.as_str(), bits.collect())
-            })
+            .map(
+                |(name, t)| match QUATERNION_INPUTS.contains(&name.as_str()) {
+                    true => (name.as_str(), t.data.chunks(4).flat_map(fold).collect()),
+                    false => (name.as_str(), t.data.iter().map(|x| x.to_bits()).collect()),
+                },
+            )
             .collect();
         let draw = *first.entry((r.stratum.as_str(), key)).or_insert(r.id);
         out.insert(r.id, draw);
@@ -388,8 +395,34 @@ mod tests {
         Ok(())
     }
 
-    /// Every [`QUATERNION_INPUTS`] input of the committed corpus has four components, and the
-    /// `Log` ids the generator twins name theirs `q`.
+    /// `0116`: a spline's `q` is one quaternion per control, and each folds its own sign.
+    #[test]
+    fn each_quaternion_of_a_stack_folds_its_own_sign() -> Result<(), String> {
+        let (p, m) = ("\"0x1p-1\"", "\"-0x1p-1\"");
+        let stack = |id: u64, first: &str, second: &str| {
+            let q = [first; 4]
+                .into_iter()
+                .chain([second; 4])
+                .collect::<Vec<_>>();
+            parse_line(&format!(
+                r#"{{"id":{id},"stratum":"s","in":{{"q":[{}]}},"out":{{"y":["0"]}}}}"#,
+                q.join(",")
+            ))
+        };
+        let records = [
+            stack(0, p, p)?,
+            stack(1, m, p)?,
+            stack(2, p, m)?,
+            stack(3, m, m)?,
+        ];
+        let d: Vec<u64> = draws(&records).into_values().collect();
+        assert_eq!(d, [0, 0, 0, 0]);
+        Ok(())
+    }
+
+    /// Every [`QUATERNION_INPUTS`] input of the committed corpus is quaternions, four components
+    /// each (one per control for a spline, `0116`), and the `Log` ids the generator twins name
+    /// theirs `q`.
     #[test]
     fn quaternion_inputs_are_four_vectors() -> Result<(), String> {
         let dir = crate::conformance::corpus_dir()?;
@@ -398,7 +431,9 @@ mod tests {
             for r in read(&dir, &e)? {
                 for (name, t) in &r.inputs {
                     if QUATERNION_INPUTS.contains(&name.as_str()) {
-                        assert_eq!(t.data.len(), 4, "{} {name}", e.fn_id);
+                        let stack = e.fn_id.contains("_spline_");
+                        let n = t.data.len();
+                        assert!(n == 4 || (stack && n % 4 == 0), "{} {name}", e.fn_id);
                         seen.insert(e.fn_id.clone());
                     }
                 }

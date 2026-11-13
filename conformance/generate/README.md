@@ -26,6 +26,7 @@ uv run --frozen python -m gen list
 | `gen/charts.py`, `gen/s2.py`, `gen/check_charts.py` | the chart ids (`docs/decisions/0060` decision 8, `0063`) and their cross-checks |
 | `gen/sim3.py`, `gen/check_sim3.py` | the Sim(3) ids (`docs/decisions/0070`) and their cross-checks |
 | `gen/inv_act.py`, `gen/check_inv_act.py` | the inverse-action ids (`docs/decisions/0103`), `se3_inv_act`'s strata, and their cross-checks |
+| `gen/spline.py`, `gen/check_spline.py` | the spline ids (`docs/decisions/0116`), their strata, and their cross-checks against `docs/NUMERICS.md` §21 |
 | `gen/sim3coeff.py` | `sim3_series.jsonl` (`1/n!` per precision) and `sim3_ref.jsonl` (the Sim(3) coefficients on rays, for `cargo xtask thresholds`) |
 | `gen/fmt.py`, `gen/corpus.py`, `gen/manifest.py` | text formats and `Mat`, assembly (parallel by stratum) and recheck, `MANIFEST.json` |
 
@@ -220,6 +221,42 @@ binary32), `gauss:lever` (a left `Σ_L = Ad Σ_R Adᵀ` at `‖t‖ = 10³`, bin
 `gauss:near-cut` (the residual's rotation in `[2.5, 3]`) and `gauss:indefinite`. Cross-check:
 `d2` from the other side's residual and covariance (GG.10(a)), and `valid` from the eigenvalues of
 the equilibrated `Sigma`.
+
+## Splines (`docs/decisions/0116`)
+
+Sixteen ids (`gen/spline.py`), one per output: `so3_spline_{value,vel,acc}` and their `_jac`,
+`rn_spline_{value,vel,acc}` and their `_jac`, `se3_spline_{value,vel,acc}`, `rn_spline_gram`.
+
+| Id | In | Out |
+|---|---|---|
+| `so3_spline_*` | `q` (4K, `w` first per control), `u`, `inv_h`; K = 4, 5, 6 | `q`; `omega` (ω h); `alpha` (ω̇ h²) |
+| `so3_spline_*_jac` | as above | `jac`, 3 × 3K: `[J_0 … J_{K−1}]`, right Jacobians, column `3m + k` along `X_m Exp(ε e_k)`, scaled as the output |
+| `rn_spline_*` | `p` (3K), `u`, `inv_h`; K = 2 … 6 | `p`; `v` (ṗ h); `a` (p̈ h²) |
+| `rn_spline_*_jac` | as above | `k` (K): each control's `k I`, `b_m`, `ḃ_m h`, `b̈_m h²` |
+| `se3_spline_*` | `q` (4K), `x` (3K), `u`, `inv_h`; K = 4, 5, 6 | `q`, `x`; `twist` (6, rotation-first body twist × h, its derivative × h²) |
+| `rn_spline_gram` | `k`, `r`, `inv_h` | `g`, K × K |
+
+- **Value**: `X_0 ∏ Exp(λ_j d_j)`, `λ_j` from Cox–de Boor's recursion in exact rationals, `d_j` the
+  geometric `Log` of `gen.so3`/`gen.sen3`, never `mp.logm`; SO(3)'s `Exp` is mpmath's cosine and
+  sine of the half angle, SE(3)'s `gen.sen3.exp`.
+- **Derivatives** are in `u`, which is `h` (`h²`) times the time derivative: no output reads
+  `inv_h`. `mp.diff` of the quaternion curve (and of `x`), formed into `2 vec(q* q')`,
+  `2 vec(q* q'')`, `Rᵀx'` and `Rᵀx'' − ω × Rᵀx'`. A Jacobian is `mp.diff` in ε of the output at
+  `X_m Exp(ε e_k)`. A factor whose weight vanishes at `u` to the output's order is left out, so the
+  control it alone carries (the last, at `u = 0`) reads an exact 0, which the recheck can compare.
+- **R^n** and **Gram** are exact rationals, rounded once.
+- **Strata** (`PHASE1.md` §4.4): `inc:{generic,tiny,large,near-pi,mixed}`, `u:{0,half,1-ulp}`,
+  `h:{1e-3,1e3}` (R^n: `inc:{generic,large,mixed}` and the same `u` and `h`), 6 records each with
+  K cycling, 64 deep, then every `@f32` twin on the same streams. The controls are formed from the
+  increments outward from an anchor and rounded at each step; an `@f32` twin with a tiny increment
+  anchors it at one of `±1, ±i, ±j, ±k` (the origin for a point), where binary32 keeps it. The Gram
+  strata are `h:2^-10`, `h:1`, `h:2^10`, one record per `(K, r)`, `r ≤ min(2, K − 1)`.
+- **Cross-checks** (`gen/check_spline.py`), to 10⁻¹⁰⁰ of the output's size: §21's recursions
+  (integer basis, Horner weights, `ω` and `ω̇`, the Jacobians' forward and backward passes) with the
+  quaternion series and `atan2`'s `Log`; continuity across a knot to order `min(K − 2, 2)`; R^n's
+  `Σ b_s p_s` and each `k` as an exact difference; the Gram's §21 sum exactly, symmetric rows
+  summing to zero, and its 30 digits rounding to the exact value's binary64 and binary32.
+- Cost: the SO(3) Jacobian files are the family's most, about 10 CPU-seconds a record.
 
 ## SO(2) and SE(2)
 

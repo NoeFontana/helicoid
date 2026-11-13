@@ -199,6 +199,48 @@
       "records": 1152,
       "sha256": "235a619fd95f89a29541347ca8857047a61a2d58dd2a30ec190f928764bcc8a6"
     },
+    "rn_spline_acc.jsonl": {
+      "kind": "corpus",
+      "rechecked": 16,
+      "records": 96,
+      "sha256": "d7f7b6d0261fb5a3e48943aabc42088bdec234c3dfca51fc5a097c72f458125b"
+    },
+    "rn_spline_acc_jac.jsonl": {
+      "kind": "corpus",
+      "rechecked": 16,
+      "records": 96,
+      "sha256": "8469701319aa24dffa19caff407364b389aca761f29038176d26e2e981450e5b"
+    },
+    "rn_spline_gram.jsonl": {
+      "kind": "corpus",
+      "rechecked": 6,
+      "records": 54,
+      "sha256": "29d704fcf11f01df86ac307f4f82973bbc20454f7215ecfd923c50ede86ac013"
+    },
+    "rn_spline_value.jsonl": {
+      "kind": "corpus",
+      "rechecked": 16,
+      "records": 96,
+      "sha256": "b84743e821b9bbd2a91744a39b4aa1dac41397ee0380a8988a6e19d89bc80e8e"
+    },
+    "rn_spline_value_jac.jsonl": {
+      "kind": "corpus",
+      "rechecked": 16,
+      "records": 96,
+      "sha256": "60914f951ae72378ffc925860ed214448045fc1ffd04c6521c95fdd5d460efc6"
+    },
+    "rn_spline_vel.jsonl": {
+      "kind": "corpus",
+      "rechecked": 16,
+      "records": 96,
+      "sha256": "26c47c2bc51372550b018fd416fbbc5efa7736eedc2a96e1971a3fe93ed39eca"
+    },
+    "rn_spline_vel_jac.jsonl": {
+      "kind": "corpus",
+      "rechecked": 16,
+      "records": 96,
+      "sha256": "d9a59bd038350e3e625533a38936829ce2407c1a77f8f37d35bbe7f6ec0fd258"
+    },
     "s2_local.jsonl": {
       "kind": "corpus",
       "rechecked": 6,
@@ -288,6 +330,24 @@
       "rechecked": 52,
       "records": 312,
       "sha256": "f49e0c61527b553349d24e83c746805cf429e7f5d8cd62d20986189bfdcf73a5"
+    },
+    "se3_spline_acc.jsonl": {
+      "kind": "corpus",
+      "rechecked": 20,
+      "records": 120,
+      "sha256": "bea9e904170c9039522ccb91d6084803b6a8ecedd907daeb68161895c1e2e381"
+    },
+    "se3_spline_value.jsonl": {
+      "kind": "corpus",
+      "rechecked": 20,
+      "records": 120,
+      "sha256": "f7f635f525f9472379d39c5c0eb8c9a5f1dd74efb91de02c852f3cb6cec48d6a"
+    },
+    "se3_spline_vel.jsonl": {
+      "kind": "corpus",
+      "rechecked": 20,
+      "records": 120,
+      "sha256": "1aec92cd7bf2364fe0a91fb97e875534d9cc5b5c16c2dba0da7b08543690024d"
     },
     "se3_world_local.jsonl": {
       "kind": "corpus",
@@ -565,6 +625,42 @@
       "records": 5124,
       "sha256": "577f40aa3db75180b8168b459e383bc53182a24856995d267c000b498d8ac5c1"
     },
+    "so3_spline_acc.jsonl": {
+      "kind": "corpus",
+      "rechecked": 20,
+      "records": 120,
+      "sha256": "e496dee5ef6bf31c2ebc407aeafd715a0291bf7efe398bb3abb02437dfe06ff9"
+    },
+    "so3_spline_acc_jac.jsonl": {
+      "kind": "corpus",
+      "rechecked": 20,
+      "records": 120,
+      "sha256": "a78c3e8ca7575c764a9a56cfd93e1e209e40add922548209a8df2990d448ba7e"
+    },
+    "so3_spline_value.jsonl": {
+      "kind": "corpus",
+      "rechecked": 20,
+      "records": 120,
+      "sha256": "72743f27113d190f9bebad9cc6b1436f2f81e54057a9cab1739848c453e597a1"
+    },
+    "so3_spline_value_jac.jsonl": {
+      "kind": "corpus",
+      "rechecked": 20,
+      "records": 120,
+      "sha256": "15eb3f2baa411d415caa479defdd2753db1605f41c86a8d730dc8b0267e9d0b4"
+    },
+    "so3_spline_vel.jsonl": {
+      "kind": "corpus",
+      "rechecked": 20,
+      "records": 120,
+      "sha256": "7c4c623bae30f93e56e97d8d5c5a6cc644b7c73e689c1af3c8bd08d390f33de6"
+    },
+    "so3_spline_vel_jac.jsonl": {
+      "kind": "corpus",
+      "rechecked": 20,
+      "records": 120,
+      "sha256": "0e19e3d1b08a3d41bca1b7b1c26d19b6b12a34e52d4b51e10c60b6b8ca5e5aa2"
+    },
     "solve_cubic.jsonl": {
       "kind": "corpus",
       "rechecked": 24,
@@ -578,7 +674,7 @@
       "sha256": "a4f5783bfca8ae06c9e63ec21b221b2b25ee146d761e662bb292d73b123609ff"
     }
   },
-  "generator": "sha256:a0979df1c3d3fa338b8178e8f517944ff31f9c8d61b761d623742563ec1f83e6",
+  "generator": "sha256:f052925ec2ad06a32fd5b50ec75d43e5b108e39d23cc5de93ab4840b44abd02d",
   "mpmath": "1.4.1",
   "python": "3.12",
   "recheck": {
