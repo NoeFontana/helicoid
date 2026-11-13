@@ -4,8 +4,8 @@
 //! - **Value, velocity, acceleration** run one generic recursion over `LieGroup`'s `exp`, `log`
 //!   (through `rminus`), `adjoint` and `ad`, on SO(3), SE(3) and `Rn<_, 3>`.
 //! - **The SO(3) Jacobians** are §21's forward and backward passes in dense `Mat3` arithmetic, which
-//!   SO(3)'s `Jac = Mat3` allows: the per-control sums need `Jac::add` (`0112`), which a generic
-//!   group does not have yet.
+//!   SO(3)'s `Jac = Mat3` allows, so they share nothing with `helicoid-spline`'s generic
+//!   accumulation through `Jac::add` (`0112`).
 //! - **R^n's Jacobian** is `k = λ_m − λ_{m+1}`, the recursion's per-control sum at `Ad = J = I`.
 //! - **The Gram matrix** is §21's sum reduced to one fraction per entry, `S::lit(num) / S::lit(den)`,
 //!   then `h⁻¹` raised to `2r − 1` by repeated products.
@@ -13,12 +13,13 @@
 //! A derivative output is scaled to unit size as its id states: `ω / h⁻¹`, `ω̇ / (h⁻¹ h⁻¹)`, the
 //! product formed as `λ̈`'s is. Every input reaches the group exactly (`shipped::scalars`).
 
-use helicoid::{Jac, LieGroup, Quat, Rn, SEn3, Tangent, SE3, SO3};
-use helicoid_linalg::{Mat3, Precision, Real, StridedMut, Vector};
+use helicoid::{Jac, LieGroup, Tangent, SO3};
+use helicoid_linalg::{Mat3, Precision, Real, StridedMut};
 
 use crate::conformance::corpus::Record;
 use crate::conformance::subject::{Output, Registered, Subject};
 use crate::shipped::scalars;
+use crate::shipped::spline::{dense, points, poses, quat_of, rotations, scaled, segment};
 
 /// A planted defect of `0116` decision 5, each one change to the clean evaluator.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -262,67 +263,6 @@ fn so3_jacobians<S: Real>(
             acc.unwrap_or_else(zero3)
         })
         .collect()
-}
-
-/// `u` and `inv_h` of a record.
-fn segment<S: Real>(record: &Record) -> Option<(S, S)> {
-    let u = *scalars::<S>(record, "u")?.first()?;
-    let inv_h = *scalars::<S>(record, "inv_h")?.first()?;
-    Some((u, inv_h))
-}
-
-fn rotations<S: Real>(record: &Record) -> Option<Vec<SO3<S>>> {
-    let q = scalars::<S>(record, "q")?;
-    let rotation = |c: &[S]| {
-        SO3::from_quat_unchecked(Quat {
-            w: c[0],
-            x: c[1],
-            y: c[2],
-            z: c[3],
-        })
-    };
-    (q.len() % 4 == 0).then(|| q.chunks(4).map(rotation).collect())
-}
-
-fn poses<S: Real>(record: &Record) -> Option<Vec<SE3<S>>> {
-    let r = rotations::<S>(record)?;
-    let x = scalars::<S>(record, "x").filter(|x| x.len() == 3 * r.len())?;
-    let pose = |(r, t): (&SO3<S>, &[S])| SEn3::from_parts(*r, [Vector([t[0], t[1], t[2]])]);
-    Some(r.iter().zip(x.chunks(3)).map(pose).collect())
-}
-
-fn points<S: Real>(record: &Record) -> Option<Vec<Rn<S, 3>>> {
-    let p = scalars::<S>(record, "p")?;
-    (p.len() % 3 == 0).then(|| {
-        p.chunks(3)
-            .map(|c| Rn(Vector([c[0], c[1], c[2]])))
-            .collect()
-    })
-}
-
-fn dense<S: Real, T: Tangent<S>>(t: &T, n: usize) -> Vec<S> {
-    let mut out = vec![S::zero(); n];
-    t.write_dense(&mut out);
-    out
-}
-
-/// `values`, each divided by `inv_h` once per derivative order, then widened.
-fn scaled<S: Real + Into<f64>>(values: Vec<S>, order: usize, inv_h: S) -> Vec<f64> {
-    let by = match order {
-        0 => S::one(),
-        1 => inv_h,
-        _ => inv_h * inv_h,
-    };
-    values
-        .into_iter()
-        .map(|v| if order == 0 { v } else { v / by })
-        .map(Into::into)
-        .collect()
-}
-
-fn quat_of<S: Real + Into<f64>>(r: &SO3<S>) -> Vec<f64> {
-    let q = r.quat();
-    [q.w, q.x, q.y, q.z].map(Into::into).to_vec()
 }
 
 fn order_of(fn_id: &str) -> usize {

@@ -86,6 +86,7 @@ overflow-checks = false
 [workspace.dependencies]
 helicoid = { path = "crates/helicoid", version = "0.0.9" }
 helicoid-linalg = { path = "crates/helicoid-linalg", version = "0.0.9" }
+helicoid-spline = { path = "crates/helicoid-spline", version = "0.0.9" }
 # `0007`: the whole third-party budget of the library crates. `arch` routes only the exactly rounded
 # `sqrt`, `fma` and `rint` to the target's instruction: every non-NaN bit is unchanged (D16, `0018`).
 libm = { version = "0.2", default-features = false, features = ["arch"] }
