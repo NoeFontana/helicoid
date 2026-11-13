@@ -111,7 +111,7 @@ fn smallest_theta(dir: &Path, precision: Precision) -> Result<Vec<(String, f64)>
         let theta = phi_of(&r).map_or(0.0, |p| p.iter().map(|x| x * x).sum::<f64>().sqrt()) / u;
         match out.last_mut() {
             Some((s, m)) if *s == r.stratum => *m = m.min(theta),
-            _ => out.push((r.stratum.clone(), theta)),
+            _ => out.push((r.stratum, theta)),
         }
     }
     Ok(out)

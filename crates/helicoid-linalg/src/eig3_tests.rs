@@ -789,11 +789,11 @@ fn the_derivative_at_a_multiple_of_the_identity_is_finite() {
         }))
     }));
     let (l, v) = eig3(&x);
-    for k in 0..3 {
+    for (k, lk) in l.0.iter().enumerate() {
         assert!(
-            (0..3).all(|j| (l.0[k].d[j] - f64::from(u8::from(j == k))).abs() == 0.0),
+            (0..3).all(|j| (lk.d[j] - f64::from(u8::from(j == k))).abs() == 0.0),
             "{:?}",
-            l.0[k]
+            lk
         );
         assert!((0..3).all(|r| v.get(r, k).d.iter().all(|d| d.abs() == 0.0)));
     }

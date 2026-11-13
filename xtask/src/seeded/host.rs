@@ -308,7 +308,7 @@ mod tests {
                 continue;
             };
             let th = norm_sq([x, y, z]).sqrt();
-            let cell = out.entry(r.stratum.clone()).or_default();
+            let cell = out.entry(r.stratum).or_default();
             cell.1 += 1;
             if !(agree(th) && agree(0.5 * th)) {
                 cell.0 += 1;
