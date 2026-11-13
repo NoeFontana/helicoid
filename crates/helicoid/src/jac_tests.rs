@@ -17,7 +17,7 @@ use proptest::prelude::*;
 
 /// A `Jac` with `LEN` stored entries, built from as many samples; `Dual` sample `i` is variable
 /// `i mod 3`, so every lane is exercised.
-trait Stored<S: Lanes>: Sized {
+pub(crate) trait Stored<S: Lanes>: Sized {
     const LEN: usize;
     fn of(v: &[f64]) -> Self;
 }

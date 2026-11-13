@@ -47,10 +47,9 @@ pub struct RnTangent<S, const N: usize> {
     pub rho: Vector<S, N>,
 }
 
-/// A Jacobian of [`Rn`]: the matrix `k I`, closed under `mul`, `inverse`, `neg`, `add` and `scale`
-/// and holding
-/// exactly the values Rⁿ needs: `I` (`Ad`, `J_r`, `J_l` and their inverses), `-I` (the second row
-/// of `⊖` and `X⁻¹`) and `0` (`ad`).
+/// A Jacobian of [`Rn`]: the matrix `k I`, closed under `mul`, `inverse`, `neg`, `add` and
+/// `scale`. The group's own rows are `I` (`Ad`, `J_r`, `J_l` and their inverses), `-I` (the second
+/// row of `⊖` and `X⁻¹`) and `0` (`ad`); `add` and `scale` reach any `k` (`0112`).
 #[derive(Clone, Copy, Debug)]
 pub struct RnJac<S, const N: usize> {
     k: S,
@@ -237,8 +236,8 @@ impl<S: Real, const N: usize> Jac<S, RnTangent<S, N>> for RnJac<S, N> {
         // the emitted release asm: for `f64` LLVM fuses the two passes, so it costs 42 multiplies
         // against 41 here; for `Dual` it is one call against two, a real halving of the traversals.
         // It is still not worth it, because it rounds once more than the reference and so gives up
-        // a bound of `0` — measured 0.00098 u — and `k` is `0` or `±1` on every public path, where
-        // the two forms agree to the bit anyway. The `Dual` cost is confined to the law.
+        // a bound of `0` — measured 0.00098 u — at every `k` but `0` and `±1`, which `add` and
+        // `scale` reach (`0112`). The `Dual` cost is confined to the law.
         cov.scale(self.k).scale(self.k)
     }
 }
