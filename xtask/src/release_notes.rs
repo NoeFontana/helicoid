@@ -16,7 +16,7 @@ use std::path::Path;
 use std::process::Command;
 
 const USAGE: &str = "usage: cargo xtask release-notes VERSION [--out FILE]";
-const CRATES: [&str; 2] = ["helicoid", "helicoid-linalg"];
+const CRATES: [&str; 3] = ["helicoid", "helicoid-linalg", "helicoid-spline"];
 
 pub(crate) fn run(args: &[String]) -> Result<(), String> {
     let (version, out) = match args {
@@ -294,7 +294,7 @@ fn render(
             .iter()
             .map(|c| format!("[`{c} {version}`](https://crates.io/crates/{c}/{version})"))
             .collect::<Vec<_>>()
-            .join(" and "),
+            .join(", "),
         ws.rust_version
     ));
     out

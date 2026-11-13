@@ -63,6 +63,9 @@ jobs:
       - name: cargo publish helicoid
         env: { CARGO_REGISTRY_TOKEN: "${{ steps.auth.outputs.token }}" }
         run: cargo publish --locked -p helicoid
+      - name: cargo publish helicoid-spline
+        env: { CARGO_REGISTRY_TOKEN: "${{ steps.auth.outputs.token }}" }
+        run: cargo publish --locked -p helicoid-spline
 
   # Last, so the release page never announces crates that are not on the index. The notes are
   # `release-notes`' (changelog section, decision records, crates), and GitHub appends the merged
