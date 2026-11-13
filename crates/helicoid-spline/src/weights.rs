@@ -37,45 +37,47 @@ where
     pub fn at(u: S, inv_h: S) -> Self {
         const { assert!(D <= 2, "Weights: D is 0, 1 or 2") };
         let () = Tables::<K>::EXACT;
-        let table = &Tables::<K>::CUMULATIVE;
+        let rows = &Tables::<K>::ROWS;
         let f = S::lit(Tables::<K>::FACTORIAL as f64);
         let mut lambda = [S::zero(); K];
         let mut dot = [S::zero(); K];
         let mut ddot = [S::zero(); K];
         lambda[0] = S::one();
         for j in 1..K {
-            lambda[j] = horner(u, &table[j], 0) / f;
+            lambda[j] = horner(u, &rows[0][j], 0) / f;
         }
         if D >= 1 {
-            debug_assert!(S::zero().lt(inv_h).all(), "Weights::at: inv_h is positive");
+            debug_assert!(
+                finite_positive(inv_h),
+                "Weights::at: inv_h is finite and positive"
+            );
             for j in 1..K {
-                dot[j] = inv_h * (horner(u, &table[j], 1) / f);
+                dot[j] = inv_h * (horner(u, &rows[1][j], 1) / f);
             }
         }
         if D >= 2 {
             let inv_h2 = inv_h * inv_h;
             for j in 1..K {
-                ddot[j] = inv_h2 * (horner(u, &table[j], 2) / f);
+                ddot[j] = inv_h2 * (horner(u, &rows[2][j], 2) / f);
             }
         }
         Self { lambda, dot, ddot }
     }
 }
 
-/// `Σ_{k ≥ r} k!/(k-r)! · c_k · u^{k-r}` by Horner: the `r`-th derivative of the row's
-/// polynomial. Each coefficient is an integer below `2^24` (`Tables::EXACT`), so `S::lit` is exact.
+/// Every lane of `x` positive and finite (`x · 0` is NaN at `±inf`): `inv_h`'s domain (`0114`
+/// decision 6).
+pub(crate) fn finite_positive<S: Real>(x: S) -> bool {
+    S::zero().lt(x).all() && (x * S::zero()).le(S::zero()).all()
+}
+
+/// Horner on `c_{K-1}, …, c_r`: a row of `Tables::ROWS[r]`, whose entries are integers below
+/// `2^24` (`Tables::EXACT`), so `S::lit` is exact.
 #[inline]
 fn horner<S: Real, const K: usize>(u: S, c: &[i64; K], r: usize) -> S {
-    let coeff = |k: usize| {
-        let mut f = 1;
-        for i in 0..r {
-            f *= (k - i) as i64;
-        }
-        S::lit((f * c[k]) as f64)
-    };
-    let mut acc = coeff(K - 1);
+    let mut acc = S::lit(c[K - 1] as f64);
     for k in (r..K - 1).rev() {
-        acc = acc * u + coeff(k);
+        acc = acc * u + S::lit(c[k] as f64);
     }
     acc
 }
