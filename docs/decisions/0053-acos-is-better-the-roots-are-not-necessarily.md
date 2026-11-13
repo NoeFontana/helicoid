@@ -9,7 +9,7 @@
 [`0022`](./0022-real-owes-acos-and-cos.md) is `ready` and unimplemented. It adds `Real::acos` and
 `Real::cos`, deletes `cubic.rs`'s private `atan2(sqrt((1 - x)(1 + x)), x)` spelling and takes the
 sine `eig3` and `cubic` discard, on three stated reasons: **it is faster**, **it is more accurate**,
-and **it restores bit-identity with omnisac**. Implementing it as written means re-measuring, and
+and **it restores bit-identity with the source solver**. Implementing it as written means re-measuring, and
 the re-measurement does not support two of the three. `0022` is `ready`, so the index's rules allow
 it to be amended only by a signed banner from a later record; this is that record.
 
@@ -58,9 +58,9 @@ And `eig3`'s worst `value / bound` over its fixture moves **0.150 -> 0.206** on 
 both routines that call it.
 
 **Reason 3 is not verifiable in this repository.** `0022` says the trigonometric arm's values move
-"back toward omnisac". omnisac is not a dependency, no committed artefact records its per-row
-output, and `bits_are_omnisacs` **passed** before this change — so the port reproduced all 36 stored
-triples, and after it three of them differ. Whether the new three are omnisac's cannot be told from
+"back toward the source solver". The source solver is not a dependency, no committed artefact records its per-row
+output, and `bits_are_golden` **passed** before this change — so the port reproduced all 36 stored
+triples, and after it three of them differ. Whether the new three are the source solver's cannot be told from
 here.
 
 **And nothing in the corpus can see any of this.** The committed corpus has 40 ids and **none** of
@@ -79,15 +79,14 @@ at all, and the whole accuracy argument for this change rests on the two test mo
 
 2. **`0022`'s reason 2 is narrowed and its reason 3 withdrawn**, in the words of the Context above.
    The defensible claim is "the function is strictly better and the routines' recorded bounds still
-   hold", not "the roots are more accurate" and not "bit-identity with omnisac is restored".
+   hold", not "the roots are more accurate" and not "bit-identity with the source solver is restored".
 
 3. **The figures that moved are re-recorded where they live**, not only here: `cubic_tests`'s header
    loses the 5 `u` / 11 `u` deviation note and gains what is actually known about the three
    regenerated rows, and `eig3_tests`'s header moves 0.15 to 0.206 and says why.
 
-4. **`bits_are_omnisacs` keeps its name and its doc says what it now pins.** Renaming it would lose
-   the fact that the 36 rows *were* omnisac's when they were drawn, which is the only link to the
-   reference implementation this repository still has. What it no longer is, is a live comparison.
+4. **The golden-bits test's doc says what it now pins**: 36 rows that were the source solver's
+   when drawn. It is no longer a live comparison.
 
 5. **D5 becomes a lint instead of an absence.** D5 is "no `acos` of a trace anywhere in the
    workspace", and until now `Real` had no `acos`, so a group routine wanting one had to spell it
@@ -134,8 +133,8 @@ owes and *Further work* 1 names.
 - The trigonometric arm of `solve_cubic` is one `atan2`, one `sqrt` and two multiplies lighter per
   call, and three `sin` kernels lighter per solve; `eig3` likewise.
 - `cubic.rs` keeps `pi`: it is a compile-time constant and `0022`'s Context settles it separately.
-- `bits_are_omnisacs` pins this port's bits on 36 rows that were omnisac's when drawn. The link is
-  historical from here on, and decision 4 records that rather than hiding it behind a rename.
+- `bits_are_golden` pins this port's bits on 36 rows that were the source solver's when drawn. The
+  link is historical from here on (decision 4).
 - D5 is enforced for the first time. Check 8 would have flagged nothing before this change, because
   there was nothing to flag.
 - `PHASE2.md` §2's `libm` list, §3's `Dual` rules and §6's "`Real` has no `acos`" sentence move, as

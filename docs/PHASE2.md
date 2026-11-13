@@ -261,7 +261,7 @@ their Jacobian through these (faer `MatMut` and Ceres row-major buffers both map
   `cubic:distinct`, `cubic:double`, `cubic:triple`, `cubic:one-real` (planted, exact),
   `cubic:near-double-1e-k` ($k = 2, 4, 6, 8$), `cubic:one-real-p-small`,
   `cubic:coeff-scale-{up,down}`, `cubic:one-real-small-root` (`0056`, `0031`). Formulas:
-  `NUMERICS.md` §16 ([`0031`](./decisions/0031-what-the-cubic-port-inherits-from-omnisac.md)).
+  `NUMERICS.md` §16 ([`0031`](./decisions/0031-what-the-cubic-port-inherits.md)).
 - All three branch only through `S::branch`/`S::select`.
 
 ## 7. `mint`

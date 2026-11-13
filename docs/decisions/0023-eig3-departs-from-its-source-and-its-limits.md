@@ -1,4 +1,4 @@
-# 0023: `eig3` departs from omnisac, and the limits it inherits
+# 0023: `eig3` departs from its source, and the limits it inherits
 
 **Status:** draft
 **Owner:** @NoeFontana
@@ -8,9 +8,9 @@
 
 ## Context
 
-`0017` decision 4 ports `eig3` "the same way" as `solve_cubic`: omnisac's algorithm, generic over
+`0017` decision 4 ports `eig3` "the same way" as `solve_cubic`: the source solver's algorithm, generic over
 `S: Real`. `PHASE2.md` §6 gives it "as is" with the signature `eig3(a) -> (Vec3<S>, Mat3<S>)`,
-eigenvalues ascending, `det = +1`. omnisac's `eigendecomp_sym3_signed` returns
+eigenvalues ascending, `det = +1`. The source's eigendecomposition returns
 `Option<EigDecomp3>`, descending, with a third column of sign `±(v_max × v_mid)` (`det = -1` for
 50.0% of 10^6 random symmetric matrices), and gates that return `None`: a non-finite entry,
 `p <= 1e-12 max|a_ij|`, a vanishing cross product, a non-finite `r`. The specified signature has
@@ -31,18 +31,18 @@ scratch harnesses that are not committed (`eig3_tests` says which).
    every input.** `v2` is the longest cross product of two rows of `A - l2 I`, else `e_z`;
    `w` is `v2 × e`, `e` the axis of its smallest component, and `x = v2 × w`; `v1` is the
    longest cross product for `l1` projected on `(w, x)`, else `w`; `v0 = v1 × v2`, else `x`.
-   Every normalisation divides by the largest entry first. omnisac's Gram-Schmidt reaches an
+   Every normalisation divides by the largest entry first. The source solver's Gram-Schmidt reaches an
    orthogonality error of `4e-7` over 10^6 matrices (`|V^T V - I|`; the port: `4.7 u`), and its
    `det` is `-1` half the time.
 3. **`acos` and `pi` were `0022`'s reading**, shared as `pub(crate)` items of `cubic.rs` — a
    reading `0022` has since reversed: `Real` gains `acos` and `cos`, and `pi` is already a literal,
    so these call sites move with its step 1 and `eig3`'s bounds are re-measured once. `cos` is
-   `sin_cos(x).1` and `x / 3` replaces omnisac's `x * (1/3)`.
+   `sin_cos(x).1` and `x / 3` replaces the source solver's `x * (1/3)`.
 4. **The limits are documented in `# Domain` and pinned, none fixed here.**
    - *A tie of the top pair.* Where `l2 - l1` is below about `2 sqrt(u) |A|`, equal eigenvalues
      included, `v2` is rounding noise or `e_z`, and `v1` and `v0` are built from it: the vector of
      the isolated `l0` has a residual of the order of `|A|` (`0.8 |A|` for `diag(5, 1, 5)`,
-     `0.99 |A|` for `diag(100, 100, 1)`). Inherited: omnisac returns `None` for these axis-aligned
+     `0.99 |A|` for `diag(100, 100, 1)`). Inherited: the source solver returns `None` for these axis-aligned
      ties (a cross product vanishes) but answers with the same wrong vectors otherwise (`0.63 |A|`
      at `g = 0` and `0.25 |A|` at `g = 1e-9` over 200 rotations of `(1, 5, 5 + g)`).
    - *The double root.* `acos` at `r = ±1` gives eigenvalues off by up to `sqrt(u) |A|`
@@ -75,7 +75,7 @@ the specified signature, and a caller tests it with `is_finite`.
 
 1. **Accept decisions 1 and 2**, or take a mask beside the result?
 2. **Anchoring.** The tie failure is a consequence of anchoring the frame on the largest
-   eigenvalue, as omnisac does. Anchoring on the more isolated end of the spectrum (the end whose
+   eigenvalue, as the source solver does. Anchoring on the more isolated end of the spectrum (the end whose
    gap is larger, chosen by a mask on the two computed gaps) keeps the residual at the eigenvalue
    error: a `numpy` prototype without fallbacks measures `7e-9 |A|` at `g = 0` and
    `6.6e-9 |A|` at `g = 1e-9` on 200 rotations of `(1, 5, 5 + g)`, against `0.8 |A|` for the port.
@@ -87,4 +87,4 @@ the specified signature, and a caller tests it with `is_finite`.
    `0006`'s envelope against `nalgebra`'s `SymmetricEigen` (§8)?
 4. **Scaling.** Dividing by the largest entry first would remove the magnitude cliff on both
    sides at the price of one rounding per entry (up to `u |A|` on the eigenvalues) and another
-   departure from omnisac; or keep non-finite eigenvalues outside the range.
+   departure from the source solver; or keep non-finite eigenvalues outside the range.
