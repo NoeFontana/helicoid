@@ -11,7 +11,7 @@ use crate::weights::Weights;
 ///
 /// Row `m` is with respect to control `m`, perturbed on the evaluation's side. A derivative above
 /// the weights' `D` is zero.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub struct ControlJacobians<S: Real, G: LieGroup<S>, const K: usize> {
     /// `∂X/∂δ_m`, the value perturbed on the same side as the controls.
     pub value: [G::Jac; K],
@@ -30,7 +30,8 @@ pub struct ControlJacobians<S: Real, G: LieGroup<S>, const K: usize> {
 pub struct JacSegment<S: Real, G: LieGroup<S>, const K: usize> {
     seg: Segment<S, G, K>,
     jr_inv: [G::Jac; K],
-    jl_inv: [G::Jac; K],
+    /// `−J_l⁻¹(d_j)`, negated once here rather than once per sample; the negation is exact.
+    neg_jl_inv: [G::Jac; K],
     ad_inv: [G::Jac; K],
 }
 
@@ -47,16 +48,16 @@ where
     pub fn new(window: &[G; K]) -> Self {
         let seg = Segment::new(window);
         let mut jr_inv = [G::Jac::identity(); K];
-        let mut jl_inv = [G::Jac::identity(); K];
+        let mut neg_jl_inv = [G::Jac::identity(); K];
         for j in 1..K {
             jr_inv[j] = G::jr_inv(&seg.d[j]);
-            jl_inv[j] = G::jl_inv(&seg.d[j]);
+            neg_jl_inv[j] = G::jl_inv(&seg.d[j]).neg();
         }
         let ad_inv = core::array::from_fn(|m| window[m].inverse().adjoint());
         Self {
             seg,
             jr_inv,
-            jl_inv,
+            neg_jl_inv,
             ad_inv,
         }
     }
@@ -84,8 +85,9 @@ where
 
         // Forward: the recursion of `Segment::kinematics`, keeping what the partials read.
         let mut r = [id; K];
-        let mut vel_before = [zero; K];
-        let mut acc_before = [zero; K];
+        // `R_j ω^(j-1)` and `R_j ω̇^(j-1)`, kept for the step partials rather than re-applied.
+        let mut r_vel = [zero; K];
+        let mut r_acc = [zero; K];
         let mut vel_at = [zero; K];
         let mut x = self.seg.x0;
         let (mut vel, mut acc) = (zero, zero);
@@ -95,15 +97,15 @@ where
             // `R_j` carries the value's Jacobian too (`T_j`), so it is formed at every `D`.
             r[j] = a.inverse().adjoint();
             if D >= 1 {
-                vel_before[j] = vel;
-                acc_before[j] = acc;
                 // Peeled at `j = 1` exactly as `Segment::kinematics`, so the two agree to the bit.
                 let carried = |x: &G::Tangent| if j > 1 { r[j].apply(x) } else { *x };
-                vel = carried(&vel).add(&d[j].scale(w.dot[j]));
+                r_vel[j] = carried(&vel);
+                vel = r_vel[j].add(&d[j].scale(w.dot[j]));
                 vel_at[j] = vel;
                 if D >= 2 {
+                    r_acc[j] = carried(&acc);
                     let coriolis = G::ad(&vel).apply(&d[j]).scale(w.dot[j]);
-                    acc = carried(&acc).add(&d[j].scale(w.ddot[j])).add(&coriolis);
+                    acc = r_acc[j].add(&d[j].scale(w.ddot[j])).add(&coriolis);
                 }
             }
         }
@@ -117,14 +119,14 @@ where
             let jj = G::jr(&d[j].scale(w.lambda[j]));
             dx[j] = t.mul(&jj).scale(w.lambda[j]);
             if D >= 1 {
-                let pw = G::ad(&r[j].apply(&vel_before[j]))
+                let pw = G::ad(&r_vel[j])
                     .mul(&jj)
                     .scale(w.lambda[j])
                     .add(&id.scale(w.dot[j]));
                 dv[j] = t.mul(&pw);
                 if D >= 2 {
                     let ad_d = G::ad(&d[j]);
-                    let pa = G::ad(&r[j].apply(&acc_before[j]))
+                    let pa = G::ad(&r_acc[j])
                         .mul(&jj)
                         .scale(w.lambda[j])
                         .add(&id.scale(w.ddot[j]))
@@ -138,51 +140,41 @@ where
             t = t.mul(&r[j]);
         }
 
-        // Per control: the two increments that read it, `∂d_m/∂δ_m = J_r⁻¹(d_m)` and
-        // `∂d_{m+1}/∂δ_m = −J_l⁻¹(d_{m+1})`; the term at `m + 1` added to the term at `m`.
-        let mut jac = ControlJacobians {
+        // Per increment: `d_j` reads control `j` by `J_r⁻¹(d_j)` and control `j − 1` by
+        // `−J_l⁻¹(d_j)`. Ascending `j` sets control `j`'s term at `j` before adding its term at
+        // `j + 1`, the order §21 states; control 0 starts from `T_0` for the value. Rows above `D`
+        // stay zero and cost no product.
+        let mut jac: ControlJacobians<S, G, K> = ControlJacobians {
             value: [zero_jac; K],
             vel: [zero_jac; K],
             acc: [zero_jac; K],
         };
-        for m in 0..K {
-            let mut terms: [Option<(usize, G::Jac)>; 2] = [None, None];
-            if m >= 1 {
-                terms[0] = Some((m, self.jr_inv[m]));
+        jac.value[0] = t;
+        for j in 1..K {
+            let (on_j, on_prev) = (&self.jr_inv[j], &self.neg_jl_inv[j]);
+            jac.value[j - 1] = jac.value[j - 1].add(&dx[j].mul(on_prev));
+            jac.value[j] = dx[j].mul(on_j);
+            if D >= 1 {
+                jac.vel[j - 1] = jac.vel[j - 1].add(&dv[j].mul(on_prev));
+                jac.vel[j] = dv[j].mul(on_j);
             }
-            if m + 1 < K {
-                terms[1] = Some((m + 1, self.jl_inv[m + 1].neg()));
+            if D >= 2 {
+                jac.acc[j - 1] = jac.acc[j - 1].add(&da[j].mul(on_prev));
+                jac.acc[j] = da[j].mul(on_j);
             }
-            let mut value = if m == 0 { t } else { zero_jac };
-            let (mut v, mut a) = (zero_jac, zero_jac);
-            let mut first = m != 0;
-            for (j, dd) in terms.into_iter().flatten() {
-                let (tx, tv, ta) = (dx[j].mul(&dd), dv[j].mul(&dd), da[j].mul(&dd));
-                if first {
-                    // Start from the first term, not `0 + term`, which would round the same but
-                    // costs a sum.
-                    value = tx;
-                    v = tv;
-                    a = ta;
-                    first = false;
-                } else {
-                    value = value.add(&tx);
-                    v = v.add(&tv);
-                    a = a.add(&ta);
-                }
-            }
-            jac.value[m] = value;
-            jac.vel[m] = v;
-            jac.acc[m] = a;
         }
 
         if !Sd::IS_RIGHT {
             let ad_x: G::Jac = x.adjoint();
             for m in 0..K {
-                jac.value[m] = ad_x.mul(&jac.value[m]).mul(&self.ad_inv[m]);
-                let (v, a): (G::Jac, G::Jac) = (jac.vel[m], jac.acc[m]);
-                jac.vel[m] = v.mul(&self.ad_inv[m]);
-                jac.acc[m] = a.mul(&self.ad_inv[m]);
+                let ad_inv = &self.ad_inv[m];
+                jac.value[m] = ad_x.mul(&jac.value[m]).mul(ad_inv);
+                if D >= 1 {
+                    jac.vel[m] = jac.vel[m].mul(ad_inv);
+                }
+                if D >= 2 {
+                    jac.acc[m] = jac.acc[m].mul(ad_inv);
+                }
             }
         }
         (Kinematics { value: x, vel, acc }, jac)
