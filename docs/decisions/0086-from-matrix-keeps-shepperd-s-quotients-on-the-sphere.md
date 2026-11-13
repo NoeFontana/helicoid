@@ -6,7 +6,7 @@
 
 ## Context
 
-locus-sensors builds its frame conventions (FLU, FRD, RDF, RUB, ENU, NED) with `SO3::from_matrix`
+A sensor-model consumer builds its frame conventions (FLU, FRD, RDF, RUB, ENU, NED) with `SO3::from_matrix`
 on the 24 signed permutation matrices of determinant `+1`. They are exact rotations, and their
 quaternion components lie in `{0, ±½, ±√½, ±1}`. Since `0079`, `from_matrix` normalizes the pivot's
 column of `K + I`. On a quarter turn that column is `(2, 0, 0, 2)`, its norm is `fl(√8) =

@@ -6,7 +6,7 @@
 
 ## Context
 
-Three consumers may want Lie-group splines: camera–IMU calibration, locus_fusion
+Three consumers may want Lie-group splines: camera–IMU calibration, sensor fusion
 (continuous-time or rolling-shutter estimation), and `tf_tree` Phase 6 (cumulative B-spline
 interpolation, kept by `tf_tree` 0009 §4). None has stated its problem size, knot spacing, order,
 derivative orders or precision. The design choices that matter — uniform vs non-uniform knots,

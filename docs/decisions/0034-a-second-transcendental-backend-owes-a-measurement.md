@@ -179,6 +179,6 @@ Answered by the owner, and kept here because the reasoning is load-bearing:
   It therefore constrains omnisac's own migration PR, recorded under Consequences, and does not block
   this record.
 - *Should cross-target digests come forward from Phase 6?* **No, later.** They stay in `PHASE6.md`.
-- locus_fusion is C++, so bits never cross that boundary; its contract is the envelope via the
+- The sensor-fusion consumer is C++, so bits never cross that boundary; its contract is the envelope via the
   corpus in its own suite. Only a correctly-rounded backend would extend bit identity across
   languages. Recorded so it is not rediscovered as a gap.

@@ -6,7 +6,7 @@
 
 ## Context
 
-locus-sensors reported that `SO3::from_matrix` in 0.0.3
+A sensor-model consumer reported that `SO3::from_matrix` in 0.0.3
 ([`0079`](./0079-from-matrix-normalizes-a-column-of-k.md)) returns, for an exact quarter turn
 (90° about `z`, a signed permutation matrix), a quaternion whose two `√½` components are each one
 ulp below the nearest double: `‖q‖² − 1 ≈ −1.6u` at `f64`, which every later `SO3::act` carries as
