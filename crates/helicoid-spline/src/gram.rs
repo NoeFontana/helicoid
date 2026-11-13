@@ -1,8 +1,9 @@
 //! Derivative Gram matrices of an Rⁿ spline (`NUMERICS.md` §21, `0115` decision 5).
 
-use helicoid_linalg::{Mask, Matrix, Real};
+use helicoid_linalg::{Matrix, Real, Vector};
 
 use crate::order::{Order, Tables, ValidOrder};
+use crate::weights::finite_positive;
 
 /// `G^(R)`: the energy `∫ ‖p^(R)(t)‖² dt` over one segment is `cᵀ (G^(R) ⊗ I) c` in its `K`
 /// controls. A weighted energy `Q⁻¹` is the caller's Kronecker product.
@@ -21,8 +22,8 @@ where
     const { assert!(R == 1 || R == 2, "derivative_gram: R is 1 or 2") };
     let () = Tables::<K>::EXACT;
     debug_assert!(
-        S::zero().lt(inv_h).all(),
-        "derivative_gram: inv_h is positive"
+        finite_positive(inv_h),
+        "derivative_gram: inv_h is finite and positive"
     );
     let (num, den) = &Tables::<K>::GRAM[R - 1];
     let mut scale = inv_h;
@@ -30,11 +31,9 @@ where
         scale = scale * inv_h;
     }
     let den = S::lit(*den as f64);
-    let mut g = Matrix::<S, K, K>::identity().scale(S::zero());
-    for (s, row) in num.iter().enumerate() {
-        for (t, &n) in row.iter().enumerate() {
-            g.set(s, t, S::lit(n as f64) / den * scale);
-        }
-    }
-    g
+    Matrix::from_rows(core::array::from_fn(|s| {
+        Vector(core::array::from_fn(|t| {
+            S::lit(num[s][t] as f64) / den * scale
+        }))
+    }))
 }

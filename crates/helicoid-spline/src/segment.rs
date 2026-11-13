@@ -77,13 +77,14 @@ where
             let a = G::exp(&self.d[j].scale(w.lambda[j]));
             x = x * a;
             if D >= 1 {
-                // `R_j = Ad_{A_j⁻¹}`, one adjoint shared by both recursions.
-                let r = a.inverse().adjoint();
-                vel = r.apply(&vel).add(&self.d[j].scale(w.dot[j]));
+                // `ω^(0) = ω̇^(0) = 0`: at `j = 1`, `R_1` would act on zeros, so it is never
+                // formed. The bits are the recursion's up to the sign of a zero.
+                let r = (j > 1).then(|| a.inverse().adjoint());
+                let carried = |x: &G::Tangent| r.as_ref().map_or(*x, |r| r.apply(x));
+                vel = carried(&vel).add(&self.d[j].scale(w.dot[j]));
                 if D >= 2 {
                     let coriolis = G::ad(&vel).apply(&self.d[j]).scale(w.dot[j]);
-                    acc = r
-                        .apply(&acc)
+                    acc = carried(&acc)
                         .add(&self.d[j].scale(w.ddot[j]))
                         .add(&coriolis);
                 }
