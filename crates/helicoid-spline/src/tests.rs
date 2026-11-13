@@ -516,9 +516,8 @@ where
     assert_eq!(bits(&kin.acc), bits(&plain.acc));
     for m in 0..K {
         let ev = jac_err(&dense_jac(&fast.value[m]), &dense_jac(&slow.value[m]));
-        let ew = jac_err(&dense_jac(&fast.vel[m]), &dense_jac(&slow.vel[m])) / inv_h.max(1.0);
-        let ea =
-            jac_err(&dense_jac(&fast.acc[m]), &dense_jac(&slow.acc[m])) / (inv_h * inv_h).max(1.0);
+        let ew = jac_err(&dense_jac(&fast.vel[m]), &dense_jac(&slow.vel[m]));
+        let ea = jac_err(&dense_jac(&fast.acc[m]), &dense_jac(&slow.acc[m]));
         assert!(
             ev <= 1e3 && ew <= 1e4 && ea <= 1e5,
             "K={K} m={m} right={}: value {ev} vel {ew} acc {ea}",
@@ -541,6 +540,45 @@ proptest! {
         jac_twins::<SE3<f64>, Left, 4>(&raw, u, inv_h, step);
         jac_twins::<R3<f64>, Right, 3>(&raw, u, inv_h, step);
         jac_twins::<Split<f64>, Right, 6>(&raw, u, inv_h, step);
+        jac_twins::<SO3<f64>, Left, 2>(&raw, u, inv_h, step);
+        jac_twins::<Split<f64>, Left, 3>(&raw, u, inv_h, step);
+    }
+}
+
+/// Below `D = 2`, the formed rows are the `D = 2` rows to the bit and the rest are zero.
+fn jacobian_rows_follow_d<G: LieGroup<f64>, Sd: Side, const K: usize>(raw: &[f64], u: f64)
+where
+    Order<K>: ValidOrder,
+{
+    let ctrl = window::<f64, G, K>(&taus(raw, G::Tangent::DOF, K, 0.7));
+    let seg = JacSegment::new(&ctrl);
+    let full = seg.kinematics_jacobians::<Sd, 2>(&Weights::at(u, 2.0)).1;
+    let d1 = seg.kinematics_jacobians::<Sd, 1>(&Weights::at(u, 2.0)).1;
+    let d0 = seg.kinematics_jacobians::<Sd, 0>(&Weights::at(u, 2.0)).1;
+    let bits = |j: &G::Jac| {
+        dense_jac(j)
+            .into_iter()
+            .map(f64::to_bits)
+            .collect::<Vec<_>>()
+    };
+    let is_zero = |j: &G::Jac| dense_jac(j).iter().all(|&x| x == 0.0);
+    for m in 0..K {
+        assert_eq!(bits(&d1.value[m]), bits(&full.value[m]));
+        assert_eq!(bits(&d1.vel[m]), bits(&full.vel[m]));
+        assert!(is_zero(&d1.acc[m]));
+        assert_eq!(bits(&d0.value[m]), bits(&full.value[m]));
+        assert!(is_zero(&d0.vel[m]) && is_zero(&d0.acc[m]));
+    }
+}
+
+proptest! {
+    #[test]
+    fn jacobian_rows_above_d_are_zero(
+        raw in prop::collection::vec(-1.0_f64..1.0, 36),
+        u in 0.0_f64..1.0,
+    ) {
+        jacobian_rows_follow_d::<SO3<f64>, Right, 4>(&raw, u);
+        jacobian_rows_follow_d::<SE3<f64>, Left, 5>(&raw, u);
     }
 }
 
@@ -600,8 +638,8 @@ fn jacobians_by_dual<G, GD, Sd: Side, const K: usize, const N: usize>(
             out
         };
         let ev = jac_err(&dense_jac(&jac.value[m]), &cols(&local));
-        let ew = jac_err(&dense_jac(&jac.vel[m]), &cols(&k.vel)) / inv_h.max(1.0);
-        let ea = jac_err(&dense_jac(&jac.acc[m]), &cols(&k.acc)) / (inv_h * inv_h).max(1.0);
+        let ew = jac_err(&dense_jac(&jac.vel[m]), &cols(&k.vel));
+        let ea = jac_err(&dense_jac(&jac.acc[m]), &cols(&k.acc));
         assert!(
             ev <= 1e4 && ew <= 1e4 && ea <= 1e5,
             "m={m} right={}: {ev} {ew} {ea}",
