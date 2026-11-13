@@ -14,8 +14,8 @@
 | Gate: the core owes nothing new | Met, but one primitive: `Jac::add`, `Jac::scale` ([`0112`](./decisions/0112-a-jacobian-sums-by-name.md)) |
 | `Jac::add`, `Jac::scale` on every impl (`0112`) | Not started |
 | Corpus ids, references, seeded defects ([`0116`](./decisions/0116-the-spline-is-measured-before-it-ships.md)) | Not started |
-| Crate, `Order`, `Weights`, tables, `derivative_gram`, twins ([`0114`](./decisions/0114-a-spline-evaluates-the-window-it-is-handed.md) step 1, [`0115`](./decisions/0115-the-spline-tables-are-exact-integers.md)) | Done; the Jacobian twin lands with step 3 |
-| `Segment`: value and kinematics (`0114` step 2) | Done |
+| Crate, `Order`, `Weights`, tables, `derivative_gram`, twins ([`0114`](./decisions/0114-a-spline-evaluates-the-window-it-is-handed.md) step 1, [`0115`](./decisions/0115-the-spline-tables-are-exact-integers.md)) | Not started |
+| `Segment`: value and kinematics (`0114` step 2) | Not started |
 | `JacSegment`: control Jacobians, both sides (`0114` step 3) | Not started |
 | Shipped subject answers the spline ids (`0114` step 4) | Not started |
 | basalt-headers oracle (`0116` step 3) | Not started |
