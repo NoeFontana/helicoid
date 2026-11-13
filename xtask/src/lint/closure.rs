@@ -20,6 +20,9 @@ use super::Violation;
 const BUDGET: &[(&str, &[&str])] = &[
     ("helicoid-linalg", &["libm"]),
     ("helicoid", &["helicoid-linalg", "libm"]),
+    // `0114` decision 1: no `libm` of its own; it arrives through `helicoid`, the only route to
+    // D16's kernel.
+    ("helicoid-spline", &["helicoid", "helicoid-linalg", "libm"]),
 ];
 
 /// Allowed in the closure only as an optional dependency declared by a `BUDGET` crate.

@@ -87,7 +87,7 @@ lowest MSRV among consumers (D17).
 ## Commands
 
 Everything goes through `just`; CI invokes the recipes 1:1. Tests: **nextest, not `cargo test`**.
-Fast loop: **`just dev <crate>`** (`helicoid` or `linalg`) checks and tests the crate under active
+Fast loop: **`just dev <crate>`** (`helicoid`, `linalg` or `spline`) checks and tests the crate under active
 development in seconds with `PROPTEST_CASES=32`. Single test: `cargo nextest run -p helicoid -- so3_exp_log_roundtrip`.
 Whole-workspace fast pass: `just test-fast`. Iterate on the crate you touch and its dependents
 (`helicoid-linalg` → `helicoid` → `xtask`), then `just test` once before pushing; add
@@ -97,7 +97,7 @@ generator is Python (`uv`), the container oracles are C++; everything else is Ru
 
 | Recipe | Purpose |
 |---|---|
-| `just dev [target]` | fast check and unit test for active crate (`helicoid` or `linalg`) in seconds |
+| `just dev [target]` | fast check and unit test for active crate (`helicoid`, `linalg` or `spline`) in seconds |
 | `just test-fast` | quick nextest pass across workspace (dev profile, `PROPTEST_CASES=32`, no ndebug duplicate) |
 | `just check-fast` | quick clippy and check of library crates |
 | `just clean-stale` | prune stale test binaries in `target/` while preserving cached dependencies |

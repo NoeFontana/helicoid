@@ -11,8 +11,8 @@ build:
 
 # Fast developer iteration: check and run tests for the crate under active development in seconds.
 dev target="helicoid":
-    cargo check -p {{ if target == "linalg" { "helicoid-linalg" } else { target } }} --lib --tests
-    cargo nextest run --profile quick -p {{ if target == "linalg" { "helicoid-linalg" } else { target } }} --lib
+    cargo check -p {{ if target == "linalg" { "helicoid-linalg" } else if target == "spline" { "helicoid-spline" } else { target } }} --lib --tests
+    cargo nextest run --profile quick -p {{ if target == "linalg" { "helicoid-linalg" } else if target == "spline" { "helicoid-spline" } else { target } }} --lib
 
 # Fast workspace test pass (dev profile only, quick profile, no duplicate ndebug pass).
 test-fast:
@@ -24,7 +24,7 @@ check-fast:
 
 # Prune stale build artifacts in target/ while preserving cached dependencies.
 clean-stale:
-    cargo clean -p helicoid -p helicoid-linalg -p xtask
+    cargo clean -p helicoid -p helicoid-linalg -p helicoid-spline -p xtask
 
 # Unit + integration tests (nextest) in the dev profile, then in `ndebug` (`Cargo.toml`), where
 # `debug_assert!` is compiled out and the out-of-domain behaviour the docs state is what is tested;
@@ -81,14 +81,14 @@ msrv:
 # No `std`, no `alloc`: the library crates on a bare-metal target. `--features __sweep` builds the
 # coefficient kernel, which only it and the tests build until SO(3) uses it.
 no-std:
-    cargo build --target thumbv7em-none-eabihf -p helicoid-linalg -p helicoid --locked
+    cargo build --target thumbv7em-none-eabihf -p helicoid-linalg -p helicoid -p helicoid-spline --locked
     cargo build --target thumbv7em-none-eabihf -p helicoid --features __sweep --locked
     cargo build --target thumbv7em-none-eabihf -p helicoid-linalg --features mint --locked
 
 # Library crates on wasm32, the coefficient kernel included as under `no-std`. Build only: the
 # in-process conformance subject exists, its run under wasmtime is owed (PHASE1 §3, Phase 6).
 wasm:
-    cargo build --target wasm32-wasip1 -p helicoid-linalg -p helicoid --locked
+    cargo build --target wasm32-wasip1 -p helicoid-linalg -p helicoid -p helicoid-spline --locked
     cargo build --target wasm32-wasip1 -p helicoid --features __sweep --locked
     cargo build --target wasm32-wasip1 -p helicoid-linalg --features mint --locked
 
@@ -369,6 +369,13 @@ publish-check:
         echo "helicoid: dry-run deferred, helicoid-linalg is not on the index yet."
         echo "What would be packaged:"
         cargo package -p helicoid --list
+    fi
+    if cargo package -p helicoid-spline --no-verify >/dev/null 2>&1; then
+        cargo publish -p helicoid-spline --dry-run
+    else
+        echo
+        echo "helicoid-spline: dry-run deferred, helicoid is not on the index at this version yet."
+        cargo package -p helicoid-spline --list
     fi
 
 # The exhaustive guards: every binary32 bit pattern, for the claims that license re-spelling a
