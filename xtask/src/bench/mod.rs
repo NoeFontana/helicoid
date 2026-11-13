@@ -891,20 +891,24 @@ fn cargo_target_dir(root: &Path) -> Result<PathBuf, String> {
         .map_err(|e| format!("cargo metadata: {e}"))
 }
 
+/// The package that owns a bench target, and the features its build requests. `spline` is
+/// `helicoid-spline`'s (`0116` decision 6), which has no `__sweep`; every other target is
+/// `helicoid`'s.
+fn package_of(bench: &str) -> (&'static str, &'static [&'static str]) {
+    if bench == "spline" {
+        ("helicoid-spline", &[])
+    } else {
+        ("helicoid", &["--features", "__sweep"])
+    }
+}
+
 fn list(root: &Path, bench: &str) -> Result<Vec<String>, String> {
+    let (package, features) = package_of(bench);
     let out = Command::new("cargo")
         .current_dir(root)
-        .args([
-            "bench",
-            "-p",
-            "helicoid",
-            "--bench",
-            bench,
-            "--features",
-            "__sweep",
-            "--",
-            "--list",
-        ])
+        .args(["bench", "-p", package, "--bench", bench])
+        .args(features)
+        .args(["--", "--list"])
         .output()
         .map_err(|e| format!("cargo bench --list: {e}"))?;
     if !out.status.success() {
@@ -931,19 +935,12 @@ fn list(root: &Path, bench: &str) -> Result<Vec<String>, String> {
 /// on both sides does not cover a comparison with cargo on one. Measured: that asymmetry alone put
 /// 3 of 60 identical-code verdicts past their floor, at ratios of 1.007 to 1.018.
 fn build_bench(root: &Path, bench: &str) -> Result<PathBuf, String> {
+    let (package, features) = package_of(bench);
     let out = Command::new("cargo")
         .current_dir(root)
-        .args([
-            "bench",
-            "-p",
-            "helicoid",
-            "--bench",
-            bench,
-            "--features",
-            "__sweep",
-            "--no-run",
-            "--message-format=json",
-        ])
+        .args(["bench", "-p", package, "--bench", bench])
+        .args(features)
+        .args(["--no-run", "--message-format=json"])
         .output()
         .map_err(|e| format!("cargo bench --no-run: {e}"))?;
     if !out.status.success() {
