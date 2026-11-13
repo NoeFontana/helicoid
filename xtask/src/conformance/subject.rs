@@ -71,5 +71,7 @@ pub(crate) fn registry() -> Vec<Registered> {
     // The shipped program with `libm`'s `atan2`, the arrangement `0105` replaced.
     all.push(crate::shipped::libm_atan2_twin());
     all.extend(crate::seeded::registry());
+    // `0116`'s clean spline evaluator, which only a named run or the self-test evaluates.
+    all.push(crate::seeded::spline::registered());
     all
 }

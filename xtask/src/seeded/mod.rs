@@ -39,6 +39,7 @@ mod kernel;
 pub(crate) mod se3;
 mod series;
 mod so3;
+pub(crate) mod spline;
 mod switch;
 
 use helicoid_linalg::{Dual, Precision, Real};

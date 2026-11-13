@@ -48,6 +48,7 @@ mod selftest_s2;
 mod selftest_se3;
 mod selftest_sim3;
 mod selftest_so3;
+mod selftest_spline;
 pub(crate) mod subject;
 
 #[cfg(test)]
