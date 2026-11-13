@@ -22,9 +22,9 @@ every eigenvalue to `c(N) u κ(Â) λ_k` (Demmel and Veselić, *Jacobi's method 
 QR*, SIAM J. Matrix Anal. Appl. 13(4), 1992). QR computes only `c(N) u |A|`. The two differ where
 `A` is graded: the small eigenvalues of a Schur matrix that was never equilibrated.
 
-**What D4 itself needs.** On the equilibrated matrix, `|Â| <= N`. At `f64` the absolute bound is about
-`1e-13`, far below the `1e-5` threshold, so D4's decisions are not limited by rounding even without
-the relative property. At `f32` the same bound is about `1e-6`, the threshold's own order: D4 runs
+**What the diagnostic itself needs.** On the equilibrated matrix, `|Â| <= N`. At `f64` the absolute bound is about
+`1e-13`, far below the `1e-5` threshold, so the diagnostic's decisions are not limited by rounding even without
+the relative property. At `f32` the same bound is about `1e-6`, the threshold's own order: the diagnostic runs
 at `f64`. The relative property protects a consumer that does not equilibrate, and the corpus is
 built to see it.
 
@@ -103,7 +103,7 @@ stable as a relative one. A planted absolute threshold would pass every stratum.
 - **Tridiagonal QR** (Eigen's or nalgebra's, ported) is faster: nalgebra reads 0.60 / 3.40 /
   11.4 µs at `N = 4 / 9 / 16` against 0.69 / 6.2 / 28 here (*Measured*). It loses `0084`'s
   accuracy at `N = 3`. On the graded strata it reads up to `5e6 u` against at most 5.4 here: the
-  property that answers D4's unequilibrated callers. A call made once per solve buys accuracy
+  property that answers the diagnostic's unequilibrated callers. A call made once per solve buys accuracy
   with latency, as `0081` did.
 - **One-sided Jacobi on a Cholesky factor** (Veselić and Hari; Drmač's `dgejsv` preconditioning)
   converges faster on a positive definite input. It needs one, and the `rank-def` strata (the
@@ -145,7 +145,7 @@ stable as a relative one. A planted absolute threshold would pass every stratum.
   measured at `N = 15`. The corpus metric reads the columns and finds no stratum above an oracle,
   so it is further work, not taken.
 - **Round-robin orderings** (disjoint pairs per step, for instruction-level parallelism) change the
-  bits and need their own measurement. Nothing D4 does is latency-bound.
+  bits and need their own measurement. Nothing the diagnostic does is latency-bound.
 - **`N <= 16`, not 20**: the owner's choice. A record that widens it owes the convergence study and
   the corpus at the new `N`.
 
@@ -184,7 +184,7 @@ None.
 ## Further work
 
 1. Newton–Schulz on the frame (above), if a consumer reads `VᵀV`.
-2. A values-only entry, as `eig3_values` (`0104`), if D4's profile asks: the frame is about half of
+2. A values-only entry, as `eig3_values` (`0104`), if the diagnostic's profile asks: the frame is about half of
    the work at `N = 16`.
 3. Round-robin orderings, if a consumer puts `eig_sym` on a hot path.
 
