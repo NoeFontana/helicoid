@@ -8,6 +8,13 @@ defined by the status tables in `docs/`; they win over this file.
 
 ## [Unreleased]
 
+### Breaking
+
+- **`Jac` gains two required methods, `add` and `scale`**, entry by entry and named, never an
+  operator ([`0112`](docs/decisions/0112-a-jacobian-sums-by-name.md)). Every impl in the crate has
+  them and stays structured; an external `Jac` impl must add both. `NUMERICS.md` §14 gains the
+  dense twins `reference::{sen3jac, sim3jac}_{add, scale}`. Every existing output keeps its bits.
+
 ### Instrument
 
 Not shipped in the crates.
