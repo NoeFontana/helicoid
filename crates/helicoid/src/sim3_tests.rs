@@ -4,6 +4,8 @@
 //! Samples are `laws::sample`'s, so `|σ| < 1` and `θ < √3`; the bounds are twice the worst of
 //! `measure_sim3`, rounded up.
 
+use crate::dualmat_tests::Lanes;
+use crate::jac_tests::Stored;
 use crate::laws::{self, tangent as law_tangent, Bounds, Rng, Sample};
 use crate::{reference, Jac, LieGroup, SEn3Tangent, Sim3, Sim3Jac, Sim3Tangent, Tangent, SE3};
 use helicoid_linalg::{Dual, Matrix, StridedMut, Vector};
@@ -286,6 +288,69 @@ proptest! {
 
 // 3.408 over 10⁵ draws.
 const SIGMA_ZERO: f64 = 7.0;
+
+/// `a` and `b` from 31 samples each, `jac_tests`' layout: every stored entry nonzero.
+fn add_scale_pair<S: Lanes>(v: &[f64]) -> (Sim3Jac<S>, Sim3Jac<S>) {
+    (Sim3Jac::of(v), Sim3Jac::of(&v[Sim3Jac::<S>::LEN..]))
+}
+
+/// `a.add(b)` against `reference::sim3jac_add`, bit for bit everywhere (`0112`).
+fn add_twin<S: Lanes>(v: &[f64]) -> bool {
+    let (a, b) = add_scale_pair::<S>(v);
+    let mut out = [[S::zero(); 7]; 7];
+    reference::sim3jac_add(
+        &a,
+        &b,
+        &mut StridedMut::row_major(out.as_flattened_mut(), 7, 7),
+    );
+    let got = reference::dense::<S, _, _, 7>(&a.add(&b));
+    laws::entrywise(&got, &out, &[[false; 7]; 7])
+}
+
+/// `a.scale(k)` against `reference::sim3jac_scale`, bit for bit on every stored entry, its
+/// structural zeros (the `+0` entries of both operands) compared as zeros (`0112`).
+fn scale_twin<S: Lanes>(v: &[f64], k: f64) -> bool {
+    let (a, b) = add_scale_pair::<S>(v);
+    let k = S::sample(k, 0);
+    let mut out = [[S::zero(); 7]; 7];
+    reference::sim3jac_scale(
+        &a,
+        k,
+        &mut StridedMut::row_major(out.as_flattened_mut(), 7, 7),
+    );
+    let zeros = laws::structural(
+        &reference::dense::<S, _, _, 7>(&a),
+        &reference::dense::<S, _, _, 7>(&b),
+    );
+    laws::entrywise(&reference::dense::<S, _, _, 7>(&a.scale(k)), &out, &zeros)
+}
+
+macro_rules! add_scale {
+    ($($m:ident: $S:ty;)*) => {$(
+        mod $m {
+            use super::*;
+            proptest! {
+                #[test]
+                fn sim3jac_add_matches_reference(v in proptest::collection::vec(-1.0_f64..1.0, 62)) {
+                    prop_assert!(add_twin::<$S>(&v));
+                }
+                #[test]
+                fn sim3jac_scale_matches_reference(
+                    v in proptest::collection::vec(-1.0_f64..1.0, 62),
+                    k in laws::factor(),
+                ) {
+                    prop_assert!(scale_twin::<$S>(&v, k));
+                }
+            }
+        }
+    )*};
+}
+
+add_scale! {
+    add_scale_f64: f64;
+    add_scale_f32: f32;
+    add_scale_dual: Dual<f64, 3>;
+}
 
 #[test]
 #[ignore = "measurement: prints the figures `TWINS` is recorded from"]

@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/helicoid-linalg", "crates/helicoid", "xtask"]
+members = ["crates/helicoid-linalg", "crates/helicoid", "crates/helicoid-spline", "xtask"]
 # The oracle runners' dependency graphs never enter `Cargo.lock` (`docs/PHASE1.md` §0).
 exclude = ["runners/sophus_rs", "runners/nalgebra"]
 

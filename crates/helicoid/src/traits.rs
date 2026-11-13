@@ -66,9 +66,16 @@ pub trait Tangent<S: Real>: Copy + Blend<S> {
 
 /// A Jacobian of a group operation, expressed on tangents of type `T` (`docs/API.md` R5).
 ///
-/// A structured type closed under [`mul`](Jac::mul), [`inverse`](Jac::inverse) and
-/// [`neg`](Jac::neg) (`0005`). A dense matrix leaves it only through
-/// [`write_dense`](Jac::write_dense) and [`sandwich`](Jac::sandwich).
+/// A structured type closed under [`mul`](Jac::mul), [`inverse`](Jac::inverse),
+/// [`neg`](Jac::neg), [`add`](Jac::add) and [`scale`](Jac::scale) (`0005`, `0112`). A dense matrix
+/// leaves it only through [`write_dense`](Jac::write_dense) and [`sandwich`](Jac::sandwich).
+///
+/// The sum and the scale are named methods: this crate adds no `Add`, `Sub` or `Mul<S>` impl to a
+/// Jacobian type (`docs/API.md` R1), though `Mat3` and `Mat2` keep `helicoid-linalg`'s matrix
+/// operators. Each is one rounding per stored entry, so `write_dense` of `a.add(b)` and of
+/// `a.scale(k)` is the dense entrywise operation bit for bit on every stored entry. A structural
+/// zero is written `+0`, where the dense `0 · k` is `-0` for a negative `k` and NaN for a
+/// non-finite one.
 pub trait Jac<S: Real, T: Tangent<S>>: Copy + Blend<S> {
     /// The identity matrix.
     fn identity() -> Self;
@@ -82,6 +89,11 @@ pub trait Jac<S: Real, T: Tangent<S>>: Copy + Blend<S> {
     fn inverse(&self) -> Self;
     /// `-self`.
     fn neg(&self) -> Self;
+    /// `self + o`, entry by entry. Both are in the same side's convention; the sum does not check
+    /// it.
+    fn add(&self, o: &Self) -> Self;
+    /// `k * self`, entry by entry.
+    fn scale(&self, k: S) -> Self;
     /// `self * t`.
     fn apply(&self, t: &T) -> T;
     /// `selfᵀ * t`.

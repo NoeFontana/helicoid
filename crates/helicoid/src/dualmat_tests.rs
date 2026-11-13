@@ -25,9 +25,11 @@
 //! because the structured form loses more.
 
 // `Rng` shadows `proptest::prelude`'s re-export of the `rand` trait of that name.
+use crate::laws::{entrywise, factor, structural};
 use crate::laws::{norm, unit as u, within, worst, Rng, Sample};
 use crate::reference::{
-    dense, sen3jac_apply, sen3jac_apply_transpose, sen3jac_inverse, sen3jac_mul, sen3jac_sandwich,
+    dense, sen3jac_add, sen3jac_apply, sen3jac_apply_transpose, sen3jac_inverse, sen3jac_mul,
+    sen3jac_sandwich, sen3jac_scale,
 };
 use crate::{Jac, SEn3Jac, SEn3Tangent, Tangent};
 use core::array;
@@ -250,6 +252,36 @@ fn apply_twin<S: Lanes, const N: usize, const D: usize>(v: &[f64]) -> f64 {
     worst(run(j.apply(&t), a), run(j.apply_transpose(&t), b))
 }
 
+/// `a.add(b)` against `sen3jac_add`, bit for bit everywhere (`0112`).
+fn add_twin<S: Lanes, const N: usize, const D: usize>(v: &[f64]) -> bool {
+    let (a, b) = (jac::<S, N>(&v[..9 * (N + 1)]), jac(&v[9 * (N + 1)..]));
+    let mut twin = [[S::zero(); D]; D];
+    sen3jac_add::<S, N, D>(
+        &a,
+        &b,
+        &mut StridedMut::row_major(twin.as_flattened_mut(), D, D),
+    );
+    entrywise(&dense::<S, _, _, D>(&a.add(&b)), &twin, &[[false; D]; D])
+}
+
+/// `a.scale(k)` against `sen3jac_scale`, bit for bit on every stored entry; the samples are nonzero,
+/// so the `+0` entries of `a` and `b` are its structural zeros, compared as zeros (`0112`).
+fn scale_twin<S: Lanes, const N: usize, const D: usize>(v: &[f64], k: f64) -> bool {
+    let (a, b) = (
+        jac::<S, N>(&v[..9 * (N + 1)]),
+        jac::<S, N>(&v[9 * (N + 1)..]),
+    );
+    let k = S::sample(k, 0);
+    let mut twin = [[S::zero(); D]; D];
+    sen3jac_scale::<S, N, D>(
+        &a,
+        k,
+        &mut StridedMut::row_major(twin.as_flattened_mut(), D, D),
+    );
+    let zeros = structural(&dense::<S, _, _, D>(&a), &dense::<S, _, _, D>(&b));
+    entrywise(&dense::<S, _, _, D>(&a.scale(k)), &twin, &zeros)
+}
+
 /// The four lanes of every entry of a dense matrix as bits, signed zeros canonicalized: a
 /// structural zero is `+0` from `write_dense` and `-0` from a negated dense matrix.
 fn lane_bits<S: Lanes, const D: usize>(m: &[[S; D]; D]) -> [[[u64; 4]; D]; D] {
@@ -311,6 +343,14 @@ macro_rules! props {
                 #[test]
                 fn sen3jac_apply_matches_reference(v in entries(9 * ($N + 1) + $D)) {
                     within(apply_twin::<S, $N, $D>(&v), $B.apply)?;
+                }
+                #[test]
+                fn sen3jac_add_matches_reference(v in entries(18 * ($N + 1))) {
+                    prop_assert!(add_twin::<S, $N, $D>(&v));
+                }
+                #[test]
+                fn sen3jac_scale_matches_reference(v in entries(18 * ($N + 1)), k in factor()) {
+                    prop_assert!(scale_twin::<S, $N, $D>(&v, k));
                 }
                 #[test]
                 fn neg_and_blend_carry_every_lane(v in entries(18 * ($N + 1))) {
