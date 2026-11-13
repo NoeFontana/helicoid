@@ -265,6 +265,79 @@ fn mul_dense<S: Real, T: Tangent<S>, J: Jac<S, T>, const D: usize>(
     }
 }
 
+/// The twin of [`SEn3Jac::add`](Jac::add): the dense sum `dense(a) + dense(b)`, entry by entry,
+/// structural zeros included. Writes it to the `D x D` view `out` (`0112`).
+///
+/// Each entry is one rounding, as the structured sum's is, so the two agree bit for bit.
+///
+/// # Domain
+///
+/// As [`sen3jac_mul`].
+pub fn sen3jac_add<S: Real, const N: usize, const D: usize>(
+    a: &SEn3Jac<S, N>,
+    b: &SEn3Jac<S, N>,
+    out: &mut StridedMut<'_, S>,
+) {
+    const { assert!(D == dof::<S, N>()) };
+    debug_assert!(
+        out.rows() == D && out.cols() == D,
+        "sen3jac_add: the view is not D x D"
+    );
+    add_dense::<S, _, _, D>(a, b, out);
+}
+
+/// The twin of [`SEn3Jac::scale`](Jac::scale): the dense `dense(j) k`, entry by entry, structural
+/// zeros included. Writes it to the `D x D` view `out` (`0112`).
+///
+/// It agrees with the structured scale bit for bit on every stored entry. A structural zero is
+/// `+0 · k` here, which is `-0` for a negative `k` and NaN for a non-finite one, where
+/// `write_dense` of the structured result writes `+0`.
+///
+/// # Domain
+///
+/// As [`sen3jac_mul`].
+pub fn sen3jac_scale<S: Real, const N: usize, const D: usize>(
+    j: &SEn3Jac<S, N>,
+    k: S,
+    out: &mut StridedMut<'_, S>,
+) {
+    const { assert!(D == dof::<S, N>()) };
+    debug_assert!(
+        out.rows() == D && out.cols() == D,
+        "sen3jac_scale: the view is not D x D"
+    );
+    scale_dense::<S, _, _, D>(j, k, out);
+}
+
+/// The dense entrywise sum of two `Jac`s: the body of every `*jac_add` twin.
+fn add_dense<S: Real, T: Tangent<S>, J: Jac<S, T>, const D: usize>(
+    a: &J,
+    b: &J,
+    out: &mut StridedMut<'_, S>,
+) {
+    let (x, y) = (dense::<S, _, _, D>(a), dense::<S, _, _, D>(b));
+    for (r, (xr, yr)) in x.iter().zip(&y).enumerate() {
+        for (c, (u, v)) in xr.iter().zip(yr).enumerate() {
+            out.set(r, c, *u + *v);
+        }
+    }
+}
+
+/// The dense entrywise `x k` of a `Jac`, in `Matrix::scale`'s operand order: the body of every
+/// `*jac_scale` twin.
+fn scale_dense<S: Real, T: Tangent<S>, J: Jac<S, T>, const D: usize>(
+    j: &J,
+    k: S,
+    out: &mut StridedMut<'_, S>,
+) {
+    let x = dense::<S, _, _, D>(j);
+    for (r, row) in x.iter().enumerate() {
+        for (c, v) in row.iter().enumerate() {
+            out.set(r, c, *v * k);
+        }
+    }
+}
+
 /// The twin of [`SEn3Jac::inverse`](Jac::inverse): Gauss–Jordan elimination of `dense(j)`
 /// beside the identity, which becomes the inverse. Writes it to the `D x D` view `out`.
 ///
@@ -548,6 +621,34 @@ pub fn sim3jac_mul<S: Real>(a: &Sim3Jac<S>, b: &Sim3Jac<S>, out: &mut StridedMut
         "sim3jac_mul: the view is not 7 x 7"
     );
     mul_dense::<S, _, _, 7>(a, b, out);
+}
+
+/// [`sen3jac_add`]'s twin for [`Sim3Jac`]: the dense `7 x 7` entrywise sum (`NUMERICS.md` §14,
+/// `0112`).
+///
+/// # Domain
+///
+/// `out` is `7 x 7`, checked by `debug_assert!`.
+pub fn sim3jac_add<S: Real>(a: &Sim3Jac<S>, b: &Sim3Jac<S>, out: &mut StridedMut<'_, S>) {
+    debug_assert!(
+        out.rows() == 7 && out.cols() == 7,
+        "sim3jac_add: the view is not 7 x 7"
+    );
+    add_dense::<S, _, _, 7>(a, b, out);
+}
+
+/// [`sen3jac_scale`]'s twin for [`Sim3Jac`]: the dense `7 x 7` entrywise `x k`, structural zeros
+/// included (`NUMERICS.md` §14, `0112`).
+///
+/// # Domain
+///
+/// `out` is `7 x 7`, checked by `debug_assert!`.
+pub fn sim3jac_scale<S: Real>(j: &Sim3Jac<S>, k: S, out: &mut StridedMut<'_, S>) {
+    debug_assert!(
+        out.rows() == 7 && out.cols() == 7,
+        "sim3jac_scale: the view is not 7 x 7"
+    );
+    scale_dense::<S, _, _, 7>(j, k, out);
 }
 
 /// The dense Gauss–Jordan inverse of a [`Sim3Jac`], the twin of
