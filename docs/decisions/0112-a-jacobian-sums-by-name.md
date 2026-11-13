@@ -2,7 +2,7 @@
 
 **Status:** ready
 **Owner:** @NoeFontana
-**Implementation:** #TBD
+**Implementation:** #227
 
 ## Context
 
