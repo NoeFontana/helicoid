@@ -41,7 +41,8 @@ pub struct Sim3Tangent<S> {
 /// A Sim(3) Jacobian, `[A 0 0; B C f; 0 0 e]` on `[φ; ρ; σ]` (`0070` decision 1): `A`, `B`, `C`
 /// `3 x 3`, `f` a column, `e` a scalar. `Ad`, `ad`, `J_l`, `J_r`, their inverses and every row of
 /// `NUMERICS.md` §2.3 built from them have it, and it is closed under [`mul`](Jac::mul) (`117`
-/// multiplications against `343` dense) and [`inverse`](Jac::inverse).
+/// multiplications against `343` dense), [`inverse`](Jac::inverse), [`add`](Jac::add) and
+/// [`scale`](Jac::scale).
 #[derive(Clone, Copy, Debug)]
 pub struct Sim3Jac<S> {
     pub(crate) a: Mat3<S>,
@@ -712,6 +713,28 @@ impl<S: Real> Jac<S, Sim3Tangent<S>> for Sim3Jac<S> {
             c: -self.c,
             f: -self.f,
             e: -self.e,
+        }
+    }
+    /// `(A + A', B + B', C + C', f + f', e + e')`; the twin is `reference::sim3jac_add`.
+    #[inline]
+    fn add(&self, o: &Self) -> Self {
+        Self {
+            a: self.a + o.a,
+            b: self.b + o.b,
+            c: self.c + o.c,
+            f: self.f + o.f,
+            e: self.e + o.e,
+        }
+    }
+    /// `(A k, B k, C k, f k, e k)`; the twin is `reference::sim3jac_scale`.
+    #[inline]
+    fn scale(&self, k: S) -> Self {
+        Self {
+            a: self.a.scale(k),
+            b: self.b.scale(k),
+            c: self.c.scale(k),
+            f: self.f.scale(k),
+            e: self.e * k,
         }
     }
     #[inline]

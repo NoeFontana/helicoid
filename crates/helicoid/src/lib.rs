@@ -95,6 +95,8 @@ mod gaussian_tests;
 #[cfg(test)]
 mod heis_tests;
 #[cfg(test)]
+mod jac_tests;
+#[cfg(test)]
 mod laws;
 #[cfg(test)]
 mod product_tests;

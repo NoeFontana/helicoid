@@ -84,6 +84,14 @@ impl<S: Real> Jac<S, Twist<S>> for TwistBlockJac<S> {
         Self(Jac::<S, Pair<S>>::neg(&self.0))
     }
     #[inline]
+    fn add(&self, o: &Self) -> Self {
+        Self(Jac::<S, Pair<S>>::add(&self.0, &o.0))
+    }
+    #[inline]
+    fn scale(&self, k: S) -> Self {
+        Self(Jac::<S, Pair<S>>::scale(&self.0, k))
+    }
+    #[inline]
     fn apply(&self, t: &Twist<S>) -> Twist<S> {
         Twist {
             phi: self.0 .0 * t.phi,
