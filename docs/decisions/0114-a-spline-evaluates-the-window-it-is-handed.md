@@ -11,9 +11,10 @@ B-spline of order `K` on any `LieGroup`, with value, velocity, acceleration and 
 every control. The caller owns its control points and its time. `helicoid` has no time type, and
 generic code cannot compare a float (D4).
 
-The formulas (basis, the Sommer et al. recursions, the backward-accumulated Jacobians) are stated
-in the `NUMERICS.md` section this record adds, with derivations in `docs/maths/splines.md`. They
-were checked against finite differences on SO(3) at `K = 6`, and the basis and Gram values were
+The formulas (basis, the Sommer et al. recursions, the backward-accumulated Jacobians) go into
+the new `NUMERICS.md` section ([`0113`](./0113-phase-7-opens-for-a-calibration-consumer.md)
+decision 3) and a new `docs/maths/splines.md` for their derivations, both in the PR that makes this
+`ready`; neither exists yet. They were checked against finite differences on SO(3) at `K = 6`, and the basis and Gram values were
 checked in exact rationals.
 
 ## Decision
@@ -63,7 +64,7 @@ checked in exact rationals.
    `X_m Exp(δ_m)` and the value as `X Exp(ε)`. That is the backward accumulation `NUMERICS.md`
    states. `::<Left, D>` is derived from it: `J_L = Ad_X J_R Ad_{X_m⁻¹}` for the value, and
    `J_R Ad_{X_m⁻¹}` for the velocity and acceleration, which are tangents with no output side.
-   This follows `geodesic_jacobians::<Sd>` and `act_jacobians::<Sd>`.
+   This follows `act_jacobians::<Sd>` and `PHASE4.md`'s `geodesic_jacobians::<Sd>` (owed).
 4. **One generic recursion, no per-group code.**
    - Products and Rⁿ need no override. `Product`'s operations are componentwise and `RnJac` is
      `k I`, so the generic code on `Product<SO3, R3>` equals its two components to the bit.
@@ -76,7 +77,8 @@ checked in exact rationals.
    - `Log`, `J_r⁻¹` and `J_l⁻¹` run once per segment.
    - Value and kinematics never compute the inverse Jacobians, because only `JacSegment` holds them.
    - Jacobians are `O(K)` by backward accumulation.
-   - Above the requested `D`, no work is done.
+   - Above the requested `D`, `kinematics` does no work. `Weights::at` still forms all three rows
+     (open question 2).
    - A further kernel change is adjudicated in a consumer-shaped loop (`.claude/rules/numerics.md`),
      against the bench rows of [`0116`](./0116-the-spline-is-measured-before-it-ships.md).
 6. **Domains (R6, D11).**
@@ -96,8 +98,9 @@ checked in exact rationals.
   property would hold only by care rather than by construction.
 - **One `Segment` holding the inverse Jacobians** (the first sketch) charges value-only callers two
   `3 × 3` series evaluations per increment for nothing.
-- **Right only** would leave R1's side implicit in a method name. The `Left` conversion costs `K`
-  extra products and no new formula beyond `Ad`.
+- **Right only** would leave R1's side implicit in a method name. The `Left` conversion costs
+  `K + 1` adjoints and up to `4K` Jacobian products (two per value Jacobian, one per velocity and
+  acceleration Jacobian), and no new formula beyond `Ad`.
 
 ## Consequences
 
@@ -115,9 +118,11 @@ checked in exact rationals.
 
 ## Implementation plan
 
-1. The crate skeleton, `Order`, `Weights` and `0115`'s tables. Verified by `weights_match_exact_rationals`
-   and `just no-std`, `just msrv`, and the lint's dependency closure rejecting a planted `alloc`.
-2. `Segment`, `value` and `kinematics`, with their twins. Verified by
+1. The crate skeleton, `Order`, `Weights`, `0115`'s tables and the three reference twins of
+   decision 7, so that `0116`'s seeded defects run before any kernel. Verified by
+   `weights_match_exact_rationals`, the twins against `0116`'s corpus, `just no-std`, `just msrv`,
+   and the lint's dependency closure rejecting a planted `alloc`.
+2. `Segment`, `value` and `kinematics`. Verified by
    `spline_*_matches_reference`, `Dual` through `value` for `vel` and `acc`, continuity across a knot
    to order `min(K − 2, 2)`, and a product equal to its components bitwise.
 3. `JacSegment` and `kinematics_jacobians` at both sides. Verified by `spline_jacobians_matches_reference`
@@ -129,3 +134,10 @@ checked in exact rationals.
 
 1. `Kinematics` and `ControlJacobians` return zeros above `D`. Accept that, or split the entry points
    by order (`value`, `value_vel`, `value_vel_acc`) at the cost of three names?
+2. `Weights::at` forms `λ̇` and `λ̈` even for a value-only caller, which must also pass an `inv_h`.
+   Accept two wasted Horner passes, or give `Weights` the same `D`?
+3. `J_l⁻¹(d) = J_r⁻¹(d) − ad_d` exactly on every Lie group: the two series differ only in the
+   odd Bernoulli terms, and every odd one past `B₁` vanishes. `JacSegment::new` could then form
+   `J_l⁻¹` from `J_r⁻¹` with one `ad` and one `add`, not a second series. That saves `K − 1` series
+   evaluations per segment, but it rounds differently near the switch points. Adopt it as a
+   `NUMERICS.md` identity, measured against the separate evaluation, or keep both series?
