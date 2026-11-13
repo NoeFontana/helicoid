@@ -129,7 +129,7 @@ grep -m1 -H '^\*\*Status:' docs/decisions/0*.md
 | [`0113`](./0113-phase-7-opens-for-a-calibration-consumer.md) | **draft.** Opens `0011`'s gate for a calibration consumer: `Product<SO3, R3>` and Rⁿ, uniform knots, `K = 4..6`, value to acceleration with Jacobians, binary64, no latency budget (no-regress, as fast as measured); answers `PHASE7.md` §3. |
 | [`0114`](./0114-a-spline-evaluates-the-window-it-is-handed.md) | **draft.** `helicoid-spline`: the caller hands a `&[G; K]` window, `u` and `1/h`; `Segment`, `JacSegment`, `Weights`; one generic recursion, products and Rⁿ by construction; the side a type parameter. |
 | [`0115`](./0115-the-spline-tables-are-exact-integers.md) | **draft.** Basis and Gram numerators by `const fn` in `i64`, all below `2²⁴`; one rounding per entry; no generator. |
-| [`0116`](./0116-the-spline-is-measured-before-it-ships.md) | **draft.** Spline ids, one-axis-at-a-time strata (2.0 MiB of the 4.00 left; crossed would be 29), mpmath references, basalt-headers as oracle after a spike, six seeded defects, bench rows. |
+| [`0116`](./0116-the-spline-is-measured-before-it-ships.md) | **draft.** Spline ids, one-axis-at-a-time strata (1.6 MiB of the 4.00 left; crossed would be 29), mpmath references, basalt-headers as oracle after a spike, six seeded defects, bench rows. |
 
 ## Lifecycle
 

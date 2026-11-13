@@ -15,7 +15,8 @@ The multivariate chain rule is a sum. A cumulative B-spline's control Jacobians
 
 - the value: `Σ_j Ad_{P_j⁻¹} λ_j J_r(λ_j d_j) ∂d_j/∂δ_m`, two terms when both `d_m` and `d_{m+1}`
   depend on `δ_m`;
-- one recursion step of the velocity: `λ_j ad(Ad_j ω⁽ʲ⁻¹⁾) J_r(λ_j d_j) + λ̇_j I`;
+- one recursion step of the velocity: `λ_j ad(Ad_{A_j⁻¹} ω⁽ʲ⁻¹⁾) J_r(λ_j d_j) + λ̇_j I`,
+  `A_j = Exp(λ_j d_j)`;
 - on Rⁿ: `b_m I`, a scalar times the identity.
 
 None of these can be written as `[G::Jac; K]` today. [`0011`](./0011-continuous-time-waits-for-a-consumer.md)
@@ -49,11 +50,15 @@ without naming its side.
    | `ProductJac` | per component |
    | `TwistBlockJac` | delegates to its `ProductJac` |
 
-   Each output entry is one rounding of the dense operation's entry, so `write_dense(a.add(b))`
-   equals `write_dense(a) + write_dense(b)` bit for bit, structural zeros included.
-3. **`SEn3Jac`'s rustdoc** changes to "There is no `PartialEq`, and no `Add` or `Sub` operator:
-   a sum is `Jac::add`". `0028`'s decision (crate-private blocks) stands. Its item 1 is answered
-   here rather than reopened: the fields stay private, and the one sum that exists is named.
+   Each stored entry is one rounding of the dense operation's entry, so `write_dense(a.add(b))`
+   equals `write_dense(a) + write_dense(b)` bit for bit on every stored entry. A structural zero
+   is written `+0`, whereas the dense `k · 0` is `−0` for a negative `k` and NaN for a non-finite
+   one, so structural zeros are compared as zeros, not as bits.
+3. **The rustdocs that deny a sum** change: `SEn3Jac`'s and `ProductJac`'s "There is no
+   `PartialEq`, `Add` or `Sub`" read "There is no `PartialEq`, and no `Add` or `Sub` operator: a
+   sum is `Jac::add`", and `Jac`'s "closed under `mul`, `inverse` and `neg`" gains `add` and
+   `scale`. `0028`'s decision (crate-private blocks) stands. Its item 1 is answered here rather
+   than reopened: the fields stay private, and the one sum that exists is named.
 4. **`NUMERICS.md` §14** gains rows `SEn3Jac::add`, `scale` and `Sim3Jac::add`, `scale`, each against
    the dense entrywise operation, bit for bit. The `Mat3`, `Mat2`, `RnJac` and product impls are
    the entrywise operation itself, and have no twin.
@@ -81,7 +86,8 @@ without naming its side.
 
 ## Implementation plan
 
-1. `Jac::add` and `Jac::scale` on the seven impls; the rustdoc of decision 3; the `NUMERICS.md` §14
+1. `Jac::add` and `Jac::scale` on the seven impls and on `heis_tests`' `HJac`; the rustdocs of
+   decision 3; the `NUMERICS.md` §14
    rows and `reference::{sen3jac, sim3jac}_{add, scale}`. Verified by
    `jac_add_and_scale_match_dense` (a proptest per impl at `f64`, `f32` and `Dual`, bit for bit)
    and `*_matches_reference` for the two §14 rows; `just dev helicoid`, `just test`, `just no-std`.
