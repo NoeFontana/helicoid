@@ -34,6 +34,10 @@ Not shipped in the crates.
   references and an independent `NUMERICS.md` §21 evaluator (`seeded:spline`) that all six planted
   defects are measured against. The shipped subject answers every id; `bench --bench spline` adds
   the criterion rows.
+- **`just oracle-basalt`**: basalt-headers (Sommer and Usenko's implementation of the same
+  recursions) as a pinned container oracle for the spline ids, binary64 only. On the committed tier
+  `helicoid` reads 3.9–4.2 `u` on `so3_spline_value_jac` against its 249–274 `u`, and 0 `u` on the
+  Gram matrix against 752 `u`.
 - **`bench-gate` reads criterion's samples where criterion writes them**: `$CRITERION_HOME`, else
   `$CARGO_TARGET_DIR/criterion`, else cargo's target directory, where it read
   `<root>/target/criterion` and found no samples under a moved target directory. A relative

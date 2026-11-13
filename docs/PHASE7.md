@@ -18,7 +18,7 @@
 | `Segment`: value and kinematics (`0114` step 2) | Done (#226) |
 | `JacSegment`: control Jacobians, both sides (`0114` step 3) | Done (#228) |
 | Shipped subject answers the spline ids (`0114` step 4) | Done (#231): every id at both precisions; at most 9.69 `u` (binary64) and 8.50 `u` (binary32) on the committed tier |
-| basalt-headers oracle (`0116` step 3) | In progress |
+| basalt-headers oracle (`0116` step 3) | Done (#233): every id at binary64; Jacobians and Gram on the integer-nanosecond records. No resolved domination failure on the committed tier; 28 strata where `helicoid`'s max is above basalt's (at most 2.63×) wait for `--deep` |
 | Bench rows and baseline (`0116` step 4) | Partial: the rows (#229); the first baseline waits for this host's A/A floor on a quiet run |
 
 ## 1. What the core already owes
