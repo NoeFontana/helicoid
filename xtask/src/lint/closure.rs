@@ -20,6 +20,9 @@ use super::Violation;
 const BUDGET: &[(&str, &[&str])] = &[
     ("helicoid-linalg", &["libm"]),
     ("helicoid", &["helicoid-linalg", "libm"]),
+    // `0114` decision 1: no `libm` of its own; it arrives through `helicoid`, the only route to
+    // D16's kernel.
+    ("helicoid-spline", &["helicoid", "helicoid-linalg", "libm"]),
 ];
 
 /// Allowed in the closure only as an optional dependency declared by a `BUDGET` crate.
@@ -402,10 +405,14 @@ mod tests {
             out[0].contains("helicoid-linalg` no longer depends on `libm`"),
             "{out:?}"
         );
-        let out = report(&tree(&LINALG, &HELICOID, &[Fx::member("helicoid-spline")]));
+        let out = report(&tree(
+            &LINALG,
+            &HELICOID,
+            &[Fx::member("helicoid-unbudgeted")],
+        ));
         assert_eq!(out.len(), 1, "{out:?}");
         assert!(
-            out[0].contains("`helicoid-spline` has no dependency budget"),
+            out[0].contains("`helicoid-unbudgeted` has no dependency budget"),
             "{out:?}"
         );
     }
