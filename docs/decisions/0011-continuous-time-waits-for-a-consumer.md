@@ -2,7 +2,7 @@
 
 **Status:** ready
 **Owner:** @NoeFontana
-**Implementation:** —
+**Implementation:** gate opened by [`0113`](./0113-phase-7-opens-for-a-calibration-consumer.md)
 
 ## Context
 

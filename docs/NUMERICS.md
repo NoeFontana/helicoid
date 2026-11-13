@@ -19,6 +19,7 @@ computes from definitions (`PHASE1.md` §4.3), so a wrong line in this file fail
 | Section | Status |
 |---|---|
 | §1–§12, §14, §15, §17, §20 | **Ready** (§9 Sim(3) by [`0070`](./decisions/0070-sim3-a-structured-jacobian-and-a-series-on-delta.md)) |
+| §21 | **Ready** ([`0114`](./decisions/0114-a-spline-evaluates-the-window-it-is-handed.md), [`0115`](./decisions/0115-the-spline-tables-are-exact-integers.md)); not implemented |
 
 ## 1. Conventions
 
@@ -948,3 +949,84 @@ Only the lower triangle $a_{ij}$, $i \ge j$, is read; the working matrix holds b
   exchange where the second is strictly less. The network is stable. Each exchange negates a
   sign, applied to the first column after the sort, so $\det V = +1$.
 - **Normalisation** as §17, each column.
+
+## 21. Uniform cumulative B-splines
+
+`helicoid-spline`'s formulas ([`0114`](./decisions/0114-a-spline-evaluates-the-window-it-is-handed.md),
+[`0115`](./decisions/0115-the-spline-tables-are-exact-integers.md)), on any `LieGroup`, rotation-first
+and right-trivialized. Derivations: [`maths/splines.md`](./maths/splines.md).
+
+- **Window.** Order $K$ (degree $K - 1$), controls $X_0, \dots, X_{K-1}$, segment parameter $u$,
+  inverse knot spacing $h^{-1}$. Every array has length $K$; slot 0 of a per-increment array is
+  unused.
+- **Basis, as integers.** With $C(\cdot,\cdot)$ the binomial coefficient,
+  $n_{s,k} = C(K-1, k)\sum_{l=s}^{K-1}(-1)^{l-s}\,C(K, l-s)\,(K-1-l)^{K-1-k}$ is an integer, and the
+  non-cumulative basis is $b_s(u) = \sum_k n_{s,k}u^k / (K-1)!$. The cumulative numerators are
+  $\tilde n_{j,k} = \sum_{s=j}^{K-1} n_{s,k}$. Every $\lvert n\rvert$, $\lvert\tilde n\rvert$,
+  $k\lvert\tilde n_{j,k}\rvert$ and $k(k-1)\lvert\tilde n_{j,k}\rvert$ for $K \le 6$ is below $2^{24}$,
+  and a `const` assertion keeps it so.
+- **Weights.** For $j \ge 1$:
+  - $\lambda_j = H_j / (K-1)!$ with $H_j$ Horner on $\tilde n_{j,K-1}, \dots, \tilde n_{j,0}$ at $u$;
+  - $\dot\lambda_j = h^{-1}\,(\dot H_j/(K-1)!)$, with $\dot H_j$ Horner on $k\,\tilde n_{j,k}$,
+    $k \ge 1$;
+  - $\ddot\lambda_j = (h^{-1}h^{-1})\,(\ddot H_j/(K-1)!)$, with $\ddot H_j$ Horner on
+    $k(k-1)\,\tilde n_{j,k}$, $k \ge 2$.
+
+  Each coefficient is `S::lit` of an integer, the division is one correctly rounded operation, and
+  the $h^{-1}$ product is formed last. $\lambda_0 = 1$ and $\dot\lambda_0 = \ddot\lambda_0 = 0$. A
+  weight above the requested derivative order $D$ is not formed and reads 0.
+- **Increments** (per segment). $d_j = \mathrm{Log}(X_{j-1}^{-1}X_j)$ for $j = 1, \dots, K-1$, with
+  `rminus`'s body. A Jacobian segment also holds $J_r^{-1}(d_j)$ and $J_l^{-1}(d_j)$, through the
+  group's own `jr_inv` and `jl_inv`.
+- **Value.** $A_j = \mathrm{Exp}(\lambda_j d_j)$ and $X = X_0 A_1 \cdots A_{K-1}$, multiplied left to
+  right.
+- **Velocity and acceleration.** $R_j = \mathrm{Ad}_{A_j^{-1}}$. With $\omega^{(0)} = \dot\omega^{(0)} = 0$,
+  for $j = 1, \dots, K-1$:
+  $$\omega^{(j)} = R_j\,\omega^{(j-1)} + \dot\lambda_j\,d_j,\qquad
+  \dot\omega^{(j)} = R_j\,\dot\omega^{(j-1)} + \ddot\lambda_j\,d_j + \dot\lambda_j\,\mathrm{ad}\big(\omega^{(j)}\big)\,d_j,$$
+  and $\omega = \omega^{(K-1)}$, $\dot\omega = \dot\omega^{(K-1)}$: the right-trivialized
+  $(X^{-1}\dot X)^\vee$ and its time derivative. The last term uses $\mathrm{ad}(d_j)\,d_j = 0$.
+
+  | Group | $\omega$, $\dot\omega$ |
+  |---|---|
+  | SO(3) | body rate $\omega_B$, body angular acceleration $\alpha_B$ |
+  | $\mathbb R^n$ ($R_j = I$, $\mathrm{ad} = 0$) | $\dot p = \sum_j\dot\lambda_j d_j$, $\ddot p = \sum_j\ddot\lambda_j d_j$, world frame |
+  | `Product<SO3, R3>` | componentwise: $(\omega_B, \dot p_W)$ and $(\alpha_B, \ddot p_W)$ |
+  | SE(3) | the body twist and its derivative; $\ddot p_W = R(\dot v + \omega \times v)$ downstream |
+- **Jacobians, right** (`::<Right>`). Every control is perturbed as $X_m\,\mathrm{Exp}(\delta_m)$ and
+  the value as $X\,\mathrm{Exp}(\epsilon)$; $\omega$ and $\dot\omega$ are tangents with no output side.
+  - *Increments:* $\partial d_j/\partial\delta_j = J_r^{-1}(d_j)$ and
+    $\partial d_j/\partial\delta_{j-1} = -J_l^{-1}(d_j)$. No other control reaches $d_j$.
+  - *Step partials*, with $J_j = J_r(\lambda_j d_j)$:
+    $$\frac{\partial\omega^{(j)}}{\partial d_j} = \lambda_j\,\mathrm{ad}\big(R_j\,\omega^{(j-1)}\big)J_j + \dot\lambda_j I,$$
+    $$\frac{\partial\dot\omega^{(j)}}{\partial d_j} = \lambda_j\,\mathrm{ad}\big(R_j\,\dot\omega^{(j-1)}\big)J_j + \ddot\lambda_j I + \dot\lambda_j\,\mathrm{ad}\big(\omega^{(j)}\big) - \dot\lambda_j\,\mathrm{ad}(d_j)\,\frac{\partial\omega^{(j)}}{\partial d_j}.$$
+  - *Carried maps*, accumulated backward from $T_{K-1} = I$, $C_{K-1} = 0$:
+    $T_{j-1} = T_j R_j$ and $C_{j-1} = C_j R_j - \dot\lambda_j\,T_j\,\mathrm{ad}(d_j)\,R_j$.
+    $T_j = \mathrm{Ad}_{P_j^{-1}}$ with $P_j = A_{j+1}\cdots A_{K-1}$.
+  - *Per increment:*
+    - $\partial X/\partial d_j = \lambda_j\,T_j J_j$;
+    - $\partial\omega/\partial d_j = T_j\,\partial\omega^{(j)}/\partial d_j$;
+    - $\partial\dot\omega/\partial d_j = C_j\,\partial\omega^{(j)}/\partial d_j + T_j\,\partial\dot\omega^{(j)}/\partial d_j$.
+  - *Per control:* $\partial/\partial\delta_m = \sum_{j \in \{m, m+1\}\cap[1, K-1]}(\partial/\partial d_j)(\partial d_j/\partial\delta_m)$,
+    plus $T_0$ for the value at $m = 0$. Each sum is `Jac::add`
+    ([`0112`](./decisions/0112-a-jacobian-sums-by-name.md)), the term at $j = m + 1$ added to the
+    term at $j = m$.
+
+  The cost is $O(K)$ products per sample. The forward pass keeps $R_j$, $\omega^{(j)}$ and
+  $\dot\omega^{(j)}$, and the backward pass forms $T_j$ and $C_j$.
+- **Jacobians, left** (`::<Left>`), from the right ones:
+  $J^{L}_{X,m} = \mathrm{Ad}_X\,J^{R}_{X,m}\,\mathrm{Ad}_{X_m^{-1}}$ for the value, and
+  $J^{L}_{\omega,m} = J^{R}_{\omega,m}\,\mathrm{Ad}_{X_m^{-1}}$ for $\omega$ (likewise $\dot\omega$).
+- **Gram matrices** ($\mathbb R^n$). The energy of the $r$-th derivative over one segment is
+  $\mathbf c^\top(G^{(r)} \otimes I)\,\mathbf c$ in its $K$ controls, with
+  $$G^{(r)}_{st} = h^{1-2r}\,\frac{1}{((K-1)!)^2}\sum_{p, q \ge r} n_{s,p}\,n_{t,q}\,\frac{p!}{(p-r)!}\,\frac{q!}{(q-r)!}\,\frac{1}{p+q-2r+1}.$$
+  It is stored as integer numerators over one common denominator, both below $2^{24}$ for
+  $K \le 6$, and each entry is `S::lit(num) / S::lit(den)` times $h^{-1}$ raised to $2r - 1$ by
+  repeated products. A weighted energy $Q^{-1}$ is the caller's Kronecker product. Rows sum to 0
+  for $r \ge 1$. Check values at $h = 1$: $G^{(1)}_{00} = 1/20$ at $K = 4$, and
+  $G^{(2)}_{00} = 1/252$ at $K = 6$.
+- **Domains.** $u$ is any finite value: outside $[0, 1]$ the polynomial extrapolates. $h^{-1}$ is
+  finite and positive (`debug_assert!`). $d_j$ inherits `Log`'s domain: as the relative rotation of
+  $X_{j-1}$ and $X_j$ approaches $\pi$, $d_j$ follows §3.2 and §12. $X$ is $C^{K-2}$ across a knot:
+  segment $i$ at $u = 1$ and segment $i + 1$ at $u = 0$ agree in value and in derivatives up to
+  order $\min(K - 2, 2)$.

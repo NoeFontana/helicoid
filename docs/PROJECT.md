@@ -99,9 +99,9 @@ each stratum's max.
 - **Phase 6 — interop, determinism, calibration, 1.0.** Ambient (Ceres-style) Jacobians, `mint`,
   the cross-target bit-identity gate, calibration tooling support, the 1.0 criteria.
   `docs/PHASE6.md`.
-- **Phase 7 — continuous time, gated.** `helicoid-spline`. `docs/PHASE7.md` is a **requirements
-  artifact, not an implementation authorization**
-  ([`0011`](./decisions/0011-continuous-time-waits-for-a-consumer.md)).
+- **Phase 7 — continuous time.** `helicoid-spline`. Gated by
+  [`0011`](./decisions/0011-continuous-time-waits-for-a-consumer.md), opened for a calibration
+  consumer by [`0113`](./decisions/0113-phase-7-opens-for-a-calibration-consumer.md). `docs/PHASE7.md`.
 
 Status per phase: the §0.0 table heading each spec is authoritative.
 
@@ -154,7 +154,7 @@ Status per phase: the §0.0 table heading each spec is authoritative.
 - **D14 — Continuous time is gated**
   ([`0011`](./decisions/0011-continuous-time-waits-for-a-consumer.md)). `helicoid-spline` opens on
   a consumer's record, not on schedule. What splines will consume (`Ad`, `ad`, `Jr`, `Jr⁻¹`) ships
-  in Phase 3 regardless.
+  in Phase 3 regardless. Opened by [`0113`](./decisions/0113-phase-7-opens-for-a-calibration-consumer.md).
 - **D15 — Seeded from `tf_tree_math`**
   ([`0010`](./decisions/0010-seeded-from-tf-tree-math.md)). It was oracle #1 until
   [`0107`](./decisions/0107-the-consumer-is-not-an-oracle.md): `tf_tree` is migrating onto
@@ -181,7 +181,6 @@ scheduled; adding a row is not a decision, removing one is.
 
 | Entry | Source | Gate |
 |---|---|---|
-| `helicoid-spline` | [`PHASE7.md`](./PHASE7.md), [`0011`](./decisions/0011-continuous-time-waits-for-a-consumer.md) | A consumer record: calibration camera–IMU, continuous-time estimation, or `tf_tree` Phase 6 |
 | SIMD `Real` impl | [`0013`](./decisions/0013-simd-lanes-owe-a-measurement.md) (draft) | A consumer gate win that pays for its dependency cost; `tf_tree` 0016's evidence is the bar to beat |
 | `Matrix::block` / `set_block` (`helicoid-linalg`) | [`PHASE2.md`](./PHASE2.md) §4 | A consumer outside `helicoid` (both `Gaussian` and the ambient Jacobians are in `helicoid`, so `pub(crate)` reaches them). The `sandwich` path is no longer evidence for it, and the private `block`/`put` of `dualmat.rs` this row used to cite are deleted: `SEn3Jac::sandwich` builds its two results with `from_cols`/`from_rows` and reaches no entry through `Matrix::get`/`set` |
 | A specialized `Matrix::mul` for `3 x 3` (`helicoid-linalg`) | [`PHASE2.md`](./PHASE2.md) §4, and the §11 measurement in [`PHASE3.md`](./PHASE3.md) §0.0 | A measurement that separates code generation from arithmetic. Writing out the entries of a *hat* product took `helicoid`'s Jacobians to 0.14–0.62 of their time, where the multiplications saved account for about 1.5x of it: the generic product appears to run a chained `3 x 3` at about 1 flop/ns against 3.2 written out. The structured helpers cover `helicoid`'s own hat products; whether the generic one is worth specializing is a `helicoid-linalg` bench nobody has run |
@@ -226,8 +225,8 @@ scheduled; adding a row is not a decision, removing one is.
 
 ## 8. Document map
 
-`PHASE1.md`–`PHASE6.md` are the normative phase specs; `PHASE7.md` is **gated by
-[`0011`](./decisions/0011-continuous-time-waits-for-a-consumer.md)**. `NUMERICS.md` is not a phase:
+`PHASE1.md`–`PHASE7.md` are the normative phase specs; `PHASE7.md` was gated by
+[`0011`](./decisions/0011-continuous-time-waits-for-a-consumer.md) until [`0113`](./decisions/0113-phase-7-opens-for-a-calibration-consumer.md). `NUMERICS.md` is not a phase:
 it is the formula contract every phase implements, read before touching a formula. `API.md` is not
 a phase: the six rules (§1), the surfaces (§2–§4), stability (§5), the new-surface check (§6), read
 before adding public API. `decisions/` holds the records; `CLAUDE.md` at the root is the agent

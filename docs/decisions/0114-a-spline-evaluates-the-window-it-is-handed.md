@@ -1,6 +1,6 @@
 # 0114: A spline evaluates the window it is handed
 
-**Status:** draft
+**Status:** ready
 **Owner:** @NoeFontana
 **Implementation:** —
 
@@ -11,11 +11,10 @@ B-spline of order `K` on any `LieGroup`, with value, velocity, acceleration and 
 every control. The caller owns its control points and its time. `helicoid` has no time type, and
 generic code cannot compare a float (D4).
 
-The formulas (basis, the Sommer et al. recursions, the backward-accumulated Jacobians) go into
-the new `NUMERICS.md` section ([`0113`](./0113-phase-7-opens-for-a-calibration-consumer.md)
-decision 3) and a new `docs/maths/splines.md` for their derivations, both in the PR that makes this
-`ready`; neither exists yet. They were checked against finite differences on SO(3) at `K = 6`, and the basis and Gram values were
-checked in exact rationals.
+The formulas are `NUMERICS.md` §21, with derivations in `docs/maths/splines.md`. Every one was
+checked against central differences at 50 digits on SO(3) and SE(3), at `K = 6`, on both sides.
+The worst Jacobian entry differs by `2e-25`, and the basis and Gram values were checked in exact
+rationals.
 
 ## Decision
 
@@ -30,8 +29,12 @@ checked in exact rationals.
    pub struct Order<const K: usize>;
    pub trait ValidOrder: sealed::Sealed {}          // Order<K> for the orders 0115 generates
 
-   pub struct Weights<S, const K: usize> { pub lambda: [S; K], pub dot: [S; K], pub ddot: [S; K] }
-   impl<S: Real, const K: usize> Weights<S, K> where Order<K>: ValidOrder {
+   /// `D` (0, 1 or 2, asserted at monomorphization) is the highest derivative formed; the rows
+   /// above it are zero and cost nothing. Every evaluation below takes its `D` from here.
+   pub struct Weights<S, const K: usize, const D: usize> {
+       pub lambda: [S; K], pub dot: [S; K], pub ddot: [S; K],
+   }
+   impl<S: Real, const K: usize, const D: usize> Weights<S, K, D> where Order<K>: ValidOrder {
        /// λ, λ̇ = h⁻¹ dλ/du, λ̈ = h⁻² d²λ/du², by Horner on 0115's rows.
        pub fn at(u: S, inv_h: S) -> Self;
    }
@@ -43,14 +46,14 @@ checked in exact rationals.
 
    impl<S: Real, G: LieGroup<S>, const K: usize> Segment<S, G, K> where Order<K>: ValidOrder {
        pub fn new(window: &[G; K]) -> Self;
-       pub fn value(&self, w: &Weights<S, K>) -> G;
-       /// `D` is 0, 1 or 2, asserted at monomorphization. Orders above `D` are zero.
-       pub fn kinematics<const D: usize>(&self, w: &Weights<S, K>) -> Kinematics<S, G>;
+       pub fn value<const D: usize>(&self, w: &Weights<S, K, D>) -> G;
+       /// Orders above `D` are zero.
+       pub fn kinematics<const D: usize>(&self, w: &Weights<S, K, D>) -> Kinematics<S, G>;
    }
    impl<S: Real, G: LieGroup<S>, const K: usize> JacSegment<S, G, K> where Order<K>: ValidOrder {
        pub fn new(window: &[G; K]) -> Self;
        pub fn segment(&self) -> &Segment<S, G, K>;
-       pub fn kinematics_jacobians<Sd: Side, const D: usize>(&self, w: &Weights<S, K>)
+       pub fn kinematics_jacobians<Sd: Side, const D: usize>(&self, w: &Weights<S, K, D>)
            -> (Kinematics<S, G>, ControlJacobians<S, G, K>);
    }
 
@@ -60,9 +63,9 @@ checked in exact rationals.
        pub value: [G::Jac; K], pub vel: [G::Jac; K], pub acc: [G::Jac; K],
    }
    ```
-3. **The side is named (R1).** `kinematics_jacobians::<Right, D>` perturbs every control as
+3. **The side is named (R1).** `kinematics_jacobians::<Right, _>` perturbs every control as
    `X_m Exp(δ_m)` and the value as `X Exp(ε)`. That is the backward accumulation `NUMERICS.md`
-   states. `::<Left, D>` is derived from it: `J_L = Ad_X J_R Ad_{X_m⁻¹}` for the value, and
+   states. `::<Left, _>` is derived from it: `J_L = Ad_X J_R Ad_{X_m⁻¹}` for the value, and
    `J_R Ad_{X_m⁻¹}` for the velocity and acceleration, which are tangents with no output side.
    This follows `act_jacobians::<Sd>` and `PHASE4.md`'s `geodesic_jacobians::<Sd>` (owed).
 4. **One generic recursion, no per-group code.**
@@ -77,8 +80,8 @@ checked in exact rationals.
    - `Log`, `J_r⁻¹` and `J_l⁻¹` run once per segment.
    - Value and kinematics never compute the inverse Jacobians, because only `JacSegment` holds them.
    - Jacobians are `O(K)` by backward accumulation.
-   - Above the requested `D`, `kinematics` does no work. `Weights::at` still forms all three rows
-     (open question 2).
+   - Above the requested `D`, nothing is formed, `Weights::at` included: a value-only caller pays
+     one Horner pass per weight.
    - A further kernel change is adjudicated in a consumer-shaped loop (`.claude/rules/numerics.md`),
      against the bench rows of [`0116`](./0116-the-spline-is-measured-before-it-ships.md).
 6. **Domains (R6, D11).**
@@ -132,12 +135,14 @@ checked in exact rationals.
 
 ## Open questions
 
-1. `Kinematics` and `ControlJacobians` return zeros above `D`. Accept that, or split the entry points
-   by order (`value`, `value_vel`, `value_vel_acc`) at the cost of three names?
-2. `Weights::at` forms `λ̇` and `λ̈` even for a value-only caller, which must also pass an `inv_h`.
-   Accept two wasted Horner passes, or give `Weights` the same `D`?
-3. `J_l⁻¹(d) = J_r⁻¹(d) − ad_d` exactly on every Lie group: the two series differ only in the
-   odd Bernoulli terms, and every odd one past `B₁` vanishes. `JacSegment::new` could then form
-   `J_l⁻¹` from `J_r⁻¹` with one `ad` and one `add`, not a second series. That saves `K − 1` series
-   evaluations per segment, but it rounds differently near the switch points. Adopt it as a
-   `NUMERICS.md` identity, measured against the separate evaluation, or keep both series?
+None. `Kinematics` and `ControlJacobians` read zero above `D` rather than splitting the entry points
+by order. `Weights` carries `D`, so `inv_h` is unused at `D = 0` and the caller passes any finite
+positive value.
+
+## Further work
+
+- `J_l⁻¹(d) = J_r⁻¹(d) − ad_d` exactly on every Lie group: the two series differ only in the odd
+  Bernoulli terms, and every odd one past `B₁` vanishes. `JacSegment::new` could form `J_l⁻¹` from
+  `J_r⁻¹` with one `ad` and one `add`, not a second series. That saves `K − 1` series evaluations
+  per segment, but it rounds differently near the switch points. It needs a `NUMERICS.md` identity
+  and a measurement against the separate evaluation.

@@ -1,6 +1,6 @@
 # 0113: Phase 7 opens for a calibration consumer
 
-**Status:** draft
+**Status:** ready
 **Owner:** @NoeFontana
 **Implementation:** —
 
@@ -24,11 +24,11 @@ SE(3), Rⁿ and products (Phase 3); `Dual` (Phase 2); `svd3`, `eig3`, `eig_sym`,
 
    | Row | Answer |
    |---|---|
-   | Groups | `Product<SO3, R3>` (the trajectory) and `Rⁿ` (biases). SE(3) comes from the same generic code (open question 2). |
+   | Groups | `Product<SO3, R3>` (the trajectory) and `Rⁿ` (biases). SE(3) comes from the same generic code, and its value, velocity and acceleration are corpus ids now ([`0116`](./0116-the-spline-is-measured-before-it-ships.md)). |
    | Knots | Uniform. The consumer chooses the segment and `u` from its own integer time; gaps are separate splines. |
-   | Order | `K = 4` to `6` for the groups (open question 3 for `K = 2, 3`). |
+   | Order | `K = 4` to `6` for the groups; `ValidOrder` is `K = 2` to `6`, and the Rⁿ and Gram ids score all five. |
    | Derivatives | Value, velocity and acceleration, right-trivialized (body rate and body angular acceleration on SO(3)), with their Jacobians on every control. No third derivative. |
-   | Precision | The consumer runs binary64 (open question 1 for binary32). |
+   | Precision | The consumer runs binary64. Every spline id is scored at both precisions, as every `helicoid` id is: `0116`'s budget fits both. |
    | Problem size | About `3 × 10⁵` evaluations per Levenberg–Marquardt iteration, windows of at most 6 controls, many samples per segment (an IMU stream). |
    | Latency budget | **None stated.** The bar is the bench gate's no-regress on committed rows, and the kernels take the fastest form the measurements support (`O(K)` backward accumulation, per-segment caching). No absolute number is set until a consumer profile shows evaluation dominating its iteration. |
 
@@ -69,9 +69,5 @@ SE(3), Rⁿ and products (Phase 3); `Dual` (Phase 2); `svd3`, `eig3`, `eig_sym`,
 
 ## Open questions
 
-1. **Binary32 spline ids.** Every `helicoid` id is scored at both precisions; this consumer is
-   binary64 only. Keep the `@f32` strata (about half the spline corpus, `0116`), or record an
-   exception and score binary64 only?
-2. **SE(3) ids now.** The generic code makes SE(3) nearly free to build, but its corpus rows are the
-   largest per record (`0116`), and `tf_tree`, the consumer that would use them, has not asked.
-3. **Orders 2 and 3.** Generate and score them for Rⁿ and the Gram matrices, or only `K = 4..6`?
+None. Binary32 ids are kept, SE(3)'s value, velocity and acceleration are ids now, and `K = 2, 3`
+are generated and scored where they cost little (Rⁿ, Gram).

@@ -1,6 +1,6 @@
 # 0115: The spline tables are exact integers
 
-**Status:** draft
+**Status:** ready
 **Owner:** @NoeFontana
 **Implementation:** —
 
@@ -46,7 +46,7 @@ sums to zero. The K = 4 rows of `M̃` are `(6, 0, 0, 0)`, `(5, 3, −3, 1)`, `(1
    - A power-of-two `inv_h` makes each of these exact, and the Gram corpus id is drawn on such `h`
      ([`0116`](./0116-the-spline-is-measured-before-it-ships.md)).
 4. **The orders are `ValidOrder`'s**: the set [`0113`](./0113-phase-7-opens-for-a-calibration-consumer.md)
-   settles (open question 3 there), and no other. A `const` assertion in each table fails the build
+   settles, `K = 2` to `6`, and no other. A `const` assertion in each table fails the build
    if any numerator reaches `2²⁴`, so a later order cannot silently lose exactness at binary32.
 5. **The public Gram function** is
    `pub fn derivative_gram<S: Real, const K: usize, const R: usize>(inv_h: S) -> Matrix<S, K, K>`,
@@ -78,4 +78,4 @@ sums to zero. The K = 4 rows of `M̃` are `(6, 0, 0, 0)`, `(5, 3, −3, 1)`, `(1
 
 ## Open questions
 
-None of its own. The order set is `0113`'s open question 3.
+None.

@@ -28,5 +28,5 @@ Normative specifications for whoever is changing `helicoid`, not tutorials.
 Cross-cutting:
 
 - [`API.md`](./API.md): the six rules (§1), the surfaces, the §6 checklist a new surface passes.
-- [`PHASE7.md`](./PHASE7.md): `helicoid-spline`, **gated by [`0011`](./decisions/0011-continuous-time-waits-for-a-consumer.md) and not scheduled**.
+- [`PHASE7.md`](./PHASE7.md): `helicoid-spline`, opened by [`0113`](./decisions/0113-phase-7-opens-for-a-calibration-consumer.md).
 - [`decisions/`](./decisions/): records; [`README.md`](./decisions/README.md) has the lifecycle.
