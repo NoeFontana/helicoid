@@ -322,6 +322,36 @@ const RUNNERS: &[Runner] = &[
             "sen3_jr_inv_n2",
         ],
     },
+    Runner {
+        name: "basalt",
+        launch: Launch::Container("docker/oracles/basalt"),
+        // C++ on the image's glibc (`0116` decision 4).
+        backend: Backend::HostStd,
+        // `CeresSplineHelper`'s weights are `double` whatever its knots' scalar, and `So3Spline`'s
+        // Jacobians call `Sophus::SO3d`.
+        binary64_only: true,
+        answers_f32: &[],
+        // The Jacobians and the Gram matrix answer the integer-nanosecond records alone, the
+        // others `nan` (`0116` decision 4.4).
+        answers: &[
+            "so3_spline_value",
+            "so3_spline_vel",
+            "so3_spline_acc",
+            "so3_spline_value_jac",
+            "so3_spline_vel_jac",
+            "so3_spline_acc_jac",
+            "rn_spline_value",
+            "rn_spline_vel",
+            "rn_spline_acc",
+            "rn_spline_value_jac",
+            "rn_spline_vel_jac",
+            "rn_spline_acc_jac",
+            "se3_spline_value",
+            "se3_spline_vel",
+            "se3_spline_acc",
+            "rn_spline_gram",
+        ],
+    },
 ];
 
 pub(super) fn names() -> Vec<&'static str> {
@@ -955,7 +985,7 @@ mod tests {
                 .unwrap_or_default()
         };
         assert!(go("nope", None, Precision::F64).contains(
-            "no oracle runner `nope`; have [\"sophus_rs\", \"nalgebra\", \"sophus\", \"gtsam\", \"manif\"]"
+            "no oracle runner `nope`; have [\"sophus_rs\", \"nalgebra\", \"sophus\", \"gtsam\", \"manif\", \"basalt\"]"
         ));
         let e = go("sophus_rs", Some("nope"), Precision::F64);
         assert!(e.contains("no corpus file for `--fn nope`"));
@@ -969,7 +999,7 @@ mod tests {
     fn a_binary64_runner_is_not_launched_at_f32() -> Result<(), String> {
         let (root, dir) = (super::super::root()?, corpus_dir()?);
         let scratch = Scratch::new("f64-only");
-        for name in ["sophus_rs", "gtsam"] {
+        for name in ["sophus_rs", "gtsam", "basalt"] {
             let none = run(name, &root, &dir, &scratch.0, None, Precision::F32)?;
             assert!(none.is_none(), "{name}");
             assert!(!answers_f32(name), "{name}");
@@ -1173,9 +1203,9 @@ mod tests {
 
     /// Each registered runner's backend, and an unregistered name answering `None`.
     ///
-    /// sophus-rs and nalgebra are Rust `std`, and the Sophus, GTSAM and manif images are C++ on
-    /// their glibc. The domination split reads this, so a wrong entry would silently mislabel a
-    /// failure (`0036`, draft).
+    /// sophus-rs and nalgebra are Rust `std`, and the Sophus, GTSAM, manif and basalt images are
+    /// C++ on their glibc. The domination split reads this, so a wrong entry would silently
+    /// mislabel a failure (`0036`, draft).
     #[test]
     fn every_runner_declares_where_its_transcendentals_come_from() {
         assert_eq!(backend("sophus_rs"), Some(Backend::HostStd));
@@ -1183,6 +1213,7 @@ mod tests {
         assert_eq!(backend("sophus"), Some(Backend::HostStd));
         assert_eq!(backend("gtsam"), Some(Backend::HostStd));
         assert_eq!(backend("manif"), Some(Backend::HostStd));
+        assert_eq!(backend("basalt"), Some(Backend::HostStd));
         assert_eq!(backend("not_a_runner"), None);
         assert_eq!(names().len(), RUNNERS.len());
     }
