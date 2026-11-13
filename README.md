@@ -13,7 +13,7 @@ nalgebra), and must dominate it.
 [`docs/PROJECT.md`](./docs/PROJECT.md). Agents: [`CLAUDE.md`](./CLAUDE.md).
 
 Crates: `helicoid-linalg` (the leaf: scalar model, fixed-size linear algebra), `helicoid` (groups,
-Jacobians, charts, geodesics). `helicoid-spline` is gated
-([`0011`](./docs/decisions/0011-continuous-time-waits-for-a-consumer.md)).
+Jacobians, charts, geodesics). `helicoid-spline` (uniform cumulative B-splines) is specified in
+[`docs/PHASE7.md`](./docs/PHASE7.md) and not yet implemented.
 
 License: MIT OR Apache-2.0.

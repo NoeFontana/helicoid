@@ -1,6 +1,6 @@
 # 0116: The spline is measured before it ships
 
-**Status:** draft
+**Status:** ready
 **Owner:** @NoeFontana
 **Implementation:** —
 
@@ -44,7 +44,8 @@ budget. SE_N(3) already runs at 6 records per committed stratum.
    | `so3_spline_value`, `_vel`, `_acc` | `K` quaternions, `u`, `inv_h` | `X`; `ω h`; `ω̇ h²` |
    | `so3_spline_value_jac`, `_vel_jac`, `_acc_jac` | the same | `K` right Jacobians, dense, each output scaled as above |
    | `rn_spline_value`, `_vel`, `_acc` | `K` points of R³, `u`, `inv_h` | `p`; `ṗ h`; `p̈ h²` |
-   | `se3_spline_value`, `_vel`, `_acc` | `K` poses, `u`, `inv_h` | as SO(3), twists (`0113` open question 2) |
+   | `rn_spline_value_jac`, `_vel_jac`, `_acc_jac` | the same | the `K` scalars `k` of each `RnJac = k I`, scaled as above |
+   | `se3_spline_value`, `_vel`, `_acc` | `K` poses, `u`, `inv_h` | as SO(3), twists |
    | `rn_spline_gram` | `K`, `r`, `inv_h` | `G⁽ʳ⁾`, 0-ulp bar |
 
    - Scaling by `h` and `h²` makes every derivative output unit-scale.
@@ -67,12 +68,12 @@ budget. SE_N(3) already runs at 6 records per committed stratum.
    The `rn_spline_*` ids take `inc:generic`, `inc:large` and `inc:mixed` only: Rⁿ has no series arm
    and no π.
 
-   Records cycle through the id's orders. Committed: 6 records per stratum, with an `@f32` twin
-   (`0113` open question 1). Deep tier: 64.
+   Records cycle through the id's orders: `K = 4, 5, 6` for the groups, `2` to `6` for Rⁿ. Committed: 6 records per stratum, with an `@f32` twin
+   ([`0113`](./0113-phase-7-opens-for-a-calibration-consumer.md)). Deep tier: 64.
    `rn_spline_gram` is one record per `(K, r, h)` with `h ∈ {2⁻¹⁰, 1, 2¹⁰}`, so the scaling is
    exact ([`0115`](./0115-the-spline-tables-are-exact-integers.md)).
 
-   Budget: 1.6 MiB at both precisions with SE(3), 1.2 MiB without it. The rest stays for later
+   Budget: about 1.7 MiB at both precisions, with SE(3) and the Rⁿ Jacobian ids. The rest stays for later
    phases.
 3. **References** (generator, independent of the recursions):
    - **Value**: the cumulative product with mpmath's exponential. `d_j` is the geometric logarithm,
@@ -152,8 +153,10 @@ budget. SE_N(3) already runs at 6 records per committed stratum.
 
 ## Open questions
 
-1. **Oracle time.** If basalt-headers takes integer nanoseconds only, does the owner accept its rows
-   on the integer-nanosecond subset (decision 4.4), or drop it as an oracle?
-2. **Unmeasured Jacobians.** No id scores the Rⁿ control Jacobians (the consumer's bias splines),
-   the SE(3) Jacobians or `::<Left>`. Add ids, or record that the Rⁿ ones are covered by the
-   `b_m I` proptest and the `Left` ones by the conversion's proptest against `Dual`?
+None.
+- If basalt-headers takes integer nanoseconds only, its rows stand on the integer-nanosecond subset
+  (decision 4.4).
+- The SE(3) Jacobians and every `::<Left>` Jacobian are not ids. They run the code that
+  `so3_spline_*_jac` scores, through `SEn3Jac` and `Ad`, which are scored on their own. Each is
+  held to its reference twin and to `Dual` by proptest. An SE(3) Jacobian record is about 8 KB,
+  and three ids at both precisions would take 2.8 MB of the 4.00 MiB left.

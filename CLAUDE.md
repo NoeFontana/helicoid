@@ -30,7 +30,7 @@ lowest MSRV among consumers (D17).
 | [`PHASE4.md`](./docs/PHASE4.md) | Geodesics and their Jacobians; what `helicoid` owes the `tf_tree` migration. |
 | [`PHASE5.md`](./docs/PHASE5.md) | Charts, S², Sim(3), Γ functions, `Gaussian`; consumer migrations. |
 | [`PHASE6.md`](./docs/PHASE6.md) | Ambient Jacobians, `mint`, cross-target bit identity, calibration integration, the 1.0 criteria. |
-| [`PHASE7.md`](./docs/PHASE7.md) | `helicoid-spline`. **GATED ([`0011`](./docs/decisions/0011-continuous-time-waits-for-a-consumer.md)), not scheduled**; §3 is questions, not answers. |
+| [`PHASE7.md`](./docs/PHASE7.md) | `helicoid-spline`: uniform cumulative B-splines on any `LieGroup`. Opened by [`0113`](./docs/decisions/0113-phase-7-opens-for-a-calibration-consumer.md); records `0112`–`0116`; formulas `NUMERICS.md` §21. |
 | [`decisions/`](./docs/decisions/) | A record's own `**Status:**` line says whether it is authoritative: `grep -m1 -H '^\*\*Status:' docs/decisions/0*.md`. [`README.md`](./docs/decisions/README.md) indexes them. [`0013`](./docs/decisions/0013-simd-lanes-owe-a-measurement.md) is a **draft** and authorises nothing. |
 
 ## Hard rules — do not relitigate
@@ -67,8 +67,9 @@ lowest MSRV among consumers (D17).
 - **Values, not storage** (D2): no `Pod`, `Zeroable`, `serde`. Layout is not a semver contract;
   consumers own their storage formats (tf_tree's arena records stay tf_tree's).
 - **Scope** ([`0009`](./docs/decisions/0009-what-helicoid-does-not-own.md)): no sensor
-  models, no solver, no preintegration, no spline
-  ([`0011`](./docs/decisions/0011-continuous-time-waits-for-a-consumer.md)), no SIMD `Real` impl
+  models, no solver, no preintegration, no spline outside `helicoid-spline` and no spline-shaped
+  hook in the core ([`0011`](./docs/decisions/0011-continuous-time-waits-for-a-consumer.md),
+  [`0113`](./docs/decisions/0113-phase-7-opens-for-a-calibration-consumer.md)), no SIMD `Real` impl
   ([`0013`](./docs/decisions/0013-simd-lanes-owe-a-measurement.md)).
 - **A retraction is a chart** ([`0012`](./docs/decisions/0012-a-retraction-is-a-chart.md)): a
   consumer that needs a different retraction gets a `Chart` here, never an inline formula in its

@@ -1,6 +1,6 @@
 # 0112: A Jacobian sums by name
 
-**Status:** draft
+**Status:** ready
 **Owner:** @NoeFontana
 **Implementation:** —
 
@@ -94,5 +94,4 @@ without naming its side.
 
 ## Open questions
 
-1. Is decision 3's answer to `0028` item 1 acceptable, or does the owner want the sum to carry a
-   side marker, which no other Jacobian operation does?
+None. A sum carries no side marker, as `mul` carries none (Rationale).
