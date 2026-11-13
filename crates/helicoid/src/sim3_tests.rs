@@ -5,6 +5,7 @@
 //! `measure_sim3`, rounded up.
 
 use crate::dualmat_tests::Lanes;
+use crate::jac_tests::Stored;
 use crate::laws::{self, tangent as law_tangent, Bounds, Rng, Sample};
 use crate::{reference, Jac, LieGroup, SEn3Tangent, Sim3, Sim3Jac, Sim3Tangent, Tangent, SE3};
 use helicoid_linalg::{Dual, Matrix, StridedMut, Vector};
@@ -288,47 +289,40 @@ proptest! {
 // 3.408 over 10⁵ draws.
 const SIGMA_ZERO: f64 = 7.0;
 
-/// `a.add(b)` and `a.scale(k)` against `reference::sim3jac_{add, scale}` (`0112`), on blocks drawn
-/// uniform on `[-1, 1)`: the sum bit for bit everywhere, the scale on every stored entry, its
-/// structural zeros (the `+0` entries of both operands) compared as zeros.
-fn add_scale_twins<S: Lanes>(v: &[f64], k: f64) -> [bool; 2] {
-    let s = |i: usize| S::sample(v[i], i % 3);
-    let m = |o: usize| {
-        Matrix::from_cols(core::array::from_fn(|c| {
-            Vector(core::array::from_fn(|r| s(o + 3 * c + r)))
-        }))
-    };
-    let j = |o: usize| Sim3Jac {
-        a: m(o),
-        b: m(o + 9),
-        c: m(o + 18),
-        f: Vector(core::array::from_fn(|i| s(o + 27 + i))),
-        e: s(o + 30),
-    };
-    let (a, b, k) = (j(0), j(31), S::sample(k, 0));
-    let (da, db) = (
-        reference::dense::<S, _, _, 7>(&a),
-        reference::dense::<S, _, _, 7>(&b),
-    );
+/// `a` and `b` from 31 samples each, `jac_tests`' layout: every stored entry nonzero.
+fn add_scale_pair<S: Lanes>(v: &[f64]) -> (Sim3Jac<S>, Sim3Jac<S>) {
+    (Sim3Jac::of(v), Sim3Jac::of(&v[Sim3Jac::<S>::LEN..]))
+}
+
+/// `a.add(b)` against `reference::sim3jac_add`, bit for bit everywhere (`0112`).
+fn add_twin<S: Lanes>(v: &[f64]) -> bool {
+    let (a, b) = add_scale_pair::<S>(v);
     let mut out = [[S::zero(); 7]; 7];
     reference::sim3jac_add(
         &a,
         &b,
         &mut StridedMut::row_major(out.as_flattened_mut(), 7, 7),
     );
-    let add = laws::entrywise(
-        &reference::dense::<S, _, _, 7>(&a.add(&b)),
-        &out,
-        &[[false; 7]; 7],
-    );
+    let got = reference::dense::<S, _, _, 7>(&a.add(&b));
+    laws::entrywise(&got, &out, &[[false; 7]; 7])
+}
+
+/// `a.scale(k)` against `reference::sim3jac_scale`, bit for bit on every stored entry, its
+/// structural zeros (the `+0` entries of both operands) compared as zeros (`0112`).
+fn scale_twin<S: Lanes>(v: &[f64], k: f64) -> bool {
+    let (a, b) = add_scale_pair::<S>(v);
+    let k = S::sample(k, 0);
+    let mut out = [[S::zero(); 7]; 7];
     reference::sim3jac_scale(
         &a,
         k,
         &mut StridedMut::row_major(out.as_flattened_mut(), 7, 7),
     );
-    let zeros = laws::structural(&da, &db);
-    let scale = laws::entrywise(&reference::dense::<S, _, _, 7>(&a.scale(k)), &out, &zeros);
-    [add, scale]
+    let zeros = laws::structural(
+        &reference::dense::<S, _, _, 7>(&a),
+        &reference::dense::<S, _, _, 7>(&b),
+    );
+    laws::entrywise(&reference::dense::<S, _, _, 7>(&a.scale(k)), &out, &zeros)
 }
 
 macro_rules! add_scale {
@@ -338,14 +332,14 @@ macro_rules! add_scale {
             proptest! {
                 #[test]
                 fn sim3jac_add_matches_reference(v in proptest::collection::vec(-1.0_f64..1.0, 62)) {
-                    prop_assert!(add_scale_twins::<$S>(&v, 1.0)[0]);
+                    prop_assert!(add_twin::<$S>(&v));
                 }
                 #[test]
                 fn sim3jac_scale_matches_reference(
                     v in proptest::collection::vec(-1.0_f64..1.0, 62),
                     k in laws::factor(),
                 ) {
-                    prop_assert!(add_scale_twins::<$S>(&v, k)[1]);
+                    prop_assert!(scale_twin::<$S>(&v, k));
                 }
             }
         }

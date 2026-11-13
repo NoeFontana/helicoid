@@ -369,7 +369,7 @@ impl<S: Real> Jac<S, RnTangent<S, 2>> for Mat2<S> {
     fn add(&self, o: &Self) -> Self {
         *self + *o
     }
-    // `Matrix::scale` by path, as in `Mat3`'s impl.
+    // `Matrix::scale` by path: `self.scale` on `&Self` resolves to this method.
     #[inline]
     fn scale(&self, k: S) -> Self {
         Matrix::scale(*self, k)

@@ -70,10 +70,12 @@ pub trait Tangent<S: Real>: Copy + Blend<S> {
 /// [`neg`](Jac::neg), [`add`](Jac::add) and [`scale`](Jac::scale) (`0005`, `0112`). A dense matrix
 /// leaves it only through [`write_dense`](Jac::write_dense) and [`sandwich`](Jac::sandwich).
 ///
-/// The sum and the scale are named methods, never `Add`, `Sub` or `Mul<S>` impls (`docs/API.md`
-/// R1). Each is one rounding per stored entry, so `write_dense(a.add(b))` is the entrywise sum of
-/// `write_dense(a)` and `write_dense(b)` bit for bit on every stored entry; a structural zero is
-/// written `+0`, where the dense `k · 0` is `-0` for a negative `k` and NaN for a non-finite one.
+/// The sum and the scale are named methods: this crate adds no `Add`, `Sub` or `Mul<S>` impl to a
+/// Jacobian type (`docs/API.md` R1), though `Mat3` and `Mat2` keep `helicoid-linalg`'s matrix
+/// operators. Each is one rounding per stored entry, so `write_dense` of `a.add(b)` and of
+/// `a.scale(k)` is the dense entrywise operation bit for bit on every stored entry. A structural
+/// zero is written `+0`, where the dense `0 · k` is `-0` for a negative `k` and NaN for a
+/// non-finite one.
 pub trait Jac<S: Real, T: Tangent<S>>: Copy + Blend<S> {
     /// The identity matrix.
     fn identity() -> Self;
