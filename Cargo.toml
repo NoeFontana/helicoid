@@ -12,7 +12,6 @@ edition = "2021"
 rust-version = "1.85"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/NoeFontana/helicoid"
-homepage = "https://github.com/NoeFontana/helicoid"
 authors = ["Noé Fontana <noe.fontana.pro@gmail.com>"]
 keywords = ["lie-group", "robotics", "se3", "so3", "no-std"]
 categories = ["science::robotics", "mathematics", "no-std::no-alloc"]
