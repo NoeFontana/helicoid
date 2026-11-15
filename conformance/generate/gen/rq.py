@@ -304,8 +304,8 @@ def factor(M, independent: bool):
 
 
 def rq3(inputs: dict) -> dict:
-    """RQ.1's construction of the stored M at the working precision. `valid` is det M > 0 in
-    rationals. Where m2 and the reference's r3 are dependent (decided in rationals: rank of
+    """RQ.1's construction of the stored M at the working precision; no mask, which the metric
+    reads from the answer's own diagonal (docs/decisions/0117 decision 9). Where m2 and the reference's r3 are dependent (decided in rationals: rank of
     (m2, m3) below 2, or m3 = 0 and m2 a multiple of e3 or zero) the factorization is not unique,
     `completion` completes it, and both kappas are 0, weight 0 in the metric."""
     E = exact(inputs["M"])
@@ -318,7 +318,6 @@ def rq3(inputs: dict) -> dict:
     return {
         "U": to_mat(U),
         "R": to_mat(R),
-        "valid": [mpf(int(det3(E) > 0))],
         "kappa_U": [ku],
         "kappa_R": [kr],
     }

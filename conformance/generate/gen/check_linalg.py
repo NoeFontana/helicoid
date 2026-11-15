@@ -15,8 +15,8 @@ the route that computed the record, at twice the working precision, to 100 digit
 - `nearest_rotation` (0102): |R^T R - I| <= 1e-100, Frobenius, and det R within 1e-100 of 1;
   no rotation of `_rivals` nearer M, Frobenius.
 - `rq3` (0117): |M - U R| <= 1e-100 |M|, |R^T R - I| <= 1e-100, det R within 1e-100 of 1; U is
-  zero below its diagonal and u22, u33 >= 0; `valid` is det M > 0 and u11 has the sign of det M
-  where the factorization is unique; and where it is, `kappa_U` and `kappa_R` bound the change of
+  zero below its diagonal and u22, u33 >= 0; u11 has the sign of det M, in rationals, where the
+  factorization is unique; and where it is, `kappa_U` and `kappa_R` bound the change of
   (U, R) along a random direction, recomputed by a central difference of the construction at
   twice the working precision, and RQ.6's closed form agrees with that difference to 1e-30
   relative.
@@ -135,8 +135,6 @@ def rq3(inputs: dict, out: dict) -> None:
 
     E = exact(inputs["M"])
     det = det3(E)
-    if out["valid"][0] != int(det > 0):
-        raise CrossCheckError(f"rq3: valid {out['valid'][0]} against det M = {float(det)}")
     with mp.workdps(2 * DPS):
         M, U, R = from_mat(inputs["M"]), from_mat(out["U"]), from_mat(out["R"])
         if any(U[i, j] != 0 for i in range(3) for j in range(i)):

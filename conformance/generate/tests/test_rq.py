@@ -83,14 +83,13 @@ class ReferenceTest(unittest.TestCase):
         out = rq.rq3({"M": mat([[2, 1, -1], [0, 3, 0.5], [0, 0, 0.25]])})
         self.assertEqual(out["U"].data, [2, 0, 0, 1, 3, 0, -1, 0.5, 0.25])
         self.assertEqual(out["R"].data, [1, 0, 0, 0, 1, 0, 0, 0, 1])
-        self.assertEqual(out["valid"], [1])
+        self.assertNotIn("valid", out)
 
     def test_a_reflection_keeps_the_factorization(self):
         """diag(-1, 2, 3): R in SO(3) with u22, u33 > 0 forces R = I and u11 = det M / 6 = -1, the
         factorization kept under a clear mask (0117 decision 1)."""
         out = rq.rq3({"M": mat([[-1, 0, 0], [0, 2, 0], [0, 0, 3]])})
         self.assertEqual(out["U"].data, [-1, 0, 0, 0, 2, 0, 0, 0, 3])
-        self.assertEqual(out["valid"], [0])
 
     def test_the_tangent_is_the_derivative_of_the_construction(self):
         record = BY_NAME["rq:random"].records()[0]
@@ -120,11 +119,13 @@ class CrossCheckTest(unittest.TestCase):
         with self.assertRaises(check_linalg.CrossCheckError):
             check_linalg.rq3(record, bad)
 
-    def test_a_wrong_mask_or_kappa_fails(self):
+    def test_a_wrong_sign_or_kappa_fails(self):
         record = BY_NAME["rq:random"].records()[0]
         good = rq.rq3(record)
+        flipped = Mat((3, 3), [-x if i in (0, 3, 4) else x for i, x in enumerate(good["U"].data)])
+        rows = Mat((3, 3), [-x if i % 3 in (0, 1) else x for i, x in enumerate(good["R"].data)])
         with self.assertRaises(check_linalg.CrossCheckError):
-            check_linalg.rq3(record, {**good, "valid": [1 - good["valid"][0]]})
+            check_linalg.rq3(record, {**good, "U": flipped, "R": rows})
         with self.assertRaises(check_linalg.CrossCheckError):
             check_linalg.rq3(record, {**good, "kappa_U": [good["kappa_U"][0] / 4]})
 

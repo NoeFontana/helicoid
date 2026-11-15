@@ -240,8 +240,8 @@ class BuildTest(unittest.TestCase):
         and follows the binary64 order; the others (`x:1e37@f32`) are the binary32 range's own."""
         names = [n for n in FUNCTIONS if n.startswith(ASKED_FOR_F32)]
         # and 0061's `mat2_inverse_adj`, 0065's two, 0067's two, 0068's two, 0070's eight, 0087's,
-        # 0101's, 0102's, 0103's, 0111's three, 0116's sixteen
-        self.assertEqual(len(names), 13 + 1 + 2 + 2 + 2 + 8 + 1 + 1 + 1 + 1 + 3 + 16)
+        # 0101's, 0102's, 0103's, 0111's three, 0116's sixteen, 0117's
+        self.assertEqual(len(names), 13 + 1 + 2 + 2 + 2 + 8 + 1 + 1 + 1 + 1 + 3 + 16 + 1)
         for name in names:
             strata = FUNCTIONS[name].strata
             flags = [s.f32 for s in strata]

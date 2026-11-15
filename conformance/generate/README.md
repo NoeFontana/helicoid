@@ -324,7 +324,7 @@ decision 4's. Every one has
 | `eig3` | `A` (3×3) | `lambda[3]` ascending, `V` (columns) | `mp.eigsy`; each column's largest component (the first of equals) positive |
 | `eig_sym_n*` | `A` (n×n) | `lambda[n]`, `V`, `kappa[1]` | `eig3`'s at n; `kappa` κ₂ of the equilibrated A where A is exactly positive definite, else 0 (below) |
 | `svd3` | `A` (3×3) | `U`, `sigma[3]`, `V` | `mp.svd_r`, sorted; U, V ∈ SO(3), σ₁ ≥ σ₂ ≥ \|σ₃\|, sign σ₃ = sign det A (below) |
-| `rq3` | `M` (3×3) | `U` (3×3, zero below), `R`, `valid`, `kappa_U`, `kappa_R` | RQ.1's construction (`docs/maths/rq3.md`); `valid` det M > 0 in rationals; the kappas RQ.6's norms, 0 where not unique (below) |
+| `rq3` | `M` (3×3) | `U` (3×3, zero below), `R`, `kappa_U`, `kappa_R` | RQ.1's construction (`docs/maths/rq3.md`), no mask (the metric reads the answer's against its own diagonal); the kappas RQ.6's norms, 0 where not unique (below) |
 | `nearest_rotation` | `M` (3×3) | `R` (3×3) | U diag(1, 1, d) Vᵀ from `mp.svd_r`, d = sign det M in rationals (below) |
 | `chol_n*` | `A` (n×n) | `valid[1]`, `L` | `valid` by an exact LDLᵀ; `mp.cholesky(A, tol=0)`, or zeros |
 | `chol_solve_n*` | `A`, `b[n]` | `x[n]` | `mp.lu_solve` of the equilibrated system: x = D (DAD)⁻¹ D b, D = diag(A)^-1/2 |
@@ -431,7 +431,7 @@ decision 4's. Every one has
   `mp.eig`'s ratio to 1e-100; `svd3` ‖AV − UΣ‖ ≤ 1e-100 ‖A‖, ‖UᵀU − I‖, ‖VᵀV − I‖ and |det − 1| ≤ 1e-100,
   the ordering, and the sign of σ₃ against det A in rationals; `nearest_rotation` ‖RᵀR − I‖ and
   |det R − 1| ≤ 1e-100 and no nearer rotation among 50, 25 Haar and R turned by 10⁻ᵏ, k = 1…25;
-  `rq3` ‖M − UR‖ ≤ 1e-100 ‖M‖, ‖RᵀR − I‖ and |det R − 1| ≤ 1e-100, U's structure and signs, `valid`
+  `rq3` ‖M − UR‖ ≤ 1e-100 ‖M‖, ‖RᵀR − I‖ and |det R − 1| ≤ 1e-100, U's structure and signs, u₁₁'s
   against det M in rationals, and where unique the kappas bounding, and RQ.6 matching to 1e-30, a
   central difference of the construction along a row-scaled random direction; `chol` `valid` against `mp.eigsy` of the equilibrated A (a congruence keeps
   the signs), L lower with a positive diagonal and ‖LLᵀ − A‖ ≤ 1e-100 ‖A‖; `chol_solve`

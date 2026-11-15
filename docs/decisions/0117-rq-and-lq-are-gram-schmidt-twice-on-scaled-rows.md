@@ -218,10 +218,12 @@ evaluated branch-free. Decision 2 takes it behind `S::branch`.
    A `helicoid` test pins that, because the consumer's bit-exact path composes the two.
 9. **The corpus id `rq3`.** `lq3` is the §14 row `flip(rq3(flip m))`, bit for bit, with no id
    (`0104`'s precedent, `0108`).
-   - **Fields.** `in`: `M` (3×3). `out`: `U` (3×3, exact zeros below), `R`, `valid`, and the
-     reference-only `kappa_U` and `kappa_R` (RQ.6's norms, as `eig_sym`'s `kappa`).
+   - **Fields.** `in`: `M` (3×3). `out`: `U` (3×3, exact zeros below), `R`, and the
+     reference-only `kappa_U` and `kappa_R` (RQ.6's norms, as `eig_sym`'s `kappa`). The reference
+     has no mask: the metric reads a subject's `valid` against that subject's own diagonal, and a
+     wrong sign of $u_{11}$ reads in the forward error.
    - **Reference.** RQ.1's construction at 120 digits, rechecked at 150.
-     - `valid` and the sign of $u_{11}$ come from $\det M$ in rationals; the rank of $(m_2, m_3)$
+     - The sign of $u_{11}$ is checked against $\det M$ in rationals; the rank of $(m_2, m_3)$
        comes from `dense.rank` in rationals.
      - Where that rank is below 2, the reference completes $r_2$ (and $r_3$) by decision 2's axis
        rule, and both κ are stored as 0: not unique, the forward error unweighted.
@@ -262,7 +264,7 @@ evaluated branch-free. Decision 2 takes it behind `S::branch`.
      | `rq:rotation` | a Haar rotation, rounded |
      | `rq:scale-up`, `rq:scale-down` | `rq:random` times $10^{\pm70}$ ($10^{\pm12}$) |
 
-     That is 388 binary64 and 372 binary32 records, 0.86 MB (862 589 bytes) of the 2.24 MiB `0110` leaves.
+     That is 388 binary64 and 372 binary32 records, 0.83 MB (827 629 bytes) of the 2.24 MiB `0110` leaves.
    - **Oracles.** nalgebra's `QR` and Eigen 3.4's `HouseholderQR<Matrix3<T>>` in the Sophus image, at
      both precisions.
      - Each factors $M^\top J = \tilde Q\tilde R$, then takes $U = J\tilde R^\top J$ and
@@ -316,7 +318,7 @@ evaluated branch-free. Decision 2 takes it behind `S::branch`.
     `lq3`, reporting through a mask.
 - **The instrument.**
   - `coverage::required()` gains `rq3`, and `committed_linalg::IDS` its rows.
-  - The corpus grows by 0.86 MB to 78.58 MiB, leaving 1.42 MiB under `0110`'s cap.
+  - The corpus grows by 0.83 MB to 78.55 MiB, leaving 1.45 MiB under `0110`'s cap.
 - **Bits.** No existing output moves its bits: `eig3`'s helpers are reused, not changed.
 
 ## Implementation plan
