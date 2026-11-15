@@ -153,9 +153,10 @@ evaluated branch-free. Decision 2 takes it behind `S::branch`.
    - $u_{22} \ge 0$ and $u_{33} \ge 0$ by construction, and $u_{11}$ takes the sign of $\det M$.
      Where $m_2$ and $m_3$ are independent the factorization is the unique one of RQ.1, whatever the
      sign of $\det M$.
-   - `valid` is $u_{11} > 0 \wedge u_{22} > 0 \wedge u_{33} > 0$ on the computed (scaled) values: a
-     statement about the computed values, as `chol`'s is (§15.2). In exact arithmetic it is
-     $\det M > 0$.
+   - `valid` is $u_{11} > 0 \wedge u_{22} > 0 \wedge u_{33} > 0$ on the returned diagonal, after
+     scaling back: a statement about the computed values, as `chol`'s is (§15.2), which the
+     metric of decision 9 holds it to. A diagonal entry that underflows when it is scaled back
+     clears the mask instead of contradicting it. In exact arithmetic it is $\det M > 0$.
    - Under a clear mask the factorization is kept, not replaced (the owner, 2026-11-15). A
      consumer with a negative determinant still holds an exact $M = UR$.
    - `lq3<S: Real>(m: &Mat3<S>) -> (LowerTri3<S>, Mat3<S>, S::Mask)` is
@@ -432,6 +433,10 @@ singular point.
 reads `9.0e6` and `FlipsTheGauge` reads `9.5e15`.
 
 ## Further work
+
+- A rowwise κ for `R`'s forward reading: `R` depends on rows 2 and 3 alone and is invariant under
+  row scaling, so `κ_R`'s factor $\lVert M\rVert_F$ weighs `rq:row-spread`'s forward error to nothing.
+  The rowwise backward error and the orthogonality still bound `R` there.
 
 - Arithmetic on the triangle types (`U v`, `U⁻¹ v`), once a consumer evaluates a model through them.
 - A general `UpperTri<S, N>`, if `chol`'s factor ever wants a type and stable Rust can say its size.

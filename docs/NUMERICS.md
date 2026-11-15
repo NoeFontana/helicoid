@@ -19,8 +19,8 @@ computes from definitions (`PHASE1.md` §4.3), so a wrong line in this file fail
 | Section | Status |
 |---|---|
 | §1–§12, §14, §15, §17, §20 | **Ready** (§9 Sim(3) by [`0070`](./decisions/0070-sim3-a-structured-jacobian-and-a-series-on-delta.md)) |
-| §22 | **Ready** ([`0117`](./decisions/0117-rq-and-lq-are-gram-schmidt-twice-on-scaled-rows.md)) |
 | §21 | **Ready** ([`0114`](./decisions/0114-a-spline-evaluates-the-window-it-is-handed.md), [`0115`](./decisions/0115-the-spline-tables-are-exact-integers.md)); not implemented |
+| §22 | **Ready** ([`0117`](./decisions/0117-rq-and-lq-are-gram-schmidt-twice-on-scaled-rows.md)) |
 
 ## 1. Conventions
 

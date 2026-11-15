@@ -12,8 +12,8 @@ use crate::real::{Blend, Mask, Real};
 use crate::tri::{LowerTri3, UpperTri3};
 use crate::vector::{Vec3, Vector};
 
-/// `v / d`, entry by entry: a division, not a product by `1 / d`, so that `d / d = 1` (`maths/rq3.md`
-/// RQ.8).
+/// `v / d`, entry by entry: a division, not a product by `1 / d`, so that `d / d = 1`
+/// (`maths/rq3.md` RQ.8).
 #[inline(always)]
 fn over<S: Real>(v: Vec3<S>, d: S) -> Vec3<S> {
     Vector([v.0[0] / d, v.0[1] / d, v.0[2] / d])
@@ -72,9 +72,9 @@ fn scaled<S: Real>(v: Vec3<S>) -> (Vec3<S>, S::Mask, S) {
 ///
 /// An upper triangular `m` with a positive diagonal, `+0` below it and no `-0` returns `U = m`
 /// and `R = I` bit for bit where each row's entries lie within `2^894` (`f64`), `2^94` (`f32`) of
-/// its largest and `m22` within `2^383`, `2^31` of its row's largest: a diagonal one at every finite
-/// magnitude, subnormal entries included (`maths/rq3.md` RQ.8, RQ.9). A `-0` off the diagonal returns the same values, the zeros of
-/// `U` and `R` of either sign.
+/// its largest and `m22` within `2^383`, `2^31` of its row's largest: a diagonal one at every
+/// finite magnitude, subnormal entries included (`maths/rq3.md` RQ.8, RQ.9). A `-0` off the
+/// diagonal returns the same values, the zeros of `U` and `R` of either sign.
 ///
 /// # Accuracy
 ///
@@ -129,7 +129,8 @@ pub fn rq3<S: Real>(m: &Mat3<S>) -> (UpperTri3<S>, Mat3<S>, S::Mask) {
 
     // Row 2: the projection twice, kept where the second leaves at least half of the first's
     // squared norm (`maths/rq3.md` RQ.4); otherwise `m2` is in `r3`'s span to working precision.
-    let w1 = m2 - r3.scale(m2.dot(r3));
+    let u23 = m2.dot(r3);
+    let w1 = m2 - r3.scale(u23);
     let w2 = w1 - r3.scale(w1.dot(r3));
     let a2 = w2.norm_sq();
     let dep = a2.lt(small).or(a2.lt(S::lit(0.5) * w1.norm_sq()));
@@ -143,16 +144,11 @@ pub fn rq3<S: Real>(m: &Mat3<S>) -> (UpperTri3<S>, Mat3<S>, S::Mask) {
 
     // Row 1: a rotation by construction.
     let r1 = unit(r2.cross(r3));
-    let u11 = m1.dot(r1);
+    let (u11, u22, u33) = (m1.dot(r1) * b1, u22 * b2, u33 * b3);
+    // On the returned diagonal, not the scaled one: a diagonal entry that underflows on the way
+    // back clears the mask rather than contradict it.
     let valid = finite.and(zero.lt(u11)).and(zero.lt(u22)).and(zero.lt(u33));
-    let u = UpperTri3::from_row_major([
-        u11 * b1,
-        m1.dot(r2) * b1,
-        m1.dot(r3) * b1,
-        u22 * b2,
-        m2.dot(r3) * b2,
-        u33 * b3,
-    ]);
+    let u = UpperTri3::from_row_major([u11, m1.dot(r2) * b1, m1.dot(r3) * b1, u22, u23 * b2, u33]);
     let r = Mat3::from_rows([r1, r2, r3]);
     let (u, r) =
         <(UpperTri3<S>, Mat3<S>)>::blend(finite, (u, r), (UpperTri3::identity(), Mat3::identity()));

@@ -81,7 +81,7 @@ fn lq3_of<S: Real>(a: &Mat3<S>) -> (LowerTri3<S>, Mat3<S>, S::Mask) {
 
 /// `rq3`'s fixtures by rows, rounded once at `f64`: a general matrix, `I + 1e-3 E`, rows 2 and 3
 /// `1e-8` from parallel, and an upper triangle with a positive diagonal.
-fn triangular<S: Fixture>() -> [(&'static str, Mat3<S>); 4] {
+fn rq3_fixtures<S: Fixture>() -> [(&'static str, Mat3<S>); 4] {
     let e = [[0.3, -0.9, 0.1], [0.7, 0.2, -0.4], [-0.5, 0.8, 0.6]];
     let of = |m: [[f64; 3]; 3]| Mat3::from_rows(m.map(|r| Vector(r.map(S::of))));
     let near = core::array::from_fn(|i| {
@@ -355,12 +355,12 @@ fn rows<S: Fixture>(g: &mut BenchmarkGroup<'_, WallTime>) {
             b.iter(|| svd3_of(black_box(&a)));
         });
     }
-    for (name, a) in triangular::<S>() {
+    for (name, a) in rq3_fixtures::<S>() {
         g.bench_function(format!("rq3/{name}"), |b| {
             b.iter(|| rq3_of(black_box(&a)));
         });
     }
-    let [(_, general_m), ..] = triangular::<S>();
+    let [(_, general_m), ..] = rq3_fixtures::<S>();
     g.bench_function("lq3/random", |b| {
         b.iter(|| lq3_of(black_box(&general_m)));
     });
