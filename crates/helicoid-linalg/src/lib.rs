@@ -47,9 +47,11 @@ mod mint;
 mod point;
 mod polar;
 mod real;
+mod rq3;
 mod skew;
 mod strided;
 mod svd3;
+mod tri;
 mod vector;
 
 pub use chol::{chol, chol_solve, solve_lower, solve_upper};
@@ -61,9 +63,11 @@ pub use matrix::{Mat2, Mat3, Matrix};
 pub use point::{Point, Point2, Point3};
 pub use polar::nearest_rotation;
 pub use real::{Blend, Mask, Precision, Real};
+pub use rq3::{lq3, rq3};
 pub use skew::{hat, vee};
 pub use strided::{Strided, StridedMut};
 pub use svd3::svd3;
+pub use tri::{LowerTri3, UpperTri3};
 pub use vector::{Vec2, Vec3, Vector};
 
 /// The crate README, compiled as a doctest so its example cannot rot.
@@ -96,6 +100,8 @@ mod math_tests;
 mod mint_tests;
 #[cfg(test)]
 mod polar_tests;
+#[cfg(test)]
+mod rq3_tests;
 #[cfg(test)]
 mod sin_tests;
 #[cfg(test)]

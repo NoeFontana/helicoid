@@ -56,7 +56,7 @@ $\begin{bmatrix}R & [t]_\times R\\ 0 & R\end{bmatrix}$ in Solà et al.
 - A statement is labelled `<page>.<n>` (`LG` for [`lie-groups.md`](./lie-groups.md), `SO` for
   [`so3.md`](./so3.md), `CO` for [`coefficients.md`](./coefficients.md), `SE` for
   [`se3.md`](./se3.md), `PL` (planar) for [`so2-se2.md`](./so2-se2.md), `EA` (error analysis) for
-  [`error-analysis.md`](./error-analysis.md), `GE` (geodesics) for [`geodesics.md`](./geodesics.md), `CH` (charts) for [`charts.md`](./charts.md), `GG` (Γ and Gaussians) for [`gamma-gaussian.md`](./gamma-gaussian.md), `AJ` (ambient Jacobians) for [`ambient-jacobians.md`](./ambient-jacobians.md), `SM` (Sim(3)) for [`sim3.md`](./sim3.md), `SV` (the SVD) and `PO` (the polar factor) for [`svd3.md`](./svd3.md), `BS` (B-splines) for [`splines.md`](./splines.md)), numbered in order of appearance. Labels are stable:
+  [`error-analysis.md`](./error-analysis.md), `GE` (geodesics) for [`geodesics.md`](./geodesics.md), `CH` (charts) for [`charts.md`](./charts.md), `GG` (Γ and Gaussians) for [`gamma-gaussian.md`](./gamma-gaussian.md), `AJ` (ambient Jacobians) for [`ambient-jacobians.md`](./ambient-jacobians.md), `SM` (Sim(3)) for [`sim3.md`](./sim3.md), `SV` (the SVD) and `PO` (the polar factor) for [`svd3.md`](./svd3.md), `RQ` (RQ and LQ) for [`rq3.md`](./rq3.md), `BS` (B-splines) for [`splines.md`](./splines.md)), numbered in order of appearance. Labels are stable:
   later results are appended, never renumbered, so other pages and PR descriptions can cite them.
 - Each result states its domain and carries a proof, or says which step is only outlined.
 - Each proposition ends with one **Checked:** line: what was run, at which precision, over which

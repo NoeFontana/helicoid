@@ -21,6 +21,7 @@
 - [Charts: retractions, the SE(3) charts, S²](maths/charts.md)
 - [Γ functions and Gaussians: IMU increments, `Gaussian`, the side conversion](maths/gamma-gaussian.md)
 - [The 3×3 SVD and the nearest rotation](maths/svd3.md)
+- [The 3×3 RQ and LQ factorizations](maths/rq3.md)
 - [The symmetric N×N eigendecomposition: why a relative threshold](maths/eig-sym.md)
 - [Uniform cumulative B-splines: why the recursions hold](maths/splines.md)
 - [Ambient Jacobians: `PlusJacobian` and `MinusJacobian` of the quaternion and SE(3) charts](maths/ambient-jacobians.md)
