@@ -15,10 +15,10 @@ from gen.strata import QUAT_STRATA, SCALAR_THETA_STRATA, Stratum
 
 precision.setup()
 COMMITTED = manifest.ROOT.parent / "corpus"
-# 0056, 0061, 0065, 0067 (S2's two ids), 0101, 0102, 0103, 0111, 0116
+# 0056, 0061, 0065, 0067 (S2's two ids), 0101, 0102, 0103, 0111, 0116, 0117
 ASKED_FOR_F32 = (
     "solve_cubic", "eig3", "chol_", "quat_", "real_", "mat2_", "gaussian_", "s2_", "sim3_", "svd3",
-    "nearest_rotation", "se3_inv_act", "eig_sym_", "so3_spline_", "rn_spline_", "se3_spline_",
+    "nearest_rotation", "se3_inv_act", "eig_sym_", "so3_spline_", "rn_spline_", "se3_spline_", "rq3",
 )
 SUBSET_STRATUM = next(s for s in SCALAR_THETA_STRATA if s.name == "theta:exact0")
 
@@ -270,6 +270,7 @@ SUBSET |= {"x:1e-37@f32", "yx:ratio-1e+8", "chol:cond-1e-2@f32"}
 SUBSET |= {"matrix:exact", "matrix:exact@f32"}  # 0085
 SUBSET |= {"svd:rank1@f32"}  # 0101: two matrices in one part
 SUBSET |= {"polar:exact@f32"}  # 0102: exact zeros in the reference
+SUBSET |= {"rq:zero@f32"}  # 0117: zero kappas and signed zeros in the input
 SUBSET |= {"tx:1e6", "tp:1e2@f32"}  # 0103: three matrices in one part
 SUBSET |= {"h:2^10", "h:1@f32"}  # 0116: `rn_spline_gram` alone holds them
 

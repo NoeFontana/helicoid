@@ -11,7 +11,7 @@
 // `eig3` is the image's Eigen, `SelfAdjointEigenSolver<Matrix3<T>>` (docs/decisions/0083), and
 // `eig_sym_n{4,9,16}` the same at N (docs/decisions/0111); `svd3`
 // its `JacobiSVD<Matrix3<T>>` (docs/decisions/0101); `nearest_rotation` `SO3<T>::fitToSO3`
-// (docs/decisions/0102).
+// (docs/decisions/0102); `rq3` its `HouseholderQR<Matrix3<T>>`, reversed (docs/decisions/0117).
 // A record Sophus refuses (a failed `SOPHUS_ENSURE`, or Eigen's solver not converging) is answered
 // with `nan` in every field: answered, so no stratum is the runner's choice, and non-finite, so it
 // never sets a bar.
@@ -192,6 +192,11 @@ struct At {
       return {{"U", s.u}, {"sigma", s.sigma}, {"V", s.v}};
     }
     if (id == "nearest_rotation") return {{"R", helicoid_nearest_rotation<T>(take(in, "M", 9))}};
+    // The image's Eigen (docs/decisions/0117).
+    if (id == "rq3") {
+      const HelicoidRq3 f = helicoid_rq3<T>(take(in, "M", 9));
+      return {{"U", f.u}, {"R", f.r}, {"valid", {f.valid}}};
+    }
     throw std::logic_error("no evaluation of `" + id + "`");
   }
 };
@@ -238,6 +243,7 @@ const std::vector<Id>& table() {
       {"eig_sym_n16", {{"V", 256}, {"lambda", 16}}, true},
       {"svd3", {{"U", 9}, {"sigma", 3}, {"V", 9}}, true},
       {"nearest_rotation", {{"R", 9}}, true},
+      {"rq3", {{"U", 9}, {"R", 9}, {"valid", 1}}, true},
   };
   return ids;
 }

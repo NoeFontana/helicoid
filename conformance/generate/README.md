@@ -21,7 +21,7 @@ uv run --frozen python -m gen list
 | `gen/rng.py` | splitmix64, per-stratum streams, log-uniform, uniform on S² |
 | `gen/strata.py` | the strata; `gen/registry.py` the function ids; `gen/coeff.py`, `gen/so3.py`, `gen/sen3.py`, `gen/so2.py`, `gen/se2.py` their definitions |
 | `gen/series.py`, `gen/check.py`, `gen/check_sen3.py`, `gen/check_se2.py` | the exact Taylor series (`coeff_series`); the per-record cross-checks |
-| `gen/cubic.py`, `gen/eig.py`, `gen/svd.py`, `gen/polar.py`, `gen/chol.py`, `gen/quat.py`, `gen/real.py`, `gen/dense.py`, `gen/gaussian.py` | the ids of `docs/decisions/0056`, `svd3` (`0101`) and `nearest_rotation` (`0102`), each with its strata (`strata.Drawn`); n×n helpers, exact rank and rational LDLᵀ |
+| `gen/cubic.py`, `gen/eig.py`, `gen/svd.py`, `gen/polar.py`, `gen/rq.py`, `gen/chol.py`, `gen/quat.py`, `gen/real.py`, `gen/dense.py`, `gen/gaussian.py` | the ids of `docs/decisions/0056`, `svd3` (`0101`), `nearest_rotation` (`0102`) and `rq3` (`0117`), each with its strata (`strata.Drawn`); n×n helpers, exact rank and rational LDLᵀ |
 | `gen/check_linalg.py`, `gen/check_real.py`, `gen/check_gaussian.py` | their cross-checks |
 | `gen/charts.py`, `gen/s2.py`, `gen/check_charts.py` | the chart ids (`docs/decisions/0060` decision 8, `0063`) and their cross-checks |
 | `gen/sim3.py`, `gen/check_sim3.py` | the Sim(3) ids (`docs/decisions/0070`) and their cross-checks |
@@ -314,7 +314,7 @@ tangent's order, `"shape":[3,3]`.
 
 `solve_cubic`, `eig3`, `chol_n{3,6}`, `chol_solve_n{3,6}`, `quat_renormalize` and `real_*`: the
 record's decision 1 fixes their fields and references, decision 2 their strata; `svd3`'s are
-`0101` decision 8's, `nearest_rotation`'s `0102` decision 8's and `eig_sym_n{4,9,16}`'s `0111`
+`0101` decision 8's, `nearest_rotation`'s `0102` decision 8's, `rq3`'s `0117` decision 9's and `eig_sym_n{4,9,16}`'s `0111`
 decision 4's. Every one has
 `@f32` strata, after all its binary64 ones, in the same order.
 
@@ -324,6 +324,7 @@ decision 4's. Every one has
 | `eig3` | `A` (3×3) | `lambda[3]` ascending, `V` (columns) | `mp.eigsy`; each column's largest component (the first of equals) positive |
 | `eig_sym_n*` | `A` (n×n) | `lambda[n]`, `V`, `kappa[1]` | `eig3`'s at n; `kappa` κ₂ of the equilibrated A where A is exactly positive definite, else 0 (below) |
 | `svd3` | `A` (3×3) | `U`, `sigma[3]`, `V` | `mp.svd_r`, sorted; U, V ∈ SO(3), σ₁ ≥ σ₂ ≥ \|σ₃\|, sign σ₃ = sign det A (below) |
+| `rq3` | `M` (3×3) | `U` (3×3, zero below), `R`, `valid`, `kappa_U`, `kappa_R` | RQ.1's construction (`docs/maths/rq3.md`); `valid` det M > 0 in rationals; the kappas RQ.6's norms, 0 where not unique (below) |
 | `nearest_rotation` | `M` (3×3) | `R` (3×3) | U diag(1, 1, d) Vᵀ from `mp.svd_r`, d = sign det M in rationals (below) |
 | `chol_n*` | `A` (n×n) | `valid[1]`, `L` | `valid` by an exact LDLᵀ; `mp.cholesky(A, tol=0)`, or zeros |
 | `chol_solve_n*` | `A`, `b[n]` | `x[n]` | `mp.lu_solve` of the equilibrated system: x = D (DAD)⁻¹ D b, D = diag(A)^-1/2 |
@@ -340,6 +341,7 @@ decision 4's. Every one has
 | `eig3` | `eig:random`, `eig:gap-1e-k/bottom` k = 0…12 (0…6), then `/top`, `eig:triple`, `rank1`, `scale-up`, `scale-down`. 64, gaps 32; 1920 |
 | `eig_sym_n*` | `eig:random`, `gap-1e-k/bottom` then `/top` k ∈ {1, 4, 8, 12} ({1, 3, 5}), `cluster-{2,3}`, `rank-def-{1,3}`, `graded-1e-k` k ∈ {4, 8, 16} ({4, 8}), `unit-diag-cond-1e-k` k ∈ {3, 6, 9, 12} ({2, 4}), `diagonal`, `identity-multiple`, `scale-up`, `scale-down`. 32, 16, 4 each at n = 4, 9, 16; 1376, 688, 172 |
 | `svd3` | `svd:random` (32), `svd:gap-1e-k/bottom` then `/top`, k ∈ {1, 2, 4, 6, 8, 10, 12} ({1, 2, 4, 6}), `graded-1e-k` k ∈ {2, 4, 8, 12} ({2, 4, 6}), `col-graded` (32), `rank2`, `rank1`, `zero` (4), `rotation`, `near-rotation-1e-k` then `near-reflection-1e-k`, k ∈ {4, 8, 12} ({2, 4, 6}), `essential`, `ordering` (32), `scale-up`, `scale-down` (10^±70, 10^±12). 16 unless stated; 580 + 468 |
+| `rq3` | `rq:random` (32), `diagonal`, `triangular`, `near-triangular-1e-k` k ∈ {4, 8, 12} ({2, 4, 6}), `near-identity-1e-3`, `parallel-1e-k` k ∈ {2, 4, 8, 12, 16} ({2, 4, 6, 7}), `row-graded`, `row-spread`, `col-graded`, `near-singular-1e-k` k ∈ {4, 8, 12} ({2, 4, 6}), `negative-det`, `rank-bottom`, `zero` (4), `rotation`, `scale-up`, `scale-down` (10^±70, 10^±12). 16 unless stated; 388 + 372 |
 | `nearest_rotation` | `polar:near-1e-k` k ∈ {2, 4, 8, 12, 16} ({2, 4, 6}), `exact` (24), `scaled`, `random` (32), `reflection`, `cond-1e-k` k ∈ {4, 8, 12, 16} ({2, 4, 6, 8}), `rank2`, `non-unique`, `scale-up`, `scale-down` (10^±70, 10^±12). 16 unless stated; 296 + 264 |
 | `chol_n*` | `chol:spd`, `cond-1e-{4,8,12}` (`{2,4,6}`), `diag-scale`, `indefinite`. 32 each, 384 |
 | `chol_solve_n*` | the same without `indefinite`, 320 |
@@ -404,6 +406,13 @@ decision 4's. Every one has
   smallest eigenvalues of MᵀM equal, by the exact discriminant) is refused, since svd_r's point on
   the circle is not the same at every precision: `non-unique`'s rounding breaks its tie by
   1e-18…1e-16 (3e-9…4e-8), so its reference is the stored M's one nearest rotation.
+- **`rq3`.** Planted as `svd3`'s, rounded once. `diagonal` and `triangular` are positive
+  triangles (diagonal log-uniform in 10^±30, 10^±6 at f32), on which `rq3` is exact; `parallel`
+  sets m₂ at angle 10⁻ᵏ from m₃, the last k at rounding; `rank-bottom` is m₂ = m₃/2 exactly. The
+  reference is RQ.1's construction at 120 digits. Where m₂ and r₃ are dependent in rationals (or
+  m₃ = 0), it completes R by `NUMERICS.md` §22's axis rule and stores both kappas 0, so the metric
+  weighs the forward error 0. `kappa_U` and `kappa_R` are the 2-norms of RQ.6's 9×9 maps from
+  `mp.svd_r`; they read only rows 2 and 3 of U⁻¹, so u₁₁ = 0 is no division.
 - **`chol`.** Q is n Householder reflections, directions normalized Gaussians. `mp.cholesky`'s
   default refuses pivots below an absolute eps (all of `chol:diag-scale`'s, down to 1e-200), and
   `mp.lu_solve` pivots against ‖A‖₁ eps and loses cond(A) eps (1e400 eps there): hence `tol=0`,
@@ -421,7 +430,10 @@ decision 4's. Every one has
   and ‖VᵀV − I‖ ≤ 1e-100, and `eig_sym`'s `kappa` 0 exactly off the positive definite cone, else
   `mp.eig`'s ratio to 1e-100; `svd3` ‖AV − UΣ‖ ≤ 1e-100 ‖A‖, ‖UᵀU − I‖, ‖VᵀV − I‖ and |det − 1| ≤ 1e-100,
   the ordering, and the sign of σ₃ against det A in rationals; `nearest_rotation` ‖RᵀR − I‖ and
-  |det R − 1| ≤ 1e-100 and no nearer rotation among 50, 25 Haar and R turned by 10⁻ᵏ, k = 1…25; `chol` `valid` against `mp.eigsy` of the equilibrated A (a congruence keeps
+  |det R − 1| ≤ 1e-100 and no nearer rotation among 50, 25 Haar and R turned by 10⁻ᵏ, k = 1…25;
+  `rq3` ‖M − UR‖ ≤ 1e-100 ‖M‖, ‖RᵀR − I‖ and |det R − 1| ≤ 1e-100, U's structure and signs, `valid`
+  against det M in rationals, and where unique the kappas bounding, and RQ.6 matching to 1e-30, a
+  central difference of the construction along a row-scaled random direction; `chol` `valid` against `mp.eigsy` of the equilibrated A (a congruence keeps
   the signs), L lower with a positive diagonal and ‖LLᵀ − A‖ ≤ 1e-100 ‖A‖; `chol_solve`
   ‖Ax − b‖ ≤ 1e-100 ‖A‖‖x‖; `quat_renormalize` ‖q'‖ = 1, every 2×2 minor of [q, q'], q'·q > 0.
   `real_*`: each derivative against `mp.diff` at h = 10⁻⁷⁰|x| to 60 digits, the precision raised

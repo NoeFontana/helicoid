@@ -24,6 +24,8 @@
 //! - `nearest_rotation` (`docs/decisions/0102` decision 8): `Rotation3::from_matrix_eps`,
 //!   Müller et al.'s iteration, from the identity, `eps` the precision's unit roundoff, at most
 //!   [`ROTATION_ITERATIONS`] steps.
+//! - `rq3` (`docs/decisions/0117` decision 9): `QR` (Householder) of `Mᵀ J`, `J` the reversal,
+//!   turned into `M = U R` and put in that record's convention by exact sign changes.
 //!
 //! The matrices of `eig3` and `chol_*` are exactly symmetric, so the triangle read changes nothing;
 //! the corpus test asserts it. In binary64 every record is answered, `@f32` strata included: the protocol
@@ -84,7 +86,7 @@ type Evaluate = fn(&Fields) -> Result<Fields, String>;
 /// The function ids this runner answers, each with its evaluation in binary64 and in binary32:
 /// the one list, so an id cannot be advertised without an answer or answered without being
 /// advertised.
-const TABLE: [(&str, Evaluate, Evaluate); 13] = [
+const TABLE: [(&str, Evaluate, Evaluate); 14] = [
     ("eig3", eig3::<f64>, eig3::<f32>),
     ("eig_sym_n4", eig_sym4::<f64>, eig_sym4::<f32>),
     ("eig_sym_n9", eig_sym9::<f64>, eig_sym9::<f32>),
@@ -110,6 +112,7 @@ const TABLE: [(&str, Evaluate, Evaluate); 13] = [
         nearest_rotation::<f64>,
         nearest_rotation::<f32>,
     ),
+    ("rq3", rq3::<f64>, rq3::<f32>),
 ];
 
 /// The iterations `SymmetricEigen`, `Schur` and `SVD` get. Their `new` is `try_new(m, T::EPSILON, 0)`,
@@ -327,6 +330,35 @@ fn nearest_rotation<T: Real>(input: &Fields) -> Result<Fields, String> {
     let roundoff = T::default_epsilon() / nalgebra::convert(2.0);
     let r = Rotation3::from_matrix_eps(&m, roundoff, ROTATION_ITERATIONS, Rotation3::identity());
     Ok(fields([("R", nalgebra_to_helicoid_matrix(r.matrix()))]))
+}
+
+/// `M.transpose() * J` factored by `QR::new` (Householder), `J` the reversal: `Mᵀ J = Q̃ R̃` gives
+/// `M = (J R̃ᵀ J)(J Q̃ᵀ)`, upper triangular times orthogonal. Then `docs/decisions/0117` decision 1's
+/// convention by exact sign changes: column `k` of `U` and row `k` of `R` negated where `u_kk < 0`,
+/// `k = 2, 1`; then column 0 and row 0 where `det R < 0`. `valid` is the diagonal's test.
+fn rq3<T: Real>(input: &Fields) -> Result<Fields, String> {
+    let m = helicoid_to_nalgebra_matrix::<T, 3, 3>(&take_square_named::<T, 3>(input, "M")?)?;
+    let mtj = SMatrix::<T, 3, 3>::from_fn(|i, j| m[(2 - j, i)]);
+    let qr = mtj.qr();
+    let (q, r) = (qr.q(), qr.r());
+    let mut u = SMatrix::<T, 3, 3>::from_fn(|i, j| r[(2 - j, 2 - i)]);
+    let mut rot = SMatrix::<T, 3, 3>::from_fn(|i, j| q[(j, 2 - i)]);
+    for k in [2, 1] {
+        if u[(k, k)] < T::zero() {
+            u.column_mut(k).neg_mut();
+            rot.row_mut(k).neg_mut();
+        }
+    }
+    if rot.determinant() < T::zero() {
+        u.column_mut(0).neg_mut();
+        rot.row_mut(0).neg_mut();
+    }
+    let valid = (0..3).all(|k| u[(k, k)] > T::zero());
+    Ok(fields([
+        ("R", nalgebra_to_helicoid_matrix(&rot)),
+        ("U", nalgebra_to_helicoid_matrix(&u)),
+        ("valid", vec![if valid { 1.0 } else { 0.0 }]),
+    ]))
 }
 
 /// `A.try_inverse()` and `A.determinant()`; `None`: a NaN inverse.
@@ -639,6 +671,54 @@ mod tests {
         let t = turn();
         let r = nearest_rotation_of::<f64>(t.as_slice().try_into().map_err(|_| "9")?)?;
         assert!((r - t).norm() < 1e-14, "{r} {t}");
+        Ok(())
+    }
+
+    /// `rq3`'s answer as matrices, `U` and `R`, and the mask.
+    fn rq3_of<T: Real>(m: [f64; 9]) -> Result<(M3, M3, f64), String> {
+        let out = rq3::<T>(&input([("M", m.to_vec()), ("shape", vec![3.0, 3.0])]))?;
+        let mat = |k: &str| -> Result<M3, String> {
+            Ok(M3::from_column_slice(out.get(k).ok_or(k.to_string())?))
+        };
+        Ok((
+            mat("U")?,
+            mat("R")?,
+            out.get("valid")
+                .and_then(|v| v.first().copied())
+                .ok_or("valid")?,
+        ))
+    }
+
+    /// A general matrix, a negative determinant and a triangle: `U R = M`, `U` upper with
+    /// `u22, u33 > 0`, `R` a rotation; the triangle's `R` is `I` up to Householder's rounding.
+    #[test]
+    fn rq3_is_in_the_convention() -> Result<(), String> {
+        let cases: [[f64; 9]; 3] = [
+            [0.3, 0.5, -0.4, -0.7, 0.1, 0.6, 0.2, -0.9, 0.8],
+            [-1.0, 0.0, 0.0, 0.0, 2.0, 0.0, 0.0, 0.0, 3.0],
+            [2.0, 0.0, 0.0, 1.0, 3.0, 0.0, -1.0, 0.5, 0.25],
+        ];
+        for (k, m) in cases.into_iter().enumerate() {
+            let (u, r, valid) = rq3_of::<f64>(m)?;
+            let mm = M3::from_column_slice(&m);
+            assert!((u * r - mm).norm() < 1e-14, "{k}: {u} {r}");
+            assert!((r.transpose() * r - M3::identity()).norm() < 1e-14);
+            assert!((r.determinant() - 1.0).abs() < 1e-14);
+            assert!(u[(1, 0)] == 0.0 && u[(2, 0)] == 0.0 && u[(2, 1)] == 0.0);
+            assert!(u[(1, 1)] > 0.0 && u[(2, 2)] > 0.0);
+            assert_eq!(
+                valid.to_bits(),
+                f64::from(u8::from(mm.determinant() > 0.0)).to_bits()
+            );
+            if k == 2 {
+                assert!((r - M3::identity()).norm() < 1e-15, "{r}");
+            }
+        }
+        let (u, _, _) =
+            rq3_of::<f32>([0.375, 0.5, -0.25, -0.75, 0.125, 0.625, 0.25, -0.875, 0.8125])?;
+        assert!(u
+            .iter()
+            .all(|x| f64::from(*x as f32).to_bits() == x.to_bits()));
         Ok(())
     }
 

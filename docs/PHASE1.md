@@ -196,6 +196,7 @@ side of `docs/maths/coefficients.md` CO.12.
 | `eig_sym_n{4,9,16}` | $A$, symmetric | `eig3`'s, at $n$; and `kappa`, $\kappa_2(D^{-1}AD^{-1})$ with $D = \mathrm{diag}(\sqrt{a_{ii}})$ where $A$ is positive definite (an exact $LDL^\top$), else 0, the scale of `NUMERICS.md` §11's relative reading ([`0111`](./decisions/0111-eig-sym-is-eig3-s-jacobi-at-general-n.md)) |
 | `svd3` | $A$ | `mp.svd_r` in the signed convention: $U, V \in \mathrm{SO}(3)$, `sigma` with $\sigma_1 \ge \sigma_2 \ge \lvert\sigma_3\rvert$, $\operatorname{sign}\sigma_3 = \operatorname{sign}\det A$; zero singular values exact by the rank in rationals ([`0101`](./decisions/0101-svd3-is-one-sided-jacobi-on-eig3-s-rotation.md)) |
 | `nearest_rotation` | $M$ | $U\,\mathrm{diag}(1, 1, d)V^\top$ from `mp.svd_r`, $d$ the exact sign of $\det M$ ([`0102`](./decisions/0102-the-nearest-rotation-takes-newton-where-it-is-well-posed.md)) |
+| `rq3` | $M$ | RQ.1's construction (`maths/rq3.md`) at 120 digits: `U` (zeros below), `R`; `valid` from the exact sign of $\det M$ and the rank of $(m_2, m_3)$ in rationals, a dependent pair completed by `NUMERICS.md` §22's axis rule; `kappa_U`, `kappa_R` the 2-norms of RQ.6's linear map, 0 where it is not unique ([`0117`](./decisions/0117-rq-and-lq-are-gram-schmidt-twice-on-scaled-rows.md)) |
 | `chol_n{3,6}` | $A$, symmetric | `valid` decided exactly by an $LDL^\top$ in rationals; `L` = `mp.cholesky`, zeros where `valid` is 0 |
 | `chol_solve_n{3,6}` | $(A, b)$ | `mp.lu_solve` of the equilibrated system $DAD$, $D = \mathrm{diag}(A)^{-1/2}$ |
 | `quat_renormalize` | $q$ | $q/\lVert q\rVert$, the projection `NUMERICS.md` §3.6 claims inside its band |
@@ -306,6 +307,14 @@ Series are summed until the term's norm is below $10^{-110}$ relative. Phase 2's
   exact ties; `eig:identity-multiple`; `eig:scale-{up,down}`, `eig3`'s. **32, 16 and 4 records per
   stratum** at $n$ = 4, 9, 16, 64 in the deep tier: the code is one at every $n$, so the small $n$
   carry the count: 8.6 MB, 0.4 MB past `0110`'s estimate of 8.2 (`0111` decision 4).
+
+- `rq3`'s ([`0117`](./decisions/0117-rq-and-lq-are-gram-schmidt-twice-on-scaled-rows.md) decision 9): `rq:random`; `rq:diagonal` and `rq:triangular`, bit-exact, reading
+  only the 30-digit reference's rounding; `rq:near-triangular-1e-k`, k = 4, 8, 12 (2, 4, 6); `rq:near-identity-1e-3`;
+  `rq:parallel-1e-k`, k = 2, 4, 8, 12, 16 (2, 4, 6, 7), the last at rounding, where Kahan's test
+  decides; `rq:row-graded`, `rq:row-spread` ($10^{\pm150}$; $10^{\pm18}$), `rq:col-graded`;
+  `rq:near-singular-1e-k`, k = 4, 8, 12 (2, 4, 6); `rq:negative-det`; `rq:rank-bottom`;
+  `rq:zero` (4); `rq:rotation`; `rq:scale-{up,down}`. 16 records per stratum, 32 for `rq:random`,
+  64 in the deep tier.
 
 - The spline ids' ([`0116`](./decisions/0116-the-spline-is-measured-before-it-ships.md)
   decision 2), one axis at a time off one default cell, `inc:generic`: every increment

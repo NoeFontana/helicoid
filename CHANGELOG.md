@@ -6,6 +6,30 @@ entries live in [`docs/changelog/`](./docs/changelog/).
 **`0.0.x` is not ordinary semver.** Every release may break every other. What is implemented is
 defined by the status tables in `docs/`; they win over this file.
 
+## [Unreleased]
+
+### Added
+
+- **`rq3` and `lq3`**, the 3×3 RQ and LQ factorizations, with the triangle types `UpperTri3` and
+  `LowerTri3` ([`0117`](docs/decisions/0117-rq-and-lq-are-gram-schmidt-twice-on-scaled-rows.md)).
+  `M = U R` and `M = L Q` with a rotation and a triangle whose diagonal is positive where
+  `det M > 0`, reported by a mask; under a clear mask the factorization is kept. Classical
+  Gram–Schmidt twice under Kahan's test on rows each scaled by its own power of two: backward stable
+  row by row and orthogonal to a few `u` however close two rows are to parallel; `lq3` is `rq3`
+  reversed, bit for bit. A triangle with a positive diagonal returns itself and the identity
+  rotation bit for bit, at both precisions and in `Dual` values. On the corpus it
+  reads at most 4.33 `u` (binary64) and 4.00 `u` (binary32): below nalgebra's and Eigen's
+  Householder QR on every stratum, by at least 1.5× wherever it reads above rounding. Every existing
+  output keeps its bits.
+
+### Instrument
+
+Not shipped in the crates.
+- **The corpus id `rq3`** ([`0117`](docs/decisions/0117-rq-and-lq-are-gram-schmidt-twice-on-scaled-rows.md)
+  decision 9): 24 binary64 and 23 binary32 strata against RQ.1's construction at 120 digits, the
+  metric `Rule::Rq` (rowwise backward error, orthogonality, forward errors over the reference's κ),
+  two seeded defects, and nalgebra's `QR` and Eigen's `HouseholderQR` as oracles.
+
 ## [0.0.10] - 2026-11-13
 
 The continuous-time spline release (`helicoid-spline`). Adds uniform cumulative B-splines of order `K = 2..=6` on any `LieGroup` with `O(K)` control Jacobians and compile-time exact integer tables (`0113`–`0115`), `Jac::add` and `Jac::scale` on `helicoid` (`0112`), and the 16 spline corpus ids with `basalt-headers` oracle (`0116`). **Breaking:** external `Jac` impls must add `add` and `scale`; every existing output keeps its bits.

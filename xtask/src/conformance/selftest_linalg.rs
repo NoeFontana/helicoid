@@ -3,8 +3,8 @@
 //! [`FACTOR`] over the clean program's, which must itself be finite. A metric that cannot see a
 //! dropped root, a rotated eigenvector, singular pair or rotation, a dropped sign, a flipped mask,
 //! half a Newton step or a doubled derivative is not measuring what `NUMERICS.md` §11 says it does.
-//! The `svd3` pair is `0101` decision 8's, the `nearest_rotation` one `0102`'s, the `eig_sym` pair
-//! `0111`'s: the gap weight at `N = 16`, and an error of `u |λ|` on a graded matrix's smallest
+//! The `svd3` pair is `0101` decision 8's, the `nearest_rotation` one `0102`'s, the `rq3` pair
+//! `0117` decision 9's, the `eig_sym` pair `0111`'s: the gap weight at `N = 16`, and an error of `u |λ|` on a graded matrix's smallest
 //! eigenvalue, which only the relative reading sees.
 
 use std::fmt::Write;
@@ -44,6 +44,11 @@ pub(super) enum Defect {
     /// `nearest_rotation`: `R` rotated by `1e-9` about `e₃` (the conditioning-weighted forward
     /// error).
     TurnsTheRotation,
+    /// `rq3`: `R` rotated by `1e-9` about `e₃`, `U` kept (the rowwise backward error).
+    TurnsTheFactor,
+    /// `rq3`: rows 0 and 1 of `R` and columns 0 and 1 of `U` negated, the product and `det R`
+    /// kept (the gauge: `û₂₂ < 0`, the mask against the diagonal, the forward error).
+    FlipsTheGauge,
     /// `chol`: the mask negated (mask agreement).
     FlipsTheMask,
     /// `quat_renormalize`: half the Newton step, `(q + q')/2`.
@@ -53,7 +58,7 @@ pub(super) enum Defect {
 }
 
 impl Defect {
-    pub(super) const ALL: [Defect; 10] = [
+    pub(super) const ALL: [Defect; 12] = [
         Defect::DropsARoot,
         Defect::RotatesAnEigenvector,
         Defect::RotatesAnEigenvectorAtN,
@@ -61,6 +66,8 @@ impl Defect {
         Defect::RotatesASingularPair,
         Defect::DropsTheSign,
         Defect::TurnsTheRotation,
+        Defect::TurnsTheFactor,
+        Defect::FlipsTheGauge,
         Defect::FlipsTheMask,
         Defect::TakesHalfAStep,
         Defect::DoublesTheDerivative,
@@ -76,6 +83,8 @@ impl Defect {
             Defect::RotatesASingularPair => ("svd3", "svd:random"),
             Defect::DropsTheSign => ("svd3", "svd:ordering"),
             Defect::TurnsTheRotation => ("nearest_rotation", "polar:near-1e-8"),
+            Defect::TurnsTheFactor => ("rq3", "rq:random"),
+            Defect::FlipsTheGauge => ("rq3", "rq:random"),
             Defect::FlipsTheMask => ("chol_n3", "chol:indefinite"),
             Defect::TakesHalfAStep => ("quat_renormalize", "renorm:eta-2^-27"),
             Defect::DoublesTheDerivative => ("real_sqrt", "x:1e0"),
@@ -91,6 +100,8 @@ impl Defect {
             Defect::RotatesASingularPair => "rotates-a-singular-pair",
             Defect::DropsTheSign => "drops-the-sign",
             Defect::TurnsTheRotation => "turns-the-rotation",
+            Defect::TurnsTheFactor => "turns-the-factor",
+            Defect::FlipsTheGauge => "flips-the-gauge",
             Defect::FlipsTheMask => "flips-the-mask",
             Defect::TakesHalfAStep => "takes-half-a-step",
             Defect::DoublesTheDerivative => "doubles-the-derivative",
@@ -140,7 +151,7 @@ impl Defect {
                 }
             }
             // `Rz(1e-9) R`: rows 0 and 1 of each column, where `rotate` turns columns 0 and 1.
-            Defect::TurnsTheRotation => {
+            Defect::TurnsTheRotation | Defect::TurnsTheFactor => {
                 if let Some(mut v) = get(&mut out, "R").filter(|v| v.len() == 9) {
                     let (s, c) = 1e-9f64.sin_cos();
                     for col in v.chunks_exact_mut(3) {
@@ -148,6 +159,18 @@ impl Defect {
                         (col[0], col[1]) = (c * a - s * b, s * a + c * b);
                     }
                     out.insert("R".into(), v);
+                }
+            }
+            // Column-major: rows 0 and 1 of `R` at `3c` and `3c + 1`; columns 0 and 1 of `U` first.
+            Defect::FlipsTheGauge => {
+                if let Some(r) = out.get_mut("R").filter(|v| v.len() == 9) {
+                    r.chunks_exact_mut(3).for_each(|col| {
+                        col[0] = -col[0];
+                        col[1] = -col[1];
+                    });
+                }
+                if let Some(u) = out.get_mut("U").filter(|v| v.len() == 9) {
+                    u[..6].iter_mut().for_each(|x| *x = -*x);
                 }
             }
             Defect::FlipsTheMask => {

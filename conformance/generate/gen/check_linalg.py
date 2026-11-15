@@ -14,6 +14,12 @@ the route that computed the record, at twice the working precision, to 100 digit
   determinant of the stored A in rationals.
 - `nearest_rotation` (0102): |R^T R - I| <= 1e-100, Frobenius, and det R within 1e-100 of 1;
   no rotation of `_rivals` nearer M, Frobenius.
+- `rq3` (0117): |M - U R| <= 1e-100 |M|, |R^T R - I| <= 1e-100, det R within 1e-100 of 1; U is
+  zero below its diagonal and u22, u33 >= 0; `valid` is det M > 0 and u11 has the sign of det M
+  where the factorization is unique; and where it is, `kappa_U` and `kappa_R` bound the change of
+  (U, R) along a random direction, recomputed by a central difference of the construction at
+  twice the working precision, and RQ.6's closed form agrees with that difference to 1e-30
+  relative.
 - `chol`: `valid` is the sign of the smallest eigenvalue (`mp.eigsy` of the equilibrated A, whose
   eigenvalues have A's signs); L is lower triangular with a
   positive diagonal and |L L^T - A| <= 1e-100 |A|, or zero where `valid` is 0.
@@ -122,6 +128,47 @@ def svd3(inputs: dict, out: dict) -> None:
         for name, X in (("U", U), ("V", V)):
             _within(f"svd3: {name}^T {name} - I", frobenius(X.T * X - mp.eye(3)), 1)
             _within(f"svd3: det {name} - 1", abs(mp.det(X) - 1), 1)
+
+
+def rq3(inputs: dict, out: dict) -> None:
+    from . import rq
+
+    E = exact(inputs["M"])
+    det = det3(E)
+    if out["valid"][0] != int(det > 0):
+        raise CrossCheckError(f"rq3: valid {out['valid'][0]} against det M = {float(det)}")
+    with mp.workdps(2 * DPS):
+        M, U, R = from_mat(inputs["M"]), from_mat(out["U"]), from_mat(out["R"])
+        if any(U[i, j] != 0 for i in range(3) for j in range(i)):
+            raise CrossCheckError("rq3: U is not upper triangular")
+        if U[1, 1] < 0 or U[2, 2] < 0:
+            raise CrossCheckError("rq3: a negative u22 or u33")
+        _within("rq3: M - U R", frobenius(M - U * R), frobenius(M))
+        _within("rq3: R^T R - I", frobenius(R.T * R - mp.eye(3)), 1)
+        _within("rq3: det R - 1", abs(mp.det(R) - 1), 1)
+        ku, kr = out["kappa_U"][0], out["kappa_R"][0]
+        if ku == 0:
+            return
+        if _sign(U[0, 0]) != _sign(det):
+            raise CrossCheckError(f"rq3: u11 = {mp.nstr(U[0, 0], 10)} against det M = {float(det)}")
+        rng = stream(SEED, "check:rq3", repr(inputs["M"].data))
+        # Each row of the direction at its row's scale: a step absolute in M would swamp the small
+        # rows of `rq:row-spread`.
+        norms = [mp.sqrt(sum(M[i, j] ** 2 for j in range(3))) or 1 for i in range(3)]
+        D = mp.matrix([[norms[i] * unit_vector(rng, 3)[j] for j in range(3)] for i in range(3)])
+        h = mpf(10) ** -(3 * DPS // 4)
+        (Up, Rp), (Um, Rm) = (rq.factor(M + s * h * D, True) for s in (1, -1))
+        dU, dR = (Up - Um) / (2 * h), (Rp - Rm) / (2 * h)
+        norm_m = frobenius(M)
+        bound = (1 + mpf(10) ** -30) * frobenius(D)
+        if frobenius(dU) > ku * bound or frobenius(dR) * norm_m > kr * bound:
+            raise CrossCheckError("rq3: a direction exceeds kappa")
+        tU, tR = rq.tangent(U, R, D)
+        # Relative: a step of 10^-90 at 240 digits leaves a difference of 10^-60 relative on the
+        # worst-conditioned strata (`rq:diagonal`'s 10^60 spread); a wrong formula is O(1) off.
+        for what, t, d in (("dU", tU, dU), ("dR", tR, dR)):
+            if frobenius(t - d) > mpf(10) ** -30 * frobenius(d):
+                raise CrossCheckError(f"rq3: {what} against RQ.6: {mp.nstr(frobenius(t - d), 5)}")
 
 
 N_RIVALS = 25  # of each kind in `_rivals`

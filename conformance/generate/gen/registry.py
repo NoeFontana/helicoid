@@ -28,6 +28,7 @@ from . import (
     polar,
     quat,
     real,
+    rq,
     s2,
     se2,
     sen3,
@@ -221,6 +222,8 @@ FUNCTIONS: dict[str, FunctionSpec] = {
         ),
         # docs/decisions/0101 decision 8.
         FunctionSpec("svd3", svd.STRATA, drawn_inputs, svd.svd3, check_linalg.svd3),
+        # docs/decisions/0117 decision 9.
+        FunctionSpec("rq3", rq.STRATA, drawn_inputs, rq.rq3, check_linalg.rq3),
         # docs/decisions/0102 decision 8.
         FunctionSpec(
             "nearest_rotation",

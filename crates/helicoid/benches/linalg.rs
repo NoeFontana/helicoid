@@ -16,7 +16,9 @@
 //! eigenvalue, and the three in turn; `svd3` (one-sided Jacobi with an exit, `0101`) at generic
 //! singular values, a pair `1e-8` apart, a rotation `1e-8` off SO(3) and a rank-2 matrix, and the
 //! four in turn; `nearest_rotation` (`0102`) at one input per arm: Newton near SO(3) and at
-//! generic singular values, the reflection, and `svd3`'s at a rank-2 matrix.
+//! generic singular values, the reflection, and `svd3`'s at a rank-2 matrix; `rq3` (`0117`) at a
+//! general matrix, a calibration's `I + 1e-3 E`, rows `1e-8` from parallel and a triangle (its exact
+//! case), and `lq3`, its flip, at the general matrix.
 //!
 //! A baseline binary for `--against` is built in this tree with only the bodies under test
 //! reverted, as `benches/groups.rs` says.
@@ -34,8 +36,8 @@ use core::time::Duration;
 use criterion::measurement::WallTime;
 use criterion::{criterion_group, criterion_main, BenchmarkGroup, Criterion};
 use helicoid_linalg::{
-    chol, eig3, eig3_values, eig_sym, nearest_rotation, solve_cubic, svd3, Dual, Mat3, Matrix,
-    Real, Vec3, Vector,
+    chol, eig3, eig3_values, eig_sym, lq3, nearest_rotation, rq3, solve_cubic, svd3, Dual,
+    LowerTri3, Mat3, Matrix, Real, UpperTri3, Vec3, Vector,
 };
 
 /// Four scalars, not `[S; 4]`: an array by value reaches the callee through the stack, and a wide
@@ -65,6 +67,36 @@ fn svd3_of<S: Real>(a: &Mat3<S>) -> (Mat3<S>, Vec3<S>, Mat3<S>) {
 #[inline(never)]
 fn nearest_rotation_of<S: Real>(a: &Mat3<S>) -> Mat3<S> {
     nearest_rotation(a)
+}
+
+#[inline(never)]
+fn rq3_of<S: Real>(a: &Mat3<S>) -> (UpperTri3<S>, Mat3<S>, S::Mask) {
+    rq3(a)
+}
+
+#[inline(never)]
+fn lq3_of<S: Real>(a: &Mat3<S>) -> (LowerTri3<S>, Mat3<S>, S::Mask) {
+    lq3(a)
+}
+
+/// `rq3`'s fixtures by rows, rounded once at `f64`: a general matrix, `I + 1e-3 E`, rows 2 and 3
+/// `1e-8` from parallel, and an upper triangle with a positive diagonal.
+fn triangular<S: Fixture>() -> [(&'static str, Mat3<S>); 4] {
+    let e = [[0.3, -0.9, 0.1], [0.7, 0.2, -0.4], [-0.5, 0.8, 0.6]];
+    let of = |m: [[f64; 3]; 3]| Mat3::from_rows(m.map(|r| Vector(r.map(S::of))));
+    let near = core::array::from_fn(|i| {
+        core::array::from_fn(|j| f64::from(u8::from(i == j)) + 1e-3 * e[i][j])
+    });
+    let parallel = [e[0], [0.5, -0.8 + 1e-8, 0.6], [0.5, -0.8, 0.6]];
+    [
+        ("random", of(e)),
+        ("near-identity-1e-3", of(near)),
+        ("parallel-1e-8", of(parallel)),
+        (
+            "triangular",
+            of([[1.5, -0.25, 2.0], [0.0, 0.75, -3.0], [0.0, 0.0, 4.0]]),
+        ),
+    ]
 }
 
 #[inline(never)]
@@ -323,6 +355,15 @@ fn rows<S: Fixture>(g: &mut BenchmarkGroup<'_, WallTime>) {
             b.iter(|| svd3_of(black_box(&a)));
         });
     }
+    for (name, a) in triangular::<S>() {
+        g.bench_function(format!("rq3/{name}"), |b| {
+            b.iter(|| rq3_of(black_box(&a)));
+        });
+    }
+    let [(_, general_m), ..] = triangular::<S>();
+    g.bench_function("lq3/random", |b| {
+        b.iter(|| lq3_of(black_box(&general_m)));
+    });
     for &(name, sigma, eps) in NEAREST {
         let a = general::<S>(sigma, eps);
         g.bench_function(format!("nearest_rotation/{name}"), |b| {

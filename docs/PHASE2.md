@@ -17,6 +17,7 @@ signatures in code blocks are normative.
 | `Vector`, `Matrix`, `Point`, `hat`/`vee`, `Mat3::inverse_adj`, `chol` (§4) | Partial: fixed-size types, operations, and `chol_solve` implemented (`0019`); corpus ids `chol_n{3,6}`, `chol_solve_n{3,6}` (`0056`). `Mat2::inverse_adj` and its id `mat2_inverse_adj` implemented ([`0061`](./decisions/0061-mat2-keeps-its-adjugate.md), #121). |
 | `Strided`, `StridedMut` (§5) | Done: column-major, row-major, strided slice views. |
 | `eig3`, `eig3_values`, `eig_sym`, `svd3`, `nearest_rotation`, `solve_cubic` + corpus ids (§6) | Done: `solve_cubic` implemented with `libm` transcendentals (`0017`, `0022`, `0053`); `eig3` is cyclic Jacobi with a deterministic exit and dominates nalgebra and Eigen's `SelfAdjointEigenSolver` on every stratum at both precisions ([`0081`](./decisions/0081-eig3-is-four-jacobi-sweeps.md), [`0083`](./decisions/0083-eig3-is-also-judged-against-eigen.md), [`0084`](./decisions/0084-eig3-leaves-jacobi-when-it-has-converged.md)); `eig3_values` is its eigenvalues bit for bit without the frame, a §14 twin and no corpus id ([`0104`](./decisions/0104-the-eigenvalues-come-without-the-frame.md)). `eig_sym` is `eig3`'s Jacobi at $4 \le N \le 16$ with a relative threshold, ids `eig_sym_n{4,9,16}` at both precisions, at or below nalgebra and Eigen on every committed stratum ([`0111`](./decisions/0111-eig-sym-is-eig3-s-jacobi-at-general-n.md)). Corpus ids `solve_cubic` and `eig3` at both precisions, `eig3` against nalgebra (`0056`, `0077`) and Eigen (`0083`). `svd3` is one-sided Jacobi with `eig3`'s exit, its id `svd3` at both precisions, and dominates nalgebra and Eigen's `JacobiSVD` on every stratum at both precisions ([`0101`](./decisions/0101-svd3-is-one-sided-jacobi-on-eig3-s-rotation.md)). `nearest_rotation` is Newton's polar iteration with a projector reflection and `svd3` as its other arms, its id `nearest_rotation` at both precisions, and dominates nalgebra's `from_matrix_eps` and Sophus's `fitToSO3` on every stratum at both precisions ([`0102`](./decisions/0102-the-nearest-rotation-takes-newton-where-it-is-well-posed.md)). |
+| `rq3`, `lq3`, `UpperTri3`, `LowerTri3` (§4, §6) | Done: Gram–Schmidt twice under Kahan's test on rows each scaled by its own power of two, `lq3` its exact flip; a triangle with a positive diagonal returned with the identity bit for bit; corpus id `rq3` at both precisions ([`0117`](./decisions/0117-rq-and-lq-are-gram-schmidt-twice-on-scaled-rows.md)). |
 | `mint` feature (§7) | Done: optional feature conversions for fixed-size types. |
 | Downstream perception migration (§9) | Not started |
 
@@ -31,7 +32,7 @@ optional `mint`.
 
 `real.rs` (`Mask`, `Real`, `Blend`, `Precision`), `float.rs` (`f64`/`f32` impls), `dual.rs`,
 `vector.rs`, `matrix.rs`, `point.rs`, `skew.rs` (`hat`, `vee`), `strided.rs`, `chol.rs`, `eig3.rs`, `eig_sym.rs`,
-`svd3.rs`, `cubic.rs`, `mint.rs` (feature-gated).
+`svd3.rs`, `polar.rs`, `rq3.rs`, `tri.rs`, `cubic.rs`, `mint.rs` (feature-gated).
 
 ## 2. The scalar model
 
@@ -189,6 +190,10 @@ pub type Point2<S> = Point<S, 2>; pub type Point3<S> = Point<S, 3>;
   by column (`NUMERICS.md` §15.6), bit-identical to `solve_upper(&l.transpose(), solve_lower(&l,
   b))`, its reference twin. The column solve itself is not public
   ([`0019`](./decisions/0019-a-cholesky-solve-without-the-transpose.md)).
+- `UpperTri3<S>`, `LowerTri3<S>`: the six entries of a triangle, row by row behind
+  `from_row_major`/`to_row_major`; `identity`, `diagonal`, `to_matrix` ($+0$ off the triangle),
+  `transpose` between the two, `Blend`. The storage is not a contract (D2); no arithmetic yet
+  ([`0117`](./decisions/0117-rq-and-lq-are-gram-schmidt-twice-on-scaled-rows.md) decision 7).
 - **No `PartialEq` on these types** (it would be a float comparison, R4); tests compare through
   `value_f64`.
 
@@ -214,7 +219,7 @@ the first access that reaches past the slice. Strides are non-negative `usize`. 
 their Jacobian through these (faer `MatMut` and Ceres row-major buffers both map onto
 `with_strides`).
 
-## 6. `eig3`, `eig_sym`, `svd3`, `solve_cubic`
+## 6. `eig3`, `eig_sym`, `svd3`, `rq3`, `solve_cubic`
 
 **NORMATIVE.**
 
@@ -255,6 +260,14 @@ their Jacobian through these (faer `MatMut` and Ceres row-major buffers both map
   Bars against `mp.svd_r`: §11's `nearest_rotation` metric. Strata: `polar:near-1e-k`,
   `polar:exact`, `polar:scaled`, `polar:random`, `polar:reflection`, `polar:cond-1e-k`,
   `polar:rank2`, `polar:non-unique`, `polar:scale-{up,down}`.
+- `rq3<S: Real>(m: &Mat3<S>) -> (UpperTri3<S>, Mat3<S>, S::Mask)`: $M = UR$, $R \in \mathrm{SO}(3)$,
+  $u_{22}, u_{33} \ge 0$, $u_{11}$ of the sign of $\det M$, the mask $u_{11}, u_{22}, u_{33} > 0$ on the
+  computed values; under a clear mask the factorization is kept. `lq3<S: Real>(m: &Mat3<S>) ->
+  (LowerTri3<S>, Mat3<S>, S::Mask)`: $M = LQ$, `rq3` of the reversed matrix reversed, bit for bit.
+  Classical Gram–Schmidt from the last row, the projection twice under Kahan's test, rows scaled
+  one by one (`NUMERICS.md` §22, [`0117`](./decisions/0117-rq-and-lq-are-gram-schmidt-twice-on-scaled-rows.md)). Backward stable row by row; a triangle with a positive
+  diagonal returns itself and $I$ bit for bit. Bars against RQ.1's construction at 120 digits:
+  §11's `rq3` metric, the committed per-stratum maximum. Strata: `rq:*` (`PHASE1.md` §4.4).
 - `solve_cubic<S: Real>(a: S, b: S, c: S, d: S) -> (Vec3<S>, [S::Mask; 3])`: real roots of
   `a x³ + b x² + c x + d` with validity mask ([`0017`](./decisions/0017-cbrt-and-mask-valued-roots.md)); power-of-two tolerances; `Real::acos` and `Real::cos` via `libm` ([`0022`](./decisions/0022-real-owes-acos-and-cos.md), [`0053`](./decisions/0053-acos-is-better-the-roots-are-not-necessarily.md)). Against
   `mp.polyroots` of the stored coefficients, by root-set distance (`NUMERICS.md` §11). Strata:

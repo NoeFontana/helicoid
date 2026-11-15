@@ -5,6 +5,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <initializer_list>
 #include <string>
 
 #include "convert.hpp"
@@ -329,6 +330,30 @@ void svd3() {
   check(binary32(f.u) && binary32(f.sigma) && binary32(f.v), "svd3 f32: binary32");
 }
 
+void rq3() {
+  // Column-major: a general matrix (det < 0), its negation (det > 0) and a triangle.
+  const oracle::Vec general{1, 4, 7, 2, 5, 8, 3, 6, 10};
+  oracle::Vec negated(general);
+  for (double& x : negated) x = -x;
+  const oracle::Vec triangle{2, 0, 0, 1, 3, 0, -1, 0.5, 0.25};
+  const std::initializer_list<const oracle::Vec*> cases{&general, &negated, &triangle};
+  for (const oracle::Vec* a : cases) {
+    const oracle::HelicoidRq3 f = oracle::helicoid_rq3<double>(*a);
+    const Eigen::Map<const Eigen::Matrix3d> u(f.u.data()), r(f.r.data()), want(a->data());
+    check((u * r - want).norm() <= 1e-13, "rq3: U R = M");
+    check((r.transpose() * r - Eigen::Matrix3d::Identity()).norm() <= kTol, "rq3: R orthogonal");
+    check(std::fabs(r.determinant() - 1) <= kTol, "rq3: det R = 1");
+    check(u(1, 0) == 0 && u(2, 0) == 0 && u(2, 1) == 0, "rq3: U upper");
+    check(u(1, 1) > 0 && u(2, 2) > 0, "rq3: u22, u33 > 0");
+    check(f.valid == (want.determinant() > 0 ? 1.0 : 0.0), "rq3: valid is det M > 0");
+  }
+  const oracle::HelicoidRq3 t = oracle::helicoid_rq3<double>(triangle);
+  check((Eigen::Map<const Eigen::Matrix3d>(t.r.data()) - Eigen::Matrix3d::Identity()).norm() <= kTol,
+        "rq3: a triangle's R is I");
+  const oracle::HelicoidRq3 f = oracle::helicoid_rq3<float>(general);
+  check(binary32(f.u) && binary32(f.r), "rq3 f32: binary32");
+}
+
 void nearest_rotation() {
   // R_z(π/2), column-major, comes back to rounding; a transposed answer would be R_z(−π/2).
   const oracle::Vec quarter{0, 1, 0, -1, 0, 0, 0, 0, 1};
@@ -388,6 +413,7 @@ int main() {
   eig3();
   eig_sym();
   svd3();
+  rq3();
   nearest_rotation();
   hex_floats();
   if (failures != 0) return 1;
