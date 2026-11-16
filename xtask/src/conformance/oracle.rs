@@ -136,6 +136,7 @@ const RUNNERS: &[Runner] = &[
             "solve_cubic",
             "quat_renormalize",
             "mat2_inverse_adj",
+            "rq3",
         ],
         answers: &[
             "eig3",
@@ -151,6 +152,7 @@ const RUNNERS: &[Runner] = &[
             "solve_cubic",
             "quat_renormalize",
             "mat2_inverse_adj",
+            "rq3",
         ],
     },
     Runner {
@@ -161,7 +163,8 @@ const RUNNERS: &[Runner] = &[
         binary64_only: false,
         // `Sophus::Sim3<float>`, `Sophus::SO3<float>` of a matrix (`0085`) and its `fitToSO3`
         // (`0102`), Eigen's `SelfAdjointEigenSolver<Matrix3f>` (`0083`) and
-        // `JacobiSVD<Matrix3f>` (`0101`); no other id it answers has `@f32` strata.
+        // `JacobiSVD<Matrix3f>` (`0101`) and `HouseholderQR<Matrix3f>` (`0117`); no other id it
+        // answers has `@f32` strata.
         answers_f32: &[
             "so3_from_matrix",
             "sim3_exp",
@@ -174,6 +177,7 @@ const RUNNERS: &[Runner] = &[
             "eig_sym_n16",
             "svd3",
             "nearest_rotation",
+            "rq3",
         ],
         answers: &[
             "so2_exp",
@@ -210,6 +214,8 @@ const RUNNERS: &[Runner] = &[
             "svd3",
             // Sophus's `fitToSO3` (`0102`).
             "nearest_rotation",
+            // The image's Eigen, `HouseholderQR` reversed (`0117`).
+            "rq3",
         ],
     },
     Runner {

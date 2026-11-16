@@ -656,6 +656,7 @@ mod tests {
                 "eig_sym_",
                 "svd3",
                 "nearest_rotation",
+                "rq3",
                 "chol",
                 "quat_",
                 "real_",

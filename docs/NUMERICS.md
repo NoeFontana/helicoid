@@ -20,6 +20,7 @@ computes from definitions (`PHASE1.md` §4.3), so a wrong line in this file fail
 |---|---|
 | §1–§12, §14, §15, §17, §20 | **Ready** (§9 Sim(3) by [`0070`](./decisions/0070-sim3-a-structured-jacobian-and-a-series-on-delta.md)) |
 | §21 | **Ready** ([`0114`](./decisions/0114-a-spline-evaluates-the-window-it-is-handed.md), [`0115`](./decisions/0115-the-spline-tables-are-exact-integers.md)); not implemented |
+| §22 | **Ready** ([`0117`](./decisions/0117-rq-and-lq-are-gram-schmidt-twice-on-scaled-rows.md)) |
 
 ## 1. Conventions
 
@@ -543,6 +544,14 @@ $X(t) = X_0\,\mathrm{Exp}(t\,d)$ with $d = X_1 \ominus_R X_0$ and $\Delta = X_0^
   where the reference is not unique; the weight is exact, then rounded once),
   $\lVert\hat R^\top\hat R - I\rVert_F/u$, and $1/u$ where
   $\det\hat R \le 0$ ([`0102`](./decisions/0102-the-nearest-rotation-takes-newton-where-it-is-well-posed.md)).
+- **Triangular factorizations** (`rq3`): the largest of the rowwise backward error
+  $\max_i\lVert m_i - (\hat U\hat R)_i\rVert/(\lVert m_i\rVert u)$ (a zero row reads 0 if reproduced exactly, else
+  $1/u$); $\lVert\hat R^\top\hat R - I\rVert_F/u$; the forward errors $\lVert\hat R - R\rVert_F/(\kappa_Ru)$ and
+  $\lVert\hat U - U\rVert_F/(\kappa_U\lVert M\rVert_Fu)$, $\kappa_R = \lVert\dot M\mapsto\dot R\rVert_2\lVert M\rVert_F$ and
+  $\kappa_U = \lVert\dot M\mapsto\dot U\rVert_2$ the norms of `maths/rq3.md` RQ.6's map at the reference, each
+  weighing 0 where the reference is not unique; and $1/u$ where $\det\hat R \le 0$, an entry below
+  $\hat U$'s diagonal is nonzero, $\hat u_{22} < 0$ or $\hat u_{33} < 0$, or `valid` differs from
+  $\hat U$'s diagonal test ([`0117`](./decisions/0117-rq-and-lq-are-gram-schmidt-twice-on-scaled-rows.md)). A wrong sign of $u_{11}$ reads in the forward error.
 - **Roots** (`solve_cubic`): the Hausdorff distance between the valid slots $\hat R$ and the three
   reference roots $Z$, complex ones included, over $\|Z\|_2\,u$: each real root to its nearest
   valid slot, each valid slot to its nearest root, $\lvert\hat r - z\rvert$ in $\mathbb C$, over
@@ -593,6 +602,7 @@ $X(t) = X_0\,\mathrm{Exp}(t\,d)$ with $d = X_1 \ominus_R X_0$ and $\Delta = X_0^
 | `eig_sym` | every input, lower triangle read, $4 \le N \le 16$ at compile time; every finite matrix (§20's exact power-of-two scaling) | as `eig3` ([`0111`](./decisions/0111-eig-sym-is-eig3-s-jacobi-at-general-n.md)) |
 | `svd3` | every input; every finite matrix (§18's exact power-of-two scaling) | a non-finite entry: `NaN` singular values and $U = V = I$; a singular value beyond the largest finite number is infinite ([`0101`](./decisions/0101-svd3-is-one-sided-jacobi-on-eig3-s-rotation.md)) |
 | `nearest_rotation` | every input | a non-finite entry: a matrix of `NaN`; the zero matrix: $I$ ([`0102`](./decisions/0102-the-nearest-rotation-takes-newton-where-it-is-well-posed.md)) |
+| `rq3`, `lq3` | every input; the mask is the report; every finite matrix (§22's exact row scaling) | a non-finite entry: $(I, I)$ and a clear mask; an entry of the triangle beyond the largest finite number is infinite; the zero matrix: $(0, I)$ ([`0117`](./decisions/0117-rq-and-lq-are-gram-schmidt-twice-on-scaled-rows.md)) |
 | `so3::gamma1`, `gamma2`, `gamma_apply_jacobians` | every finite $\varphi$ with $\theta^2$ finite: $\Gamma_m$ is entire (GG.2), no singular $\theta$; the overflow of $\theta^2$ is `Exp`'s (CO.15(c)) ([`0064`](./decisions/0064-the-integrated-exponentials-reuse-the-swept-switches.md)) | — |
 | `S2::from_vec_unchecked` | $\lvert\|v\|^2 - 1\rvert \le 2^{-40}$ (`f64`), $2^{-16}$ (`f32`); `debug_assert!`, NaN fails (`0063`) | garbage in, garbage out |
 | `S2::from_vec_normalized` | $\|v\|^2$ normal (`0027`) | NaN at $v = 0$; zero above the overflow |
@@ -674,6 +684,7 @@ row spells the composition and the proptest writes it inline
 | `helicoid_spline::Segment::kinematics` (§21's forward recursion) | the closed-form sums $\omega = \sum_j \mathrm{Ad}_{P_j^{-1}}\dot\lambda_jd_j$ and $\dot\omega = \sum_j \mathrm{Ad}_{P_j^{-1}}(\ddot\lambda_jd_j + \dot\lambda_j\,\mathrm{ad}(\omega^{(j)})d_j)$ over explicit suffix products, $O(K^2)$: `reference::spline_kinematics`; `spline_kinematics_matches_reference`, and `Dual` through the value (`velocity_and_acceleration_are_time_derivatives`) | 7 |
 | `helicoid_spline::JacSegment::kinematics_jacobians` (§21's backward accumulation, $O(K)$) | forward accumulation per control, $O(K^2)$, the same side conversion: `reference::spline_jacobians`; `spline_jacobians_matches_reference` at both sides, and `Dual` along $X_m\mathrm{Exp}(\epsilon)$ and $\mathrm{Exp}(\epsilon)X_m$ (`jacobians_match_dual`) | 7 |
 | `chol_solve` (`helicoid-linalg`) | composition of public fns, no `reference` item: `solve_upper(&l.transpose(), solve_lower(&l, b))` | 2 |
+| `lq3` (`helicoid-linalg`) | composition of public fns, no `reference` item: `rq3` of the reversed matrix, reversed, bit for bit at every `S` (`lq3_matches_reference`, [`0117`](./decisions/0117-rq-and-lq-are-gram-schmidt-twice-on-scaled-rows.md)) | 2 |
 | `eig3_values` (`helicoid-linalg`, the frame not accumulated) | composition of public fns, no `reference` item: `eig3(a).0`, bit for bit at every `S`, a `NaN` one value (`eig3_values_matches_reference`, [`0104`](./decisions/0104-the-eigenvalues-come-without-the-frame.md)) | 2 |
 
 ## 15. Cholesky and the triangular solves
@@ -1035,3 +1046,32 @@ and right-trivialized. Derivations: [`maths/splines.md`](./maths/splines.md).
   $X_{j-1}$ and $X_j$ approaches $\pi$, $d_j$ follows §3.2 and §12. $X$ is $C^{K-2}$ across a knot:
   segment $i$ at $u = 1$ and segment $i + 1$ at $u = 0$ agree in value and in derivatives up to
   order $\min(K - 2, 2)$.
+
+## 22. The 3×3 RQ and LQ factorizations
+
+`rq3`'s and `lq3`'s formulas ([`0117`](./decisions/0117-rq-and-lq-are-gram-schmidt-twice-on-scaled-rows.md), `docs/maths/rq3.md`). $M = UR$ with $U$ upper
+triangular and $R \in \mathrm{SO}(3)$ by construction, $u_{22} \ge 0$, $u_{33} \ge 0$, and $u_{11}$ of
+the sign of $\det M$: the unique such factorization wherever $m_2$ and $m_3$ are independent (RQ.1).
+`valid` is $u_{11} > 0 \wedge u_{22} > 0 \wedge u_{33} > 0$ on the computed values (in exact
+arithmetic $\det M > 0$); under a clear mask the factorization is returned all the same.
+
+- **Scaling.** Each row is scaled into §17's window by its own exact power of two (`eig3`'s ladder
+  on its three entries), and row $i$ of $U$ is scaled back by its own factor; $R$ is not, since
+  $DM = (DU)R$ (RQ.9). A row with a non-finite entry runs on zeros.
+- **Row 3.** $a_3 = m_3\cdot m_3$, $u_{33} = \sqrt{a_3}$, $r_3 = N(m_3/u_{33})$ (three divisions; not a
+  product by $1/u_{33}$). Where $a_3$ is below the smallest normal: $u_{33} = 0$, $r_3 = e_3$.
+- **Row 2.** $w_1 = m_2 - (m_2\cdot r_3)r_3$, $w_2 = w_1 - (w_1\cdot r_3)r_3$, $a_2 = w_2\cdot w_2$.
+  The row is dependent where $a_2 < \tfrac12\,w_1\cdot w_1$ (Kahan's test, RQ.4) or $a_2$ is below
+  the smallest normal: then $u_{22} = 0$ and $r_2 = N(x/\lVert x\rVert)$, $x = e_k - (r_3)_kr_3$, $k$
+  the axis of $r_3$'s smallest $\lvert\text{component}\rvert$, the last of equals. Otherwise
+  $u_{22} = \sqrt{a_2}$, $r_2 = N(w_2/u_{22})$.
+- **Row 1.** $r_1 = N(r_2\times r_3)$; $u_{11} = m_1\cdot r_1$, $u_{12} = m_1\cdot r_2$,
+  $u_{13} = m_1\cdot r_3$, $u_{23} = m_2\cdot r_3$; the strictly lower triangle is $+0$.
+  $N(v) = v\,(3/2 - \lVert v\rVert^2/2)$, §17's Newton step.
+- **Non-finite input** gives $(I, I, \mathrm{false})$.
+- **`lq3`.** $M = LQ$ is $\mathrm{flip}$ of `rq3` of $\mathrm{flip}(M)$, $\mathrm{flip}(X) = JXJ$ with $J$
+  the reversal (RQ.2), bit for bit: $l_{11} \ge 0$, $l_{22} \ge 0$, $l_{33}$ of the sign of $\det M$.
+- **Exactness.** An upper triangle with a positive diagonal, $+0$ below it and no $-0$ entry,
+  each row's entries within $2^{894}$ (`f64`), $2^{94}$ (`f32`) of the row's largest and $m_{22}$
+  within $2^{383}$, $2^{31}$ of it, returns $(M, I)$ bit for bit; `lq3` the same for a lower
+  triangle (RQ.7–RQ.9).

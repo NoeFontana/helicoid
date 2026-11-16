@@ -241,6 +241,12 @@
       "records": 96,
       "sha256": "d9a59bd038350e3e625533a38936829ce2407c1a77f8f37d35bbe7f6ec0fd258"
     },
+    "rq3.jsonl": {
+      "kind": "corpus",
+      "rechecked": 47,
+      "records": 760,
+      "sha256": "fce3d4b6df1f5a0612a3c7e2ab6682c73b42101be3561be4691392293503877d"
+    },
     "s2_local.jsonl": {
       "kind": "corpus",
       "rechecked": 6,
@@ -674,7 +680,7 @@
       "sha256": "a4f5783bfca8ae06c9e63ec21b221b2b25ee146d761e662bb292d73b123609ff"
     }
   },
-  "generator": "sha256:f052925ec2ad06a32fd5b50ec75d43e5b108e39d23cc5de93ab4840b44abd02d",
+  "generator": "sha256:08ee5aca4d55f2d41a766747b192a7a659a2f2b30eca4fc8e8f1363f0ed9b053",
   "mpmath": "1.4.1",
   "python": "3.12",
   "recheck": {

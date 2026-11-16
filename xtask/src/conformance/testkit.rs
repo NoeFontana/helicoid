@@ -118,6 +118,14 @@ impl Subject for Perfect {
             }
             return out;
         }
+        if matches!(metric::rule(fn_id), Some(Rule::Rq)) {
+            // `rq3`'s mask is the answer's own diagonal test, and the reference has none (`0117`
+            // decision 9).
+            let u = out.get("U").cloned().unwrap_or_default();
+            let valid = u.len() == 9 && u[0] > 0.0 && u[4] > 0.0 && u[8] > 0.0;
+            out.insert("valid".to_string(), vec![f64::from(u8::from(valid))]);
+            return out;
+        }
         if !matches!(metric::rule(fn_id), Some(Rule::Roots)) {
             return out;
         }

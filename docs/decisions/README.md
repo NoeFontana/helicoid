@@ -130,6 +130,7 @@ grep -m1 -H '^\*\*Status:' docs/decisions/0*.md
 | [`0114`](./0114-a-spline-evaluates-the-window-it-is-handed.md) | **ready.** `helicoid-spline`: the caller hands a `&[G; K]` window, `u` and `1/h`; `Segment`, `JacSegment`, `Weights`; one generic recursion, products and Rⁿ by construction; the side a type parameter. |
 | [`0115`](./0115-the-spline-tables-are-exact-integers.md) | **ready.** Basis and Gram numerators by `const fn` in `i64`, all below `2²⁴`; one rounding per entry; no generator. |
 | [`0116`](./0116-the-spline-is-measured-before-it-ships.md) | **ready.** Spline ids, one-axis-at-a-time strata (1.6 MiB of the 4.00 left; crossed would be 29), mpmath references, basalt-headers as oracle after a spike, six seeded defects, bench rows. |
+| [`0117`](./0117-rq-and-lq-are-gram-schmidt-twice-on-scaled-rows.md) | **ready.** `rq3` and `lq3`, 3×3 RQ and LQ with a rotation and a positive-diagonal triangle: classical Gram–Schmidt twice with Kahan's test on rows each scaled by its own power of two, `lq3` the exact flip; triangles returned bit for bit; `UpperTri3`, `LowerTri3`; id `rq3` against nalgebra and Eigen's Householder QR. |
 
 ## Lifecycle
 

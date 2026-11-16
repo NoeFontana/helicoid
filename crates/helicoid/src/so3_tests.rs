@@ -256,6 +256,27 @@ fn from_matrix_rounds_a_quarter_turn_both_ways() {
     assert_eq!((q.x.to_bits(), q.y.to_bits()), (0, 0));
 }
 
+/// The rotation `rq3` returns for a triangle is the exact identity, and `from_matrix` keeps it the
+/// identity quaternion bit for bit at both precisions: the composition a consumer's bit-exact round
+/// trip goes through (`0117` decision 8).
+#[test]
+fn from_matrix_of_rq3_s_identity_is_the_identity_bit_for_bit() {
+    fn at<S: Real>() {
+        let m = Mat3::<S>::from_rows([
+            Vector([S::lit(1.5), S::lit(-0.25), S::lit(2.0)]),
+            Vector([S::zero(), S::lit(0.75), S::lit(-3.0)]),
+            Vector([S::zero(), S::zero(), S::lit(4.0)]),
+        ]);
+        let (_, r, valid) = helicoid_linalg::rq3(&m);
+        assert!(valid.all());
+        let q = SO3::<S>::from_matrix(&r).quat();
+        let b = [q.w, q.x, q.y, q.z].map(|c| c.value_f64().to_bits());
+        assert_eq!(b, [1.0, 0.0, 0.0, 0.0].map(f64::to_bits));
+    }
+    at::<f64>();
+    at::<f32>();
+}
+
 /// Shepperd's quotients as `tf_tree_math` forms them: each axis candidate adds its own diagonal
 /// first, the pivot is `½√c` and the rest are over `2√c`, with no normalization.
 macro_rules! shepperd {

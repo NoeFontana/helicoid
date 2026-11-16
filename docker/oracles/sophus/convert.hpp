@@ -22,6 +22,7 @@
 #include <Eigen/Core>
 #include <Eigen/Eigenvalues>
 #include <Eigen/Geometry>
+#include <Eigen/QR>
 #include <Eigen/SVD>
 #include <sophus/se2.hpp>
 #include <sophus/se3.hpp>
@@ -256,6 +257,48 @@ HelicoidSvd3 eigen_to_helicoid_svd3(const Eigen::JacobiSVD<Eigen::Matrix<T, 3, 3
   return {Vec(u.data(), u.data() + 9), {static_cast<double>(sigma(0)), static_cast<double>(sigma(1)),
                                         static_cast<double>(sigma(2))},
           Vec(v.data(), v.data() + 9)};
+}
+
+// --- rq3: Eigen's Householder QR, reversed (docs/decisions/0117) ------------------------------
+
+struct HelicoidRq3 {
+  Vec u, r;
+  double valid;
+};
+
+// `HouseholderQR` of `Mᵀ J`, `J` the reversal: `Mᵀ J = Q̃ R̃` gives `M = (J R̃ᵀ J)(J Q̃ᵀ)`, upper
+// triangular times orthogonal. Then record 0117 decision 1's convention by exact sign changes:
+// column `k` of `U` and row `k` of `R` negated where `u_kk < 0`, `k = 2, 1`; then column 0 and row 0
+// where `det R < 0`. `valid` is the diagonal's test. Column-major out.
+template <class T>
+HelicoidRq3 helicoid_rq3(const Vec& m_in) {
+  using M3 = Eigen::Matrix<T, 3, 3>;
+  const M3 m = helicoid_to_eigen_matrix3<T>(m_in);
+  M3 mtj;
+  for (int i = 0; i < 3; ++i)
+    for (int j = 0; j < 3; ++j) mtj(i, j) = m(2 - j, i);
+  const Eigen::HouseholderQR<M3> qr(mtj);
+  const M3 q = qr.householderQ();
+  const M3 r = qr.matrixQR().template triangularView<Eigen::Upper>();
+  M3 u, rot;
+  for (int i = 0; i < 3; ++i) {
+    for (int j = 0; j < 3; ++j) {
+      u(i, j) = r(2 - j, 2 - i);
+      rot(i, j) = q(j, 2 - i);
+    }
+  }
+  for (int k : {2, 1}) {
+    if (u(k, k) < T(0)) {
+      u.col(k) = -u.col(k);
+      rot.row(k) = -rot.row(k);
+    }
+  }
+  if (rot.determinant() < T(0)) {
+    u.col(0) = -u.col(0);
+    rot.row(0) = -rot.row(0);
+  }
+  const bool valid = u(0, 0) > T(0) && u(1, 1) > T(0) && u(2, 2) > T(0);
+  return {Vec(u.data(), u.data() + 9), Vec(rot.data(), rot.data() + 9), valid ? 1.0 : 0.0};
 }
 
 // --- nearest_rotation: Sophus's `fitToSO3` (docs/decisions/0102) --------------------------

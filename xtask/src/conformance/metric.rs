@@ -80,6 +80,10 @@ pub(crate) enum Rule {
     /// `nearest_rotation` (`0102` decision 8): the forward error weighted by the
     /// projection's conditioning, the orthogonality, and `1/u` for `det R̂ ≤ 0`, [`polar`].
     Polar,
+    /// `rq3` (`0117` decision 9): the rowwise backward error, the orthogonality, the forward errors
+    /// over the reference's `kappa_U` and `kappa_R`, and `1/u` for a structure, a sign or a mask out
+    /// of the contract, [`rq`].
+    Rq,
     /// `solve_cubic`: the distance between the valid slots and the reference roots, [`roots`].
     Roots,
     /// `chol`: the reported `mask` must be the reference's; `fields` are scored where it is set,
@@ -116,6 +120,7 @@ impl Rule {
             Rule::EigenRelative => eigen(rec, out, precision, true),
             Rule::Svd => svd(rec, out, precision),
             Rule::Polar => polar(rec, out, precision),
+            Rule::Rq => rq(rec, out, precision),
             Rule::Roots => roots(rec, out, precision),
             Rule::Masked { mask, fields } => masked(mask, fields, rec, out, precision),
             Rule::Adjugate => adjugate(rec, out, precision),
@@ -134,6 +139,7 @@ impl Rule {
             Rule::EigenRelative => vec!["lambda", "V", "kappa"],
             Rule::Svd => vec!["U", "sigma", "V"],
             Rule::Polar => vec!["R"],
+            Rule::Rq => vec!["U", "R", "kappa_U", "kappa_R"],
             Rule::Roots => vec!["re", "im"],
             Rule::Adjugate => ADJUGATE.iter().map(|f| f.field).collect(),
             Rule::Direction(field) | Rule::Axis(field) | Rule::Rounded(field) => vec![*field],
@@ -383,6 +389,7 @@ const TABLE: &[(&str, Rule)] = &[
     ("eig_sym", Rule::EigenRelative),
     ("svd3", Rule::Svd),
     ("nearest_rotation", Rule::Polar),
+    ("rq3", Rule::Rq),
     (
         "chol",
         Rule::Masked {
@@ -596,6 +603,11 @@ impl Exact {
             d.neg,
             (BigUint::from(d.mant) * five(c + self.q)) << nonneg(c + self.p),
         )
+    }
+
+    /// `S`.
+    fn scale(&self) -> BigUint {
+        &self.s5 << nonneg(self.p)
     }
 
     /// `S²`.
@@ -1063,6 +1075,117 @@ fn polar(rec: &Record, out: &Output, precision: Precision) -> Result<Score, Stri
         .sum();
     if det.sign() != Sign::Plus {
         worst = worst.max(2f64.powi(bits as i32));
+    }
+    Ok(finite_or_nonfinite(worst))
+}
+
+/// `0117` decision 9's metric, the largest of:
+///
+/// - the rowwise backward error `maxᵢ ‖mᵢ − (ÛR̂)ᵢ‖ / (‖mᵢ‖ u)`; a zero row reads 0 where it is
+///   reproduced exactly, else `1/u`;
+/// - the orthogonality `‖R̂ᵀR̂ − I‖_F / u`;
+/// - the forward errors `‖R̂ − R‖_F / (κ_R u)` and `‖Û − U‖_F / (κ_U ‖M‖_F u)`, the record's
+///   `kappa_R` and `kappa_U`, each weighing 0 where its κ is 0 (the reference not unique);
+/// - `1/u` where `det R̂ ≤ 0`, an entry below `Û`'s diagonal is not zero, `û₂₂ < 0` or `û₃₃ < 0`,
+///   or `valid` is not `û₁₁ > 0 ∧ û₂₂ > 0 ∧ û₃₃ > 0`.
+///
+/// The κ are read rounded from the record; every other value is an integer over one scale `S`.
+fn rq(rec: &Record, out: &Output, precision: Precision) -> Result<Score, String> {
+    let bits = unit_bits(precision);
+    let (u, r) = (reference(rec, "U", 9)?, reference(rec, "R", 9)?);
+    let (ku, kr) = (reference(rec, "kappa_U", 1)?, reference(rec, "kappa_R", 1)?);
+    let m = rec
+        .input("M")
+        .filter(|m| m.len() == 9)
+        .ok_or("the record has no 3x3 input `M`")?;
+    let (Some(uh), Some(rh), Some(valid)) = (
+        values(out, "U", 9, precision)?,
+        values(out, "R", 9, precision)?,
+        values(out, "valid", 1, precision)?,
+    ) else {
+        return Ok(Score::NonFinite);
+    };
+    let valid = mask(valid, "valid")?[0];
+    let one_over_u = 2f64.powi(bits as i32);
+    // Column-major: `(r, c)` at `3c + r`; below the diagonal `(1, 0)`, `(2, 0)`, `(2, 1)`.
+    let lower = [1, 2, 5].iter().any(|&k| uh[k] != 0.0);
+    let diagonal = uh[0] > 0.0 && uh[4] > 0.0 && uh[8] > 0.0;
+    let mut worst = if lower || uh[4] < 0.0 || uh[8] < 0.0 || valid != diagonal {
+        one_over_u
+    } else {
+        0.0
+    };
+
+    let dyadics = |x: &[f64]| -> Vec<Dyadic> { x.iter().map(|&x| Dyadic::of(x)).collect() };
+    let (uhd, rhd, md) = (dyadics(uh), dyadics(rh), dyadics(m));
+    let ex = Exact::of(
+        u.iter().chain(r).chain(ku).chain(kr),
+        uhd.iter().chain(&rhd).chain(&md),
+    );
+    let exact = |d: &[Dyadic]| -> Vec<BigInt> { d.iter().map(|d| ex.dyadic(d)).collect() };
+    let (uh, rh, m) = (exact(&uhd), exact(&rhd), exact(&md));
+    let decimal = |d: &[Decimal]| -> Vec<BigInt> { d.iter().map(|d| ex.decimal(d)).collect() };
+    let (u, r, ku, kr) = (decimal(u), decimal(r), decimal(ku), decimal(kr));
+    let s2 = ex.square();
+    let scale = BigInt::from(s2.clone());
+    let s1 = BigInt::from(ex.scale());
+
+    // Row i: Σ_c ((M S) S² − Σₖ (Û S)(R̂ S) S)² over (‖mᵢ S‖ S²)².
+    for i in 0..3 {
+        let residual: BigUint = (0..3)
+            .map(|c| {
+                let ur: BigInt = (0..3).map(|k| &uh[3 * k + i] * &rh[3 * c + k]).sum();
+                square(&(&m[3 * c + i] * &scale - ur * &s1))
+            })
+            .sum();
+        let size: BigUint = (0..3).map(|c| square(&m[3 * c + i])).sum();
+        worst = worst.max(if size.bits() == 0 {
+            if residual.bits() == 0 {
+                0.0
+            } else {
+                one_over_u
+            }
+        } else {
+            ratio_u(&residual, &(size * &s2 * &s2), bits)
+        });
+    }
+
+    // (R̂ S)(R̂ S)ᵀ − S² I over S²: R̂ by rows, column-major storage.
+    let dot =
+        |i: usize, j: usize| -> BigInt { (0..3).map(|k| &rh[3 * k + i] * &rh[3 * k + j]).sum() };
+    let mut off = BigUint::default();
+    for i in 0..3 {
+        for j in 0..3 {
+            let g = dot(i, j);
+            off += square(&if i == j { g - &scale } else { g });
+        }
+    }
+    worst = worst.max(ratio_u(&off, &(&s2 * &s2), bits));
+    let at = |row: usize, col: usize| &rh[3 * col + row];
+    let det: BigInt = (0..3)
+        .map(|k| {
+            let (k1, k2) = ((k + 1) % 3, (k + 2) % 3);
+            at(0, k) * (at(1, k1) * at(2, k2) - at(1, k2) * at(2, k1))
+        })
+        .sum();
+    if det.sign() != Sign::Plus {
+        worst = worst.max(one_over_u);
+    }
+
+    // ‖ΔR S‖² / (κ_R S)², and ‖ΔU S‖² S² / ((κ_U S)² ‖M S‖²).
+    let diff = |xh: &[BigInt], x: &[BigInt]| -> BigUint {
+        xh.iter().zip(x).map(|(h, y)| square(&(h - y))).sum()
+    };
+    if kr[0].sign() != Sign::NoSign {
+        worst = worst.max(ratio_u(&diff(&rh, &r), &square(&kr[0]), bits));
+    }
+    let size: BigUint = m.iter().map(square).sum();
+    if ku[0].sign() != Sign::NoSign && size.bits() != 0 {
+        worst = worst.max(ratio_u(
+            &(diff(&uh, &u) * &s2),
+            &(square(&ku[0]) * size),
+            bits,
+        ));
     }
     Ok(finite_or_nonfinite(worst))
 }
@@ -1876,6 +1999,7 @@ mod tests {
                     | Rule::EigenRelative
                     | Rule::Svd
                     | Rule::Polar
+                    | Rule::Rq
                     | Rule::Roots
                     | Rule::Masked { .. }
                     | Rule::Adjugate
@@ -2324,6 +2448,97 @@ mod tests {
         Ok(())
     }
 
+    #[allow(clippy::too_many_arguments)]
+    fn rq_u(
+        m: [f64; 9],
+        u: [&str; 9],
+        r: [&str; 9],
+        kappa: [&str; 2],
+        uh: [f64; 9],
+        rh: [f64; 9],
+        valid: f64,
+    ) -> Result<Score, String> {
+        let rec = record(
+            &[("M", &m)],
+            &[
+                ("U", &u),
+                ("R", &r),
+                ("kappa_U", &[kappa[0]]),
+                ("kappa_R", &[kappa[1]]),
+            ],
+        )?;
+        let out = Output::from([
+            ("U".to_string(), uh.to_vec()),
+            ("R".to_string(), rh.to_vec()),
+            ("valid".to_string(), vec![valid]),
+        ]);
+        Rule::Rq.score(&rec, &out, Precision::F64)
+    }
+
+    const DIAG421: [&str; 9] = ["4", "0", "0", "0", "2", "0", "0", "0", "1"];
+
+    #[test]
+    fn rq_scores_the_rowwise_backward_and_the_weighted_forward_error() -> Result<(), String> {
+        let m = diag([4.0, 2.0, 1.0]);
+        let ones = ["1", "1"];
+        assert_eq!(
+            rq_u(m, DIAG421, IDENTITY, ones, m, EYE, 1.0)?,
+            Score::Finite(0.0)
+        );
+        // `Rz(e) I`, `U` kept, e = 1e-12: row 0 reads `4 sin e / 4`, the forward `√2 sin e / κ_R`.
+        let s = 1e-12f64.sin();
+        let turned = [1.0, s, 0.0, -s, 1.0, 0.0, 0.0, 0.0, 1.0];
+        let Score::Finite(f) = rq_u(m, DIAG421, IDENTITY, ones, m, turned, 1.0)? else {
+            return Err("non-finite".into());
+        };
+        near(f, s * 2f64.sqrt() / U);
+        // κ_R = 0, the reference not unique: the backward error alone.
+        let Score::Finite(f) = rq_u(m, DIAG421, IDENTITY, ["0", "0"], m, turned, 1.0)? else {
+            return Err("non-finite".into());
+        };
+        near(f, s / U);
+        // A zero row reproduced exactly reads 0.
+        let z = diag([4.0, 2.0, 0.0]);
+        let zu = ["4", "0", "0", "0", "2", "0", "0", "0", "0"];
+        assert_eq!(
+            rq_u(z, zu, IDENTITY, ["0", "0"], z, EYE, 0.0)?,
+            Score::Finite(0.0)
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn rq_reads_one_over_u_out_of_the_contract() -> Result<(), String> {
+        let m = diag([4.0, 2.0, 1.0]);
+        let ones = ["1", "1"];
+        // The gauge: rows 0 and 1 of `R̂`, columns 0 and 1 of `Û` negated; the product is `M`.
+        // The forward error, `2√2 / u`, reads past the `1/u` of the signs.
+        let (gu, gr) = (diag([-4.0, -2.0, 1.0]), diag([-1.0, -1.0, 1.0]));
+        let at_least = |s: Score| matches!(s, Score::Finite(f) if f >= 1.0 / U);
+        assert!(at_least(rq_u(m, DIAG421, IDENTITY, ones, gu, gr, 0.0)?));
+        // A mask against the diagonal, an entry below it, a reflection.
+        assert_eq!(
+            rq_u(m, DIAG421, IDENTITY, ones, m, EYE, 0.0)?,
+            Score::Finite(1.0 / U)
+        );
+        let mut below = m;
+        below[1] = 1e-300;
+        assert_eq!(
+            rq_u(m, DIAG421, IDENTITY, ones, below, EYE, 1.0)?,
+            Score::Finite(1.0 / U)
+        );
+        let flip = diag([1.0, 1.0, -1.0]);
+        let fu = diag([4.0, 2.0, -1.0]);
+        assert!(at_least(rq_u(m, DIAG421, IDENTITY, ones, fu, flip, 0.0)?));
+        let mut nan = EYE;
+        nan[4] = f64::NAN;
+        assert_eq!(
+            rq_u(m, DIAG421, IDENTITY, ones, m, nan, 1.0)?,
+            Score::NonFinite
+        );
+        Ok(())
+    }
+
     fn cubic(
         re: [&str; 3],
         im: [&str; 3],
@@ -2432,6 +2647,7 @@ mod tests {
         assert!(rule("eig_sym_n5").is_none());
         assert_eq!(fields("svd3"), Some(vec!["U", "V", "sigma"]));
         assert_eq!(fields("nearest_rotation"), Some(vec!["R"]));
+        assert_eq!(fields("rq3"), Some(vec!["R", "U", "kappa_R", "kappa_U"]));
         assert_eq!(fields("solve_cubic"), Some(vec!["im", "re"]));
         assert_eq!(fields("chol_n6"), Some(vec!["L", "valid"]));
         assert_eq!(fields("chol_solve_n3"), Some(vec!["x"]));
