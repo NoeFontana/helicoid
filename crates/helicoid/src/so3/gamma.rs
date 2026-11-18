@@ -177,14 +177,13 @@ fn apply_jacobians_from<S: Real>(
     (value, jac, g)
 }
 
-/// `(Exp φ, Γ₁(φ) v, Γ₂(φ) v)` from one coefficient evaluation (`0119`): [`SO3::exp`], `gamma1(φ) * v`
-/// and `gamma2(φ) * v`, each **to the bit**, for a step that integrates a constant rate and force,
-/// `ΔR = Exp φ`, `Δv = Δt Γ₁ f`, `Δp = Δt² Γ₂ f` (GG.4).
+/// `(Exp φ, Γ₁(φ) v, Γ₂(φ) v)` from one coefficient evaluation (`0119`): [`SO3::exp`],
+/// `gamma1(φ) * v` and `gamma2(φ) * v`, each **to the bit**, for a step that integrates a constant
+/// rate and force, `ΔR = Exp φ`, `Δv = Δt Γ₁ f`, `Δp = Δt² Γ₂ f` (GG.4).
 ///
 /// One `θ²`, one `W²` and one coefficient evaluation serve all three, each coefficient on the arm
-/// its own call takes; the exact arm takes one root, one `sin_cos` and one `sin` where the three calls take
-/// three, one and four. `Γ_M v` is the matrix applied as `Mat3 * Vec3` applies it, which is not
-/// [`gamma_apply_jacobians`]' vector form: a different rounding of the same number.
+/// its own call takes. `Γ_M v` is `Mat3 * Vec3`, not [`gamma_apply_jacobians`]' vector form: a
+/// different rounding of the same number.
 ///
 /// ```
 /// use helicoid::{so3, LieGroup, SO3Tangent, SO3};
@@ -220,11 +219,11 @@ pub fn exp_gamma_apply<S: Real>(phi: &SO3Tangent<S>, v: Vec3<S>) -> (SO3<S>, Vec
 /// coefficient evaluation on `Dual<S, 1>` (`0119`): a preintegration step's increment and both of
 /// its Jacobians.
 ///
-/// `b` is evaluated once and read by both triples wherever `jr_coeffs` and `gamma2_coeffs` take the
-/// same arm for it; `W²`, `φ×v`, `φ×(φ×v)` and `φ·v` are formed once. The rotation reads the value
-/// lanes of `k` and `cos θ/2`, which are `exp_coeffs`' plain bits (`0003` item 5). `Γ₁`'s third
-/// output keeps `SO3::jl`'s diagonal (`0089`). The values are the vector form, as in
-/// [`gamma_apply_jacobians`], not [`exp_gamma_apply`]'s `Γ_M * v`.
+/// `b` is evaluated once for both triples except between the groups' second switches, where each
+/// group's own switch picks its arm; `W²`, `φ×v`, `φ×(φ×v)` and `φ·v` are formed once. The
+/// rotation reads the value lanes of `k` and `cos θ/2`, which are `exp_coeffs`' plain bits (`0003`
+/// item 5). `Γ₁`'s third output keeps `SO3::jl`'s diagonal (`0089`). The values are the vector
+/// form, as in [`gamma_apply_jacobians`], not [`exp_gamma_apply`]'s `Γ_M * v`.
 ///
 /// ```
 /// use helicoid::{so3, LieGroup, SO3Tangent, SO3};

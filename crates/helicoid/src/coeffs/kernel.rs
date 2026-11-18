@@ -160,7 +160,7 @@ fn grouped<S: Real, const G: usize>(
     // member takes the *whole* arm, which is the arm the sweep admitted the prefix to agree with
     // there — so neither reading moves a grid point or a corpus record. A member with no second
     // arm has `0`, which no `z` is below, and takes the group's switch down with it.
-    let short_below = arms.iter().fold(f64::INFINITY, |m, a| m.min(a.short_below));
+    let short_below = second_switch(&arms);
     S::branch(
         z.lt(S::lit(short_below)),
         || arms.map(|a| a.short(z)),
@@ -190,7 +190,7 @@ fn grouped_with<S: Real, const G: usize>(
     none: S,
 ) -> ([S; G], S, [S::Mask; G]) {
     nonnegative(z);
-    let short_below = arms.iter().fold(f64::INFINITY, |m, a| m.min(a.short_below));
+    let short_below = second_switch(&arms);
     // Formed before the outer branch, since a mask is not a value `branch` blends; below the
     // group's second switch every member's is set, which is what that arm reads.
     let small = arms.map(|a| z.lt(a.below()));
@@ -273,21 +273,15 @@ pub(crate) struct ExpGammaCoeffs<S: Real, G: Real = S> {
 /// `Dual`'s lane, because it takes that group's arm by that group's switches in that group's
 /// arithmetic.
 ///
-/// Not one [`grouped`] over the five: that puts every member on its prefix below the *group's*
-/// second switch, the smallest, so a member takes its whole arm where its own group took the
-/// prefix. The sweep admits a prefix where it equals the whole arm on its grid and the `coeff_*`
-/// records, not at every float, and a single group parts from the three in the `d/dz` bits of
-/// 22,395–99,468 of the binary32 `θ²` in `[9e-4, 2e-3)` (all of them scanned) and at binary64 in
-/// the value of `cos θ/2` (`0119`). So between the smallest and the largest of the three groups'
-/// second switches each group's members take the prefix by that group's switch. That band lies
-/// below every first switch (`exp_gamma_shorts_are_below_every_first_switch`), so no exact arm runs
-/// in it.
+/// Not one [`grouped`] over the five: below the smallest second switch it would put a member on
+/// its prefix where its own group takes the whole arm, and the sweep certifies that prefix on its
+/// grid, not at every float, so the bits part (`0119`). Between the groups' second switches each
+/// group's members follow that group's switch; that band is below every first switch
+/// (`exp_gamma_shorts_are_below_every_first_switch`), so no exact arm runs in it.
 ///
-/// Past every second switch it is [`grouped`] with one difference: `sin θ` and the divisions of
-/// `a`, `b` and `d` run only where one of those is on its exact arm, so where `cos θ/2` alone is,
-/// the exact arm costs what `exp_coeffs`' does. The exact arm takes one root, one `sin_cos(θ/2)`
-/// and one `sin θ`, where the three groups take three, one and four. Each arm returns scalars and
-/// captures by `move` (`.claude/rules/numerics.md`).
+/// The exact arm takes one root, one `sin_cos(θ/2)` and, only where `b` is on its exact arm, one
+/// `sin θ`: the three groups take three, one and four. Each arm returns scalars and captures by
+/// `move` (`.claude/rules/numerics.md`).
 pub(crate) fn exp_gamma_coeffs<S: Real>(z: S) -> ExpGammaCoeffs<S> {
     exp_gamma_body(z)
 }
@@ -378,12 +372,20 @@ fn exp_gamma_body<S: Real>(z: S) -> ExpGammaCoeffs<S> {
                                 move || (a.horner(z), b.horner(z), d.horner(z), S::one()),
                                 move || {
                                     let ax = a_from(z0, s);
-                                    let sinc = th.sin() / th;
-                                    let bx = (S::one() - sinc) / z0;
                                     let dx = d_from(z0, ax);
+                                    // `sin θ` is `b`'s alone, and `a` can leave its series
+                                    // before `b` does; `sinc` is unread off `far`.
+                                    let (bv, sinc) = S::branch(
+                                        sb,
+                                        move || (b.horner(z), S::one()),
+                                        move || {
+                                            let sinc = th.sin() / th;
+                                            ((S::one() - sinc) / z0, sinc)
+                                        },
+                                    );
                                     (
                                         S::branch(sa, move || a.horner(z), move || ax),
-                                        S::branch(sb, move || b.horner(z), move || bx),
+                                        bv,
                                         S::branch(sd, move || d.horner(z), move || dx),
                                         sinc,
                                     )
