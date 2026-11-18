@@ -6,7 +6,9 @@ entries live in [`docs/changelog/`](./docs/changelog/).
 **`0.0.x` is not ordinary semver.** Every release may break every other. What is implemented is
 defined by the status tables in `docs/`; they win over this file.
 
-## [Unreleased]
+## [0.0.12] - 2026-11-18
+
+The fused preintegration step release. `so3::exp_gamma_apply` returns `Exp φ`, `Γ₁(φ) v` and `Γ₂(φ) v`, and `so3::exp_gamma_apply_jacobians` adds both directional Jacobians, from one coefficient evaluation: one root, one `sin_cos` and at most one `sin` where the separate calls take three, one and four. Every output is the separate calls' to the bit, `Dual` included, at 5–43% fewer instructions per call (`0119`). **No API break**, and every existing output keeps its bits.
 
 ### Added
 
@@ -14,42 +16,17 @@ defined by the status tables in `docs/`; they win over this file.
   ([`0119`](docs/decisions/0119-exp-and-gamma-share-one-evaluation.md)): a preintegration step's
   `Exp φ`, `Γ₁ v` and `Γ₂ v`, and both directional Jacobians, from one coefficient evaluation. Every
   output is `SO3::exp`, `gamma1(φ) * v`, `gamma2(φ) * v` or `gamma_apply_jacobians::<1 | 2>` to the
-  bit, `Dual` included, so moving from the separate calls changes no result. They take 9–44%
+  bit, `Dual` included, so moving from the separate calls changes no result. They take 10–43%
   (binary64) and 15–37% (binary32) fewer instructions for the values, and 17–36% and 5–25% fewer
   with the Jacobians. The alias `so3::GammaJacobians<S>` names `gamma_apply_jacobians`'
   `(Vec3, Mat3, Mat3)`. Every existing output keeps its bits.
-
-## [0.0.11] - 2026-11-15
-
-The triangular factorization release. `helicoid_linalg::rq3` and `lq3` factor a 3×3 matrix as a triangle times a rotation, `M = U R` and `M = L Q`, with `UpperTri3` and `LowerTri3`: classical Gram–Schmidt twice under Kahan's test on rows each scaled by its own power of two, a triangle with a positive diagonal returned with the identity bit for bit, and at most 4.33 `u` (binary64) and 4.00 `u` (binary32) on the new corpus id `rq3`, below nalgebra's and Eigen's Householder QR on every stratum (`0117`). **No API break**, and every existing output keeps its bits.
-
-### Added
-
-- **`rq3` and `lq3`**, the 3×3 RQ and LQ factorizations, with the triangle types `UpperTri3` and
-  `LowerTri3` ([`0117`](docs/decisions/0117-rq-and-lq-are-gram-schmidt-twice-on-scaled-rows.md)).
-  `M = U R` and `M = L Q` with a rotation and a triangle whose diagonal is positive where
-  `det M > 0`, reported by a mask; under a clear mask the factorization is kept. Classical
-  Gram–Schmidt twice under Kahan's test on rows each scaled by its own power of two: backward stable
-  row by row and orthogonal to a few `u` however close two rows are to parallel; `lq3` is `rq3`
-  reversed, bit for bit. A triangle with a positive diagonal returns itself and the identity
-  rotation bit for bit, at both precisions and in `Dual` values. On the corpus it
-  reads at most 4.33 `u` (binary64) and 4.00 `u` (binary32): below nalgebra's and Eigen's
-  Householder QR on every stratum, by at least 1.5× wherever it reads above rounding. Every existing
-  output keeps its bits.
-
-### Instrument
-
-Not shipped in the crates.
-- **The corpus id `rq3`** ([`0117`](docs/decisions/0117-rq-and-lq-are-gram-schmidt-twice-on-scaled-rows.md)
-  decision 9): 24 binary64 and 23 binary32 strata against RQ.1's construction at 120 digits, the
-  metric `Rule::Rq` (rowwise backward error, orthogonality, forward errors over the reference's κ),
-  two seeded defects, and nalgebra's `QR` and Eigen's `HouseholderQR` as oracles.
 
 ## Released versions
 
 Frozen history, newest first, in [`docs/changelog/`](./docs/changelog/); leave it
 out of searches and sweeps.
 
+- [`0.0.11`](./docs/changelog/0.0.11.md) — 2026-11-15 (the triangular factorizations `rq3` and `lq3`)
 - [`0.0.10`](./docs/changelog/0.0.10.md) — 2026-11-13 (the continuous-time spline, `helicoid-spline`)
 - [`0.0.9`](./docs/changelog/0.0.9.md) — 2026-10-29 (general symmetric eigensolver `eig_sym`)
 - [`0.0.8`](./docs/changelog/0.0.8.md) — 2026-10-24 (the portable `atan2`, `eig3_values`)
@@ -72,3 +49,4 @@ out of searches and sweeps.
 [0.0.9]: https://github.com/NoeFontana/helicoid/releases/tag/v0.0.9
 [0.0.10]: https://github.com/NoeFontana/helicoid/releases/tag/v0.0.10
 [0.0.11]: https://github.com/NoeFontana/helicoid/releases/tag/v0.0.11
+[0.0.12]: https://github.com/NoeFontana/helicoid/releases/tag/v0.0.12
