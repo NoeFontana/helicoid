@@ -16,6 +16,7 @@ stated side; and consumer migrations onto `helicoid` without unrecorded regressi
 | S² and its chart (§2) | Done ([`0063`](./decisions/0063-the-sphere-reads-its-sign-by-comparison-and-is-held-unit.md), [`0067`](./decisions/0067-the-sphere-takes-plane-coordinates-and-both-precisions.md), #133): `S2`, `S2Chart` (`Chart<S, S2<S>>` on `RnTangent<S, 2>`, `Jac = Mat2<S>`), `Manifold for S2`; the chart laws, `Dual` Jacobians and the twin `reference::s2_local`; corpus ids `s2_retract`, `s2_local` at both precisions, scored by §11's direction metric |
 | Sim(3) (§3) | Done ([`0070`](./decisions/0070-sim3-a-structured-jacobian-and-a-series-on-delta.md), [`0071`](./decisions/0071-the-corpus-budget-is-64-mib.md)): `NUMERICS.md` §9 stated; the coefficient group and its ray sweep (#137); `Sim3`, `Sim3Tangent`, `Sim3Jac` with the group laws, `Dual` and the dense twins (#138); corpus ids `sim3_{exp, log, jr, jl, jr_inv, jl_inv, ad, act}` at both precisions, two plantings (#139); `sim3/*` benchmarks (#140). No in-process oracle (`sophus_lie` has no Sim(3)); the Sophus (`0072`) and GTSAM (`0074`) containers answer `exp`, `log`, `ad`, `act` at binary64, not dominated (§7) |
 | Γ₁, Γ₂, directional Jacobians (§4) | Done ([`0064`](./decisions/0064-the-integrated-exponentials-reuse-the-swept-switches.md), #127, #128): `so3::{gamma1, gamma2, gamma_apply_jacobians::<M>}`, `M` 1 or 2 (one coefficient evaluation, [`0066`](./decisions/0066-gamma-shares-its-coefficients-and-a-gaussian-factors-once.md)); the twin `reference::gamma_apply`; corpus id `so3_gamma2` at both precisions; the seeded defect Γ₂ from Γ₁'s coefficients |
+| `Exp`, Γ₁ and Γ₂ from one evaluation (§4) | Done ([`0119`](./decisions/0119-exp-and-gamma-share-one-evaluation.md)): `so3::{exp_gamma_apply, exp_gamma_apply_jacobians}` and the alias `GammaJacobians`, each output the separate calls' to the bit; no corpus id of its own, read on the `so3_gamma2` and `so3_exp` records |
 | `Gaussian<S, G, Sd, D>` (§5) | Done ([`0065`](./decisions/0065-a-gaussian-names-its-side-and-is-stored-symmetric.md), #129, #130): `to_left`, `to_right`, `propagate`, `mahalanobis_sq`, and `whitener` for many-point gating ([`0066`](./decisions/0066-gamma-shares-its-coefficients-and-a-gaussian-factors-once.md)); the round-trip bound and the twins on SE(3), SE₂(3), SO(3), SO(3)×ℝ³; corpus ids `gaussian_mahalanobis_{se3,se23}` |
 | Consumer migrations (§6) | Not started |
 
@@ -122,6 +123,9 @@ chain rule ([`0066`](./decisions/0066-gamma-shares-its-coefficients-and-a-gaussi
 - `gamma_apply_jacobians::<M, S>(&φ, v) -> (Γ_M v, ∂/∂φ, ∂/∂v = Γ_M)` for `M` 1 or 2, asserted
   at monomorphization ([`0066`](./decisions/0066-gamma-shares-its-coefficients-and-a-gaussian-factors-once.md) adds `Γ_M` and renames it).
 - `gamma2_coeffs` takes no switch of its own.
+- `exp_gamma_apply` and `exp_gamma_apply_jacobians` return `SO3::exp`, `gamma{1,2}(φ) * v` and
+  `gamma_apply_jacobians::<1 | 2>` to the bit, from one evaluation of `(k, cos θ/2, a, b, d)`
+  ([`0119`](./decisions/0119-exp-and-gamma-share-one-evaluation.md)).
 - `so3_gamma2` has `so3_jl`'s strata and their `@f32` twins.
 - The seeded defect "Γ₂ from Γ₁'s coefficients" is in `PHASE1.md` §10.
 

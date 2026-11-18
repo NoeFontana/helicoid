@@ -16,13 +16,14 @@ use super::generated::{
     A_F32, A_F64, B_F32, B_F64, COS_HALF_F32, COS_HALF_F64, C_F32, C_F64, D_F32, D_F64, E_F32,
     E_F64, K_F32, K_F64, R_F32, R_F64,
 };
+use super::kernel::exp_gamma_switches;
 use super::kernel::{
     exact_a, exact_b, exact_c, exact_cos_half, exact_d, exact_e, exact_k, exact_r, series_a,
     series_b, series_c, series_cos_half, series_d, series_e, series_k, series_r,
 };
 use super::{
-    exp_coeffs, gamma2_coeffs, jr_coeffs, jr_coeffs_sinc, jr_inv_coeff, log_ratio, log_ratio_scale,
-    q_coeffs, Switch,
+    exp_coeffs, exp_gamma_coeffs, gamma2_coeffs, jr_coeffs, jr_coeffs_sinc, jr_inv_coeff,
+    log_ratio, log_ratio_scale, q_coeffs, Switch,
 };
 
 /// The order of the coefficients everywhere below, and of `coeff_series.jsonl`.
@@ -1458,4 +1459,131 @@ fn q_five_coeffs_forms_b_minus_2d_without_the_cancellation() {
         }
         theta *= 1.01;
     }
+}
+
+/// `exp_gamma_coeffs`' members against the groups whose bits each reproduces, value and `d/dz`
+/// (`0119`): `exp_coeffs`' `k` and `cos θ/2`, `jr_coeffs_sinc`' `a`, `b`, `sin θ/θ` and `far`,
+/// `gamma2_coeffs`' `b` and `d`. `sin θ/θ` only where `far`, the one place either reads it.
+fn exp_gamma_is_its_groups_at<S: Real + Into<f64>>(z: S) {
+    let z = D::<S>::variable(z, 0);
+    let c = exp_gamma_coeffs(z);
+    let (k, cos_half) = exp_coeffs(z);
+    let (ck, cc, c) = (c.k, c.cos_half, c.gamma);
+    let (a, b1, sinc, far) = jr_coeffs_sinc(z);
+    let (b2, d) = gamma2_coeffs(z);
+    let lanes = |x: D<S>| (bits(x.v), bits(x.d[0]));
+    let got = [ck, cc, c.a, c.b1, c.b2, c.d].map(lanes);
+    let want = [k, cos_half, a, b1, b2, d].map(lanes);
+    let at = z.v.value_f64();
+    assert_eq!(got, want, "[k, cos θ/2, a, b₁, b₂, d] at z = {at:e}");
+    assert_eq!(c.far.any(), far.any(), "far at z = {at:e}");
+    if far.any() {
+        assert_eq!(lanes(c.sinc), lanes(sinc), "sin θ/θ at z = {at:e}");
+    }
+}
+
+/// Every switch and its two neighbours at `S`, `samples`, and every `stride`-th float of the band
+/// where a member's arm depends on its group.
+fn exp_gamma_is_its_groups<S: Real + Into<f64>>(stride: usize) -> usize {
+    let (switches, (lo, hi)) = exp_gamma_switches::<S>();
+    let near = |x: f64| match S::PRECISION {
+        Precision::F64 => [x.next_down(), x, x.next_up()],
+        Precision::F32 => {
+            let x = x as f32;
+            [x.next_down(), x, x.next_up()].map(f64::from)
+        }
+    };
+    let mut n = 0;
+    for z in switches.into_iter().flat_map(near).map(at::<S>) {
+        exp_gamma_is_its_groups_at(z);
+        n += 1;
+    }
+    for z in samples::<S>() {
+        exp_gamma_is_its_groups_at(z);
+        n += 1;
+    }
+    match S::PRECISION {
+        Precision::F32 => {
+            let (mut z, hi) = (lo as f32, hi as f32);
+            while z < hi {
+                exp_gamma_is_its_groups_at(at::<S>(f64::from(z)));
+                n += 1;
+                for _ in 0..stride {
+                    z = z.next_up();
+                }
+            }
+        }
+        Precision::F64 => {
+            let r = (hi / lo).powf(1.0 / (1 << 16) as f64);
+            let mut z = lo;
+            while z < hi {
+                exp_gamma_is_its_groups_at(at::<S>(z));
+                n += 1;
+                z *= r;
+            }
+        }
+    }
+    n
+}
+
+#[test]
+fn exp_gamma_coeffs_are_their_groups_to_the_bit_f64() {
+    exp_gamma_is_its_groups::<f64>(1);
+}
+
+#[test]
+fn exp_gamma_coeffs_are_their_groups_to_the_bit_f32() {
+    exp_gamma_is_its_groups::<f32>(61);
+}
+
+/// Every binary32 of the band, the figure `0119` records: about a minute under `ndebug`.
+#[test]
+#[ignore = "measurement: every binary32 of the band `0119` records"]
+#[allow(clippy::print_stdout)]
+fn measure_exp_gamma_band_every_f32() {
+    let n = exp_gamma_is_its_groups::<f32>(1);
+    std::println!("exp_gamma_coeffs: {n} binary32 θ², every member its group's to the bit");
+}
+
+/// The band between the slots' second switches lies below every member's first switch, so
+/// `grouped_as` runs no exact arm there, which is what makes its per-slot prefix a choice between
+/// two series and nothing else (`0119`).
+#[test]
+fn exp_gamma_shorts_are_below_every_first_switch() {
+    fn case<S: Real>() {
+        let (switches, (_, hi)) = exp_gamma_switches::<S>();
+        // `switches` pairs each member's first switch with its second.
+        let first = switches
+            .iter()
+            .step_by(2)
+            .fold(f64::INFINITY, |m, &b| m.min(b));
+        assert!(hi < first, "band top {hi:e} against first switch {first:e}");
+    }
+    case::<f64>();
+    case::<f32>();
+}
+
+/// One root, one `sin_cos` and one `sin` on the exact arm, where `exp_coeffs`, `jr_coeffs_sinc` and
+/// `gamma2_coeffs` take three, one and four (`0119`); the same calls in every member's series
+/// arms: none.
+fn exp_gamma_calls<const F32: bool>() {
+    let (switches, _) = exp_gamma_switches::<f64>();
+    let past = switches.iter().fold(0.0, |m: f64, &b| m.max(b)) * 1.01;
+    let z = Narrow::<F32>::new(past);
+    let one = |c: Counts| (c.sqrt, c.sin_cos, c.sin, c.cos, c.atan2);
+    assert_eq!(one(counted(|| exp_gamma_coeffs(z)).1), (1, 1, 1, 0, 0));
+    let three = [
+        one(counted(|| exp_coeffs(z)).1),
+        one(counted(|| jr_coeffs_sinc(z)).1),
+        one(counted(|| gamma2_coeffs(z)).1),
+    ];
+    assert_eq!(three, [(1, 1, 0, 0, 0), (1, 0, 2, 0, 0), (1, 0, 2, 0, 0)]);
+    let z = Narrow::<F32>::new(1e-3);
+    assert_eq!(one(counted(|| exp_gamma_coeffs(z)).1), (0, 0, 0, 0, 0));
+}
+
+#[test]
+fn exp_gamma_takes_one_root_and_two_sines() {
+    exp_gamma_calls::<false>();
+    exp_gamma_calls::<true>();
 }
