@@ -15,7 +15,10 @@
 //! crate root.
 
 mod gamma;
-pub use gamma::{gamma1, gamma2, gamma_apply_jacobians};
+pub use gamma::{
+    exp_gamma_apply, exp_gamma_apply_jacobians, gamma1, gamma2, gamma_apply_jacobians,
+    GammaJacobians,
+};
 
 use crate::coeffs::{
     exp_coeffs, jr_coeffs_sinc, jr_inv_coeff, log_ratio_scale, log_ratio_short,
@@ -170,6 +173,25 @@ impl<S: Real> HatSq<S> {
             Vector([-wy + qxz, wx + qyz, diag(z, d2)]),
         ])
     }
+}
+
+/// `Exp φ = (cos(θ/2), k φ)` from its coefficients: [`SO3::exp`]'s body, which
+/// `so3::exp_gamma_apply` shares so that its rotation is `exp`'s to the bit (`0119`).
+///
+/// Built field by field, not through `Quat::from_wxyz_unchecked`. That constructor's
+/// `debug_assert!` is for a *caller* handing in a quaternion it claims is unit; `Exp`'s output is
+/// unit by construction, to the rounding its own strata record, so the check has nothing to add
+/// here. It would also turn a NaN tangent into a panic, where a value function owes its caller NaN
+/// — which is what `laws::dual_value_is_plain_value` asks for.
+#[inline]
+pub(crate) fn exp_from<S: Real>(phi: Vec3<S>, k: S, cos_half: S) -> SO3<S> {
+    let [x, y, z] = phi.0;
+    SO3(Quat {
+        w: cos_half,
+        x: k * x,
+        y: k * y,
+        z: k * z,
+    })
 }
 
 /// `m` applied to a `D`-vector, for the `sandwich` whose `D` is `3` by its own assertion. Written
@@ -781,18 +803,7 @@ impl<S: Real> LieGroup<S> for SO3<S> {
     #[inline]
     fn exp(tau: &SO3Tangent<S>) -> Self {
         let (k, cos_half) = exp_coeffs(norm_sq(tau.phi));
-        let [x, y, z] = tau.phi.0;
-        // Built field by field, not through `Quat::from_wxyz_unchecked`. That constructor's
-        // `debug_assert!` is for a *caller* handing in a quaternion it claims is unit; `Exp`'s
-        // output is unit by construction, to the rounding its own strata record, so the check has
-        // nothing to add here. It would also turn a NaN tangent into a panic, where a value
-        // function owes its caller NaN — which is what `laws::dual_value_is_plain_value` asks for.
-        Self(Quat {
-            w: cos_half,
-            x: k * x,
-            y: k * y,
-            z: k * z,
-        })
+        exp_from(tau.phi, k, cos_half)
     }
     /// `NUMERICS.md` §3.2: the `copysign` flip, then `φ = r(n², w) u`.
     ///

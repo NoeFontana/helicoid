@@ -82,6 +82,43 @@ fn gamma_apply_jacobians_of<const M: usize, S: Real>(
     so3::gamma_apply_jacobians::<M, S>(phi, v)
 }
 
+/// `so3::exp_gamma_apply` behind a call, for `geodesic_of`'s reason.
+#[inline(never)]
+fn exp_gamma_apply_of<S: Real>(phi: &SO3Tangent<S>, v: Vec3<S>) -> (SO3<S>, Vec3<S>, Vec3<S>) {
+    so3::exp_gamma_apply(phi, v)
+}
+
+/// What `so3::exp_gamma_apply` fuses, as a caller writes it without it, behind one call (`0119`).
+#[inline(never)]
+fn exp_gamma_apply_separate<S: Real>(
+    phi: &SO3Tangent<S>,
+    v: Vec3<S>,
+) -> (SO3<S>, Vec3<S>, Vec3<S>) {
+    (SO3::exp(phi), so3::gamma1(phi) * v, so3::gamma2(phi) * v)
+}
+
+/// `so3::exp_gamma_apply_jacobians` behind a call, for `geodesic_of`'s reason.
+#[inline(never)]
+fn exp_gamma_apply_jacobians_of<S: Real>(
+    phi: &SO3Tangent<S>,
+    v: Vec3<S>,
+) -> (SO3<S>, so3::GammaJacobians<S>, so3::GammaJacobians<S>) {
+    so3::exp_gamma_apply_jacobians(phi, v)
+}
+
+/// What `so3::exp_gamma_apply_jacobians` fuses, as a caller writes it without it (`0119`).
+#[inline(never)]
+fn exp_gamma_apply_jacobians_separate<S: Real>(
+    phi: &SO3Tangent<S>,
+    v: Vec3<S>,
+) -> (SO3<S>, so3::GammaJacobians<S>, so3::GammaJacobians<S>) {
+    (
+        SO3::exp(phi),
+        so3::gamma_apply_jacobians::<1, S>(phi, v),
+        so3::gamma_apply_jacobians::<2, S>(phi, v),
+    )
+}
+
 /// `SE3::inv_act` with its right Jacobians behind one call, for `geodesic_of`'s reason: the
 /// shape a reprojection residual asks for, where `0103` claims the value's sandwich is evaluated
 /// once for both.
@@ -274,6 +311,22 @@ fn so3<S: Fixture>(g: &mut BenchmarkGroup<'_, WallTime>, name: &str, theta: f64)
     g.bench_function(format!("so3/gamma_apply_jacobians_2/{name}"), |b| {
         b.iter(|| gamma_apply_jacobians_of::<2, S>(black_box(&ta), black_box(v)));
     });
+    // The fused rows and, beside each, the separate calls it replaces (`0119`).
+    g.bench_function(format!("so3/exp_gamma_apply/{name}"), |b| {
+        b.iter(|| exp_gamma_apply_of(black_box(&ta), black_box(v)));
+    });
+    g.bench_function(format!("so3/exp_gamma_apply_separate/{name}"), |b| {
+        b.iter(|| exp_gamma_apply_separate(black_box(&ta), black_box(v)));
+    });
+    g.bench_function(format!("so3/exp_gamma_apply_jacobians/{name}"), |b| {
+        b.iter(|| exp_gamma_apply_jacobians_of(black_box(&ta), black_box(v)));
+    });
+    g.bench_function(
+        format!("so3/exp_gamma_apply_jacobians_separate/{name}"),
+        |b| {
+            b.iter(|| exp_gamma_apply_jacobians_separate(black_box(&ta), black_box(v)));
+        },
+    );
     // `base` to `x`, so the relative motion is `ta` and `θ(d)` is the label's, not the angle
     // between two same-`θ` elements about different axes. `t` is non-dyadic for `laws`'s reason:
     // `0.25` would remove a rounding the shipped path has.

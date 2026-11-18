@@ -360,6 +360,8 @@ and $8.98$ ($b$) and $9.65$ ($a$, $d$) in binary32 (`0089`), so it takes $\theta
 ($m = 1$) or $2.79$ ($m = 2$) in binary64 and from $3.00$ in binary32 ([`0066`](./decisions/0066-gamma-shares-its-coefficients-and-a-gaussian-factors-once.md) corrects `0064`, which read them
 as $\theta$). Measured within $4.9u$ of the §14 twin on $\theta \in [1, \pi]$, exact arm included.
 
+**One evaluation for a step.** `so3::exp_gamma_apply` returns $(\mathrm{Exp}\,\varphi,\ \Gamma_1 v,\ \Gamma_2 v)$, and `exp_gamma_apply_jacobians` returns $\mathrm{Exp}\,\varphi$ with `gamma_apply_jacobians`' triple for $m = 1$ and $m = 2$. Both evaluate $(k, \cos\tfrac\theta2, a, b, d)$ once, each member on the arm **its own group** takes, by that group's switches. One group over the five would put every member on its prefix below the smallest second switch, which parts from the separate groups in `d/dz` at up to 99,468 binary32 floats. Every output is therefore the separate calls' to the bit, with no new formula, coefficient or switch ([`0119`](./decisions/0119-exp-and-gamma-share-one-evaluation.md)).
+
 ## 8. S²
 
 Storage: unit $n \in \mathbb{R}^3$. The chart at $n$ is frozen at construction:
@@ -676,6 +678,7 @@ row spells the composition and the proptest writes it inline
 | `geodesic_jacobians` | `Dual` through the reference geodesic | 4 |
 | `Gaussian::to_left` / `to_right` | dense $\mathrm{Ad}\,\Sigma\,\mathrm{Ad}^\top$: `reference::sen3jac_sandwich` with $J = \mathrm{Ad}$, componentwise within $2\gamma_{2D}\lvert A\rvert\lvert\Sigma\rvert\lvert A\rvert^\top$ (`to_left_and_to_right_match_reference_*`, [`0065`](./decisions/0065-a-gaussian-names-its-side-and-is-stored-symmetric.md)) | 5 |
 | `gamma_apply_jacobians` | `Dual` through `reference::gamma_apply`: the first 40 terms of $\sum W^n v/(n+m)!$, left to right, for $\theta \le \pi$ and $m!$ exact at `S`; tolerance per $\theta$ band (`gamma_apply_jacobians_matches_reference_*`, [`0064`](./decisions/0064-the-integrated-exponentials-reuse-the-swept-switches.md), [`0066`](./decisions/0066-gamma-shares-its-coefficients-and-a-gaussian-factors-once.md)) | 5 |
+| `so3::exp_gamma_apply`, `exp_gamma_apply_jacobians` | the separate calls `SO3::exp`, `gamma1(φ) * v`, `gamma2(φ) * v` and `gamma_apply_jacobians::<1 \| 2>`, **to the bit** on every lane, `Dual` included (`exp_gamma_apply_matches_reference_*`; on the corpus, `exp_gamma_apply_is_the_separate_calls_on_the_corpus`, [`0119`](./decisions/0119-exp-and-gamma-share-one-evaluation.md)) | 5 |
 | `Sim3Jac::mul`, `inverse`, `apply`, `apply_transpose`, `sandwich` | dense product / Gauss–Jordan / $Jx$ / $J^\top x$ / $J\Sigma J^\top$: `reference::sim3jac_*` ([`0070`](./decisions/0070-sim3-a-structured-jacobian-and-a-series-on-delta.md)) | 5 |
 | `Sim3Jac::add`, `scale` | dense entrywise sum / $x\,k$: `reference::sim3jac_{add, scale}`, bit for bit on every stored entry, a structural zero compared as a zero (`sim3jac_add_matches_reference`, `sim3jac_scale_matches_reference`, [`0112`](./decisions/0112-a-jacobian-sums-by-name.md)) | 7 |
 | `Sim3::jr_inv`, `jl_inv` (block algebra) | dense Gauss–Jordan inverse of `jr`, `jl` | 5 |

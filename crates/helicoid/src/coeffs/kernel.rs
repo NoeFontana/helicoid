@@ -215,13 +215,221 @@ fn grouped_with<S: Real, const G: usize>(
     (v, e, small)
 }
 
-/// `(k, cos(θ/2))` at `θ² = z`: `Exp`'s quaternion is `(cos(θ/2), k φ)` (`NUMERICS.md` §3.1).
-pub(crate) fn exp_coeffs<S: Real>(z: S) -> (S, S) {
-    let arms = table::<S, _>(
+/// A group's second switch: its members' smallest, below which [`grouped`] puts every member on
+/// its short prefix.
+#[inline]
+fn second_switch(arms: &[Arm<'_>]) -> f64 {
+    arms.iter().fold(f64::INFINITY, |m, a| m.min(a.short_below))
+}
+
+/// `Exp`'s group, `[k, cos θ/2]`: the one list [`exp_coeffs`] and [`exp_gamma_coeffs`] read.
+#[inline]
+fn exp_arms<S: Real>() -> [Arm<'static>; 2] {
+    table::<S, _>(
         [K_F64.arm(), COS_HALF_F64.arm()],
         [K_F32.arm(), COS_HALF_F32.arm()],
+    )
+}
+
+/// `J`'s group, `[a, b]`: [`jr_coeffs`], [`jr_coeffs_sinc`] and [`exp_gamma_coeffs`].
+#[inline]
+fn jr_arms<S: Real>() -> [Arm<'static>; 2] {
+    table::<S, _>([A_F64.arm(), B_F64.arm()], [A_F32.arm(), B_F32.arm()])
+}
+
+/// `Γ₂`'s group, `[b, d]`: [`gamma2_coeffs`] and [`exp_gamma_coeffs`].
+#[inline]
+fn gamma2_arms<S: Real>() -> [Arm<'static>; 2] {
+    table::<S, _>([B_F64.arm(), D_F64.arm()], [B_F32.arm(), D_F32.arm()])
+}
+
+/// `Γ₁`'s and `Γ₂`'s coefficients in [`ExpGammaCoeffs`], each the bits of the group named beside it.
+pub(crate) struct GammaCoeffs<S: Real> {
+    /// `jr_coeffs_sinc`' `a`.
+    pub(crate) a: S,
+    /// `jr_coeffs_sinc`' `b`, which `Γ₁ = J_l` reads.
+    pub(crate) b1: S,
+    /// `gamma2_coeffs`' `b`, which `Γ₂` reads: `b1` but where one group took its prefix and the
+    /// other its whole arm (`0119`).
+    pub(crate) b2: S,
+    /// `gamma2_coeffs`' `d`.
+    pub(crate) d: S,
+    /// `jr_coeffs_sinc`' `sin θ/θ`, read only where `far`.
+    pub(crate) sinc: S,
+    /// `jr_coeffs_sinc`' `far`: `b` on its exact arm.
+    pub(crate) far: S::Mask,
+}
+
+/// [`exp_gamma_coeffs`]: `exp_coeffs`' `k` and `cos θ/2` at `S`, and `Γ`'s at `G`, which is `S` or,
+/// for [`exp_gamma_coeffs_dz`], `Dual<S, 1>`.
+pub(crate) struct ExpGammaCoeffs<S: Real, G: Real = S> {
+    pub(crate) k: S,
+    pub(crate) cos_half: S,
+    pub(crate) gamma: GammaCoeffs<G>,
+}
+
+/// `Exp`'s, `Γ₁`'s and `Γ₂`'s coefficients at `θ² = z` from one evaluation (`0119`): each member is
+/// [`exp_coeffs`]', [`jr_coeffs_sinc`]' or [`gamma2_coeffs`]' to the bit, at every `z` and on
+/// `Dual`'s lane, because it takes that group's arm by that group's switches in that group's
+/// arithmetic.
+///
+/// Not one [`grouped`] over the five: that puts every member on its prefix below the *group's*
+/// second switch, the smallest, so a member takes its whole arm where its own group took the
+/// prefix. The sweep admits a prefix where it equals the whole arm on its grid and the `coeff_*`
+/// records, not at every float, and a single group parts from the three in the `d/dz` bits of
+/// 22,395–99,468 of the binary32 `θ²` in `[9e-4, 2e-3)` (all of them scanned) and at binary64 in
+/// the value of `cos θ/2` (`0119`). So between the smallest and the largest of the three groups'
+/// second switches each group's members take the prefix by that group's switch. That band lies
+/// below every first switch (`exp_gamma_shorts_are_below_every_first_switch`), so no exact arm runs
+/// in it.
+///
+/// Past every second switch it is [`grouped`] with one difference: `sin θ` and the divisions of
+/// `a`, `b` and `d` run only where one of those is on its exact arm, so where `cos θ/2` alone is,
+/// the exact arm costs what `exp_coeffs`' does. The exact arm takes one root, one `sin_cos(θ/2)`
+/// and one `sin θ`, where the three groups take three, one and four. Each arm returns scalars and
+/// captures by `move` (`.claude/rules/numerics.md`).
+pub(crate) fn exp_gamma_coeffs<S: Real>(z: S) -> ExpGammaCoeffs<S> {
+    exp_gamma_body(z)
+}
+
+/// [`exp_gamma_coeffs`] on `Dual<S, 1>` seeded at `z`, with `k` and `cos θ/2` read off the value
+/// lane, which is the plain evaluation's bits (`0003` item 5). The body is inlined here, so their
+/// derivative lanes, read by nothing, are not computed.
+pub(crate) fn exp_gamma_coeffs_dz<S: Real>(z: S) -> ExpGammaCoeffs<S, Dual<S, 1>> {
+    let c = exp_gamma_body(Dual::<S, 1>::variable(z, 0));
+    ExpGammaCoeffs {
+        k: c.k.v,
+        cos_half: c.cos_half.v,
+        gamma: c.gamma,
+    }
+}
+
+#[inline(always)]
+fn exp_gamma_body<S: Real>(z: S) -> ExpGammaCoeffs<S> {
+    nonnegative(z);
+    let (ex, jr, g2) = (exp_arms::<S>(), jr_arms::<S>(), gamma2_arms::<S>());
+    let (se, sj, sg) = (second_switch(&ex), second_switch(&jr), second_switch(&g2));
+    // `g2[0]` is `jr[1]`, the one `b`: its two slots differ only by the group's second switch.
+    let ([k, c], [a, b], d) = (ex, jr, g2[1]);
+    let (lo, hi) = (se.min(sj).min(sg), se.max(sj).max(sg));
+    let (sk, sc) = (z.lt(k.below()), z.lt(c.below()));
+    let (sa, sb, sd) = (z.lt(a.below()), z.lt(b.below()), z.lt(d.below()));
+    let small = sa.and(sb).and(sd);
+    let all = sk.and(sc).and(small);
+    let (kv, cv, av, b1, b2, dv, sinc) = S::branch(
+        z.lt(S::lit(lo)),
+        move || {
+            let bv = b.short(z);
+            (
+                k.short(z),
+                c.short(z),
+                a.short(z),
+                bv,
+                bv,
+                d.short(z),
+                S::one(),
+            )
+        },
+        move || {
+            S::branch(
+                z.lt(S::lit(hi)),
+                move || {
+                    let short = |s: f64| z.lt(S::lit(s));
+                    let (kv, cv) = S::branch(
+                        short(se),
+                        move || (k.short(z), c.short(z)),
+                        move || (k.horner(z), c.horner(z)),
+                    );
+                    let (av, b1) = S::branch(
+                        short(sj),
+                        move || (a.short(z), b.short(z)),
+                        move || (a.horner(z), b.horner(z)),
+                    );
+                    let (b2, dv) = S::branch(
+                        short(sg),
+                        move || (b.short(z), d.short(z)),
+                        move || (b.horner(z), d.horner(z)),
+                    );
+                    (kv, cv, av, b1, b2, dv, S::one())
+                },
+                move || {
+                    S::branch(
+                        all,
+                        move || {
+                            let bv = b.horner(z);
+                            (
+                                k.horner(z),
+                                c.horner(z),
+                                a.horner(z),
+                                bv,
+                                bv,
+                                d.horner(z),
+                                S::one(),
+                            )
+                        },
+                        move || {
+                            let z0 = S::select(all, S::one(), z);
+                            let th = z0.sqrt();
+                            let (s, co) = half_angle(th);
+                            let kv = S::branch(sk, move || k.horner(z), move || s / th);
+                            let cv = S::branch(sc, move || c.horner(z), move || co);
+                            let (av, bv, dv, sinc) = S::branch(
+                                small,
+                                move || (a.horner(z), b.horner(z), d.horner(z), S::one()),
+                                move || {
+                                    let ax = a_from(z0, s);
+                                    let sinc = th.sin() / th;
+                                    let bx = (S::one() - sinc) / z0;
+                                    let dx = d_from(z0, ax);
+                                    (
+                                        S::branch(sa, move || a.horner(z), move || ax),
+                                        S::branch(sb, move || b.horner(z), move || bx),
+                                        S::branch(sd, move || d.horner(z), move || dx),
+                                        sinc,
+                                    )
+                                },
+                            );
+                            (kv, cv, av, bv, bv, dv, sinc)
+                        },
+                    )
+                },
+            )
+        },
     );
-    let [k, cos_half] = grouped(arms, exact_k_cos_half, z);
+    ExpGammaCoeffs {
+        k: kv,
+        cos_half: cv,
+        gamma: GammaCoeffs {
+            a: av,
+            b1,
+            b2,
+            d: dv,
+            sinc,
+            far: sb.not(),
+        },
+    }
+}
+
+/// Where a test of [`exp_gamma_coeffs`] places `θ²`: every first and second switch of its
+/// members, and the band `[lo, hi)` between its slots' smallest and largest second switch, where a
+/// member's arm depends on the group it reproduces (`0119`).
+#[cfg(test)]
+pub(crate) fn exp_gamma_switches<S: Real>() -> (std::vec::Vec<f64>, (f64, f64)) {
+    let groups = [exp_arms::<S>(), jr_arms::<S>(), gamma2_arms::<S>()];
+    let shorts = groups.map(|g| second_switch(&g));
+    let at = groups
+        .iter()
+        .flatten()
+        .flat_map(|a| [a.below, a.short_below])
+        .collect();
+    let lo = shorts.iter().fold(f64::INFINITY, |m, &s| m.min(s));
+    let hi = shorts.iter().fold(0.0, |m: f64, &s| m.max(s));
+    (at, (lo, hi))
+}
+
+/// `(k, cos(θ/2))` at `θ² = z`: `Exp`'s quaternion is `(cos(θ/2), k φ)` (`NUMERICS.md` §3.1).
+pub(crate) fn exp_coeffs<S: Real>(z: S) -> (S, S) {
+    let [k, cos_half] = grouped(exp_arms::<S>(), exact_k_cos_half, z);
     (k, cos_half)
 }
 
@@ -245,8 +453,7 @@ pub(crate) fn alpha_value<S: Real>(z: S) -> S {
 
 /// `(a, b)` at `θ² = z`: `J = I ∓ aW + bW²` (`NUMERICS.md` §3.5).
 pub(crate) fn jr_coeffs<S: Real>(z: S) -> (S, S) {
-    let arms = table::<S, _>([A_F64.arm(), B_F64.arm()], [A_F32.arm(), B_F32.arm()]);
-    let [a, b] = grouped(arms, exact_a_b, z);
+    let [a, b] = grouped(jr_arms::<S>(), exact_a_b, z);
     (a, b)
 }
 
@@ -254,8 +461,7 @@ pub(crate) fn jr_coeffs<S: Real>(z: S) -> (S, S) {
 /// its closed arm) the `sin θ/θ` that arm's `b = (1 − sin θ/θ)/θ²` was formed from, for `J_r`'s
 /// diagonal (`0089`); elsewhere it is unread. No switch of its own: `far` is `b`'s.
 pub(crate) fn jr_coeffs_sinc<S: Real>(z: S) -> (S, S, S, S::Mask) {
-    let arms = table::<S, _>([A_F64.arm(), B_F64.arm()], [A_F32.arm(), B_F32.arm()]);
-    let ([a, b], sinc, small) = grouped_with(arms, exact_a_b_sinc, z, S::one());
+    let ([a, b], sinc, small) = grouped_with(jr_arms::<S>(), exact_a_b_sinc, z, S::one());
     (a, b, sinc, small[1].not())
 }
 
@@ -344,8 +550,7 @@ pub(crate) fn q_coeffs<S: Real>(z: S) -> (S, S, S) {
 /// second switch is above `d`'s), so both members are `q_coeffs`' to the bit
 /// (`gamma2_coeffs_are_q_coeffs_to_the_bit`), without `e`'s Horner or `cos θ`.
 pub(crate) fn gamma2_coeffs<S: Real>(z: S) -> (S, S) {
-    let arms = table::<S, _>([B_F64.arm(), D_F64.arm()], [B_F32.arm(), D_F32.arm()]);
-    let [b, d] = grouped(arms, exact_b_d, z);
+    let [b, d] = grouped(gamma2_arms::<S>(), exact_b_d, z);
     (b, d)
 }
 

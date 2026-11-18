@@ -6,6 +6,19 @@ entries live in [`docs/changelog/`](./docs/changelog/).
 **`0.0.x` is not ordinary semver.** Every release may break every other. What is implemented is
 defined by the status tables in `docs/`; they win over this file.
 
+## [Unreleased]
+
+### Added
+
+- **`so3::exp_gamma_apply` and `so3::exp_gamma_apply_jacobians`**
+  ([`0119`](docs/decisions/0119-exp-and-gamma-share-one-evaluation.md)): a preintegration step's
+  `Exp φ`, `Γ₁ v` and `Γ₂ v`, and both directional Jacobians, from one coefficient evaluation. Every
+  output is `SO3::exp`, `gamma1(φ) * v`, `gamma2(φ) * v` or `gamma_apply_jacobians::<1 | 2>` to the
+  bit, `Dual` included, so moving from the separate calls changes no result. They take 9–44%
+  (binary64) and 15–37% (binary32) fewer instructions for the values, and 17–36% and 5–25% fewer
+  with the Jacobians. The alias `so3::GammaJacobians<S>` names `gamma_apply_jacobians`'
+  `(Vec3, Mat3, Mat3)`. Every existing output keeps its bits.
+
 ## [0.0.11] - 2026-11-15
 
 The triangular factorization release. `helicoid_linalg::rq3` and `lq3` factor a 3×3 matrix as a triangle times a rotation, `M = U R` and `M = L Q`, with `UpperTri3` and `LowerTri3`: classical Gram–Schmidt twice under Kahan's test on rows each scaled by its own power of two, a triangle with a positive diagonal returned with the identity bit for bit, and at most 4.33 `u` (binary64) and 4.00 `u` (binary32) on the new corpus id `rq3`, below nalgebra's and Eigen's Householder QR on every stratum (`0117`). **No API break**, and every existing output keeps its bits.

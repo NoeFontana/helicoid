@@ -89,6 +89,8 @@ mod chart_tests;
 #[cfg(test)]
 mod dualmat_tests;
 #[cfg(test)]
+mod exp_gamma_tests;
+#[cfg(test)]
 mod gamma_tests;
 #[cfg(test)]
 mod gaussian_tests;

@@ -32,6 +32,7 @@ use crate::conformance::subject::{Output, Registered, Subject};
 use crate::seeded::{exact_input, input, Coeff, Host, Input, Swept};
 
 mod composed_inv_act;
+mod exp_gamma;
 mod homogeneous_r;
 mod libm_atan2;
 mod r_times_u;
