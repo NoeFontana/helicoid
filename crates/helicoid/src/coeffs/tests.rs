@@ -1578,6 +1578,14 @@ fn exp_gamma_calls<const F32: bool>() {
         one(counted(|| gamma2_coeffs(z)).1),
     ];
     assert_eq!(three, [(1, 1, 0, 0, 0), (1, 0, 2, 0, 0), (1, 0, 2, 0, 0)]);
+    // At binary64 `a` leaves its series before `b`; `sin θ` is `b`'s alone, so none runs between.
+    if !F32 {
+        let (at, _) = exp_gamma_switches::<Narrow<F32>>();
+        let (a_below, b_below) = (at[4], at[6]);
+        assert!(a_below < b_below, "a {a_below:e}, b {b_below:e}");
+        let z = Narrow::<F32>::new((a_below * b_below).sqrt());
+        assert_eq!(one(counted(|| exp_gamma_coeffs(z)).1), (1, 1, 0, 0, 0));
+    }
     let z = Narrow::<F32>::new(1e-3);
     assert_eq!(one(counted(|| exp_gamma_coeffs(z)).1), (0, 0, 0, 0, 0));
 }

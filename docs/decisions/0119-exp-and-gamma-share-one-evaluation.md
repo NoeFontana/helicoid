@@ -60,9 +60,11 @@ The split is out of this record's scope: see *Further work*.
      switch, so no exact arm runs in it (`exp_gamma_shorts_are_below_every_first_switch`);
    - above the largest, the evaluation is `grouped`'s: one Horner per member, and `b` once, while
      every member is on its series arm. Otherwise one exact arm runs at `select(all, 1, z)`, and each
-     member chooses between it and its Horner by its own first switch. `sin θ` and the divisions for
-     `a`, `b` and `d` run only where one of them is on its exact arm, so where only `cos θ/2` is,
-     this costs what `exp_coeffs` does.
+     member chooses between it and its Horner by its own first switch. The divisions for `a` and
+     `d` run only where one of `a`, `b`, `d` is on its exact arm, and `sin θ` only where `b` is,
+     since `b` and `sin θ/θ` are its only readers. Where only `cos θ/2` is on its exact arm, this
+     costs what `exp_coeffs` does. At binary64 `a` leaves its series at `θ² = 5.83` and `b` at
+     `7.77`, so `θ ∈ [2.41, 2.79)` takes no `sin`.
 5. `exp_gamma_coeffs_dz` inlines the body on `Dual<S, 1>` and keeps the value lanes of `k` and
    `cos θ/2`, which are the plain evaluation's bits (`0003` item 5). It never forms their
    derivative lanes.
@@ -91,6 +93,11 @@ No formula, coefficient, switch or corpus record changes.
   at binary64, `θ = 0`). With `#[inline(always)]` it is `main`'s count to the instruction at
   binary64 and 3–6 fewer at binary32. The value-only separate calls are `main`'s to the instruction
   at both precisions.
+- **`sin θ` behind `b`'s own mask.** Branching on it inside the exact arm saves 221 instructions
+  per value call at binary64 `θ = 2.5` (89 more than without the branch; 131 more on the Jacobians). It
+  costs up to 12 per call where every member is exact (`θ ≥ 2.79`), and that region is no wider.
+  At binary32 `b` leaves its series first (`θ² = 8.98` against `a`'s `9.65`), so the branch is never
+  taken there.
 - **Why surface at all** (API.md §6 item 8). A consumer can call the three functions, so this
   removes no way to be wrong; it is a cost item. It returns the separate calls' bits, so moving
   from three calls to one changes no result.
@@ -102,17 +109,18 @@ No formula, coefficient, switch or corpus record changes.
 
 | | θ | `exp`+`Γ₁v`+`Γ₂v` | fused | saved | `exp`+`gaj<1>`+`gaj<2>` | fused | saved |
 |---|---|---|---|---|---|---|---|
-| f64 | 0 | 241 | 188 | 53 (22%) | 671 | 559 | 112 (17%) |
-| f64 | 0.06 | 273 | 248 | 25 (9%) | 866 | 683 | 183 (21%) |
-| f64 | 0.3 | 289 | 236 | 53 (18%) | 882 | 691 | 191 (22%) |
-| f64 | 2.35 | 410 | 370 | 40 (10%) | 1003 | 818 | 185 (18%) |
-| f64 | 2.9 | 760 | 429 | 331 (44%) | 1282 | 828 | 454 (35%) |
-| f64 | 3.13 | 738 | 410 | 328 (44%) | 1260 | 808 | 452 (36%) |
+| f64 | 0 | 241 | 187 | 54 (22%) | 671 | 559 | 112 (17%) |
+| f64 | 0.06 | 273 | 247 | 26 (10%) | 866 | 683 | 183 (21%) |
+| f64 | 0.3 | 289 | 235 | 54 (19%) | 882 | 691 | 191 (22%) |
+| f64 | 2.35 | 410 | 371 | 39 (10%) | 1003 | 819 | 184 (18%) |
+| f64 | 2.5 | 608 | 387 | 221 (36%) | 1229 | 799 | 430 (35%) |
+| f64 | 2.9 | 760 | 441 | 319 (42%) | 1282 | 831 | 451 (35%) |
+| f64 | 3.13 | 738 | 421 | 317 (43%) | 1260 | 811 | 449 (36%) |
 | f32 | 0 | 262 | 206 | 56 (21%) | 573 | 545 | 28 (5%) |
 | f32 | 0.04 | 298 | 234 | 64 (21%) | 653 | 612 | 41 (6%) |
 | f32 | 0.3 | 310 | 244 | 66 (21%) | 665 | 624 | 41 (6%) |
-| f32 | 2.9 | 373 | 318 | 55 (15%) | 728 | 692 | 36 (5%) |
-| f32 | 3.13 | 511 | 323 | 188 (37%) | 957 | 717 | 240 (25%) |
+| f32 | 2.9 | 373 | 318 | 55 (15%) | 728 | 694 | 34 (5%) |
+| f32 | 3.13 | 511 | 323 | 188 (37%) | 957 | 713 | 244 (25%) |
 
 The binary32 Jacobian rows save less because the three binary32 `Dual` groups cost little to begin
 with (3-term prefixes): the fused group is 50 instructions at `θ = 0` against their 81. Wall-clock
