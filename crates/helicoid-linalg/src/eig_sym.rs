@@ -1,5 +1,5 @@
-//! Eigendecomposition of a symmetric `N x N` matrix, `4 <= N <= 16` (`docs/NUMERICS.md` §20,
-//! decision `0111`).
+//! Eigendecomposition of a symmetric `N x N` matrix, `4 <= N <= 64` (`docs/NUMERICS.md` §20,
+//! decisions `0111`, `0118`).
 //!
 //! `eig3`'s cyclic Jacobi at general `N`: `eig3`'s rotation, scaling window, deterministic exit,
 //! polish, sort and Newton normalisation, with a relative rotation threshold. Every decision is a
@@ -11,11 +11,19 @@ use crate::matrix::Matrix;
 use crate::real::{is_finite, pow2, Blend, Mask, Precision, Real};
 use crate::vector::Vector;
 
-/// The most sweeps before the polish, `CAP[N - 4]` at `N = 4..=16`: one more than the most any
-/// matrix of `0111`'s convergence study needed to leave (the sweep that rotates nothing counted),
-/// at `f64`, which needs as many as `f32` or more at every `N`: 7 at `N = 4`, 11 at 9, 14 at 16, of
-/// `2e4` matrices in each of 20 families and a hill climb on the entries.
-pub(crate) const CAP: [usize; 13] = [8, 10, 11, 11, 12, 12, 12, 13, 13, 14, 14, 14, 15];
+/// The most sweeps before the polish, `CAP[N - 4]`: one more than the most any matrix of the
+/// convergence study needed to leave at `N` or below (the sweep that rotates nothing counted), at
+/// `f64`, which needs as many as `f32` or more at every `N`: 7 at `N = 4`, 14 at 16, 23 at 64, of
+/// `2e4` matrices in each of 20 families and a hill climb on the entries (`0111`, `0118`). "Or
+/// below": a matrix bordered by a zero row and column takes the same rotations at `N + 1`, so the
+/// worst case cannot fall as `N` grows.
+#[rustfmt::skip]
+pub(crate) const CAP: [usize; 61] = [
+    8, 10, 11, 11, 12, 12, 12, 13, 13, 14, 14, 14, 15, // N = 4..=16, `0111`
+    15, 16, 16, 16, 17, 18, 18, 18, 18, 18, 18, 20, 20, 20, 20, 20, // 17..=32
+    20, 20, 20, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, // 33..=48
+    21, 21, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 23, 23, 24, // 49..=64
+];
 
 /// The symmetric working matrix by columns, `a[c][r]`, both triangles kept.
 type Sym<S, const N: usize> = [[S; N]; N];
@@ -84,8 +92,8 @@ fn small<S: Real>(d: S, apq: S) -> (S, S, S) {
 }
 
 impl<S: Real, const N: usize> State<S, N> {
-    /// The rotation of `(p, q)` (`NUMERICS.md` §20) on columns and rows `p`, `q` of `a` and columns
-    /// `p`, `q` of `v`. Where `keep` is set every entry is selected as it was, bit for bit: a
+    /// The rotation of `(p, q)` (`NUMERICS.md` §20) on columns `p`, `q` and row `q` of `a` (row `p`
+    /// is [`State::mirror`]'s) and columns `p`, `q` of `v`. Where `keep` is set every entry is selected as it was, bit for bit: a
     /// rotation by `(1, 0)` would turn a `-0` beside a negative entry into `+0`. A scalar does not
     /// run a kept one at all. With `SCALE` the threshold's `r_p`, `r_q` follow; the polish reads
     /// neither.
@@ -106,10 +114,11 @@ impl<S: Real, const N: usize> State<S, N> {
         for k in 0..N {
             (self.a[p][k], self.a[q][k]) = turn(self.a[p][k], self.a[q][k]);
         }
-        // Mirrored in a second pass: one pass that also stores the rows, strided, keeps LLVM from
-        // vectorising the columns and measured 5-7% slower at `N = 9, 16`.
+        // Row `q` mirrored in a second pass: one pass that also stores the rows, strided, keeps
+        // LLVM from vectorising the columns and measured 5-7% slower at `N = 9, 16`. Row `p` waits
+        // for [`State::mirror`]: until the last pair `(p, q)` no rotation reads it, as each assigns
+        // its own `a_pp`, `a_qq`, `a_pq` and `a_qp` below.
         for k in 0..N {
-            self.a[k][p] = self.a[p][k];
             self.a[k][q] = self.a[q][k];
         }
         let left = S::select(keep, apq, S::zero());
@@ -123,6 +132,15 @@ impl<S: Real, const N: usize> State<S, N> {
         if SCALE {
             self.r[p] = self.a[p][p].abs().sqrt();
             self.r[q] = self.a[q][q].abs().sqrt();
+        }
+    }
+
+    /// Row `p` from column `p`, once after the pairs `(p, q)`: half the strided stores of a
+    /// mirror per rotation, every entry's bits the same (`0118`).
+    #[inline(always)]
+    fn mirror(&mut self, p: usize) {
+        for k in 0..N {
+            self.a[k][p] = self.a[p][k];
         }
     }
 }
@@ -186,6 +204,7 @@ pub(crate) fn jacobi<S: Real, const N: usize, const REL: bool>(
                 calm = calm.and(keep);
                 st.rotate::<true>(p, q, keep);
             }
+            st.mirror(p);
         }
         sweeps += 1;
         // A scalar leaves after a sweep that rotated nothing; lanes run on, each held above.
@@ -197,12 +216,13 @@ pub(crate) fn jacobi<S: Real, const N: usize, const REL: bool>(
         for q in p + 1..N {
             st.rotate::<false>(p, q, never);
         }
+        st.mirror(p);
     }
     (core::array::from_fn(|k| st.a[k][k]), st.v, back, sweeps)
 }
 
 /// The eigenvalues, ascending, and an orthonormal basis of eigenvectors of the symmetric `N x N`
-/// matrix `a`, `4 <= N <= 16`.
+/// matrix `a`, `4 <= N <= 64`.
 ///
 /// Returns `(values, vectors)`: `values.0[0] <= ... <= values.0[N - 1]`, column `k` of `vectors`
 /// an eigenvector of `values.0[k]`, `vectors` orthonormal with `det = +1`. The sign of a column is
@@ -229,13 +249,23 @@ pub(crate) fn jacobi<S: Real, const N: usize, const REL: bool>(
 /// relgap_k`, `relgap_k = min_j |l_k - l_j| / sqrt(l_k l_j)`. A graded matrix, whose small
 /// eigenvalues a tridiagonal QR solver returns only to `u |A|`, keeps its digits, down to a
 /// diagonal spanning `1e-200` (`f64`) and `1e-30` (`f32`) in the corpus. The corpus ids
-/// `eig_sym_n{4,9,16}` read both, per stratum (`0111`).
+/// `eig_sym_n{4,9,16,24,40,64}` read both, per stratum (`0111`, `0118`).
+///
+/// # Cost
+///
+/// A sweep is `O(N^3)`. The working matrix and the rotations stay on the stack beside the input
+/// and the result, about `4 N^2 size_of::<S>()`: 136 KiB at `N = 64` and `f64`, 0.9 MiB for a
+/// `Dual<f64, 6>`. Unoptimised, the temporaries take about four times that: a `Dual<f64, 6>` at
+/// `N = 64` needs a 4 MiB stack, past a spawned thread's 2 MiB default, and aborts there. At
+/// `N = 64` and `f64` it takes about 1.3 ms on an idle core, 4.3 times a tridiagonal QR solver,
+/// and up to 4 ms where the core's other hardware thread is busy: from `N = 32` the two matrices
+/// outgrow half its L1 (`0118` *Measured*).
 ///
 /// # Domain
 ///
 /// Every input is legal and nothing is asserted (`docs/API.md` R6): only the lower triangle is
 /// read, and the caller owns symmetry. A non-finite entry gives `NaN` eigenvalues and the identity
-/// frame. `N` outside `4..=16` is a compile error; `N = 3` is [`eig3`](crate::eig3). Stable rustdoc
+/// frame. `N` outside `4..=64` is a compile error; `N = 3` is [`eig3`](crate::eig3). Stable rustdoc
 /// does not check the error code, so the example below, the same call at `N = 4`, is the positive
 /// control:
 ///
@@ -245,7 +275,7 @@ pub(crate) fn jacobi<S: Real, const N: usize, const REL: bool>(
 /// ```
 ///
 /// ```compile_fail,E0080
-/// let a = helicoid_linalg::Matrix::<f64, 17, 17>::identity();
+/// let a = helicoid_linalg::Matrix::<f64, 65, 65>::identity();
 /// let _ = helicoid_linalg::eig_sym(&a);
 /// ```
 ///
@@ -274,7 +304,7 @@ pub(crate) fn jacobi<S: Real, const N: usize, const REL: bool>(
 /// ```
 #[inline]
 pub fn eig_sym<S: Real, const N: usize>(a: &Matrix<S, N, N>) -> (Vector<S, N>, Matrix<S, N, N>) {
-    const { assert!(4 <= N && N <= 16, "eig_sym: N is 4..=16; N = 3 is eig3") };
+    const { assert!(4 <= N && N <= 64, "eig_sym: N is 4..=64; N = 3 is eig3") };
     let (mut l, mut v, back, _) = jacobi::<S, N, true>(a);
     let mut sign = S::one();
     // Odd-even transposition: `N` passes of adjacent exchanges where the second is strictly less,

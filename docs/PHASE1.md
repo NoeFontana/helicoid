@@ -193,7 +193,7 @@ side of `docs/maths/coefficients.md` CO.12.
 | `se2_jr_inv`, `se2_jl_inv` | $\tau$ | `mp.inverse` of the above |
 | `solve_cubic` | $(a, b, c, d)$ | the three roots of the stored coefficients as `re`, `im`, ordered by $(\mathrm{Re}, \mathrm{Im})$: planted where the coefficients are exact, else `mp.polyroots` with `extraprec=300` ([`0056`](./decisions/0056-the-routines-d7-does-not-reach.md)) |
 | `eig3` | $A$, symmetric | `mp.eigsy`: `lambda` ascending, `V` its eigenvectors as columns |
-| `eig_sym_n{4,9,16}` | $A$, symmetric | `eig3`'s, at $n$; and `kappa`, $\kappa_2(D^{-1}AD^{-1})$ with $D = \mathrm{diag}(\sqrt{a_{ii}})$ where $A$ is positive definite (an exact $LDL^\top$), else 0, the scale of `NUMERICS.md` §11's relative reading ([`0111`](./decisions/0111-eig-sym-is-eig3-s-jacobi-at-general-n.md)) |
+| `eig_sym_n{4,9,16,24,40,64}` | $A$, symmetric | `eig3`'s, at $n$; and `kappa`, $\kappa_2(D^{-1}AD^{-1})$ with $D = \mathrm{diag}(\sqrt{a_{ii}})$ where $A$ is positive definite (an exact $LDL^\top$), else 0, the scale of `NUMERICS.md` §11's relative reading ([`0111`](./decisions/0111-eig-sym-is-eig3-s-jacobi-at-general-n.md)) |
 | `svd3` | $A$ | `mp.svd_r` in the signed convention: $U, V \in \mathrm{SO}(3)$, `sigma` with $\sigma_1 \ge \sigma_2 \ge \lvert\sigma_3\rvert$, $\operatorname{sign}\sigma_3 = \operatorname{sign}\det A$; zero singular values exact by the rank in rationals ([`0101`](./decisions/0101-svd3-is-one-sided-jacobi-on-eig3-s-rotation.md)) |
 | `nearest_rotation` | $M$ | $U\,\mathrm{diag}(1, 1, d)V^\top$ from `mp.svd_r`, $d$ the exact sign of $\det M$ ([`0102`](./decisions/0102-the-nearest-rotation-takes-newton-where-it-is-well-posed.md)) |
 | `rq3` | $M$ | RQ.1's construction (`maths/rq3.md`) at 120 digits: `U` (zeros below), `R`, $u_{11}$'s sign checked against $\det M$ and the rank of $(m_2, m_3)$ decided in rationals, a dependent pair completed by `NUMERICS.md` §22's axis rule; `kappa_U`, `kappa_R` the 2-norms of RQ.6's linear map, 0 where it is not unique ([`0117`](./decisions/0117-rq-and-lq-are-gram-schmidt-twice-on-scaled-rows.md)) |
@@ -297,16 +297,17 @@ Series are summed until the term's norm is below $10^{-110}$ relative. Phase 2's
   planted roots, spectra and conditioning, the drift band of `NUMERICS.md` §3.6, and `Dual`'s
   singular neighbourhoods, each with its `@f32` counterpart after every binary64 stratum, drawn
   from its own stream wherever binary32's range differs.
-- `eig_sym_n{4,9,16}`'s ([`0111`](./decisions/0111-eig-sym-is-eig3-s-jacobi-at-general-n.md)):
+- `eig_sym_n{4,9,16,24,40,64}`'s ([`0111`](./decisions/0111-eig-sym-is-eig3-s-jacobi-at-general-n.md), [`0118`](./decisions/0118-eig-sym-reaches-n-64.md)):
   `eig:random`; `eig:gap-1e-k/{bottom,top}`, k = 1, 4, 8, 12 (1, 3, 5); `eig:cluster-{2,3}`, an
   exact m-fold eigenvalue; `eig:rank-def-{1,3}`, $BB^\top$ with integer $B$, exactly singular at
   both precisions; `eig:graded-1e-k`, $D\hat AD$ with a unit-diagonal $\hat A$ and a diagonal
   spanning $10^{-k}$, k = 4, 8, 16, 200 (4, 8, 30), the steepest below
   $\sqrt{\mathrm{tiny}}$, where `NUMERICS.md` §20 scales a pair; `eig:unit-diag-cond-1e-k`, a correlation matrix of
   condition number $10^k$ (Davies and Higham), k = 3, 6, 9, 12 (2, 4); `eig:diagonal`, with two
-  exact ties; `eig:identity-multiple`; `eig:scale-{up,down}`, `eig3`'s. **32, 16 and 4 records per
-  stratum** at $n$ = 4, 9, 16, 64 in the deep tier: the code is one at every $n$, so the small $n$
-  carry the count: 8.6 MB, 0.4 MB past `0110`'s estimate of 8.2 (`0111` decision 4).
+  exact ties; `eig:identity-multiple`; `eig:scale-{up,down}`, `eig3`'s. **32, 16, 4, 2, 1 and 1 records
+  per stratum** at $n$ = 4, 9, 16, 24, 40, 64, and 64, 64, 64, 64, 32 and 16 in the deep tier: the
+  code is one at every $n$, so the small $n$ carry the count and the large $n$ their size: 8.6 MB
+  (`0111` decision 4) and 18.8 MB (`0118` decision 4).
 
 - `rq3`'s ([`0117`](./decisions/0117-rq-and-lq-are-gram-schmidt-twice-on-scaled-rows.md) decision 9): `rq:random`; `rq:diagonal` and `rq:triangular`, bit-exact, reading
   only the 30-digit reference's rounding; `rq:near-triangular-1e-k`, k = 4, 8, 12 (2, 4, 6); `rq:near-identity-1e-3`;
@@ -340,9 +341,9 @@ Series are summed until the term's norm is below $10^{-110}$ relative. Phase 2's
   `h:2^-10`, `h:1` and `h:2^10`, each one record per $(K, r)$, $r \in \{1, 2\}$, $r \le K - 1$,
   and their `@f32` twins: exact at both precisions.
 
-Corpus v1 stays under 80 MiB uncompressed, every tracked file under `conformance/corpus/`, and
+Corpus v1 stays under 100 MiB uncompressed, every tracked file under `conformance/corpus/`, and
 `cargo xtask lint` checks it ([`0071`](./decisions/0071-the-corpus-budget-is-64-mib.md),
-[`0110`](./decisions/0110-the-corpus-budget-is-80-mib-and-checked.md)); a family that would exceed it reduces its
+[`0110`](./decisions/0110-the-corpus-budget-is-80-mib-and-checked.md), [`0118`](./decisions/0118-eig-sym-reaches-n-64.md)); a family that would exceed it reduces its
 sample count by an edit to this list, never silently.
 
 ## 5. The conformance harness

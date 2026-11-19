@@ -37,11 +37,29 @@
       "records": 2880,
       "sha256": "c0042a58e11d2169930973cf907c061a0b4622a2e03358bbd335fa3805c35199"
     },
+    "eig_sym_n24.jsonl": {
+      "kind": "corpus",
+      "rechecked": 45,
+      "records": 2880,
+      "sha256": "5289df4ce2ed0900850950e68f581becf38af1ff3f661b32822cf828e33d85de"
+    },
     "eig_sym_n4.jsonl": {
       "kind": "corpus",
       "rechecked": 45,
       "records": 2880,
       "sha256": "72c8e3a1e33773a6db704a0b2187b0dbc5dba7d8749c6b31b260a1675680c1fe"
+    },
+    "eig_sym_n40.jsonl": {
+      "kind": "corpus",
+      "rechecked": 45,
+      "records": 1440,
+      "sha256": "c8b14ed33a762f78d64480d8357b5ffacd90c2b6ac2d376d45e026be5f548c40"
+    },
+    "eig_sym_n64.jsonl": {
+      "kind": "corpus",
+      "rechecked": 45,
+      "records": 720,
+      "sha256": "8e204cee2fd05d7b55d51ea8dba70724a80a493f546429bd1a32c8b630141a99"
     },
     "eig_sym_n9.jsonl": {
       "kind": "corpus",
@@ -434,7 +452,7 @@
       "sha256": "7bd399f0ae738f3d78612f17e0bf88aaf94c9838ef423af5834cc13cbb6708ca"
     }
   },
-  "generator": "sha256:08ee5aca4d55f2d41a766747b192a7a659a2f2b30eca4fc8e8f1363f0ed9b053",
+  "generator": "sha256:9fb702b4b2a342d2186cac07b7f61251c3cdc2a795a5fef5120b200204a9165d",
   "mpmath": "1.4.1",
   "python": "3.12",
   "recheck": {

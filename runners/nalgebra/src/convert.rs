@@ -6,9 +6,9 @@
 //! and nalgebra's `Quaternion::coords` is `[i, j, k, w]`, so it crosses through
 //! `Quaternion::new(w, i, j, k)` and back through `.w`, `.i`, `.j`, `.k`.
 //!
-//! - `eig3`, `eig_sym_n{4,9,16}` (`docs/decisions/0111`): `SymmetricEigen` (Householder
-//!   tridiagonalisation, then implicit QR with a Wilkinson shift), which reads the lower triangle
-//!   only, eigenpairs sorted ascending.
+//! - `eig3`, `eig_sym_n{4,9,16,24,40,64}` (`docs/decisions/0111`, `0118`): `SymmetricEigen`
+//!   (Householder tridiagonalisation, then implicit QR with a Wilkinson shift), which reads the
+//!   lower triangle only, eigenpairs sorted ascending.
 //! - `chol_n3`, `chol_n6`: `Cholesky::new`, which reads the lower triangle only; `None` (a pivot
 //!   that is zero, negative or NaN) is `valid = 0` with `L` zero.
 //! - `chol_solve_n3`, `chol_solve_n6`: `Cholesky::new(A)` then `solve(b)`; `None` answers NaN, a
@@ -86,11 +86,14 @@ type Evaluate = fn(&Fields) -> Result<Fields, String>;
 /// The function ids this runner answers, each with its evaluation in binary64 and in binary32:
 /// the one list, so an id cannot be advertised without an answer or answered without being
 /// advertised.
-const TABLE: [(&str, Evaluate, Evaluate); 14] = [
+const TABLE: [(&str, Evaluate, Evaluate); 17] = [
     ("eig3", eig3::<f64>, eig3::<f32>),
     ("eig_sym_n4", eig_sym4::<f64>, eig_sym4::<f32>),
     ("eig_sym_n9", eig_sym9::<f64>, eig_sym9::<f32>),
     ("eig_sym_n16", eig_sym16::<f64>, eig_sym16::<f32>),
+    ("eig_sym_n24", eig_sym24::<f64>, eig_sym24::<f32>),
+    ("eig_sym_n40", eig_sym40::<f64>, eig_sym40::<f32>),
+    ("eig_sym_n64", eig_sym64::<f64>, eig_sym64::<f32>),
     ("chol_n3", chol::<f64, 3>, chol::<f32, 3>),
     ("chol_n6", chol::<f64, 6>, chol::<f32, 6>),
     ("chol_solve_n3", chol_solve::<f64, 3>, chol_solve::<f32, 3>),
@@ -239,8 +242,8 @@ fn flag(set: bool) -> f64 {
 /// equal eigenvalues keep nalgebra's order) and each eigenvector column's sign as nalgebra gives
 /// it. Not converged within [`MAX_ITERATIONS`]: NaN.
 /// `SymmetricEigen` of the `N x N` input, sorted ascending: `eig3` at `N = 3` and
-/// `eig_sym_n{4,9,16}` (`docs/decisions/0111`). A macro, not a generic function: `SymmetricEigen`'s
-/// bounds hold for each `Const<N>` and are not nameable over a generic `N`.
+/// `eig_sym_n{4,9,16,24,40,64}` (`docs/decisions/0111`, `0118`). A macro, not a generic function:
+/// `SymmetricEigen`'s bounds hold for each `Const<N>` and are not nameable over a generic `N`.
 macro_rules! symmetric_eigen {
     ($($name:ident = $n:literal),+) => {$(
         fn $name<T: Real>(input: &Fields) -> Result<Fields, String> {
@@ -268,7 +271,15 @@ macro_rules! symmetric_eigen {
     )+};
 }
 
-symmetric_eigen!(eig3 = 3, eig_sym4 = 4, eig_sym9 = 9, eig_sym16 = 16);
+symmetric_eigen!(
+    eig3 = 3,
+    eig_sym4 = 4,
+    eig_sym9 = 9,
+    eig_sym16 = 16,
+    eig_sym24 = 24,
+    eig_sym40 = 40,
+    eig_sym64 = 64
+);
 
 /// `SVD::try_new(A, true, true, 5ε, MAX_ITERATIONS)`: `SVD::new`'s tolerance, with
 /// [`MAX_ITERATIONS`] for its unbounded loop. Then `docs/decisions/0101` decision 1's convention:

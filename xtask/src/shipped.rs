@@ -501,6 +501,9 @@ enum Linalg {
     EigSym4,
     EigSym9,
     EigSym16,
+    EigSym24,
+    EigSym40,
+    EigSym64,
     Svd3,
     NearestRotation,
     Rq3,
@@ -522,12 +525,15 @@ enum Linalg {
 }
 
 impl Linalg {
-    const ALL: [(&'static str, Linalg); 23] = [
+    const ALL: [(&'static str, Linalg); 26] = [
         ("solve_cubic", Linalg::SolveCubic),
         ("eig3", Linalg::Eig3),
         ("eig_sym_n4", Linalg::EigSym4),
         ("eig_sym_n9", Linalg::EigSym9),
         ("eig_sym_n16", Linalg::EigSym16),
+        ("eig_sym_n24", Linalg::EigSym24),
+        ("eig_sym_n40", Linalg::EigSym40),
+        ("eig_sym_n64", Linalg::EigSym64),
         ("svd3", Linalg::Svd3),
         ("nearest_rotation", Linalg::NearestRotation),
         ("rq3", Linalg::Rq3),
@@ -574,6 +580,9 @@ impl Linalg {
             Linalg::EigSym4 => eigen_answer(record, eig_sym::<S, 4>),
             Linalg::EigSym9 => eigen_answer(record, eig_sym::<S, 9>),
             Linalg::EigSym16 => eigen_answer(record, eig_sym::<S, 16>),
+            Linalg::EigSym24 => eigen_answer(record, eig_sym::<S, 24>),
+            Linalg::EigSym40 => eigen_answer(record, eig_sym::<S, 40>),
+            Linalg::EigSym64 => eigen_answer(record, eig_sym::<S, 64>),
             Linalg::Svd3 => {
                 let Some(a) = matrix::<S, 3>(record, "A") else {
                     return Output::new();

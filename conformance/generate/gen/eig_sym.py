@@ -1,4 +1,4 @@
-"""`eig_sym_n{4,9,16}` (docs/decisions/0111): the eigendecomposition of the stored symmetric n x n
+"""`eig_sym_n{4,9,16,24,40,64}` (docs/decisions/0111, 0118): the eigendecomposition of the stored symmetric n x n
 `A` by `mp.eigsy`, eigenvalues ascending, `V`'s columns the eigenvectors, each signed so that its
 largest-magnitude component (the first of equals) is positive, as `eig3`'s; and `kappa`, the
 2-norm condition number of D^-1 A D^-1, D = diag(sqrt(a_ii)), where the stored A is positive
@@ -20,10 +20,11 @@ from .dense import exact, from_mat, ldlt_pivots, rank, round_symmetric, to_mat
 from .fmt import Mat
 from .strata import Draw, deep, drawn_strata
 
-NS = (4, 9, 16)
-# Records per stratum (docs/decisions/0110 allots the family 8.2 MB): the code path is the same at
-# every n, so the small n carry the counts and n = 16 its size.
-COUNT = {4: deep(32), 9: deep(16), 16: deep(4)}
+NS = (4, 9, 16, 24, 40, 64)
+# Records per stratum (docs/decisions/0110 allots the family 8.2 MB; 0118 the three large n 18.8):
+# the code path is the same at every n, so the small n carry the counts and the large n their size.
+# The deep tier holds 32 and 16 at n = 40, 64, enough for 0088's swap test to resolve p <= 0.001.
+COUNT = {4: deep(32), 9: deep(16), 16: deep(4), 24: deep(2), 40: deep(1, 32), 64: deep(1, 16)}
 GAP_K = {False: (1, 4, 8, 12), True: (1, 3, 5)}
 # The steepest reach below sqrt(tiny), where `eig_sym` scales a pair before `angle` (0111): a
 # diagonal spanning 10^-200 at binary64, 10^-30 at binary32.

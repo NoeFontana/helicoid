@@ -9,7 +9,7 @@
 // order (matrices column-major). In binary64 every record is answered with `Sophus::*<double>`;
 // with `--precision f32` the `@f32` records alone, with `Sophus::*<float>` (docs/decisions/0077).
 // `eig3` is the image's Eigen, `SelfAdjointEigenSolver<Matrix3<T>>` (docs/decisions/0083), and
-// `eig_sym_n{4,9,16}` the same at N (docs/decisions/0111); `svd3`
+// `eig_sym_n{4,9,16,24,40,64}` the same at N (docs/decisions/0111, 0118); `svd3`
 // its `JacobiSVD<Matrix3<T>>` (docs/decisions/0101); `nearest_rotation` `SO3<T>::fitToSO3`
 // (docs/decisions/0102); `rq3` its `HouseholderQR<Matrix3<T>>`, reversed (docs/decisions/0117).
 // A record Sophus refuses (a failed `SOPHUS_ENSURE`, or Eigen's solver not converging) is answered
@@ -184,6 +184,9 @@ struct At {
     if (id == "eig_sym_n4") return eig_sym<4>(in);
     if (id == "eig_sym_n9") return eig_sym<9>(in);
     if (id == "eig_sym_n16") return eig_sym<16>(in);
+    if (id == "eig_sym_n24") return eig_sym<24>(in);
+    if (id == "eig_sym_n40") return eig_sym<40>(in);
+    if (id == "eig_sym_n64") return eig_sym<64>(in);
     // The image's Eigen too, signed by the runner (docs/decisions/0101).
     if (id == "svd3") {
       const Eigen::JacobiSVD<Eigen::Matrix<T, 3, 3>> svd(helicoid_to_eigen_matrix3<T>(take(in, "A", 9)),
@@ -241,6 +244,9 @@ const std::vector<Id>& table() {
       {"eig_sym_n4", {{"V", 16}, {"lambda", 4}}, true},
       {"eig_sym_n9", {{"V", 81}, {"lambda", 9}}, true},
       {"eig_sym_n16", {{"V", 256}, {"lambda", 16}}, true},
+      {"eig_sym_n24", {{"V", 576}, {"lambda", 24}}, true},
+      {"eig_sym_n40", {{"V", 1600}, {"lambda", 40}}, true},
+      {"eig_sym_n64", {{"V", 4096}, {"lambda", 64}}, true},
       {"svd3", {{"U", 9}, {"sigma", 3}, {"V", 9}}, true},
       {"nearest_rotation", {{"R", 9}}, true},
       {"rq3", {{"U", 9}, {"R", 9}, {"valid", 1}}, true},

@@ -22,9 +22,9 @@ DEEP = os.environ.get("HELICOID_CORPUS_DEEP") == "1"
 DEEP_N = 64
 
 
-def deep(n: int) -> int:
-    """`n`, or 64 in the deep tier when `n` is smaller."""
-    return max(n, DEEP_N) if DEEP else n
+def deep(n: int, m: int = DEEP_N) -> int:
+    """`n`, or `m` (64 unless a record sets fewer) in the deep tier when `n` is smaller."""
+    return max(n, m) if DEEP else n
 
 N_AXES = 64  # axes per axis-carrying stratum, for vector-valued ids
 DENSE_PER_DECADE = 200

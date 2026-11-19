@@ -27,6 +27,9 @@ slow-timeout = { period = "30s", terminate-after = 2 }
 status-level = "pass"
 final-status-level = "flaky"
 fail-fast = true
+# `eig_sym`'s bounds at `N >= 24` cost 7-12 CPU-s each against a double-double reference, and a
+# loaded host pushes them past the timeout above; `just test` runs them.
+default-filter = 'not (package(helicoid-linalg) and test(/every_family_is_within_its_bounds_at_n_(24_40|64_f32|64_f64)$/))'
 
 [[profile.quick.overrides]]
 filter = 'package(xtask) and (test(thresholds::) or test(conformance::selftest))'

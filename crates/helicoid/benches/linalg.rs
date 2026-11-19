@@ -2,8 +2,8 @@
 //! `eig3` (Jacobi with an exit, `0084`) with its values alone, `eig3_values` (`0104`), at `f64` and
 //! `f32` (`0053` *Further work* 2), and
 //! `chol` at the three clauses of `0021`'s bar (`0080`): positive definite and failing input at
-//! `f64` and `f32`, and `Dual`; `eig_sym` (`0111`) at `N = 4, 9, 16` on a random spectrum, a
-//! graded positive definite matrix and a triple eigenvalue, at `f64` and `f32`.
+//! `f64` and `f32`, and `Dual`; `eig_sym` (`0111`, `0118`) at `N = 4, 9, 16, 24, 40, 64` on a
+//! random spectrum, a graded positive definite matrix and a triple eigenvalue, at `f64` and `f32`.
 //!
 //! **A third binary**, for the reason `benches/groups.rs` gives: `bench-gate --against <binary>`
 //! takes one bench binary, so a change to a solver pays for these rows alone.
@@ -378,6 +378,9 @@ fn rows<S: Fixture>(g: &mut BenchmarkGroup<'_, WallTime>) {
     eig_sym_row::<S, 4>(g);
     eig_sym_row::<S, 9>(g);
     eig_sym_row::<S, 16>(g);
+    eig_sym_row::<S, 24>(g);
+    eig_sym_row::<S, 40>(g);
+    eig_sym_row::<S, 64>(g);
     // The three fixtures in turn, as `solve_cubic/mixed-six-calls`: a data-dependent exit is
     // predicted perfectly by the rows above and not here.
     let mixed: Vec<Mat3<S>> = SPECTRA.iter().map(|&(_, l)| sym::<S>(l)).collect();

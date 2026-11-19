@@ -30,10 +30,22 @@ use crate::{eig_sym, Dual, Matrix, Precision, Real, Vector};
 use core::array;
 use std::vec::Vec;
 
-/// The recorded bounds of the header.
+/// The recorded bounds of the header at `N <= 16` (`0111`).
 const ABS: f64 = 25.3;
 const REL: f64 = 9.0;
 const FRAME: f64 = 42.0;
+/// `[abs, rel, frame]` at `17 <= N <= 64` (`0118`): twice the worst of the study there, 24.58 at
+/// `N = 57`, 6.18 at 55 and 64.0 at 60.
+const LARGE: [f64; 3] = [49.2, 12.4, 128.0];
+
+/// The band of `N`, `[abs, rel, frame]`.
+fn bounds(n: usize) -> [f64; 3] {
+    if n <= 16 {
+        [ABS, REL, FRAME]
+    } else {
+        LARGE
+    }
+}
 
 /// A matrix by rows, as `f64`.
 type M<const N: usize> = [[f64; N]; N];
@@ -133,11 +145,9 @@ fn reference<const N: usize>(a: &M<N>) -> Truth<N> {
                 for row in &mut m {
                     (row[p], row[q]) = rot(row[p], row[q]);
                 }
-                let (mp, mq) = (m[p], m[q]);
-                (m[p], m[q]) = (
-                    array::from_fn(|k| rot(mp[k], mq[k]).0),
-                    array::from_fn(|k| rot(mp[k], mq[k]).1),
-                );
+                // One `rot` per entry: at `N = 64`, unoptimised, the reference is the test's cost.
+                let turned: [(Dd, Dd); N] = array::from_fn(|k| rot(m[p][k], m[q][k]));
+                (m[p], m[q]) = (turned.map(|x| x.0), turned.map(|x| x.1));
                 for row in &mut v {
                     (row[p], row[q]) = rot(row[p], row[q]);
                 }
@@ -444,21 +454,23 @@ fn study<S: Lane, const N: usize>(
 
 /// Every family at `N`, at `f64` and `f32`, within the recorded bounds and the cap.
 fn bounded<const N: usize>(n: usize) {
-    for (prec, rows) in [
-        ("f64", study::<f64, N>(n, n, 0x6569_6753)),
-        ("f32", study::<f32, N>(n, n, 0x6569_6753)),
-    ] {
-        for (name, [s, a, r, f]) in rows {
-            let what = std::format!("N = {N} {prec} {name}");
-            assert!(
-                s < crate::eig_sym::CAP[N - 4] as f64,
-                "{what}: {s} sweeps hit the cap"
-            );
-            assert!(
-                a <= ABS && r <= REL && f <= FRAME,
-                "{what}: abs {a} rel {r} frame {f}"
-            );
-        }
+    bounded_at::<f64, N>(n);
+    bounded_at::<f32, N>(n);
+}
+
+/// Every family at `N` and `S` within the recorded bounds and the cap.
+fn bounded_at<S: Lane, const N: usize>(n: usize) {
+    let [abs, rel, frame] = bounds(N);
+    for (name, [s, a, r, f]) in study::<S, N>(n, n, 0x6569_6753) {
+        let what = std::format!("N = {N} {:?} {name}", S::PRECISION);
+        assert!(
+            s < crate::eig_sym::CAP[N - 4] as f64,
+            "{what}: {s} sweeps hit the cap"
+        );
+        assert!(
+            a <= abs && r <= rel && f <= frame,
+            "{what}: abs {a} rel {r} frame {f}"
+        );
     }
 }
 
@@ -483,42 +495,124 @@ fn every_family_is_within_its_bounds_at_the_other_n() {
     bounded::<15>(3);
 }
 
-/// Prints `study` at every `N`: the figures `0111` records and the bounds are set from. Run with
-/// `cargo nextest run --release -p helicoid-linalg --run-ignored only measure_eig_sym
-/// --no-capture`; `EIG_SYM_N`, `EIG_SYM_SCORED` override the sample counts.
+// The double-double reference is cubic in `N` and unoptimised under `dev`: `N = 64` runs one
+// matrix of each family, one precision a test.
 #[test]
-#[ignore = "measurement: prints the figures `0111` and the bounds are recorded from"]
-#[allow(clippy::print_stdout)]
-fn measure_eig_sym() {
-    let get = |k: &str, d: usize| {
-        std::env::var(k)
-            .ok()
-            .and_then(|v| v.parse().ok())
-            .unwrap_or(d)
+fn every_family_is_within_its_bounds_at_n_24_40() {
+    bounded::<24>(2);
+    bounded::<40>(1);
+}
+
+#[test]
+fn every_family_is_within_its_bounds_at_n_64_f64() {
+    bounded_at::<f64, 64>(1);
+}
+
+#[test]
+fn every_family_is_within_its_bounds_at_n_64_f32() {
+    bounded_at::<f32, 64>(1);
+}
+
+#[test]
+fn every_family_is_within_its_bounds_at_n_17_32() {
+    bounded::<17>(2);
+    bounded::<32>(1);
+}
+
+/// Calls `$f::<N>($args)` for the runtime `n` in `4..=64`, one monomorphisation per `N`.
+macro_rules! at_n {
+    ($n:expr, $f:ident $args:tt) => {
+        at_n!(@ $n, $f $args; 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26
+            27 28 29 30 31 32 33 34 35 36 37 38 39 40 41 42 43 44 45 46 47 48 49 50 51 52 53 54 55
+            56 57 58 59 60 61 62 63 64)
     };
-    let (n, scored) = (get("EIG_SYM_N", 20_000), get("EIG_SYM_SCORED", 500));
-    fn at<const N: usize>(n: usize, scored: usize) {
-        let (a, b) = (study::<f64, N>(n, scored, 1), study::<f32, N>(n, scored, 1));
-        for ((name, x), (_, y)) in a.into_iter().zip(b) {
-            std::println!(
-                "N={N:2} {name:16} f64 sweeps {:2} abs {:6.3} rel {:6.3} frame {:6.3} | f32 sweeps {:2} abs {:6.3} rel {:6.3} frame {:6.3}",
-                x[0], x[1], x[2], x[3], y[0], y[1], y[2], y[3]
-            );
+    (@ $n:expr, $f:ident $args:tt; $($k:literal)*) => {
+        match $n {
+            $($k => $f::<$k> $args,)*
+            // Said, not skipped: an `EIG_SYM_NS` typo must not read as a clean study.
+            n => std::format!("N={n}: outside 4..=64, not run\n"),
         }
+    };
+}
+
+/// A list of `N` from an environment variable, `a-b` or `a,b,c`, else `default`.
+fn ns(key: &str, default: &[usize]) -> Vec<usize> {
+    let Ok(v) = std::env::var(key) else {
+        return default.to_vec();
+    };
+    match v.split_once('-') {
+        Some((a, b)) => match (a.parse::<usize>(), b.parse::<usize>()) {
+            (Ok(a), Ok(b)) => (a..=b).collect(),
+            _ => default.to_vec(),
+        },
+        None => v.split(',').filter_map(|x| x.parse().ok()).collect(),
     }
-    at::<4>(n, scored);
-    at::<5>(n, scored);
-    at::<6>(n, scored);
-    at::<7>(n, scored);
-    at::<8>(n, scored);
-    at::<9>(n, scored);
-    at::<10>(n, scored);
-    at::<11>(n, scored);
-    at::<12>(n, scored);
-    at::<13>(n, scored);
-    at::<14>(n, scored);
-    at::<15>(n, scored);
-    at::<16>(n, scored);
+}
+
+/// Runs `job(n)` for every `n` on a pool of scoped threads, largest first, and prints each result
+/// whole as it finishes.
+#[allow(clippy::print_stdout)]
+fn pooled(mut list: Vec<usize>, job: fn(usize) -> std::string::String) {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    list.sort_unstable_by(|a, b| b.cmp(a));
+    let next = AtomicUsize::new(0);
+    let workers = std::env::var("EIG_SYM_THREADS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .or_else(|| std::thread::available_parallelism().ok().map(usize::from))
+        .unwrap_or(1);
+    let spawned = std::thread::scope(|s| {
+        (0..workers.max(1))
+            .filter(|_| {
+                // The double-double reference keeps two `N x N` matrices of pairs on the stack.
+                std::thread::Builder::new()
+                    .stack_size(64 << 20)
+                    .spawn_scoped(s, || loop {
+                        let i = next.fetch_add(1, Ordering::Relaxed);
+                        let Some(&n) = list.get(i) else { break };
+                        std::print!("{}", job(n));
+                    })
+                    .is_ok()
+            })
+            .count()
+    });
+    // A pool that never started would pass with nothing printed.
+    assert!(spawned > 0, "no worker thread could be spawned");
+}
+
+fn env(k: &str, d: usize) -> usize {
+    std::env::var(k)
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(d)
+}
+
+/// `study` at `N` and both precisions, one line per family.
+fn study_lines<const N: usize>(n: usize, scored: usize) -> std::string::String {
+    use core::fmt::Write;
+    let (a, b) = (study::<f64, N>(n, scored, 1), study::<f32, N>(n, scored, 1));
+    let mut out = std::string::String::new();
+    for ((name, x), (_, y)) in a.into_iter().zip(b) {
+        let _ = writeln!(
+            out,
+            "N={N:2} {name:16} f64 sweeps {:2} abs {:6.3} rel {:6.3} frame {:6.3} | f32 sweeps {:2} abs {:6.3} rel {:6.3} frame {:6.3}",
+            x[0], x[1], x[2], x[3], y[0], y[1], y[2], y[3]
+        );
+    }
+    out
+}
+
+/// Prints `study` at every `N`: the figures `0111` and `0118` record and the bounds are set from.
+/// Run with `cargo nextest run --release -p helicoid-linalg --run-ignored only measure_eig_sym
+/// --no-capture`; `EIG_SYM_N`, `EIG_SYM_SCORED` override the sample counts, `EIG_SYM_NS` the sizes
+/// (`a-b` or `a,b,c`, default `4-64`) and `EIG_SYM_THREADS` the pool.
+#[test]
+#[ignore = "measurement: prints the figures `0111`, `0118` and the bounds are recorded from"]
+fn measure_eig_sym() {
+    pooled(ns("EIG_SYM_NS", &(4..=64).collect::<Vec<_>>()), |n| {
+        let (count, scored) = (env("EIG_SYM_N", 20_000), env("EIG_SYM_SCORED", 500));
+        at_n!(n, study_lines(count, scored))
+    });
 }
 
 /// Equal to the bit, except that a `NaN` matches any `NaN`.
@@ -784,19 +878,14 @@ fn derivative_is_first_order_perturbation_theory() {
     }
 }
 
-/// A hill climb on the entries for the most sweeps, at `N = 4, 9, 16` and `f64`: from each
-/// family's matrices, perturbations of a shrinking size, kept where the sweeps do not fall. Prints
-/// the most found, beside `study`'s, for `0111`'s cap. `EIG_SYM_RESTARTS` overrides the restarts
-/// per family.
+/// A hill climb on the entries for the most sweeps, at `f64`: from each family's matrices,
+/// perturbations of a shrinking size, kept where the sweeps do not fall. Prints the most found,
+/// beside `study`'s, for the cap (`0111`, `0118`). `EIG_SYM_NS` overrides the `N` (4, 9, 16, 24,
+/// 32, 40, 48 and 64), `EIG_SYM_RESTARTS` the restarts per family (8).
 #[test]
-#[ignore = "measurement: the adversarial half of the convergence study (`0111`)"]
-#[allow(clippy::print_stdout)]
+#[ignore = "measurement: the adversarial half of the convergence study (`0111`, `0118`)"]
 fn hill_climb_eig_sym() {
-    let restarts = std::env::var("EIG_SYM_RESTARTS")
-        .ok()
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(8);
-    fn at<const N: usize>(restarts: usize) {
+    fn at<const N: usize>(restarts: usize) -> std::string::String {
         let mut best = (0, "");
         for (i, (name, _, make)) in families::<N>().into_iter().enumerate() {
             let mut r = Rng(0x6869_6c6c ^ (i as u64) << 20 ^ N as u64);
@@ -823,11 +912,11 @@ fn hill_climb_eig_sym() {
                 }
             }
         }
-        std::println!("N={N:2} hill climb: {} sweeps (from {})", best.0, best.1);
+        std::format!("N={N:2} hill climb: {} sweeps (from {})\n", best.0, best.1)
     }
-    at::<4>(restarts);
-    at::<9>(restarts);
-    at::<16>(restarts);
+    pooled(ns("EIG_SYM_NS", &[4, 9, 16, 24, 32, 40, 48, 64]), |n| {
+        at_n!(n, at(env("EIG_SYM_RESTARTS", 8)))
+    });
 }
 
 /// A positive definite block far below `|A|`, where `angle` unscaled takes its safe arm: `2^-70`
