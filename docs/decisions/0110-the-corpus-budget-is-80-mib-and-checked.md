@@ -7,6 +7,9 @@
 > Amends [`0071`](./0071-the-corpus-budget-is-64-mib.md): the cap is 80 MiB, and `cargo xtask lint`
 > enforces it.
 
+> **Amended by [`0118`](./0118-eig-sym-reaches-n-64.md), 2026-11-18.** The cap is 100 MiB:
+> `eig_sym_n{24,40,64}` take 18.8 MB, and 1.45 MiB was left.
+
 ## Context
 
 [`0071`](./0071-the-corpus-budget-is-64-mib.md) holds corpus v1 under 64 MiB uncompressed

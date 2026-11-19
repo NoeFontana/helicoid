@@ -601,7 +601,7 @@ $X(t) = X_0\,\mathrm{Exp}(t\,d)$ with $d = X_1 \ominus_R X_0$ and $\Delta = X_0^
 | `renormalize` | none; a normalization only for $\lvert\|q\|^2 - 1\rvert \le 2^{-26.29}$ (`f64`), $2^{-11.79}$ (`f32`) (§3.6) | defined everywhere; $0$ at $\|q\|^2 = 3$, $q$ reversed beyond |
 | `solve_cubic` | every input; the mask is the report: a non-finite coefficient, $a = 0$, or $1/a$, $b/a$, $c/a$ or $d/a$ overflowing gives no valid slot (§16) | — |
 | `eig3` | every input, lower triangle read; every finite matrix (§17's exact power-of-two scaling); a subnormal largest entry keeps only its own digits | a non-finite entry: `NaN` eigenvalues, never a plausible number, and the identity frame; an eigenvalue beyond the largest finite number is infinite ([`0081`](./decisions/0081-eig3-is-four-jacobi-sweeps.md)) |
-| `eig_sym` | every input, lower triangle read, $4 \le N \le 16$ at compile time; every finite matrix (§20's exact power-of-two scaling) | as `eig3` ([`0111`](./decisions/0111-eig-sym-is-eig3-s-jacobi-at-general-n.md)) |
+| `eig_sym` | every input, lower triangle read, $4 \le N \le 64$ at compile time; every finite matrix (§20's exact power-of-two scaling) | as `eig3` ([`0111`](./decisions/0111-eig-sym-is-eig3-s-jacobi-at-general-n.md)) |
 | `svd3` | every input; every finite matrix (§18's exact power-of-two scaling) | a non-finite entry: `NaN` singular values and $U = V = I$; a singular value beyond the largest finite number is infinite ([`0101`](./decisions/0101-svd3-is-one-sided-jacobi-on-eig3-s-rotation.md)) |
 | `nearest_rotation` | every input | a non-finite entry: a matrix of `NaN`; the zero matrix: $I$ ([`0102`](./decisions/0102-the-nearest-rotation-takes-newton-where-it-is-well-posed.md)) |
 | `rq3`, `lq3` | every input; the mask is the report; every finite matrix (§22's exact row scaling) | a non-finite entry: $(I, I)$ and a clear mask; an entry of the triangle beyond the largest finite number is infinite; the zero matrix: $(0, I)$ ([`0117`](./decisions/0117-rq-and-lq-are-gram-schmidt-twice-on-scaled-rows.md)) |
@@ -932,7 +932,7 @@ is not unique.
 
 ## 20. The symmetric N×N eigendecomposition
 
-`eig_sym`'s formulas, $4 \le N \le 16$ ([`0111`](./decisions/0111-eig-sym-is-eig3-s-jacobi-at-general-n.md)).
+`eig_sym`'s formulas, $4 \le N \le 64$ ([`0111`](./decisions/0111-eig-sym-is-eig3-s-jacobi-at-general-n.md), [`0118`](./decisions/0118-eig-sym-reaches-n-64.md)).
 Only the lower triangle $a_{ij}$, $i \ge j$, is read; the working matrix holds both triangles.
 
 - **Non-finite input and scaling** as §17, over the lower triangle, with §17's windows and steps.

@@ -4,6 +4,9 @@
 **Owner:** @NoeFontana
 **Implementation:** #212–#216, the implementation plan below
 
+> **Amended by [`0118`](./0118-eig-sym-reaches-n-64.md), 2026-11-18.** `4 <= N <= 64`, the same
+> algorithm; `CAP` measured to 64, its first 13 entries unchanged; ids `eig_sym_n{24,40,64}`.
+
 ## Context
 
 A calibration consumer's degeneracy diagnostic needs it. It diagonalises the equilibrated `N_g x N_g` Schur

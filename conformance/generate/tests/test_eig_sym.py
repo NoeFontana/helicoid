@@ -1,5 +1,6 @@
-"""`eig_sym_n{4,9,16}` (0111) against what its strata draw: symmetric and exact at binary32, the
-planted structure of each stratum, `kappa` where it applies, and the reference's convention."""
+"""`eig_sym_n{4,9,16,24,40,64}` (0111, 0118) against what its strata draw: symmetric and exact at
+binary32, the planted structure of each stratum, `kappa` where it applies, and the reference's
+convention."""
 
 import unittest
 
@@ -34,8 +35,13 @@ class StrataTest(unittest.TestCase):
         self.assertEqual(len([s for s in names if not s.endswith("@f32")]), 25)
         self.assertEqual(len([s for s in names if s.endswith("@f32")]), 20)
 
+    def test_the_large_n_take_their_allocation(self):
+        # 0118: 2, 1 and 1 records per stratum at n = 24, 40, 64; the committed tier.
+        self.assertEqual(eig_sym.NS, (4, 9, 16, 24, 40, 64))
+        self.assertEqual([eig_sym.COUNT[n] for n in (24, 40, 64)], [2, 1, 1])
+
     def test_the_rank_deficient_strata_are_exactly_singular(self):
-        for n, r in ((4, 1), (9, 3), (16, 3)):
+        for n, r in ((4, 1), (9, 3), (16, 3), (24, 3), (40, 3), (64, 3)):
             for record in records(n, f"eig:rank-def-{r}"):
                 self.assertEqual(rank(exact(record["A"])), n - r)
 

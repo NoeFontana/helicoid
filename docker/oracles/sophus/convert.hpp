@@ -180,7 +180,7 @@ HelicoidSim3 sophus_to_helicoid_sim3(const Sophus::Sim3<T>& s) {
 
 // A corpus `A` (N × N, column-major) as Eigen's `Matrix<T, N, N>`, column-major too;
 // `SelfAdjointEigenSolver` reads its lower triangle, `JacobiSVD` all of it. N = 3 for `eig3` and
-// `svd3`, 4, 9, 16 for `eig_sym_n*` (docs/decisions/0111).
+// `svd3`, 4, 9, 16, 24, 40, 64 for `eig_sym_n*` (docs/decisions/0111, 0118).
 template <class T, int N>
 Eigen::Matrix<T, N, N> helicoid_to_eigen_matrix(const Vec& a) {
   if (a.size() != static_cast<std::size_t>(N * N)) {

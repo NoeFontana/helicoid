@@ -1,11 +1,11 @@
-//! Check: the committed corpus stays under its budget (`0110`, amending `0071`): the bytes of
-//! every tracked file under `conformance/corpus/`, the manifest included. The deep tier is
-//! git-ignored and has none (`0088` decision 3).
+//! Check: the committed corpus stays under its budget (`0110`, amending `0071`; `0118`): the
+//! bytes of every tracked file under `conformance/corpus/`, the manifest included. The deep tier
+//! is git-ignored and has none (`0088` decision 3).
 
 use super::{File, Violation};
 
-/// 80 MiB (`0110` decision 1).
-pub(crate) const BUDGET: usize = 80 << 20;
+/// 100 MiB (`0110` decision 1, amended by `0118`).
+pub(crate) const BUDGET: usize = 100 << 20;
 
 const CORPUS: &str = "conformance/corpus/";
 
@@ -26,8 +26,8 @@ fn over(files: &[File], budget: usize) -> Vec<Violation> {
         "conformance/corpus/MANIFEST.json",
         1,
         format!(
-            "[budget] the committed corpus is {total} bytes, over its {budget} (`0110`): a family \
-             that would exceed it reduces its sample count (`PHASE1.md` §4.4)"
+            "[budget] the committed corpus is {total} bytes, over its {budget} (`0110`, `0118`): a \
+             family that would exceed it reduces its sample count (`PHASE1.md` §4.4)"
         ),
     )]
 }

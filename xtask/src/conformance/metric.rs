@@ -448,7 +448,7 @@ pub(crate) fn rule(fn_id: &str) -> Option<&'static Rule> {
     let family = match fn_id.rsplit_once("_n") {
         Some((f, n)) if f.starts_with("sen3_") && matches!(n, "1" | "2" | "3") => f,
         Some((f, n)) if matches!(f, "chol" | "chol_solve") && matches!(n, "3" | "6") => f,
-        Some((f, n)) if f == "eig_sym" && matches!(n, "4" | "9" | "16") => f,
+        Some((f, n)) if f == "eig_sym" && matches!(n, "4" | "9" | "16" | "24" | "40" | "64") => f,
         _ => fn_id,
     };
     TABLE.iter().find(|(f, _)| *f == family).map(|(_, r)| r)
