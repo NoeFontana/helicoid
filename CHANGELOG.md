@@ -8,6 +8,10 @@ defined by the status tables in `docs/`; they win over this file.
 
 ## [Unreleased]
 
+## [0.0.13] - 2026-11-19
+
+The `eig_sym` to 64 release. `helicoid_linalg::eig_sym` accepts `4 <= N <= 64`, from `4 <= N <= 16`: the same Jacobi with its sweep cap measured at every `N` (`0118`). It is also 3 to 16% faster from `N = 9`. **No API break**, and every existing output keeps its bits.
+
 ### Changed
 
 - **`eig_sym` accepts `4 <= N <= 64`**, from `4 <= N <= 16`
@@ -25,26 +29,12 @@ Not shipped in the crates.
   each (64, 32 and 16 in the deep tier), against nalgebra and Eigen. The committed corpus cap is
   100 MiB, up from 80.
 
-## [0.0.12] - 2026-11-18
-
-The fused preintegration step release. `so3::exp_gamma_apply` returns `Exp φ`, `Γ₁(φ) v` and `Γ₂(φ) v`, and `so3::exp_gamma_apply_jacobians` adds both directional Jacobians, from one coefficient evaluation: one root, one `sin_cos` and at most one `sin` where the separate calls take three, one and four. Every output is the separate calls' to the bit, `Dual` included, at 5–43% fewer instructions per call (`0119`). **No API break**, and every existing output keeps its bits.
-
-### Added
-
-- **`so3::exp_gamma_apply` and `so3::exp_gamma_apply_jacobians`**
-  ([`0119`](docs/decisions/0119-exp-and-gamma-share-one-evaluation.md)): a preintegration step's
-  `Exp φ`, `Γ₁ v` and `Γ₂ v`, and both directional Jacobians, from one coefficient evaluation. Every
-  output is `SO3::exp`, `gamma1(φ) * v`, `gamma2(φ) * v` or `gamma_apply_jacobians::<1 | 2>` to the
-  bit, `Dual` included, so moving from the separate calls changes no result. They take 10–43%
-  (binary64) and 15–37% (binary32) fewer instructions for the values, and 17–36% and 5–25% fewer
-  with the Jacobians. The alias `so3::GammaJacobians<S>` names `gamma_apply_jacobians`'
-  `(Vec3, Mat3, Mat3)`. Every existing output keeps its bits.
-
 ## Released versions
 
 Frozen history, newest first, in [`docs/changelog/`](./docs/changelog/); leave it
 out of searches and sweeps.
 
+- [`0.0.12`](./docs/changelog/0.0.12.md) — 2026-11-18 (the fused preintegration step `exp_gamma_apply`)
 - [`0.0.11`](./docs/changelog/0.0.11.md) — 2026-11-15 (the triangular factorizations `rq3` and `lq3`)
 - [`0.0.10`](./docs/changelog/0.0.10.md) — 2026-11-13 (the continuous-time spline, `helicoid-spline`)
 - [`0.0.9`](./docs/changelog/0.0.9.md) — 2026-10-29 (general symmetric eigensolver `eig_sym`)
@@ -69,3 +59,4 @@ out of searches and sweeps.
 [0.0.10]: https://github.com/NoeFontana/helicoid/releases/tag/v0.0.10
 [0.0.11]: https://github.com/NoeFontana/helicoid/releases/tag/v0.0.11
 [0.0.12]: https://github.com/NoeFontana/helicoid/releases/tag/v0.0.12
+[0.0.13]: https://github.com/NoeFontana/helicoid/releases/tag/v0.0.13
