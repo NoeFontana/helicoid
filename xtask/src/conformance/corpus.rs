@@ -263,7 +263,8 @@ pub(crate) fn manifest(dir: &Path) -> Result<Vec<Entry>, String> {
         serde_json::from_str(&text).map_err(|e| format!("{}: {e}", path.display()))?;
     let unlisted = |e: std::io::Result<std::fs::DirEntry>| {
         let name = e.ok()?.file_name().into_string().ok()?;
-        (name.ends_with(".jsonl") && !m.files.contains_key(&name)).then_some(name)
+        let logical = name.strip_suffix(".gz").unwrap_or(&name);
+        (logical.ends_with(".jsonl") && !m.files.contains_key(logical)).then_some(name)
     };
     let dir_err = |e: std::io::Error| format!("{}: {e}", dir.display());
     let mut extra: Vec<String> = std::fs::read_dir(dir)
@@ -291,11 +292,38 @@ pub(crate) fn manifest(dir: &Path) -> Result<Vec<Entry>, String> {
     Ok(entries)
 }
 
+/// Reads `dir/name` when present, falling back to `dir/{name}.gz` decompressed via `gzip -dc`.
+pub(crate) fn read_text(dir: &Path, name: &str) -> Result<String, String> {
+    let path = dir.join(name);
+    match std::fs::read_to_string(&path) {
+        Ok(text) => Ok(text),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            let gz = dir.join(format!("{name}.gz"));
+            if !gz.is_file() {
+                return Err(format!("{}: {e}", path.display()));
+            }
+            let out = std::process::Command::new("gzip")
+                .arg("-dc")
+                .arg(&gz)
+                .output()
+                .map_err(|e| format!("{}: {e}", gz.display()))?;
+            if !out.status.success() {
+                return Err(format!(
+                    "{}: gzip failed: {}",
+                    gz.display(),
+                    String::from_utf8_lossy(&out.stderr)
+                ));
+            }
+            String::from_utf8(out.stdout).map_err(|e| format!("{}: {e}", gz.display()))
+        }
+        Err(e) => Err(format!("{}: {e}", path.display())),
+    }
+}
+
 /// Whether `entry` may have `@f32` strata: no false negative (a stratum name ends the way no input
 /// or reference does), and a false positive is caught where the file is read.
 pub(crate) fn mentions_f32(dir: &Path, entry: &Entry) -> Result<bool, String> {
-    let path = dir.join(format!("{}.jsonl", entry.fn_id));
-    let text = std::fs::read_to_string(&path).map_err(|e| format!("{}: {e}", path.display()))?;
+    let text = read_text(dir, &format!("{}.jsonl", entry.fn_id))?;
     Ok(text.contains(&format!("{F32_SUFFIX}\"")))
 }
 
@@ -328,7 +356,7 @@ pub(crate) fn f32_strata_total(dir: &Path, keep: impl Fn(&str) -> bool) -> Resul
 
 pub(crate) fn read(dir: &Path, entry: &Entry) -> Result<Vec<Record>, String> {
     let path = dir.join(format!("{}.jsonl", entry.fn_id));
-    let text = std::fs::read_to_string(&path).map_err(|e| format!("{}: {e}", path.display()))?;
+    let text = read_text(dir, &format!("{}.jsonl", entry.fn_id))?;
     let mut records = Vec::with_capacity(entry.records);
     for (i, line) in text.lines().enumerate() {
         let at = |e: String| format!("{}:{}: {e}", path.display(), i + 1);
@@ -671,6 +699,43 @@ mod tests {
         let dir = corpus_dir("kind", odd, &[empty])?;
         let e = manifest(&dir.0).err().unwrap_or_default();
         assert!(e.contains("kind `corps`"), "{e}");
+        Ok(())
+    }
+
+    #[test]
+    fn a_gzipped_corpus_file_reads_and_passes_manifest() -> Result<(), String> {
+        let dir = corpus_dir("gz", &manifest_of(1), &[])?;
+        let row = format!(
+            "{}\n",
+            VECTOR
+                .replace("\"id\":3", "\"id\":0")
+                .replace("theta:1e-12", "theta:1e-12@f32")
+        );
+        let mut child = std::process::Command::new("gzip")
+            .arg("-c")
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .spawn()
+            .map_err(|e| e.to_string())?;
+        {
+            use std::io::Write as _;
+            if let Some(mut stdin) = child.stdin.take() {
+                stdin.write_all(row.as_bytes()).map_err(|e| e.to_string())?;
+            }
+        }
+        let out = child.wait_with_output().map_err(|e| e.to_string())?;
+        assert!(out.status.success());
+        std::fs::write(dir.0.join("f.jsonl.gz"), out.stdout).map_err(|e| e.to_string())?;
+        let entries = manifest(&dir.0)?;
+        assert_eq!(entries.len(), 1);
+        assert!(mentions_f32(&dir.0, &entries[0])?);
+        let recs = read(&dir.0, &entries[0])?;
+        assert_eq!(recs.len(), 1);
+        assert_eq!(recs[0].id, 0);
+        // An unlisted `.jsonl.gz` is caught just like an unlisted `.jsonl`.
+        std::fs::write(dir.0.join("stray.jsonl.gz"), b"").map_err(|e| e.to_string())?;
+        let err = manifest(&dir.0).err().unwrap_or_default();
+        assert!(err.contains("`stray.jsonl.gz` is not listed"), "{err}");
         Ok(())
     }
 }

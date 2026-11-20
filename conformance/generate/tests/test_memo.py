@@ -41,7 +41,7 @@ class MemoTest(unittest.TestCase):
 
     def test_a_task_depends_on_what_it_ran_and_imports_and_not_on_the_registry(self):
         corpus._registered(*TASK, self.cache)
-        deps = set(json.loads(self.entry().read_text())["deps"])
+        deps = set(memo.read_entry(self.entry())["deps"])
         # What it ran, and a module it reads constants of without running it.
         self.assertTrue({"corpus.py", "coeff.py", "strata.py", "__init__.py"} <= deps, deps)
         # The registry names it through the spec, which is in the key; nothing it never imports.
@@ -50,9 +50,9 @@ class MemoTest(unittest.TestCase):
 
     def test_a_changed_dependency_runs_the_task_again(self):
         corpus._registered(*TASK, self.cache)
-        entry = json.loads(self.entry().read_text())
+        entry = memo.read_entry(self.entry())
         entry["deps"]["coeff.py"] = "0" * 64
-        self.entry().write_text(json.dumps(entry))
+        memo.write_entry(self.entry(), entry)
         _, how = corpus._registered(*TASK, self.cache)
         self.assertEqual(how, "fresh")
 
@@ -64,13 +64,13 @@ class MemoTest(unittest.TestCase):
 
     def test_an_audit_failure_keeps_the_evidence_and_closes_the_memo(self):
         corpus._registered(*TASK, self.cache)
-        entry = json.loads(self.entry().read_text())
+        entry = memo.read_entry(self.entry())
         entry["value"][1] += 1
-        self.entry().write_text(json.dumps(entry))
+        memo.write_entry(self.entry(), entry)
         audited = dataclasses.replace(self.cache, audit=1.0)
         with self.assertRaises(memo.MemoError):
             corpus._registered(*TASK, audited)
-        self.assertEqual(json.loads(self.entry().read_text()), entry)
+        self.assertEqual(memo.read_entry(self.entry()), entry)
         # Nothing replays, audited or not, until a fresh run.
         with self.assertRaises(memo.MemoError):
             corpus._registered(*TASK, self.cache)
@@ -92,12 +92,12 @@ class MemoTest(unittest.TestCase):
 
     def test_a_fresh_memo_runs_every_task_and_writes_it(self):
         corpus._registered(*TASK, self.cache)
-        entry = json.loads(self.entry().read_text())
+        entry = memo.read_entry(self.entry())
         entry["value"][1] += 1
-        self.entry().write_text(json.dumps(entry))
+        memo.write_entry(self.entry(), entry)
         _, how = corpus._registered(*TASK, dataclasses.replace(self.cache, replay=False))
         self.assertEqual(how, "fresh")
-        self.assertEqual(json.loads(self.entry().read_text())["value"], fresh_value())
+        self.assertEqual(memo.read_entry(self.entry())["value"], fresh_value())
 
     def test_an_honest_audit_passes(self):
         corpus._registered(*TASK, self.cache)

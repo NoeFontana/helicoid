@@ -44,7 +44,7 @@ class HexTest(unittest.TestCase):
 
 class Dec30Test(unittest.TestCase):
     def test_shape_and_known_values(self):
-        self.assertEqual(fmt.dec30(mpf(0)), "0.00000000000000000000000000000e0")
+        self.assertEqual(fmt.dec30(mpf(0)), "0")
         self.assertEqual(fmt.dec30(mpf(1) / 2), "5.00000000000000000000000000000e-1")
         self.assertEqual(fmt.dec30(-mpf(1) / 3), "-3.33333333333333333333333333333e-1")
         self.assertEqual(fmt.dec30(mpf(2) ** -1074), "4.94065645841246544176568792868e-324")

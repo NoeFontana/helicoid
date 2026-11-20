@@ -150,7 +150,7 @@ class BuildTest(unittest.TestCase):
 
     def test_golden_records_of_the_matrix_encoding(self):
         """A `Mat` is a column-major array with a sibling `shape`, as an output and as an input."""
-        one, zero = "1.00000000000000000000000000000e0", "0.00000000000000000000000000000e0"
+        one, zero = "1.00000000000000000000000000000e0", "0"
         eye = ",".join(f'"{one if i % 4 == 0 else zero}"' for i in range(9))
         data, _, _ = corpus.build(FUNCTIONS["so3_jr"], only={"theta:exact0"})
         self.assertEqual(

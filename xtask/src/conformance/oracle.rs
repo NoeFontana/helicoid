@@ -760,6 +760,24 @@ fn execute(
     let files = entries
         .iter()
         .map(|e| corpus_dir.join(format!("{}.jsonl", e.fn_id)));
+    struct Unpacked(Vec<std::path::PathBuf>);
+    impl Drop for Unpacked {
+        fn drop(&mut self) {
+            for p in &self.0 {
+                let _ = std::fs::remove_file(p);
+            }
+        }
+    }
+    let mut unpacked = Unpacked(Vec::new());
+    for e in &entries {
+        let name = format!("{}.jsonl", e.fn_id);
+        let plain = corpus_dir.join(&name);
+        if !plain.is_file() && corpus_dir.join(format!("{name}.gz")).is_file() {
+            let text = corpus::read_text(corpus_dir, &name)?;
+            std::fs::write(&plain, text).map_err(|err| format!("{}: {err}", plain.display()))?;
+            unpacked.0.push(plain);
+        }
+    }
     let status = launch(true)
         .args(precision_args)
         .arg("--out")
@@ -767,6 +785,7 @@ fn execute(
         .args(files)
         .status()
         .map_err(|e| format!("{}: {e}", runner.name))?;
+    drop(unpacked);
     succeeded(&format!("runner `{}`", runner.name), status)?;
     let subject = FileSubject::ingest(runner.name, &out_dir, &entries, precision, corpus_dir)?;
     let unanswered = owed
