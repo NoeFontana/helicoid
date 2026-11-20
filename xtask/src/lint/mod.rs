@@ -23,10 +23,11 @@ use std::process::Command;
 
 use metadata::Metadata;
 
-/// One tracked text file: repo-relative `/` path and content.
+/// One tracked regular file: repo-relative `/` path, content (empty for skipped corpus JSONL), and byte length.
 pub(crate) struct File {
     pub(crate) path: String,
     pub(crate) text: String,
+    pub(crate) bytes: usize,
 }
 
 impl File {
@@ -34,6 +35,7 @@ impl File {
     fn new(path: &str, text: &str) -> Self {
         Self {
             path: path.into(),
+            bytes: text.len(),
             text: text.into(),
         }
     }
@@ -142,15 +144,24 @@ pub(crate) fn load_tree(root: &Path) -> Result<Vec<File>, String> {
     let mut files = Vec::new();
     for path in names.split('\0').filter(|p| !p.is_empty()) {
         let full = root.join(path);
-        match std::fs::symlink_metadata(&full) {
-            Ok(m) if m.is_file() => {}
+        let len = match std::fs::symlink_metadata(&full) {
+            Ok(m) if m.is_file() => usize::try_from(m.len()).unwrap_or(usize::MAX),
             Ok(_) => continue,
             Err(e) if e.kind() == ErrorKind::NotFound => continue,
             Err(e) => return Err(format!("{path}: {e}")),
+        };
+        if path.starts_with("conformance/corpus/") && path.ends_with(".jsonl") {
+            files.push(File {
+                path: path.into(),
+                text: String::new(),
+                bytes: len,
+            });
+            continue;
         }
         match std::fs::read_to_string(&full) {
             Ok(text) => files.push(File {
                 path: path.into(),
+                bytes: text.len(),
                 text,
             }),
             Err(e) if matches!(e.kind(), ErrorKind::NotFound | ErrorKind::InvalidData) => {}

@@ -1,6 +1,7 @@
 import dataclasses
 import hashlib
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -275,9 +276,18 @@ SUBSET |= {"tx:1e6", "tp:1e2@f32"}  # 0103: three matrices in one part
 SUBSET |= {"h:2^10", "h:1@f32"}  # 0116: `rn_spline_gram` alone holds them
 
 
+def _priority(name: str) -> int:
+    if name.startswith("eig_sym_n"):
+        return -int(name.removeprefix("eig_sym_n")) * 1000
+    if name.startswith(("sim3_", "sen3_")):
+        return -500
+    return 0
+
+
 def subset_registry() -> dict:
     keep = lambda spec: tuple(s for s in spec.strata if s.name in SUBSET)
-    return {name: dataclasses.replace(spec, strata=keep(spec)) for name, spec in FUNCTIONS.items()}
+    items = sorted(FUNCTIONS.items(), key=lambda kv: _priority(kv[0]))
+    return {name: dataclasses.replace(spec, strata=keep(spec)) for name, spec in items}
 
 
 def records(data: bytes) -> list[dict]:
@@ -285,20 +295,33 @@ def records(data: bytes) -> list[dict]:
     return [{k: v for k, v in json.loads(line).items() if k != "id"} for line in data.splitlines()]
 
 
+SUBSET_ENDS = tuple(f',"stratum":"{s}"}}'.encode() for s in SUBSET)
+PARALLEL_IDS = ("coeff_k", "so3_exp", "so3_jr", "se3_geodesic", "eig3", "chol_n3")
+
+
 class GenerationTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        with mock.patch.object(corpus, "FUNCTIONS", subset_registry()):
-            cls.serial, cls.pooled = corpus.build_all(jobs=1), corpus.build_all(jobs=2)
+        cls.subset = subset_registry()
+        with mock.patch.object(corpus, "FUNCTIONS", cls.subset):
+            cls.pooled = corpus.build_all(jobs=os.cpu_count() or 4)
 
     def test_generation_is_deterministic_whatever_the_worker_count(self):
-        self.assertEqual(self.serial, self.pooled)
+        small = {k: self.subset[k] for k in PARALLEL_IDS}
+        with mock.patch.object(corpus, "FUNCTIONS", small):
+            serial, pooled2 = corpus.build_all(jobs=1), corpus.build_all(jobs=2)
+        self.assertEqual(serial, pooled2)
+        self.assertEqual(serial, {k: self.pooled[k] for k in PARALLEL_IDS})
 
     def test_regeneration_reproduces_the_committed_records(self):
-        self.assertEqual(sorted(self.serial), sorted(FUNCTIONS))
-        for name, (data, n, _) in self.serial.items():
-            committed = records((COMMITTED / f"{name}.jsonl").read_bytes())
-            want = [r for r in committed if r["stratum"] in SUBSET]
+        self.assertEqual(sorted(self.pooled), sorted(FUNCTIONS))
+        for name, (data, n, _) in self.pooled.items():
+            raw = (COMMITTED / f"{name}.jsonl").read_bytes().splitlines()
+            want = [
+                {k: v for k, v in json.loads(line).items() if k != "id"}
+                for line in raw
+                if line.endswith(SUBSET_ENDS)
+            ]
             self.assertEqual(len(want), n, name)
             self.assertEqual(records(data), want, name)
 

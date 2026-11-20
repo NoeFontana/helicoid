@@ -22,9 +22,10 @@ test-fast:
 check-fast:
     cargo clippy --workspace --lib --tests -- -D warnings
 
-# Prune stale build artifacts in target/ while preserving cached dependencies.
+# Prune stale build artifacts and untracked result dumps while preserving cached third-party deps.
 clean-stale:
     cargo clean -p helicoid -p helicoid-linalg -p helicoid-spline -p xtask
+    rm -rf target/debug/incremental target/ndebug/incremental conformance/results conformance/results-deep
 
 # Unit + integration tests (nextest) in the dev profile, then in `ndebug` (`Cargo.toml`), where
 # `debug_assert!` is compiled out and the out-of-domain behaviour the docs state is what is tested;

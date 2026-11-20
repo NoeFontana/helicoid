@@ -577,18 +577,12 @@ mod tests {
 
     /// The files of a fresh sweep of every id at both precisions, of each target in turn.
     fn fresh() -> Result<Vec<(&'static str, String)>, String> {
-        static FRESH: std::sync::OnceLock<Result<Vec<(&'static str, String)>, String>> =
-            std::sync::OnceLock::new();
-        FRESH
-            .get_or_init(|| {
-                let dir = corpus_dir()?;
-                let mut all = Vec::new();
-                for target in Target::ALL {
-                    all.extend(files(&dir, target, &sweep(&dir, target, &Swept::ALL)?)?);
-                }
-                Ok(all)
-            })
-            .clone()
+        let dir = corpus_dir()?;
+        let mut all = Vec::new();
+        for target in Target::ALL {
+            all.extend(files(&dir, target, &sweep(&dir, target, &Swept::ALL)?)?);
+        }
+        Ok(all)
     }
 
     #[test]
@@ -626,6 +620,17 @@ mod tests {
         assert!(compare("p", "a\n", "a\nb\n").is_err());
     }
 
+    /// `text` with the character at `at` replaced by a different one.
+    fn one_character_off(text: &str, at: usize) -> String {
+        let swap = |c: char| match c {
+            'x' => 'y',
+            _ => 'x',
+        };
+        let mut chars: Vec<char> = text.chars().collect();
+        chars[at] = swap(chars[at]);
+        chars.into_iter().collect()
+    }
+
     #[test]
     fn the_committed_files_are_what_a_fresh_sweep_writes() -> Result<(), String> {
         let fresh = fresh()?;
@@ -639,15 +644,60 @@ mod tests {
                 "crates/helicoid/src/coeffs/generated.rs",
             ]
         );
-        finish_all(&root()?, &fresh, true)
-    }
-
-    #[test]
-    fn the_shipped_arms_are_measured_to_the_seeded_arms_errors() -> Result<(), String> {
+        finish_all(&root()?, &fresh, true)?;
         // Every error of every arm at every record is the same number, so the two sweeps write the
         // same CSV, and the arms are the same bit for bit (`measure`'s test).
-        let fresh = fresh()?;
         assert_eq!(fresh[0].1, fresh[2].1);
+
+        // `docs/PHASE1.md` §11: the sweep regenerates the seeded `generated.rs` byte for byte, and
+        // `thresholds --check` fails on a hand edit. Every 7th character of each file, the first
+        // and the last, and a hex digit of a switch and a digit of a literal, which still parse.
+        let scratch_edit = Scratch::new("hand-edit");
+        finish_all(&scratch_edit.0, &fresh, false)?;
+        finish_all(&scratch_edit.0, &fresh, true)?;
+        for (rel, text) in &fresh {
+            let full = scratch_edit.0.join(rel);
+            let n = text.chars().count();
+            let mut edits: Vec<String> = (0..n)
+                .step_by(7)
+                .map(|i| one_character_off(text, i))
+                .collect();
+            edits.push(one_character_off(text, n - 1));
+            edits.push(text.replacen("0x3f", "0x3e", 1));
+            edits.push(text.replacen("e-1,", "e-2,", 1));
+            for edited in edits.iter().filter(|e| *e != text) {
+                std::fs::write(&full, edited).map_err(|e| e.to_string())?;
+                // The edit differs in one character, or in one digit through `replacen`.
+                let e = finish_all(&scratch_edit.0, &fresh, true).err();
+                let e = e.ok_or_else(|| format!("{rel}: an edit went unseen"))?;
+                assert!(e.contains(rel) && e.contains("line "), "{e}");
+                // A check writes nothing: the edit is still there.
+                let kept = std::fs::read_to_string(&full).map_err(|e| e.to_string())?;
+                assert_eq!(&kept, edited);
+            }
+            assert!(edits.len() > 100, "{rel}: {} edits", edits.len());
+            std::fs::write(&full, text).map_err(|e| e.to_string())?;
+            finish_all(&scratch_edit.0, &fresh, true)?;
+        }
+
+        // Only the CSV drifts: the check names it and not the generated file, and the other way.
+        let scratch_which = Scratch::new("which-file");
+        finish_all(&scratch_which.0, &fresh, false)?;
+        for (rel, text) in &fresh {
+            std::fs::write(scratch_which.0.join(rel), text.replacen('e', "E", 1))
+                .map_err(|e| e.to_string())?;
+            let e = finish_all(&scratch_which.0, &fresh, true)
+                .err()
+                .unwrap_or_default();
+            // The one file that drifted is named; the other's path is not the subject of an error.
+            assert!(e.starts_with(rel), "{e}");
+            assert_eq!(
+                e.matches("is not what a fresh sweep writes").count(),
+                1,
+                "{e}"
+            );
+            std::fs::write(scratch_which.0.join(rel), text).map_err(|e| e.to_string())?;
+        }
         Ok(())
     }
 
@@ -758,77 +808,6 @@ mod tests {
         // A write replaces it.
         finish(root, rel, "a\nc\n", false)?;
         assert_eq!(read()?, "a\nc\n");
-        Ok(())
-    }
-
-    /// `text` with the character at `at` replaced by a different one.
-    fn one_character_off(text: &str, at: usize) -> String {
-        let swap = |c: char| match c {
-            'x' => 'y',
-            _ => 'x',
-        };
-        let mut chars: Vec<char> = text.chars().collect();
-        chars[at] = swap(chars[at]);
-        chars.into_iter().collect()
-    }
-
-    #[test]
-    fn a_one_character_hand_edit_of_a_generated_file_fails_the_check() -> Result<(), String> {
-        // `docs/PHASE1.md` §11: the sweep regenerates the seeded `generated.rs` byte for byte, and
-        // `thresholds --check` fails on a hand edit. Every 7th character of each file, the first
-        // and the last, and a hex digit of a switch and a digit of a literal, which still parse.
-        let fresh = fresh()?;
-        let scratch = Scratch::new("hand-edit");
-        finish_all(&scratch.0, &fresh, false)?;
-        finish_all(&scratch.0, &fresh, true)?;
-        for (rel, text) in &fresh {
-            let full = scratch.0.join(rel);
-            let n = text.chars().count();
-            let mut edits: Vec<String> = (0..n)
-                .step_by(7)
-                .map(|i| one_character_off(text, i))
-                .collect();
-            edits.push(one_character_off(text, n - 1));
-            edits.push(text.replacen("0x3f", "0x3e", 1));
-            edits.push(text.replacen("e-1,", "e-2,", 1));
-            for edited in edits.iter().filter(|e| *e != text) {
-                std::fs::write(&full, edited).map_err(|e| e.to_string())?;
-                // The edit differs in one character, or in one digit through `replacen`.
-                let e = finish_all(&scratch.0, &fresh, true).err();
-                let e = e.ok_or_else(|| format!("{rel}: an edit went unseen"))?;
-                assert!(e.contains(rel) && e.contains("line "), "{e}");
-                // A check writes nothing: the edit is still there.
-                let kept = std::fs::read_to_string(&full).map_err(|e| e.to_string())?;
-                assert_eq!(&kept, edited);
-            }
-            assert!(edits.len() > 100, "{rel}: {} edits", edits.len());
-            std::fs::write(&full, text).map_err(|e| e.to_string())?;
-            finish_all(&scratch.0, &fresh, true)?;
-        }
-        Ok(())
-    }
-
-    #[test]
-    fn the_generated_file_is_a_function_of_the_sweep_it_is_checked_with() -> Result<(), String> {
-        // Only the CSV drifts: the check names it and not the generated file, and the other way.
-        let fresh = fresh()?;
-        let scratch = Scratch::new("which-file");
-        finish_all(&scratch.0, &fresh, false)?;
-        for (rel, text) in &fresh {
-            std::fs::write(scratch.0.join(rel), text.replacen('e', "E", 1))
-                .map_err(|e| e.to_string())?;
-            let e = finish_all(&scratch.0, &fresh, true)
-                .err()
-                .unwrap_or_default();
-            // The one file that drifted is named; the other's path is not the subject of an error.
-            assert!(e.starts_with(rel), "{e}");
-            assert_eq!(
-                e.matches("is not what a fresh sweep writes").count(),
-                1,
-                "{e}"
-            );
-            std::fs::write(scratch.0.join(rel), text).map_err(|e| e.to_string())?;
-        }
         Ok(())
     }
 

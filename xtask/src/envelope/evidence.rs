@@ -281,6 +281,7 @@ mod tests {
         // The registry parses this header as the output of `envelope`, and finds the file.
         let file = crate::lint::File {
             path: PATH.into(),
+            bytes: text.len(),
             text,
         };
         let violations = crate::lint::check_all(&[file]);

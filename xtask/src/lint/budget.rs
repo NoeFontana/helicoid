@@ -17,7 +17,7 @@ fn over(files: &[File], budget: usize) -> Vec<Violation> {
     let total: usize = files
         .iter()
         .filter(|f| f.path.starts_with(CORPUS))
-        .map(|f| f.text.len())
+        .map(|f| f.bytes)
         .sum();
     if total <= budget {
         return Vec::new();

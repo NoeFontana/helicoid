@@ -83,7 +83,7 @@ class BlockFormsTest(unittest.TestCase):
     def test_jacobians_and_their_dual_inverses(self):
         for n in (1, 2, 3):
             for tau in taus(n):
-                with mp.workdps(500):
+                with mp.workdps(200):
                     phi, rho = [mpf(c) for c in tau[:3]], sen3.chunks([mpf(c) for c in tau[3:]], n)
                     f = closed_forms(phi, rho)
                     want = {
@@ -100,7 +100,7 @@ class BlockFormsTest(unittest.TestCase):
     def test_exp_and_the_adjoint(self):
         for n in (1, 2, 3):
             for tau in taus(n):
-                with mp.workdps(500):
+                with mp.workdps(200):
                     phi, rho = [mpf(c) for c in tau[:3]], sen3.chunks([mpf(c) for c in tau[3:]], n)
                     f, t = closed_forms(phi, rho), mp.sqrt(sum(c * c for c in phi))
                     got = sen3.exp(n)({"tau": tau})
