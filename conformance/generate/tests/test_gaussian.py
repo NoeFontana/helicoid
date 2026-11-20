@@ -1,6 +1,7 @@
 """The `gaussian_mahalanobis_*` ids (0065) against hand-computed cases, planted errors for the
 side-invariance cross-check of `gen.check_gaussian`, and the input draw."""
 
+import dataclasses
 import unittest
 
 from mpmath import mp, mpf
@@ -72,7 +73,7 @@ class CrossCheckTest(unittest.TestCase):
         for name in ("se3", "se23"):
             spec = FUNCTIONS[f"gaussian_mahalanobis_{name}"]
             for stratum in spec.strata[:2]:
-                rec = spec.inputs(stratum)[0]
+                rec = spec.inputs(dataclasses.replace(stratum, count=1))[0]
                 out = spec.evaluate(rec)
                 spec.check(rec, out)
                 with self.assertRaises(CrossCheckError):
@@ -89,7 +90,7 @@ class InputTest(unittest.TestCase):
             self.assertIn("gauss:lever", names)
             self.assertNotIn("gauss:lever@f32", names)
             for stratum in spec.strata:
-                rec = spec.inputs(stratum)[0]
+                rec = spec.inputs(dataclasses.replace(stratum, count=1))[0]
                 self.assertEqual(len(rec["x0"]), 3 * n)
                 self.assertEqual(rec["Sigma"].shape, (3 + 3 * n, 3 + 3 * n))
                 left = stratum.name.split("@")[0] in ("gauss:left", "gauss:lever")
@@ -98,13 +99,13 @@ class InputTest(unittest.TestCase):
     def test_the_lever_stratum_has_its_translation_at_a_kilometre(self):
         spec = FUNCTIONS["gaussian_mahalanobis_se3"]
         stratum = next(s for s in spec.strata if s.name == "gauss:lever")
-        for rec in spec.inputs(stratum)[:4]:
+        for rec in spec.inputs(dataclasses.replace(stratum, count=4)):
             self.assertAlmostEqual(float(so3.norm([mpf(c) for c in rec["x0"]])), 1000.0, places=9)
 
     def test_the_near_cut_residual_turns_between_two_and_a_half_and_three(self):
         spec = FUNCTIONS["gaussian_mahalanobis_se3"]
         stratum = next(s for s in spec.strata if s.name == "gauss:near-cut")
-        for rec in spec.inputs(stratum)[:4]:
+        for rec in spec.inputs(dataclasses.replace(stratum, count=4)):
             phi = gaussian.residual(rec, 1, False)[:3]
             self.assertTrue(mpf("2.49") < so3.norm(phi) < mpf("3.01"))
 

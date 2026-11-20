@@ -617,7 +617,24 @@ impl Exact {
 }
 
 fn five(n: i64) -> BigUint {
-    BigUint::from(5u32).pow(nonneg(n) as u32)
+    const MAX_CACHED: usize = 1200;
+    static TABLE: std::sync::OnceLock<Vec<BigUint>> = std::sync::OnceLock::new();
+    let exp = nonneg(n);
+    let table = TABLE.get_or_init(|| {
+        let mut v = Vec::with_capacity(MAX_CACHED + 1);
+        let mut cur = BigUint::from(1u32);
+        let base = BigUint::from(5u32);
+        for _ in 0..=MAX_CACHED {
+            v.push(cur.clone());
+            cur *= &base;
+        }
+        v
+    });
+    if let Some(val) = table.get(exp) {
+        val.clone()
+    } else {
+        BigUint::from(5u32).pow(exp as u32)
+    }
 }
 
 fn signed(neg: bool, mag: BigUint) -> BigInt {

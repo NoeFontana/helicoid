@@ -7,11 +7,11 @@ final-status-level = "flaky"
 
 # Dedicated test group for heavy threshold sweep and conformance runs to avoid CPU cache thrashing.
 [test-groups]
-heavy = { max-threads = 2 }
+heavy = { max-threads = 4 }
 
 [[profile.default.overrides]]
 # Threshold sweep and check tests evaluate multiple kernels across grids; allow 360s total before terminating.
-filter = 'package(xtask) and (test(thresholds::) or test(conformance::selftest))'
+filter = 'package(xtask) and (test(thresholds::tests::) or test(thresholds::measure::tests::) or test(conformance::selftest::tests::))'
 slow-timeout = { period = "120s", terminate-after = 3 }
 test-group = 'heavy'
 
@@ -32,7 +32,7 @@ fail-fast = true
 default-filter = 'not (package(helicoid-linalg) and test(/every_family_is_within_its_bounds_at_n_(24_40|64_f32|64_f64)$/))'
 
 [[profile.quick.overrides]]
-filter = 'package(xtask) and (test(thresholds::) or test(conformance::selftest))'
+filter = 'package(xtask) and (test(thresholds::tests::) or test(thresholds::measure::tests::) or test(conformance::selftest::tests::))'
 test-group = 'heavy'
 
 [profile.ci]
@@ -43,7 +43,7 @@ final-status-level = "flaky"
 
 [[profile.ci.overrides]]
 # Match default override on CI runners.
-filter = 'package(xtask) and (test(thresholds::) or test(conformance::selftest))'
+filter = 'package(xtask) and (test(thresholds::tests::) or test(thresholds::measure::tests::) or test(conformance::selftest::tests::))'
 slow-timeout = { period = "120s", terminate-after = 3 }
 test-group = 'heavy'
 
