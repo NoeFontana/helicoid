@@ -1,6 +1,7 @@
 """Corpus assembly: one JSONL file per function id, records in canonical stratum order."""
 
 import dataclasses
+import gzip
 import json
 import os
 from collections import Counter
@@ -239,11 +240,11 @@ def write_deep(out_dir: Path, committed: Path, jobs: int | None = None) -> dict[
         check_prefix(name, (committed / file).read_bytes(), built[0])
         files[file] = Built(*built)
     out_dir.mkdir(parents=True, exist_ok=True)
-    for stale in out_dir.glob("*.jsonl"):
-        if stale.name not in files:
+    for stale in [*out_dir.glob("*.jsonl"), *out_dir.glob("*.jsonl.gz")]:
+        if not stale.name.endswith(".gz") or stale.name.removesuffix(".gz") not in files:
             stale.unlink()
     for name, built in files.items():
-        (out_dir / name).write_bytes(built.data)
+        (out_dir / f"{name}.gz").write_bytes(gzip.compress(built.data, compresslevel=6, mtime=0))
     (out_dir / "MANIFEST.json").write_bytes(manifest.render(files))
     return files
 

@@ -232,7 +232,7 @@ class EncodingTest(unittest.TestCase):
             self.assertEqual(sorted(r["out"]), ["R", "shape"])
             self.assertEqual(r["in"]["shape"], [3, 3])
             self.assertEqual(r["out"]["shape"], [3, 3])
-        self.assertEqual(records[0]["out"]["R"][1], "0.00000000000000000000000000000e0")
+        self.assertEqual(records[0]["out"]["R"][1], "0")
 
 
 if __name__ == "__main__":

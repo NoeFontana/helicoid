@@ -5,13 +5,13 @@
       "kind": "corpus",
       "rechecked": 12,
       "records": 384,
-      "sha256": "edd46f69163cd3495b98a2d6ab78ebdb70f4e5e7b45945e0ee19f88f0b31f4da"
+      "sha256": "e1397986f6f9ac31bb613d326a964b9f60153be3ec26a5452616c27948448da2"
     },
     "chol_n6.jsonl": {
       "kind": "corpus",
       "rechecked": 12,
       "records": 384,
-      "sha256": "d3d959b0629b2c5b674efaac0bdb156a8620793748a6d54971d7233309b9dee6"
+      "sha256": "2448511e3552c7a6676c92bbbf0f2634c9e83563be3132bf3ab067228d6da105"
     },
     "chol_solve_n3.jsonl": {
       "kind": "corpus",
@@ -95,67 +95,67 @@
       "kind": "corpus",
       "rechecked": 50,
       "records": 1920,
-      "sha256": "a949fc14983496e95915e17d0942be11fd14a68dbec4d0d391bd621269da0ed8"
+      "sha256": "989ef4c4f5d529d5ea9b2b1912898e3a66566c5c3b91ad3adf834889143e0673"
     },
     "eig_sym_n16.jsonl": {
       "kind": "corpus",
       "rechecked": 45,
       "records": 180,
-      "sha256": "127c494931a09a760352197b309852efe3b662d1d5c9db77e94759ae958ed4d1"
+      "sha256": "1ac339b90a83e07cf4ab52dcf3f030638c112ceff5ab8603be7950b8301393c4"
     },
     "eig_sym_n24.jsonl": {
       "kind": "corpus",
       "rechecked": 45,
       "records": 90,
-      "sha256": "51e7ce9daa46624a9fa1be47bde1b4956e01f0dc5766f9e8307eeb562856022f"
+      "sha256": "1a63bd045eec41d7ed2e125ed36313afb8da2d08dac307c9f09c7cf833ed766d"
     },
     "eig_sym_n4.jsonl": {
       "kind": "corpus",
       "rechecked": 45,
       "records": 1440,
-      "sha256": "dc3c4ac7d2303239f9b5992bcc9fdb3b41c6d90cb9becfdeac62c5061fedefd9"
+      "sha256": "65c32d41121fd1568e0d07f15cfd5a17251c4f296f34fd2684c5177fc4093a55"
     },
     "eig_sym_n40.jsonl": {
       "kind": "corpus",
       "rechecked": 45,
       "records": 45,
-      "sha256": "b8e9db4b1635bf54f5925ff97218a18684b423338816c85466310b016017864a"
+      "sha256": "86782d5ee9e4f92b48da0e26372c85506b81570f7a826ae45a874de483acd5b7"
     },
     "eig_sym_n64.jsonl": {
       "kind": "corpus",
       "rechecked": 45,
       "records": 45,
-      "sha256": "4cecc7d615217947407edff3156a764983acce883af6012503712336e35a75a6"
+      "sha256": "4dd040f1284daaed285c19cf36d53e7886880feda1b70c021164f3edd5348cd8"
     },
     "eig_sym_n9.jsonl": {
       "kind": "corpus",
       "rechecked": 45,
       "records": 720,
-      "sha256": "d7f4ed44a1e08f2e9ff67a9195247288cea67065dbca8a35f48a80b099989639"
+      "sha256": "5e430c4590d088d485a4bbcb0f4890a10dbd3764b646f368ad2d2a262374d5c6"
     },
     "gaussian_mahalanobis_se23.jsonl": {
       "kind": "corpus",
       "rechecked": 13,
       "records": 416,
-      "sha256": "e2a74431dd586fe85c9b162927a32b89af92589167c98215054580a7f10b1296"
+      "sha256": "694f7c69b10427135a0d520bb31102ab1457795b9d855afd4f3a77f29245adcc"
     },
     "gaussian_mahalanobis_se3.jsonl": {
       "kind": "corpus",
       "rechecked": 13,
       "records": 416,
-      "sha256": "c7ada54d5f005ee305b7923876d1b644de740dfc5a100ecf225fec3facb902f8"
+      "sha256": "6421198de21f26091b7c7c916668d57c86b195eadd15c09994d9dfb47520a294"
     },
     "mat2_inverse_adj.jsonl": {
       "kind": "corpus",
       "rechecked": 7,
       "records": 42,
-      "sha256": "4015480c178d18f91c1460cb919d40cd985391d1e4fde9d14a743418f9c1069a"
+      "sha256": "d908335b8fbcf10d2805da73885b91e7912fd428522fbb55baca72ad475b8a43"
     },
     "nearest_rotation.jsonl": {
       "kind": "corpus",
       "rechecked": 32,
       "records": 560,
-      "sha256": "f4efbc99d3d9c3dd301bd59a1faa6639b02bca2b88b351e315f84d229a6e6e64"
+      "sha256": "f57dcb95f93c74f2fdcd7f337d6ec248703dff5b4de2ea6a8734c6d370b717f0"
     },
     "quat_renormalize.jsonl": {
       "kind": "corpus",
@@ -173,7 +173,7 @@
       "kind": "corpus",
       "rechecked": 28,
       "records": 1792,
-      "sha256": "ef86ae84ea7b3fb6a98c842af352e44f447b533792ba8ced3c104beb1e27a7ba"
+      "sha256": "ee3cae3aa09c8c1d047cbb446e34e024d2feca94e84e0bd25338cbb9182d015d"
     },
     "real_cbrt.jsonl": {
       "kind": "corpus",
@@ -203,7 +203,7 @@
       "kind": "corpus",
       "rechecked": 7,
       "records": 448,
-      "sha256": "91e1e17dc5d583b5af9fb7108a2e180778c38514d04db3f4811f270712c4473d"
+      "sha256": "fbf0a595a916d2824b750f0152b8ed1ae96e790eb8524a5b4085d9a825d6b8d7"
     },
     "real_sin_cos.jsonl": {
       "kind": "corpus",
@@ -221,19 +221,19 @@
       "kind": "corpus",
       "rechecked": 16,
       "records": 96,
-      "sha256": "d7f7b6d0261fb5a3e48943aabc42088bdec234c3dfca51fc5a097c72f458125b"
+      "sha256": "b265d927097e18fcbeba7b43ffd5522334e430fa2f9c89c1819c28a78949e7c1"
     },
     "rn_spline_acc_jac.jsonl": {
       "kind": "corpus",
       "rechecked": 16,
       "records": 96,
-      "sha256": "8469701319aa24dffa19caff407364b389aca761f29038176d26e2e981450e5b"
+      "sha256": "c0c4c125d365a229c6f6d9d07203209c76e842c444d4f6d7ab6eb895154e6b55"
     },
     "rn_spline_gram.jsonl": {
       "kind": "corpus",
       "rechecked": 6,
       "records": 54,
-      "sha256": "29d704fcf11f01df86ac307f4f82973bbc20454f7215ecfd923c50ede86ac013"
+      "sha256": "50cc6161a9ce5a85268fb4b2b99f7d8d03ce2d030bfab0fc060b14b74b4b6941"
     },
     "rn_spline_value.jsonl": {
       "kind": "corpus",
@@ -245,7 +245,7 @@
       "kind": "corpus",
       "rechecked": 16,
       "records": 96,
-      "sha256": "60914f951ae72378ffc925860ed214448045fc1ffd04c6521c95fdd5d460efc6"
+      "sha256": "5f735aecd8686077b318f2d9042eecd348c8675a99413296a7ce4c671d4751a7"
     },
     "rn_spline_vel.jsonl": {
       "kind": "corpus",
@@ -257,13 +257,13 @@
       "kind": "corpus",
       "rechecked": 16,
       "records": 96,
-      "sha256": "d9a59bd038350e3e625533a38936829ce2407c1a77f8f37d35bbe7f6ec0fd258"
+      "sha256": "92942d03e1ebb70565f0175ae97ed533dd53824d1cb7b3d6b5c8b6192aa7fd4f"
     },
     "rq3.jsonl": {
       "kind": "corpus",
       "rechecked": 47,
       "records": 760,
-      "sha256": "fce3d4b6df1f5a0612a3c7e2ab6682c73b42101be3561be4691392293503877d"
+      "sha256": "41b21668b48d1401af5452129a3a3bc65ca50b9482119b2a84f0d8a37529299c"
     },
     "s2_local.jsonl": {
       "kind": "corpus",
@@ -281,49 +281,49 @@
       "kind": "corpus",
       "rechecked": 52,
       "records": 416,
-      "sha256": "3a3a7a841f62ae6c1ebdbae416d845d091d282a749b99a36208bd2a362821154"
+      "sha256": "5a8d9ecfe72bf27f2b751c86b075dca192097b8335c683d7cb6c764f6087184d"
     },
     "se2_exp.jsonl": {
       "kind": "corpus",
       "rechecked": 52,
       "records": 416,
-      "sha256": "9d4992dfc0e033b752fd392e4ab11c5d8b7cf07327364d4630b32b30418f196f"
+      "sha256": "6173ac302a354898273320ee59086225866b8fff38d50726c5f52932267e3706"
     },
     "se2_jl.jsonl": {
       "kind": "corpus",
       "rechecked": 52,
       "records": 416,
-      "sha256": "7005c4a762d39f3668dc988e73c305b98c8255795f736bff1f82098fd10c7a7e"
+      "sha256": "72c1851259c3f18208b8e5fcc4dba3db47c9e30c29d75c559f5be31ba899f82f"
     },
     "se2_jl_inv.jsonl": {
       "kind": "corpus",
       "rechecked": 52,
       "records": 416,
-      "sha256": "ab4e3c8498e81f6aa600bbe933ba220de75d214dc60f35c696628bd14362820f"
+      "sha256": "4566ff25c644e766fa5355b9b26597418a1887e88b7a5e2bfc03c64cda2e1718"
     },
     "se2_jr.jsonl": {
       "kind": "corpus",
       "rechecked": 52,
       "records": 416,
-      "sha256": "20d807f1f55f7b21c61ff8efb90a7036d90debb9d0225a958fd7583d5a6b9e65"
+      "sha256": "e7fa7a8a701f68a60a8f29f9051793afb53d5891ac053746682a2267f8049108"
     },
     "se2_jr_inv.jsonl": {
       "kind": "corpus",
       "rechecked": 52,
       "records": 416,
-      "sha256": "50f90fa5727d2dfaa682d5f60c3cae065d704cae53f325f3bbbd09feafb859d1"
+      "sha256": "d7e7b26b4e5ad9f3ebf2d3a3d96256c22148e08b1da70ce926bff7df742846fe"
     },
     "se2_log.jsonl": {
       "kind": "corpus",
       "rechecked": 52,
       "records": 416,
-      "sha256": "1f2471726822d239d79efa7a5a889cf79459c74fd86717431b3d5819c22f1565"
+      "sha256": "4476e8e573491e0afffc68aec070805f3563d40041035e70a45662ede80b8e87"
     },
     "se3_decoupled_local.jsonl": {
       "kind": "corpus",
       "rechecked": 52,
       "records": 312,
-      "sha256": "af450c1d2ab2827a10b3882ec9334d2f2c459f09551c033169ba5a5a5c32ec1c"
+      "sha256": "2783121d1517630ced8d316cb62f2c4a8f4aadaed0e7a37a6d7574f63eb38182"
     },
     "se3_decoupled_retract.jsonl": {
       "kind": "corpus",
@@ -341,13 +341,13 @@
       "kind": "corpus",
       "rechecked": 18,
       "records": 108,
-      "sha256": "bf6adbf672639aa6947e33f7f6e65e4381457c2bc2b13280d222ecac26a378c9"
+      "sha256": "0f9a5c82ffa916b5b7faaa3065d0e9ae95cf0263380195c89cfd55df7636d06c"
     },
     "se3_screw_local.jsonl": {
       "kind": "corpus",
       "rechecked": 52,
       "records": 312,
-      "sha256": "316194ac4f69bf3ce76e73db6b08a41572653e8b54775b994a2e297b951a9405"
+      "sha256": "24f8639d9b12704387d0bed198f8b523fc7e790691b6c717c99e6233011ce3cf"
     },
     "se3_screw_retract.jsonl": {
       "kind": "corpus",
@@ -377,7 +377,7 @@
       "kind": "corpus",
       "rechecked": 52,
       "records": 312,
-      "sha256": "adfeab3946e0424245ec3ecf84fa41cd20f2ebf7e93347f6d83afea6c1e0645c"
+      "sha256": "a51f251fdf87636a97a70a1c413ea08a14177b87081807791707085bcb10f6b4"
     },
     "se3_world_retract.jsonl": {
       "kind": "corpus",
@@ -389,127 +389,127 @@
       "kind": "corpus",
       "rechecked": 54,
       "records": 324,
-      "sha256": "044870a526e0b3d8300057f63bcac29a1a6e94377ef58c99588ff7fa606ea896"
+      "sha256": "b6c8013cc490a0642c05af3eb00871b4c158fb0accf7c4158d3e357e2756eae6"
     },
     "sen3_ad_n2.jsonl": {
       "kind": "corpus",
       "rechecked": 54,
       "records": 324,
-      "sha256": "8fdd119543e1b5128910b5d3eab7138569aaca2203df7c4a4ba3369fe1030279"
+      "sha256": "78bbf60d592344d40bb517fa854043940d72030e0a04c50f164f3017362c37c8"
     },
     "sen3_ad_n3.jsonl": {
       "kind": "corpus",
       "rechecked": 54,
       "records": 324,
-      "sha256": "3c5dcb1793a157084c32ffedff6050815f7ac59715d5d991e67bfffb3b2549c4"
+      "sha256": "574c27df85c1a922bb1bd5e456af927461b1de1152d472fca036065cf7e12859"
     },
     "sen3_exp_n1.jsonl": {
       "kind": "corpus",
       "rechecked": 52,
       "records": 312,
-      "sha256": "d43c52643f8a53196f1928d7d142351362a2a128ccb350e042eca73aaee714a4"
+      "sha256": "e8a53421b508d58e55e419ed240fe6116af87fb2b44615d7c219f21d57e2377a"
     },
     "sen3_exp_n2.jsonl": {
       "kind": "corpus",
       "rechecked": 52,
       "records": 312,
-      "sha256": "7c002ff6c97386dbe709c8f86ebb803e58859f4777d915276de7064a48c3ff0b"
+      "sha256": "c7d694d537ea6fbb00979fea7bd0043a2d617894651bb18abbabcd3e5e918807"
     },
     "sen3_exp_n3.jsonl": {
       "kind": "corpus",
       "rechecked": 52,
       "records": 312,
-      "sha256": "1f846919c28b9db3717742edd74038dddd891d61e3328904cb2098b1c29cd61a"
+      "sha256": "e032b80415d26b1ad553f0b9c4f34bf04466ece6cd967575bfd15a9515b27f51"
     },
     "sen3_jl_inv_n1.jsonl": {
       "kind": "corpus",
       "rechecked": 52,
       "records": 312,
-      "sha256": "c365b3285cdd592080889af3e86973add814a39cbb566199154c81e8b09792f4"
+      "sha256": "6373d99bf68c3cf5460611fe8008c875f239e29bd4b9443cb8e17f021f4303a7"
     },
     "sen3_jl_inv_n2.jsonl": {
       "kind": "corpus",
       "rechecked": 52,
       "records": 312,
-      "sha256": "dcf81696ef10922dfb3d8cef171c3a69ceb7a9a1690190f87fdfc687b1a0823b"
+      "sha256": "efd500158c9f911c5ee98543731b2e1606a3fb3ccc33b01d1cef4322753d6504"
     },
     "sen3_jl_inv_n3.jsonl": {
       "kind": "corpus",
       "rechecked": 52,
       "records": 312,
-      "sha256": "df58eed92c5656dfc177f29c85abdae4205839b509b7ce97b2f3b9ec1814a01b"
+      "sha256": "9507754087efa181d766224887fc3f462c400658991a2c8442f7ab64e615a12e"
     },
     "sen3_jl_n1.jsonl": {
       "kind": "corpus",
       "rechecked": 52,
       "records": 312,
-      "sha256": "dc1ebedc08e2a3515fcc8054af7bae154dfaa74906aa778b9f8023807952d443"
+      "sha256": "6e5f6473ad1b4bfdf3f81ed9ab19b2640521b843451a92b8f8a314dc47c6f985"
     },
     "sen3_jl_n2.jsonl": {
       "kind": "corpus",
       "rechecked": 52,
       "records": 312,
-      "sha256": "18369549a52c88a9c259ab861272c864646ff9e95f144f90b74f547a86771db3"
+      "sha256": "c2fe00ba9f2c629612568e5518945dd5ab36e12fc65abd38daa7b69b1c01b2f3"
     },
     "sen3_jl_n3.jsonl": {
       "kind": "corpus",
       "rechecked": 52,
       "records": 312,
-      "sha256": "5187e473aaf1a11b371e846b89bdd743936496f40814e7d213e86ae985e909a5"
+      "sha256": "a8c9125c6a6a4a4a272fdc7804bb5e53a47253cbaec05fe61f2edd7b49d75fee"
     },
     "sen3_jr_inv_n1.jsonl": {
       "kind": "corpus",
       "rechecked": 52,
       "records": 312,
-      "sha256": "aabede2683712429b5a0f149a1b7cecabd80c1f0649db0abc2e96e74797dc2f5"
+      "sha256": "4043a875075afe28eff2b5cf093d38c016db18d5c2cfdafc1aa6edc8091c8408"
     },
     "sen3_jr_inv_n2.jsonl": {
       "kind": "corpus",
       "rechecked": 52,
       "records": 312,
-      "sha256": "540c7aac5c47aaf9c9df06052ecdb79e8bfa1326f78d3ece217eb4dbaab516e1"
+      "sha256": "f48d35552c8d2478469fe60b7ee3c693cd5761d7cdbf0213622f0fe841bd7de9"
     },
     "sen3_jr_inv_n3.jsonl": {
       "kind": "corpus",
       "rechecked": 52,
       "records": 312,
-      "sha256": "6641bd61d52e03dd98761f52c5f3d90469e8702648362de824034fa1ef1e5f33"
+      "sha256": "86cc915d4729050ffe6de30fa8c2e65bb76f4a63a2eba7ac82d83f0456f6c312"
     },
     "sen3_jr_n1.jsonl": {
       "kind": "corpus",
       "rechecked": 52,
       "records": 312,
-      "sha256": "eae321499fc09a40bf8a4ecf5d901a23bb2eb3dfd9e76d91f71264f4fa6037dd"
+      "sha256": "2ecb4cfa4aa06073ae066ce374bb989ae81a663c5a742f9a151766f467fdc78c"
     },
     "sen3_jr_n2.jsonl": {
       "kind": "corpus",
       "rechecked": 52,
       "records": 312,
-      "sha256": "55bc6f9b158042341dea4bbb5764a93f6a319de0801decee9c171933fb373136"
+      "sha256": "7d577f08320ca160b334eab99a0853a0cb55943cdf8c09199db773a1a5c5763b"
     },
     "sen3_jr_n3.jsonl": {
       "kind": "corpus",
       "rechecked": 52,
       "records": 312,
-      "sha256": "f4a5a46859d3a59c8749c530839c1be7c446bc974878a1ff4edf41a046019344"
+      "sha256": "4807284d6f561df9bacf44cc944686db85bab6b2b2b7658245acf421710e49dc"
     },
     "sen3_log_n1.jsonl": {
       "kind": "corpus",
       "rechecked": 54,
       "records": 642,
-      "sha256": "e7df73f38d75150774e57cc34848fc4542de3abdf3792137ca0011587353fd52"
+      "sha256": "c7e82488f9b60c42d6ae48ff797738f002c5dc375231cb722a9435c2e8f32d56"
     },
     "sen3_log_n2.jsonl": {
       "kind": "corpus",
       "rechecked": 54,
       "records": 642,
-      "sha256": "c8dd463f3edf840024e2180e7dbffd8b695e34da4ad829eb88522df713ce3963"
+      "sha256": "ac0520c6bb1bfb0bed86f2bb3fc0eaa466dafee5afff69beee71f3fe8361897c"
     },
     "sen3_log_n3.jsonl": {
       "kind": "corpus",
       "rechecked": 54,
       "records": 642,
-      "sha256": "45c220d544603204621a68977f39ae418f7f317375738642a7ffff393ab3dd5f"
+      "sha256": "75aa321affe44cc9c7ff17dc0e5fd8abcecd7ff7e802580dadee429d192f80ae"
     },
     "sim3_act.jsonl": {
       "kind": "corpus",
@@ -521,43 +521,43 @@
       "kind": "corpus",
       "rechecked": 238,
       "records": 1008,
-      "sha256": "a8738f394aacbe41ca79f12eb8148aaf35feefdd4d3a5424e9fbcc8e57f4e09d"
+      "sha256": "1200469096d4a24f7c7772ffc1fb11831a752d288e0efd50eddbd762ef94296a"
     },
     "sim3_exp.jsonl": {
       "kind": "corpus",
       "rechecked": 238,
       "records": 1008,
-      "sha256": "025f44441dacc1db142b06a5b11c199f0f0669a160d402a7029f092e24379255"
+      "sha256": "de957d5713b54ce4c09640af60834a9c83111bfe088faca4af4e559ccea87d23"
     },
     "sim3_jl.jsonl": {
       "kind": "corpus",
       "rechecked": 238,
       "records": 1008,
-      "sha256": "e13dead7c0da344497f0b9d094ef74deac8197b782fa7fcc5820f142c4b5d60f"
+      "sha256": "67bb0b2ea702e46e469aa5fadf0be74122d795cf1fd5399aa5e7fd8d1ea443de"
     },
     "sim3_jl_inv.jsonl": {
       "kind": "corpus",
       "rechecked": 238,
       "records": 1008,
-      "sha256": "0a97bbd37d23e6ffd74d5b23def1b8219f37e531479bc292e2dbc02d6c3b0fc4"
+      "sha256": "9da3eba288ceb3b8870db516a900e6a9aa1417cabe7acb0ef2499a051b73c020"
     },
     "sim3_jr.jsonl": {
       "kind": "corpus",
       "rechecked": 238,
       "records": 1008,
-      "sha256": "1fa31924d666073a597e24b5c0fca055952f492cafb2d93fe017c0e613254b2b"
+      "sha256": "9455286a518810330f5a67156cfbeac930d75429a0c04a25971a9ae179e88894"
     },
     "sim3_jr_inv.jsonl": {
       "kind": "corpus",
       "rechecked": 238,
       "records": 1008,
-      "sha256": "c149443df2628558d6b5dbb0ad1489463fc476c222c6c718e8380e7be14a79ed"
+      "sha256": "e5e58e60a3c0c8317658fb6ce9575091236dea1cb3c2cd00e986e7b8ee10ba93"
     },
     "sim3_log.jsonl": {
       "kind": "corpus",
       "rechecked": 238,
       "records": 1008,
-      "sha256": "cd3acfc449d835d930df568d6b8d326c582f39bc26da8b6ca192be93c2b11a3a"
+      "sha256": "9a4f087510d6f646a9381bf5426f61e6f9816022f19291922918029fff7febcc"
     },
     "sim3_ref.jsonl": {
       "kind": "switch-ref",
@@ -575,13 +575,13 @@
       "kind": "corpus",
       "rechecked": 58,
       "records": 3419,
-      "sha256": "9f7d302bc9608ccbd834b318a463da40ab0b64273ad2292e9b0d387ffd2b6572"
+      "sha256": "c4cb8268284e6a0c9e751ed4ed80ee31e951b873d828ca3d3ae0b031c9b79560"
     },
     "so2_log.jsonl": {
       "kind": "corpus",
       "rechecked": 58,
       "records": 3419,
-      "sha256": "5ccbda90c6acd4d10fb99b78a852ea0376261cfa5948a7a5d5ad0bf1eaf88b44"
+      "sha256": "a83989f1c4c6f4d18327babd271ad313f3e2f83265023a856e77bd8c8cce51a4"
     },
     "so3_act.jsonl": {
       "kind": "corpus",
@@ -593,19 +593,19 @@
       "kind": "corpus",
       "rechecked": 36,
       "records": 2466,
-      "sha256": "2c71568361c310b8585f89a703ad00bc695bd1e9133c987ef5ff6d5d4c3a8bef"
+      "sha256": "9d169bfe15d25761bc02ccd50a8c485260be0a7a20484c20e36b520ad8b8ed58"
     },
     "so3_from_matrix.jsonl": {
       "kind": "corpus",
       "rechecked": 78,
       "records": 5236,
-      "sha256": "54470e0dc99107706d2d6f368014d5657a64f00a6ed8042a0a29fdcbaef5974b"
+      "sha256": "41c00a84f034f0f3cb648c10adfd9769abc3a3ea035d88f6e9f9b81ebee8be1f"
     },
     "so3_gamma2.jsonl": {
       "kind": "corpus",
       "rechecked": 72,
       "records": 4932,
-      "sha256": "23789e6a9d6781f3dda058f1e463c3739790909132db875af32c1701630cb0b8"
+      "sha256": "f20894c04adc0e065fd82e8b0bf70cded0f376620f0ea65a1a4a4d171229cb3d"
     },
     "so3_geodesic.jsonl": {
       "kind": "corpus",
@@ -617,37 +617,37 @@
       "kind": "corpus",
       "rechecked": 38,
       "records": 2594,
-      "sha256": "45c9262013956b97c7584c41a2713b69e8ac043a9ca9f885b480a85a39120569"
+      "sha256": "02ef118a20862e3bb674dbb5f0dad91594030005af1c707c2522efc15f871b9f"
     },
     "so3_jl.jsonl": {
       "kind": "corpus",
       "rechecked": 36,
       "records": 2466,
-      "sha256": "6ce93560566b91136020619b91adab55d0d5f607676c71a97eef0fa8e48c91a9"
+      "sha256": "bb4616d6a76bd1bda3204ba1d12ba8a9ff008b2f4a169f0d6e5263fcaa5a726b"
     },
     "so3_jl_inv.jsonl": {
       "kind": "corpus",
       "rechecked": 36,
       "records": 2466,
-      "sha256": "44df7ef94e102402d6b6c56d913eb0bd9654070a6a2d78a3ccecd03c2036ae2c"
+      "sha256": "d5215b2b578181df0fa7408fef60ac646f3d368e5dae74402e606093b0c0ee37"
     },
     "so3_jr.jsonl": {
       "kind": "corpus",
       "rechecked": 36,
       "records": 2466,
-      "sha256": "93878da6721be13fac7b724103a92392d83486d6e6946cbe640551eccfb93dd2"
+      "sha256": "1430a4b333eb7ffb36a4db9dc4d6f4b67db2668784fa8c597230928bfdef6522"
     },
     "so3_jr_inv.jsonl": {
       "kind": "corpus",
       "rechecked": 36,
       "records": 2466,
-      "sha256": "20713dd7336bcbf8402c7ede1e49706b4590a241daa99968c930d0c642c673f4"
+      "sha256": "059cbc4ea5e6effa927f3c8065241a214dcb27493c400061a8e1da6fc3c5e915"
     },
     "so3_log.jsonl": {
       "kind": "corpus",
       "rechecked": 73,
       "records": 5124,
-      "sha256": "577f40aa3db75180b8168b459e383bc53182a24856995d267c000b498d8ac5c1"
+      "sha256": "10e10efcf2d98ce10b776cfcee9daf7e3ea09f14772c0dba1167f01afe87eb47"
     },
     "so3_spline_acc.jsonl": {
       "kind": "corpus",
@@ -659,7 +659,7 @@
       "kind": "corpus",
       "rechecked": 20,
       "records": 120,
-      "sha256": "a78c3e8ca7575c764a9a56cfd93e1e209e40add922548209a8df2990d448ba7e"
+      "sha256": "496cbc0ad5654b61ec2018ffca4e6c16603e8b1df6a614bcb78264b58a29ef70"
     },
     "so3_spline_value.jsonl": {
       "kind": "corpus",
@@ -671,7 +671,7 @@
       "kind": "corpus",
       "rechecked": 20,
       "records": 120,
-      "sha256": "15eb3f2baa411d415caa479defdd2753db1605f41c86a8d730dc8b0267e9d0b4"
+      "sha256": "8c78ccac0727264260c79112f1c5844e3bfd8ba3f9ab989bdfaed08b09015c92"
     },
     "so3_spline_vel.jsonl": {
       "kind": "corpus",
@@ -683,22 +683,22 @@
       "kind": "corpus",
       "rechecked": 20,
       "records": 120,
-      "sha256": "0e19e3d1b08a3d41bca1b7b1c26d19b6b12a34e52d4b51e10c60b6b8ca5e5aa2"
+      "sha256": "cf2069fe4096c53beb2b7a57061365e8cc505986db6349a1b38918a9914c1982"
     },
     "solve_cubic.jsonl": {
       "kind": "corpus",
       "rechecked": 24,
       "records": 1536,
-      "sha256": "3780fb0bfac76491d5c03b5ebbeb52fc333c95edaf3784bf6e805add3f219f2b"
+      "sha256": "08b6278811aa3f713ac949919fc64db24e4afb92ab6394845317c2aa944c266c"
     },
     "svd3.jsonl": {
       "kind": "corpus",
       "rechecked": 61,
       "records": 1048,
-      "sha256": "a4f5783bfca8ae06c9e63ec21b221b2b25ee146d761e662bb292d73b123609ff"
+      "sha256": "34aa34c2c883c0f06633d345c4b23d036bd14ccf93fe40d5e9e86556728c4048"
     }
   },
-  "generator": "sha256:9fb702b4b2a342d2186cac07b7f61251c3cdc2a795a5fef5120b200204a9165d",
+  "generator": "sha256:e407db38e59d2a0d77ce7109be3cb26fa5b5dd06801464917f8f7dd804ea0b81",
   "mpmath": "1.4.1",
   "python": "3.12",
   "recheck": {

@@ -20,10 +20,10 @@ def hex_float(x: float) -> str:
 
 
 def dec30(x) -> str:
-    """An mpf as d.ddd...e<exp> with 30 significant digits, rounded half-to-even in integers."""
+    """An mpf as d.ddd...e<exp> with 30 significant digits, rounded half-to-even in integers, or "0"."""
     m, e = signed_man_exp(x)
     if m == 0:
-        return "0." + "0" * (SIG - 1) + "e0"
+        return "0"
     num, den = (abs(m) << e, 1) if e >= 0 else (abs(m), 1 << -e)
     e10 = len(str(num)) - len(str(den))
     if num * 10 ** max(-e10, 0) < den * 10 ** max(e10, 0):

@@ -21,6 +21,7 @@ job make.
 import ast
 import dataclasses
 import functools
+import gzip
 import hashlib
 import json
 import marshal
@@ -203,6 +204,21 @@ def _audited(memo: Memo, key: str) -> bool:
     return draw < memo.audit
 
 
+def read_entry(path: Path) -> dict:
+    raw = path.read_bytes()
+    if raw[:2] == b"\x1f\x8b":
+        raw = gzip.decompress(raw)
+    return json.loads(raw)
+
+
+def write_entry(path: Path, data: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(f".{os.getpid()}.tmp")
+    raw = json.dumps(data, separators=(",", ":")).encode()
+    tmp.write_bytes(gzip.compress(raw, compresslevel=6, mtime=0))
+    tmp.replace(path)
+
+
 def run(memo: Memo | None, task: tuple[str, str], spec: Any, compute: Callable[[], Any]) -> tuple[Any, str]:
     """`compute()`, or its memoised value, and which: `fresh`, `hit` or `audited`. `compute`
     returns a JSON value; `spec` is what names the task (see `describe`)."""
@@ -221,8 +237,8 @@ def run(memo: Memo | None, task: tuple[str, str], spec: Any, compute: Callable[[
         return compute(), "fresh"
     path = _entry(memo, task)
     try:
-        entry = json.loads(path.read_text())
-    except (OSError, ValueError):
+        entry = read_entry(path)
+    except (OSError, ValueError, EOFError):
         entry = None
     if memo.replay and entry is not None and entry["key"] == key:
         deps = entry["deps"]
@@ -257,10 +273,7 @@ def _watched(compute: Callable[[], Any]) -> tuple[Any, dict[str, str]]:
 
 
 def _store(path: Path, task: tuple[str, str], key: str, deps: dict[str, str], value: Any) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(f".{os.getpid()}.tmp")
-    tmp.write_text(json.dumps({"task": list(task), "key": key, "deps": deps, "value": value}))
-    tmp.replace(path)
+    write_entry(path, {"task": list(task), "key": key, "deps": deps, "value": value})
 
 
 def begin(memo: Memo | None) -> None:
